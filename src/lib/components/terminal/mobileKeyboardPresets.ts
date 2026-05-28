@@ -29,7 +29,7 @@ export function getToolbarActionLabel(action: MobileToolbarAction, index: number
 // actions/programs changed). The App reads this on startup and, when the
 // stored version differs, overwrites all built-in preset ids with the latest
 // definitions while keeping any user-authored custom presets intact.
-export const BUILTIN_TOOLBAR_PRESETS_VERSION = 2;
+export const BUILTIN_TOOLBAR_PRESETS_VERSION = 3;
 
 export function getBuiltinToolbarPresetIds(): string[] {
   return DEFAULT_PRESETS.map((preset) => preset.id);
@@ -76,10 +76,10 @@ const DEFAULT_PRESETS: ToolbarPresetDefinition[] = [
     includeAlt: false,
     rowLayout: [3, 3],
     actions: [
-      { id: 'customcli-undo', label: '/undo', sequence: '/||undo' },
-      { id: 'customcli-clear', label: '/clear', sequence: '/||clear' },
-      { id: 'customcli-compact', label: '/compact', sequence: '/||compact' },
-      { id: 'customcli-resume', label: '/resume', sequence: '/||resume' },
+      { id: 'customcli-undo', label: '/undo', sequence: '/||undo ' },
+      { id: 'customcli-clear', label: '/clear', sequence: '/||clear ' },
+      { id: 'customcli-compact', label: '/compact', sequence: '/||compact ' },
+      { id: 'customcli-resume', label: '/resume', sequence: '/||resume ' },
     ],
   },
 ];
