@@ -452,7 +452,7 @@ function App() {
   // Program detection config (generic names, wrapper scripts, shell names)
   const [programDetection, setProgramDetection] = React.useState<ProgramDetectionConfig>({
     genericProgramNames: ['node', 'python', 'python3', 'ruby', 'perl', 'java'],
-    wrapperScriptNames: ['agent-runner', 'task-runner', 'customcli', 'npx', 'yarn', 'dlx'],
+    wrapperScriptNames: ['npx', 'yarn', 'dlx'],
     shellNames: DEFAULT_SHELL_NAMES,
   });
   const [, setProgramDetectionLoaded] = React.useState(false);
