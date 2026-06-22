@@ -31,7 +31,7 @@ export function getToolbarActionLabel(action: MobileToolbarAction, index: number
 // actions/programs changed). The App reads this on startup and, when the
 // stored version differs, overwrites all built-in preset ids with the latest
 // definitions while keeping any user-authored custom presets intact.
-export const BUILTIN_TOOLBAR_PRESETS_VERSION = 9;
+export const BUILTIN_TOOLBAR_PRESETS_VERSION = 10;
 
 export function getBuiltinToolbarPresetIds(): string[] {
   return DEFAULT_PRESETS.map((preset) => preset.id);
@@ -85,6 +85,22 @@ const DEFAULT_PRESETS: ToolbarPresetDefinition[] = [
       { id: 'customcli-clear', label: '/clear', sequence: '/||clear ', doubleTapSequence: '/||clear ||\r' },
       { id: 'customcli-model', label: '/model', sequence: '/||model ', doubleTapSequence: '/||model ||\r' },
       { id: 'customcli-resume', label: '/resume', sequence: '/||resume ', doubleTapSequence: '/||resume ||\r' },
+    ],
+    showOnDesktop: true,
+  },
+  {
+    id: 'customagent',
+    label: 'CustomAgent',
+    programs: ['customagent', 'custom-agent'],
+    includeAlt: false,
+    rowLayout: [3, 3],
+    actions: [
+      { id: 'customagent-undo', label: '/undo', sequence: '/||undo ', doubleTapSequence: '/||undo ||\r' },
+      { id: 'customagent-clear', label: '/clear', sequence: '/||clear ', doubleTapSequence: '/||clear ||\r' },
+      { id: 'customagent-compact', label: '/compact', sequence: '/||compact ', doubleTapSequence: '/||compact ||\r' },
+      { id: 'customagent-model', label: '/model', sequence: '/||model ', doubleTapSequence: '/||model ||\r' },
+      { id: 'customagent-resume', label: '/resume', sequence: '/||resume ', doubleTapSequence: '/||resume ||\r' },
+      { id: 'customagent-status', label: '/status', sequence: '/||status ', doubleTapSequence: '/||status ||\r' },
     ],
     showOnDesktop: true,
   },
