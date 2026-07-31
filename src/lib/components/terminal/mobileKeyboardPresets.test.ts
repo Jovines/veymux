@@ -16,6 +16,7 @@ describe('toolbar preset desktop visibility', () => {
     expect(defaults.find((preset) => preset.id === 'codex')?.showOnDesktop).toBe(true);
     expect(defaults.find((preset) => preset.id === 'customcli')?.showOnDesktop).toBe(true);
     expect(defaults.find((preset) => preset.id === 'customagent')?.showOnDesktop).toBe(true);
+    expect(defaults.find((preset) => preset.id === 'kimi')?.showOnDesktop).toBe(true);
   });
 
   it('defaults legacy custom presets to hidden on desktop', () => {
