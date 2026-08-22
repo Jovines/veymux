@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { parseClaudeSupportedModels, recommendTitleModel, shouldRunPluginTitleCommands } from './titleNamerCatalog.js';
+import {
+  buildPluginTitleArgs,
+  normalizeDiscoveredModelCatalog,
+  parseClaudeSupportedModels,
+  recommendTitleModel,
+  shouldRunPluginTitleCommands,
+} from './titleNamerCatalog.js';
 
 describe('title namer catalog', () => {
   it('does not authorize plugin commands merely because the package is installed', () => {
@@ -20,10 +26,64 @@ describe('title namer catalog', () => {
     expect(parseClaudeSupportedModels('Unknown model')).toEqual([]);
   });
 
-  it('derives the economical default from CLI descriptions', () => {
+  it('uses explicit economical metadata and never guesses price from descriptions', () => {
     expect(recommendTitleModel([
       { id: 'strong', displayName: 'Strong', description: 'Frontier model', isDefault: true },
-      { id: 'small', displayName: 'Small', description: 'Fast and affordable model', isDefault: false },
+      { id: 'small', displayName: 'Small', description: 'Fast and affordable model', isDefault: false, isEconomical: true },
     ])).toBe('small');
+    expect(recommendTitleModel([
+      { id: 'default', displayName: 'Default', description: '', isDefault: true },
+      { id: 'marketing', displayName: 'Marketing', description: 'Affordable', isDefault: false },
+    ])).toBe('default');
+  });
+
+  it('deduplicates and bounds untrusted model metadata', () => {
+    const catalog = normalizeDiscoveredModelCatalog({
+      models: [
+        { name: ' custom-agent-fast ', displayName: 'x'.repeat(300), description: 'y'.repeat(2_000) },
+        { id: 'custom-agent-fast', displayName: 'duplicate' },
+      ],
+    });
+    expect(catalog.models).toHaveLength(1);
+    expect(catalog.models[0]).toMatchObject({ id: 'custom-agent-fast' });
+    expect(catalog.models[0].displayName).toHaveLength(160);
+    expect(catalog.models[0].description).toHaveLength(1_000);
+    expect(catalog.ignoredEntries).toBe(1);
+  });
+
+  it('normalizes native name fields and an explicit recommendation without hardcoding models', () => {
+    const catalog = normalizeDiscoveredModelCatalog({
+      models: [
+        { name: 'custom-agent-fast', description: 'Fast model', is_economical: true },
+        { name: 'custom-agent-pro', display_name: 'custom-agent Pro', is_default: true },
+        { description: 'missing identifier' },
+      ],
+      recommendedModel: 'custom-agent-fast',
+    });
+    expect(catalog.models).toEqual([
+      expect.objectContaining({ id: 'custom-agent-fast', displayName: 'custom-agent-fast', isEconomical: true }),
+      expect.objectContaining({ id: 'custom-agent-pro', displayName: 'custom-agent Pro', isDefault: true }),
+    ]);
+    expect(catalog.recommendedModel).toBe('custom-agent-fast');
+    expect(catalog.ignoredEntries).toBe(1);
+  });
+
+  it('treats modelArgs as an atomic optional group', () => {
+    const config = {
+      command: 'custom-agent',
+      modelArgs: ['-c', 'model="{model}"'],
+      args: ['-p', '{prompt}'],
+    };
+    expect(buildPluginTitleArgs(config, '/plugin', 'title this')).toEqual(['-p', 'title this']);
+    expect(buildPluginTitleArgs(config, '/plugin', 'title this', 'custom-agent-fast')).toEqual([
+      '-c', 'model="custom-agent-fast"', '-p', 'title this',
+    ]);
+  });
+
+  it('heals legacy paired model flags when automatic mode passes no model', () => {
+    expect(buildPluginTitleArgs({
+      command: 'custom-agent',
+      args: ['-c', 'model="{model}"', '-p', '{prompt}'],
+    }, '/plugin', 'title this')).toEqual(['-p', 'title this']);
   });
 });
