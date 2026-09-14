@@ -2,6 +2,62 @@ import { useEffect, useMemo, useState } from 'react';
 import { canUseSplitDiffView, DiffViewer, SPLIT_DIFF_MEDIA_QUERY, type DiffInlineMode, type DiffViewType } from './DiffViewer';
 
 export const DIFF_FIXTURES: Record<string, { label: string; path: string; diff: string; oldSource?: string }> = {
+  chineseParagraphExpansion: {
+    label: 'Chinese paragraph expansion (AGENTS.md)',
+    path: 'AGENTS.md',
+    diff: `diff --git a/AGENTS.md b/AGENTS.md
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -51,3 +51,3 @@
+ 5. 编辑任务不自动授权提交或发布。
+-6. 查看项目资料时优先读取结构化记录；仅在确认记录不存在、读取受限，或无法取得具体信息后，才补充查看原始内容，并记录无法核实的部分。
++6. 查看或读取项目资料、配置和变更记录时，先按来源读取对应的结构化记录。只有确认记录不存在、读取受限，或无法取得具体信息后，才补充查看原始内容，并记录无法核实的部分。用户要求检查资料时，应明确实际读取的范围、当前版本以及仍待核实的项目；需要修改内容时，先定位对应记录，再保存最小必要改动。
+ 7. 保存修改前核对记录版本。`,
+  },
+  multilineRewrite: {
+    label: 'Multi-line alignment function rewrite',
+    path: 'DiffViewer.tsx',
+    diff: `diff --git a/DiffViewer.tsx b/DiffViewer.tsx
+--- a/DiffViewer.tsx
++++ b/DiffViewer.tsx
+@@ -714,28 +714,14 @@
+       block.push(hunk.changes[cursor]);
+       cursor += 1;
+     }
+-    const deletes = block.filter((item) => item.type === 'delete');
+-    const inserts = block.filter((item) => item.type === 'insert');
+-    const pairs = pairChangedLinesForDisplay(
+-      deletes.map((item) => ({ content: item.content, lineNumber: getChangeLineNumber(item) ?? -1 })),
+-      inserts.map((item) => ({ content: item.content, lineNumber: getChangeLineNumber(item) ?? -1 })),
+-    );
+-    const oldIndexByLine = new Map(deletes.map((item, index) => [getChangeLineNumber(item) ?? -1, index]));
+-    const newIndexByLine = new Map(inserts.map((item, index) => [getChangeLineNumber(item) ?? -1, index]));
+-    let oldCursor = 0;
+-    let newCursor = 0;
+-    for (const pair of pairs) {
+-      const pairedOldIndex = oldIndexByLine.get(pair.oldLineNumber);
+-      const pairedNewIndex = newIndexByLine.get(pair.newLineNumber);
+-      if (pairedOldIndex === undefined || pairedNewIndex === undefined) continue;
+-      while (newCursor < pairedNewIndex) changes.push(inserts[newCursor++]);
+-      while (oldCursor < pairedOldIndex) changes.push(deletes[oldCursor++]);
+-      changes.push(deletes[pairedOldIndex], inserts[pairedNewIndex]);
+-      oldCursor = pairedOldIndex + 1;
+-      newCursor = pairedNewIndex + 1;
++    for (const { deletes, inserts } of splitChangedLineBlock(block)) {
++      // react-diff-view pairs a deletion immediately followed by an insertion.
++      // Top-align replacement blocks; only the excess lines stay one-sided.
++      for (let index = 0; index < Math.max(deletes.length, inserts.length); index += 1) {
++        if (deletes[index]) changes.push(deletes[index]);
++        if (inserts[index]) changes.push(inserts[index]);
++      }
+     }
+-    while (newCursor < inserts.length) changes.push(inserts[newCursor++]);
+-    while (oldCursor < deletes.length) changes.push(deletes[oldCursor++]);
+   }
+   return { ...hunk, changes };
+ }
+`,
+  },
   kotlin: {
     label: 'Kotlin function signature + callback',
     path: 'SearchHintIconHelper.kt',
@@ -659,7 +715,7 @@ export function DiffLab() {
             oldSourceOverride={fixture.oldSource}
             active
             wrap={wrap}
-            showScrollHint={!wrap}
+            embedded={new URLSearchParams(window.location.search).get('embedded') === '1'}
             viewType={effectiveViewType}
             inlineMode={inlineMode}
           />
