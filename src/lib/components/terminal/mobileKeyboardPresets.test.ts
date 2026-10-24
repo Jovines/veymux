@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildDesktopToolbarPresetOptions,
   createDefaultToolbarPresets,
+  materializeToolbarPresets,
   sanitizeToolbarPresets,
   type ToolbarPresetDefinition,
 } from './mobileKeyboardPresets';
@@ -79,5 +80,48 @@ describe('toolbar preset desktop visibility', () => {
       { id: 'default', label: 'Base' },
       { id: 'claude', label: 'Claude' },
     ]);
+  });
+});
+
+describe('CustomAgent Shift+Left preset migration', () => {
+  it('includes the shortcut and enough default slots', () => {
+    const customagent = createDefaultToolbarPresets().find(preset => preset.id === 'customagent')!;
+    expect(customagent.actions[0]).toEqual({ id: 'customagent-shift-left', label: '⇧←', sequence: '\x1b[1;2D' });
+    expect(customagent.rowLayout).toEqual([customagent.actions.length + 1]);
+  });
+
+  it('adds only the missing shortcut to version 18, keeping customized presets intact', () => {
+    const stored = createDefaultToolbarPresets();
+    const customagent = stored.find(preset => preset.id === 'customagent')!;
+    customagent.actions = [{ id: 'mine', label: 'My command', sequence: '/mine' }];
+    customagent.label = 'My custom-agent';
+    customagent.programs = ['my-custom-agent'];
+    customagent.rowLayout = [4, 4];
+    customagent.showOnDesktop = false;
+    stored.find(preset => preset.id === 'codex')!.actions = [{ id: 'custom', label: 'Keep me', sequence: 'hello' }];
+    const migrated = materializeToolbarPresets(stored, 18);
+    expect(migrated.find(preset => preset.id === 'customagent')).toEqual({
+      ...customagent,
+      actions: [{ id: 'customagent-shift-left', label: '⇧←', sequence: '\x1b[1;2D' }, ...customagent.actions],
+    });
+    expect(migrated.filter(preset => preset.id !== 'customagent')).toEqual(stored.filter(preset => preset.id !== 'customagent'));
+    expect(materializeToolbarPresets(migrated, 18)).toEqual(migrated);
+  });
+
+  it('fits the previous default row and preserves an equivalent user shortcut', () => {
+    const stored = createDefaultToolbarPresets();
+    const customagent = stored.find(preset => preset.id === 'customagent')!;
+    customagent.rowLayout = [6];
+    customagent.actions.shift();
+    expect(materializeToolbarPresets(stored, 18).find(preset => preset.id === 'customagent')?.rowLayout).toEqual([7]);
+    customagent.actions.unshift({ id: 'my-shift-left', label: 'Select', sequence: '\\u001b[1;2D' });
+    expect(materializeToolbarPresets(stored, 18).find(preset => preset.id === 'customagent')).toEqual(customagent);
+  });
+
+  it('keeps a deliberate deletion after upgrading and preserves older migration behavior', () => {
+    const stored = createDefaultToolbarPresets();
+    stored.find(preset => preset.id === 'customagent')!.actions.shift();
+    expect(materializeToolbarPresets(stored, 19)).toEqual(stored);
+    expect(materializeToolbarPresets(stored, 17).find(preset => preset.id === 'customagent')?.actions[0].id).toBe('customagent-shift-left');
   });
 });
