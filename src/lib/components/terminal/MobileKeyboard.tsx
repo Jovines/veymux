@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import { Check, ChevronDown, ChevronUp, Clipboard, ClipboardPaste, CornerDownLeft as RiArrowGoBackLine, FileUp, Move, X } from 'lucide-react';
 import { useI18n } from '../../i18n';
 import { vibrate as hapticVibrate } from 'browser-haptic';
-import { splitButtonsIntoRows, type MobileToolbarAction, type ToolbarPresetMode, type ToolbarPresetOption } from './mobileKeyboardPresets';
+import { decodeToolbarSequence, splitButtonsIntoRows, type MobileToolbarAction, type ToolbarPresetMode, type ToolbarPresetOption } from './mobileKeyboardPresets';
 import { PRESET_MODE_BUTTON_SIZE_PX, PresetModeButton } from './PresetModeButton';
 
 type Modifier = 'ctrl' | 'alt';
@@ -72,7 +72,10 @@ interface MobileKeyboardProps {
   onLongPressModeToggle?: () => void;
   onModifierToggle: (modifier: Modifier) => void;
   onPresetSelect: (mode: ToolbarPresetMode) => void;
+  onConfigureToolbar?: () => void;
   onExpandedChange?: (expanded: boolean) => void;
+  onPreviewAction?: (action: MobileToolbarAction) => void;
+  previewActiveAction?: MobileToolbarAction;
 }
 
 export const MobileKeyboard: React.FC<MobileKeyboardProps> = ({
@@ -102,7 +105,10 @@ export const MobileKeyboard: React.FC<MobileKeyboardProps> = ({
   onLongPressModeToggle,
   onModifierToggle,
   onPresetSelect,
+  onConfigureToolbar,
   onExpandedChange,
+  onPreviewAction,
+  previewActiveAction,
 }) => {
   const { t } = useI18n();
   const [showExtended, setShowExtended] = React.useState(defaultShowExtended);
@@ -535,7 +541,7 @@ export const MobileKeyboard: React.FC<MobileKeyboardProps> = ({
   const presetMenu = showPresetMenu && presetMenuPosition
     ? createPortal(
       <div
-        className="fixed z-popover min-w-28 -translate-y-full rounded-2xl bg-surface-elevated p-1.5 shadow-xl border border-border/15"
+        className="fixed z-popover min-w-44 max-h-[calc(var(--app-visual-vh,100dvh)-24px)] overflow-y-auto -translate-y-full rounded-2xl bg-surface-elevated p-1.5 shadow-xl border border-border/15"
         style={{ left: presetMenuPosition.left, top: presetMenuPosition.top }}
       >
         <div className="grid gap-1">
@@ -546,7 +552,7 @@ export const MobileKeyboard: React.FC<MobileKeyboardProps> = ({
               onPointerDown={(event) => handlePresetOptionPointerDown(event, option.id)}
               tabIndex={-1}
               disabled={buttonDisabled}
-              className={`h-7 rounded-full px-3 text-left text-xs font-medium transition-colors disabled:opacity-50 ${
+              className={`min-h-11 rounded-xl px-3 text-left text-xs font-medium transition-colors disabled:opacity-50 ${
                 option.id === presetMode
                   ? 'bg-primary text-primary-foreground'
                   : 'bg-surface-2 hover:bg-surface-elevated text-muted-foreground hover:text-foreground'
@@ -555,6 +561,7 @@ export const MobileKeyboard: React.FC<MobileKeyboardProps> = ({
               {option.label}
             </button>
           ))}
+          {onConfigureToolbar && <button type="button" className="min-h-11 rounded-xl border-t border-border/30 px-3 text-left text-xs font-medium text-primary hover:bg-surface-2" onPointerDown={event => { event.preventDefault(); event.stopPropagation(); setShowPresetMenu(false); onConfigureToolbar(); }} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setShowPresetMenu(false); onConfigureToolbar(); } }}>{t('toolbarPresets.configure')}</button>}
         </div>
       </div>,
       document.body
@@ -575,10 +582,10 @@ export const MobileKeyboard: React.FC<MobileKeyboardProps> = ({
         } ${
           interactive ? '' : '[&_button]:pointer-events-none'
         }`}
-        onMouseDownCapture={preventToolbarButtonFocus}
-        onPointerDownCapture={preventToolbarButtonFocus}
+        onMouseDownCapture={onPreviewAction ? undefined : preventToolbarButtonFocus}
+        onPointerDownCapture={onPreviewAction ? undefined : preventToolbarButtonFocus}
         onContextMenuCapture={preventContextMenu}
-        onFocusCapture={handleToolbarButtonFocus}
+        onFocusCapture={onPreviewAction ? undefined : handleToolbarButtonFocus}
       >
       <div className="rounded-2xl bg-surface-elevated p-0.5 space-y-0.5">
       {!isDesktopActions && (
@@ -802,14 +809,14 @@ export const MobileKeyboard: React.FC<MobileKeyboardProps> = ({
         <div className={expandedContainerClassName}>
           {expandedRows.map((row: { columns: number; items: ExpandedItem[] }, rowIndex: number) => {
             const hasPresetSlot = row.items[0]?.kind === 'preset';
-            const baseCols = Math.max(2, row.columns);
+            const baseCols = Math.max(1, row.columns);
             const gridTemplateColumns = hasPresetSlot
               ? `${PRESET_MODE_BUTTON_SIZE_PX}px repeat(${Math.max(1, baseCols - 1)}, minmax(0, 1fr))`
               : `repeat(${baseCols}, minmax(0, 1fr))`;
             return (
             <div
               key={`row-${rowIndex}`}
-              className="relative grid gap-1"
+              data-mobile-keyboard-expanded-row="true" className="relative grid gap-1"
               style={{ gridTemplateColumns }}
             >
               {row.items.map((item: ExpandedItem) => {
@@ -821,8 +828,9 @@ export const MobileKeyboard: React.FC<MobileKeyboardProps> = ({
                       mode={presetMode}
                       presetLabel={presetLabel}
                       title={presetModeLabel}
+                      ariaLabel={t('toolbarPresets.switchToolbar')}
                       disabled={buttonDisabled}
-                      onPointerDown={handlePresetCyclePointerDown}
+                      onPointerDown={onPreviewAction ? undefined : handlePresetCyclePointerDown}
                     />
                   );
                 }
@@ -851,10 +859,12 @@ export const MobileKeyboard: React.FC<MobileKeyboardProps> = ({
                     <button
                       key={item.id}
                       type="button"
-                      onPointerDown={(event) => handleTextPointerDown(event, item.action)}
-                      tabIndex={-1}
+                      onPointerDown={onPreviewAction ? undefined : (event) => handleTextPointerDown(event, item.action)}
+                      onClick={onPreviewAction ? () => onPreviewAction(item.action) : undefined}
+                      aria-label={onPreviewAction ? t('toolbarPresets.editAction', { name: item.action.label }) : undefined}
+                      tabIndex={onPreviewAction ? 0 : -1}
                       disabled={buttonDisabled}
-                      className="h-7 w-full rounded-full bg-surface-2 shadow-sm px-1 text-xs active:bg-accent active:text-accent-foreground transition-all keyboard-button-active disabled:opacity-50 relative"
+                      className={`h-7 w-full rounded-full bg-surface-2 shadow-sm px-1 text-xs active:bg-accent active:text-accent-foreground transition-all keyboard-button-active disabled:opacity-50 relative ${previewActiveAction?.id === item.action.id ? 'ring-2 ring-primary' : ''}`}
                     >
                       {item.action.label}
                       {item.action.doubleTapSequence && (
@@ -868,10 +878,12 @@ export const MobileKeyboard: React.FC<MobileKeyboardProps> = ({
                   <button
                     key={item.id}
                     type="button"
-                    onPointerDown={(event) => handleSinglePointerDown(event, item.keyName)}
-                    tabIndex={-1}
+                    onPointerDown={onPreviewAction ? undefined : (event) => handleSinglePointerDown(event, item.keyName)}
+                    onClick={onPreviewAction ? () => onPreviewAction({ id: item.id, label: item.keyName, sequence: BASE_KEY_SEQUENCES[item.keyName] }) : undefined}
+                    aria-label={onPreviewAction ? t('toolbarPresets.editAction', { name: item.keyName === 'ctrl-d' ? 'Ctrl-D' : item.keyName === 'ctrl-c' ? 'Ctrl-C' : item.keyName === 'esc' ? 'Esc' : item.keyName === 'home' ? 'Home' : 'End' }) : undefined}
+                    tabIndex={onPreviewAction ? 0 : -1}
                     disabled={buttonDisabled}
-                    className="h-7 w-full rounded-full bg-surface-2 shadow-sm text-xs active:bg-accent active:text-accent-foreground transition-all keyboard-button-active disabled:opacity-50"
+                    className={`h-7 w-full rounded-full bg-surface-2 shadow-sm text-xs active:bg-accent active:text-accent-foreground transition-all keyboard-button-active disabled:opacity-50 ${previewActiveAction && decodeToolbarSequence(previewActiveAction.sequence) === BASE_KEY_SEQUENCES[item.keyName] ? 'ring-2 ring-primary' : ''}`}
                   >
                     {item.keyName === 'esc'
                       ? 'Esc'

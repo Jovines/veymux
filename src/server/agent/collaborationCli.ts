@@ -134,8 +134,11 @@ export const COLLAB_HELP = `td collab — durable messages; no agent-specific ho
     Status values: service-reachable/service-unreachable mark remote node
     connectivity; local members show their own session state instead.
     观测时距终端输出 N 秒 is an observation, never task progress)
-  send <session-id> <message> (deliver to one member; comma-separated same-group
+  send <session-id> <message> (deliver to a member or an authorized local/remote Session outside your groups; comma-separated
     ids fan out, e.g. send a,b "任务" — recipients see it as 群发)
+    Prefer group members. Contact outsiders only when requested or necessary.
+    Without a shared group, direct contact grants no roster, capture or drive access.
+    --group always requires shared membership; remote direct contacts require paired services supporting direct messaging.
   reply <message-id> <message> (answer a message you received; one-to-one)
   handoff <session-id> <message> (like send, framed as a task hand-off)
     shared options: --group <id> --thread <id> --idempotency-key <key>
@@ -149,6 +152,7 @@ export const COLLAB_HELP = `td collab — durable messages; no agent-specific ho
   message get <id> [--receipt-only] [--raw] [--no-rules] [--text]
     (delivery status, retries and the full body of large messages)
   message confirm-shell <message-id> (sender confirms delivery into a shell; continues the same message)
+  message resolve-delivery <id> --decision retry|cancel --attempt <N> (recipient explicitly resolves an uncertain terminal write)
   message watch <message-id> [--wait-until delivered] [--timeout 30s]
   capture <session-id> [--lines 1..10000] [--raw] [--text]
     (查看伙伴正在做什么：读取同组、本机 tmux 成员的当前屏幕，不发送按键、不打断对方。
@@ -334,7 +338,10 @@ export function parseCollaborationCommand(argv: string[]): CollaborationCommand 
       : !options.origin || (command.operation === 'accept' ? !options.file : options.file))) throw new Error('transport invite needs --origin; accept needs --origin and --file');
   } else if (action === 'message') {
     command.operation = positional.shift(); command.target = positional.shift();
-    if (!['get', 'watch', 'confirm-shell', 'list'].includes(command.operation ?? '') || (command.operation === 'list' ? !options.principal || Boolean(command.target) : !command.target) || positional.length) throw new Error('Usage: td collab message get|watch|confirm-shell <id>; --principal <id> message list');
+    if (!['get', 'watch', 'confirm-shell', 'resolve-delivery', 'list'].includes(command.operation ?? '') || (command.operation === 'list' ? !options.principal || Boolean(command.target) : !command.target) || positional.length) throw new Error('Usage: td collab message get|watch|confirm-shell|resolve-delivery <id>; --principal <id> message list');
+    if (command.operation === 'resolve-delivery') {
+      if (!['retry', 'cancel'].includes(String(options.decision)) || !/^[1-9]\d*$/.test(String(options.attempt)) || !Number.isSafeInteger(Number(options.attempt))) throw new Error('resolve-delivery requires --decision retry|cancel and --attempt <observed number>');
+    } else if (options.decision !== undefined || options.attempt !== undefined) throw new Error('Delivery decision and attempt apply to resolve-delivery only');
     if (command.operation === 'list') {
       for (const flag of Object.keys(options)) if (!['principal', 'json', 'jsonl', 'text', 'group', 'thread', 'after-id', 'limit'].includes(flag)) throw new Error(`--${flag} is not supported by message list`);
     } else if (['group', 'thread', 'after-id', 'limit'].some(flag => options[flag] !== undefined)) throw new Error('History filters apply to --principal message list only');
@@ -389,7 +396,7 @@ export function parseCollaborationCommand(argv: string[]): CollaborationCommand 
     handoff: ['group', 'thread', 'idempotency-key', 'file', 'stdin', 'wait-until', 'timeout', 'expect-reply', 'response-kind', 'metadata', 'expires-at'],
     reply: ['update', 'revision', 'idempotency-key', 'file', 'stdin', 'wait-until', 'timeout', 'expect-reply', 'response-kind', 'metadata', 'task-envelope', 'expires-at'],
     inbox: ['raw', 'since', 'after-id', 'cursor', 'consumer', 'limit', 'from', 'group', 'thread', 'kind', 'response-kind', 'follow', 'timeout'],
-    message: ['raw', 'receipt-only', 'no-rules', 'follow', 'wait-until', 'timeout', 'expect-reply', 'group', 'thread', 'after-id', 'limit'], cursor: ['consumer'],
+    message: ['raw', 'receipt-only', 'no-rules', 'follow', 'wait-until', 'timeout', 'expect-reply', 'group', 'thread', 'after-id', 'limit', 'decision', 'attempt'], cursor: ['consumer'],
     add: [], remove: [], spawn: ['launch-profile', 'name', 'cwd', 'task'], role: [], rename: [], cleanup: ['confirm'], drive: ['lines', 'raw'],
   };
   for (const option of byAction[action]) allowed.add(option);
@@ -643,6 +650,7 @@ export async function executeCollaborationCommand(command: CollaborationCommand,
         output(await request('GET', `/message?${params}`)); return 0;
       }
       const route = `/message/${encodeURIComponent(command.target!)}`;
+      if (command.operation === 'resolve-delivery') { output(await request('POST', `${route}/resolve-delivery`, { action: o.decision, attempt: Number(o.attempt) })); return 0; }
       if (command.operation === 'confirm-shell') { output(await request('POST', `${route}/${command.operation}`)); return 0; }
       receipt = await request('GET', `${route}?receipt_only=${Boolean(o['receipt-only'] || command.operation === 'watch')}&raw=${Boolean(o.raw)}`);
       if (receipt.status === 'stored') { output(receipt); return 0; }

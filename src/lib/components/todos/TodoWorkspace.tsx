@@ -1,5 +1,6 @@
+import { SidebarVisibilityButton } from '../sidebar/SidebarVisibilityButton';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Inbox, PanelLeft, Pencil, Plus, Search, Settings2, Sparkles, Trash2, X } from 'lucide-react';
+import { ArrowLeft, Inbox, Pencil, Plus, Search, Settings2, Sparkles, Trash2, X } from 'lucide-react';
 import { getAgentLaunchers, getSettings, type AgentLauncherInfo } from '../../terminal/api';
 import { getSessionDirectorySnapshot, useSessionDirectory } from '../../stores/useSessionDirectory';
 import { getSessionPresentation } from '../../terminal/display';
@@ -205,10 +206,10 @@ export default function TodoWorkspace({ onOpenSidebar, leftSidebarVisible, activ
         <h1 className="min-w-0 flex-1 text-sm">已选 {checked.length} 项</h1>
         <button type="button" className={primary} disabled={busy || !checked.length} onClick={() => requestHandoff(checked.map(todo => todo.id))}>交给会话</button>
       </> : <>
-        {!leftSidebarVisible && <button type="button" className={`${ghost} hidden sm:inline-flex`} aria-label="打开会话侧栏" onClick={onOpenSidebar}><PanelLeft size={18} /></button>}
+        {!leftSidebarVisible && <SidebarVisibilityButton side="left" expanded={leftSidebarVisible} className={`${ghost} hidden sm:inline-flex`} onClick={onOpenSidebar} />}
         <button type="button" className={`${ghost} px-2`} aria-label="返回终端" title="返回终端" onClick={() => useCollaborationNavigation.getState().terminal()}><ArrowLeft size={18} /></button>
         <h1 className="min-w-0 flex-1 text-base font-semibold">待办{data && <span className="ml-2 text-xs font-normal tabular-nums text-muted-foreground">{data.todos.filter(todo => todo.status === 'open').length}</span>}</h1>
-        <button type="button" className={`${ghost} px-2`} aria-label="管理收集方向" title="管理收集方向" disabled={!data || busy} onClick={manageCollectors}><Settings2 size={16} /><span>管理</span></button>
+        <button type="button" className={`${ghost} px-2`} aria-label="管理收集方向" title="管理收集方向" disabled={!data || busy} onClick={manageCollectors}><Settings2 size={16} /><span>收集</span></button>
         <button type="button" className={`${ghost} px-2`} aria-label="新增待办" title="新增待办" disabled={!data} onClick={() => show({ kind: 'edit' })}><Plus size={21} /></button>
         <TodoMoreMenu label="待办菜单" items={workspaceActions} disabled={!data || busy} />
       </>}

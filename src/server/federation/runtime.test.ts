@@ -701,6 +701,9 @@ it('enforces individual shared devices, computer view-only mode, directory bound
     android: [{ serial: 'pixel', access: 'view' }], computers: [{ host: '127.0.0.1', protocol: 'rdp', port: 3389, access: 'view' }], directories: [{ path: f.directory, access: 'read' }],
   } });
   f.app.get('/api/terminal/fs/read', (_req, res) => res.json({ content: 'visible' }));
+  f.app.post('/api/terminal/one/chat/viewed', (_req, res) => res.json({ acknowledged: true }));
+  expect((await guest.http('view-chat-ack', 'POST', '/api/terminal/one/chat/viewed'))[0]).toMatchObject({ type: 'head', status: 200 });
+  expect((await guest.http('other-view-chat-ack', 'POST', '/api/terminal/two/chat/viewed'))[0]).toMatchObject({ type: 'error' });
   expect((await guest.http('file-ok', 'GET', `/api/terminal/fs/read?path=${encodeURIComponent(shared)}`))[0]).toMatchObject({ type: 'head', status: 200 });
   for (const [id, method, path] of [
     ['outside', 'GET', '/api/terminal/fs/read?path=/etc/passwd'], ['delete', 'DELETE', `/api/terminal/fs/file?path=${encodeURIComponent(shared)}`],
@@ -772,4 +775,54 @@ it('closes an established relay and stops terminal input when the password is re
   expect(await client.take('terminal', 'error')).toMatchObject({ error: 'TARGET_PASSWORD_REQUIRED' });
   expect(f.received).not.toHaveBeenCalled();
   await vi.waitFor(() => expect(client.socket.readyState).toBe(WebSocket.CLOSED), { timeout: 2000 });
+});
+
+describe('shared selection copy authority', () => {
+  it.each([false, true])('reads only the bound Session selection without granting tmux control (relayed=%s)', async relayed => {
+    const f = await fixture({}, false, undefined, relayed), client = await f.connect();
+    const grant = f.runtime.store.grant({ subjectId: client.identity.peerId, scope: { kind: 'sessions', sessionIds: ['one'] }, actions: ['session.view'] });
+    client.channel.send({ type: 'ws-open', id: 'selection', path: '/api/terminal/one/ws' });
+    await client.take('selection', 'ws-ready'); await client.take('selection', 'ws-data');
+    client.channel.send({ type: 'ws-data', id: 'selection', data: JSON.stringify({ type: 'tmux', action: 'copy-selection', reqId: 'copy', tmuxSessionName: 'two' }) });
+    await vi.waitFor(() => expect(f.received).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ action: 'copy-selection', reqId: 'copy' })));
+    client.channel.send({ type: 'ws-open', id: 'other-session', path: '/api/terminal/two/ws' });
+    expect(await client.take('other-session')).toMatchObject({ type: 'error', error: 'AUTHORIZATION_DENIED' });
+    client.channel.send({ type: 'ws-data', id: 'selection', data: JSON.stringify({ type: 'tmux', action: 'switch-session', tmuxSessionName: 'two' }) });
+    expect(await client.take('selection')).toMatchObject({ type: 'error', error: 'AUTHORIZATION_DENIED' });
+    f.runtime.store.revoke(grant.id);
+    client.channel.send({ type: 'ws-data', id: 'selection', data: JSON.stringify({ type: 'tmux', action: 'copy-selection', reqId: 'revoked' }) });
+    expect(await client.take('selection')).toMatchObject({ type: 'error', error: 'AUTHORIZATION_DENIED' });
+    expect(f.received).toHaveBeenCalledOnce();
+  });
+});
+
+it('restores only already authorized detached sessions before projecting the directory', async () => {
+  const restore = vi.fn(async (id: string) => {
+    if (id === 'source-one') f.inventory.clientSessions[0].backendSessionId = 'one-new';
+    return true;
+  });
+  const f = await fixture({ restoreSharedSession: restore });
+  const detached = f.inventory.clientSessions as unknown as Array<{ backendSessionId: string | null; sessionId?: string }>;
+  detached[0].backendSessionId = null;
+  detached[1].backendSessionId = null; detached[1].sessionId = 'source-hidden';
+  const viewer = await f.connect();
+  const grant = f.runtime.store.grant({ subjectId: viewer.identity.peerId, scope: { kind: 'sessions', sessionIds: ['source-one'] }, actions: ['session.view'] });
+  viewer.channel.send({ type: 'session-list', id: 'restored-directory' });
+  expect(await viewer.take('restored-directory')).toMatchObject({ items: [{ sessionId: 'one-new', sourceSessionId: 'source-one', canWrite: false, canResize: false }] });
+  expect(restore.mock.calls).toEqual([['source-one']]);
+  f.runtime.store.revoke(grant.id); restore.mockClear();
+  detached[0].backendSessionId = null;
+  viewer.channel.send({ type: 'session-list', id: 'revoked-directory' });
+  expect(await viewer.take('revoked-directory')).toMatchObject({ items: [] });
+  expect(restore).not.toHaveBeenCalled();
+});
+
+it('keeps administrator directory reads free of background terminal restoration', async () => {
+  const restore = vi.fn().mockResolvedValue(true);
+  const f = await fixture({ restoreSharedSession: restore });
+  const owner = await f.connect(); await owner.pair();
+  f.inventory.clientSessions[0].backendSessionId = null as unknown as string;
+  owner.channel.send({ type: 'session-list', id: 'owner-directory' });
+  expect(await owner.take('owner-directory')).toMatchObject({ type: 'result' });
+  expect(restore).not.toHaveBeenCalled();
 });

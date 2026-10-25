@@ -78,6 +78,8 @@ export interface TmuxLayout {
 
 export interface TmuxSessionSummary {
   name: string;
+  displayName?: string;
+  displaySubtitle?: string | null;
   windows: number;
   attached: number;
   createdAt?: number | null;
@@ -95,6 +97,7 @@ export interface TmuxSessionSummary {
 }
 
 export interface SessionInventoryClientSession {
+  viewMode?: 'terminal' | 'chat' | null;
   collectionRunId?: string | null;
   frontendSessionId: string;
   sessionId: string;
@@ -215,7 +218,8 @@ export interface TerminalStreamEvent {
   copyModeInput?: boolean;
   terminalOutputActive?: boolean;
   active?: boolean;
-  type: 'connected' | 'terminal-output-activity' | 'data' | 'exit' | 'reconnecting' | 'tmux-layout' | 'tmux-screen-sync' | 'active-program' | 'cwd' | 'agent-status' | 'resize-ack' | 'focus-mode' | 'pty-size' | 'shell-title' | 'prompt-state' | 'tui-progress' | 'git-status';
+  type: 'connected' | 'session-chat-index' | 'terminal-output-activity' | 'data' | 'exit' | 'reconnecting' | 'tmux-layout' | 'tmux-screen-sync' | 'active-program' | 'cwd' | 'agent-status' | 'resize-ack' | 'focus-mode' | 'pty-size' | 'shell-title' | 'prompt-state' | 'tui-progress' | 'git-status';
+  chatIndex?: import('../../server/shared/sessionChatAttention').SessionChatIndex;
   data?: string;
   layout?: TmuxLayout;
   exitCode?: number;
@@ -415,6 +419,7 @@ export interface TerminalSessionState {
   agentActivity: number;               // 工具完成计数（只比较变化）
   agentCwd: string | null;             // agent 自己上报的工作目录（worktree 跟踪）
   agentNeedsReview: boolean;  // 前端状态：AI 回合结束/停止时，用户未查看 → 黄点提醒
+  chatAttention?: import('../../server/shared/sessionChatAttention').SessionChatAttention;
   // Shell integration (OSC 133/2) — shell-reported title and prompt state.
   // These provide real-time, shell-driven updates (faster than server polling).
   shellTitle: string | null;     // OSC 2 title: cwd when idle, command name when running

@@ -18,9 +18,10 @@ import { remoteSessionAddress, type CollaborationPeerState, type CollaborationPe
 import { openRemoteSession } from '../../federation/remoteSession';
 import { isConnectionInterruption, SECURE_READY_EVENT, useConnectionRecovery } from '../../federation/connectionRecovery';
 import { shortId } from '../../utils/shortId';
+import { restoreFocusIfUnclaimed } from '../../utils/focusOwnership';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Bot, MoreHorizontal, CalendarClock, Check, ChevronDown, Clock3, ExternalLink, Maximize2, FolderOpen, Link2, Pause, Pencil, Play, Plus, RefreshCw, Search, Trash2, X } from 'lucide-react';
+import { Bot, MoreHorizontal, CalendarClock, Check, ChevronDown, Clock3, ExternalLink, Maximize2, FolderOpen, Link2, Pause, Pencil, Play, Plus, RefreshCw, Search, Trash2, Users, X } from 'lucide-react';
 import {
   getSettings,
   type CollaborationPanelState,
@@ -34,6 +35,7 @@ import {
   listCollaborationMessages,
   prepareAgentResumeHistory,
   prepareSearchSession,
+  updateSessionInventoryEntry,
   removeAgentAutomation,
   removeCollaborationGroup,
   removeCollaborationConnection,
@@ -85,7 +87,7 @@ interface AgentOperationsPanelProps {
   initialCollaborationGroupId?: string | null;
   defaultSessionMode?: 'shell' | 'tmux';
   onClose: () => void;
-  onNewSession: (opts: { mode: 'shell'; cwd?: string; command?: string }) => void;
+  onNewSession: (opts: import('../../terminal/newSessionRequest').NewSessionRequestOptions) => void;
 }
 
 const inputClass = 'w-full rounded-lg border border-border/20 bg-surface-2 px-3 py-2 text-[12px] text-foreground outline-none transition focus:border-primary/60';
@@ -150,7 +152,7 @@ function AgentOperationsPanelView({ activeSessionId, initialCollaborationGroupId
       node.inert = true;
     } else {
       node.inert = false;
-      if (obscuredFocus.current?.isConnected) obscuredFocus.current.focus({ preventScroll: true });
+      restoreFocusIfUnclaimed(obscuredFocus.current);
       obscuredFocus.current = null;
     }
   }, [overlayObscured]);
@@ -1165,10 +1167,10 @@ export function CollaborationTab({ fullWorkspace = false, initialView = 'tasks',
 
     {settingsOpen && selectedGroup && <CollaborationGroupSettings key={selectedGroup.id} group={selectedGroup} agents={agents} activeSessionId={activeSessionId} sessions={sessions} busy={busy} setBusy={setBusy} setError={setError} setNotice={setNotice} refresh={refresh} onClose={closeSettings} />}
     {!initialGroupId && sessionsState !== 'loaded' && !groups.length && <p role="status" className="py-5 text-xs text-muted-foreground">{sessionsState === 'loading' ? '正在加载协作组与会话…' : '会话加载失败，请重试'}</p>}
-    {!selectedGroup && (initialGroupId || selectedGroupId === 'new' || sessionsState === 'loaded') && <section className="border-y border-border/15 py-4">
-      <div className="flex items-start justify-between gap-3"><div><h4 className="text-[12px] font-medium text-foreground">创建协作组</h4><p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">先给协作组命名。成员可以现在选择，也可以以后添加；消息和看板都能独立使用。</p></div><span className={`shrink-0 text-[10px] ${selectedCount >= 2 ? 'text-primary' : 'text-muted-foreground'}`}>已选 {selectedCount} 个</span></div>
-      <label className="mt-4 block space-y-1 text-[10px] text-muted-foreground">协作组名称<input className={inputClass} value={name} onChange={(event) => setName(event.target.value)} placeholder="例如：发布准备" /></label>
-      <details className="mt-3"><summary className="min-h-11 cursor-pointer py-3 text-xs text-muted-foreground">复用已有会话（选填） · 已选 {selectedCount} 个</summary>
+    {!selectedGroup && (initialGroupId || selectedGroupId === 'new' || sessionsState === 'loaded') && <section className="rounded-2xl border border-border/30 bg-surface p-4 font-sans sm:p-5">
+      <div className="mb-5 flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-xl bg-surface-2 text-primary"><Users size={22} /></span><h4 className="text-base font-semibold text-foreground">创建协作组</h4></div>
+      <label className="block space-y-2 text-sm text-muted-foreground">协作组名称<input className={inputClass} value={name} onChange={(event) => setName(event.target.value)} placeholder="例如：发布准备" /></label>
+      <details className="mt-4 rounded-xl border border-dashed border-border/40 px-3"><summary className="min-h-12 cursor-pointer py-3 text-sm text-muted-foreground">添加现有会话<span className="ml-2 rounded-full bg-surface-2 px-2 py-1 text-xs">{selectedCount ? `已选 ${selectedCount}` : '选填'}</span></summary>
       {sessions.length > 5 && <label className="relative mt-3 block"><span className="sr-only">筛选会话</span><Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /><input className={`${inputClass} pl-8`} value={sessionQuery} onChange={(event) => setSessionQuery(event.target.value)} placeholder="按名称、目录或当前任务筛选" /></label>}
       <div className="mt-3 max-h-64 divide-y divide-border/10 overflow-y-auto border-y border-border/10">
         {createServiceGroups.length <= 1 ? filteredSessions.map(renderSessionOptionRow) : createServiceGroups.map((group) => { const collapsed = serviceCollapsed(group.key); return <div key={group.key}><ServiceGroupHeader label={group.label} count={group.sessions.length} collapsed={collapsed} onToggle={() => toggleServiceCollapsed(group.key)} />{!collapsed && <div className="divide-y divide-border/10">{group.sessions.map(renderSessionOptionRow)}</div>}</div>; })}
@@ -1177,7 +1179,7 @@ export function CollaborationTab({ fullWorkspace = false, initialView = 'tasks',
       </div>
       </details>
       {unavailableSelectedIds.length > 0 && <div role="alert" className="mt-2 text-[11px] text-destructive">有 {unavailableSelectedIds.length} 个所选会话暂不可用。<button className={buttonClass} onClick={() => setSelected((current) => new Set([...current].filter((id) => availableSessionIds.has(id))))}>清除不可用选择</button></div>}
-      <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center"><p className={`min-w-0 flex-1 text-[10px] ${selectedCount < 2 ? 'text-muted-foreground' : 'text-primary'}`}>{!name.trim() ? '请填写协作组名称' : '创建后进入成员消息，看板可随时使用'}</p><div className="flex justify-end gap-2">{groups.length > 0 && <button className={`${buttonClass} bg-surface-2 text-foreground`} onClick={() => setSelectedGroupId(groups[0]?.id ?? null)}>取消</button>}<button disabled={busy !== null || !name.trim() || unavailableSelectedIds.length > 0} className={`${buttonClass} bg-primary text-primary-foreground`} onClick={() => void createGroup()}>{busy === 'create-group' ? <RefreshCw size={13} className="animate-spin" /> : <Plus size={13} />}创建协作组</button></div></div>
+      <div className="mt-5 flex justify-end gap-2"><div className="flex justify-end gap-2">{groups.length > 0 && <button className={`${buttonClass} bg-surface-2 text-foreground`} onClick={() => setSelectedGroupId(groups[0]?.id ?? null)}>取消</button>}<button disabled={busy !== null || !name.trim() || unavailableSelectedIds.length > 0} className={`${buttonClass} bg-primary text-primary-foreground`} onClick={() => void createGroup()}>{busy === 'create-group' ? <RefreshCw size={13} className="animate-spin" /> : <Plus size={13} />}创建协作组</button></div></div>
     </section>}
 
     </div>
@@ -1583,13 +1585,25 @@ function SearchTab({ active, onClose, onNewSession, setError }: { active: boolea
   const open = async (result: SessionSearchResult) => {
     if (opening) return;
     if (result.live) { window.dispatchEvent(new CustomEvent('switch-terminal-session', { detail: result.sessionId })); onClose(); return; }
-    if (!result.nativeKey && !result.resumeHistoryId) return;
+    if (!result.nativeKey && !result.resumeHistoryId && !result.recoverable) return;
     setOpening(result.sessionId);
     setError(null);
     try {
-      const prepared = result.nativeKey ? await prepareSearchSession(result.nativeKey) : await prepareAgentResumeHistory(result.resumeHistoryId!);
+      const prepared = result.terminalSessionId || result.recoverable && !result.nativeKey && !result.resumeHistoryId
+        ? await prepareSearchSession(null, result.terminalSessionId || result.sessionId)
+        : result.nativeKey ? await prepareSearchSession(result.nativeKey) : await prepareAgentResumeHistory(result.resumeHistoryId!);
       if ('sessionId' in prepared && prepared.sessionId) window.dispatchEvent(new CustomEvent('switch-terminal-session', { detail: prepared.sessionId }));
-      else if (prepared.command) onNewSession({ mode: 'shell', cwd: prepared.cwd, command: prepared.command });
+      else if (prepared.cwd) {
+        const launch = prepared as { mode?: 'shell' | 'tmux'; tmuxSessionName?: string };
+        await new Promise<void>((resolve, reject) => onNewSession({ mode: launch.mode ?? 'shell',
+          tmuxSessionName: launch.tmuxSessionName, cwd: prepared.cwd, command: prepared.command,
+          onResult: outcome => {
+            if (!outcome.ok) { reject(new Error('无法创建恢复会话，请检查目录和连接后重试')); return; }
+            void updateSessionInventoryEntry(outcome.sessionId, { name: result.title, customName: true })
+              .then(() => resolve(), () => reject(new Error('会话已打开，但原名称未能保存，请在会话列表中查看')));
+          },
+        }));
+      }
       else throw new Error('这条会话暂时无法恢复，请重新搜索');
       onClose();
     } catch (error) { setError(error instanceof Error ? error.message : '恢复失败'); }
@@ -1597,7 +1611,7 @@ function SearchTab({ active, onClose, onNewSession, setError }: { active: boolea
   };
   return <div className="space-y-4">
     <div className="sticky -top-4 z-20 -mx-4 -mt-4 border-b border-border/15 bg-surface px-4 py-3">
-      <div><h3 className="text-[13px] font-medium text-foreground">历史会话搜索</h3><p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">搜索当前服务的 Codex、Claude 历史对话和 Termdock 终端记录，未启动的会话也能找到并恢复。</p></div>
+      <div><h3 className="text-[13px] font-medium text-foreground">历史会话搜索</h3><p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">按原会话名称、对话内容或目录查找。已关闭的 Agent 对话可恢复，普通终端可重新打开原目录。</p></div>
       <label className="relative mt-3 block"><span className="sr-only">搜索历史会话</span><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /><input ref={inputRef} maxLength={512} className={`${inputClass} pl-9 pr-9`} value={query} onChange={(event) => changeQuery(event.target.value)} placeholder="搜索会话名称、对话关键词、目录或 session ID" />{searching ? <RefreshCw size={13} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-muted-foreground" /> : query && <button type="button" aria-label="清空搜索" className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-muted-foreground hover:bg-surface-2 hover:text-foreground" onClick={() => changeQuery('')}><X size={13} /></button>}</label>
       {index?.building && <div role="status" className="mt-2 text-[10px] text-muted-foreground">正在建立历史索引：{index.indexed}/{index.total} 个会话。可以先搜名称和目录，对话结果会自动补齐。</div>}
       {index?.warning && <p role="status" className="mt-2 text-[10px] text-destructive">{index.warning}</p>}
@@ -1606,11 +1620,11 @@ function SearchTab({ active, onClose, onNewSession, setError }: { active: boolea
     <div className="flex items-center justify-between gap-3"><p className="text-[11px] text-foreground">{query.trim() ? `找到 ${total} 个会话` : '最近的会话'}{total > results.length ? ` · 显示 ${results.length} 个` : ''}</p><button type="button" disabled={searching} className={`${buttonClass} text-muted-foreground hover:bg-surface-2 hover:text-foreground`} onClick={() => setRefresh(value => value + 1)}><RefreshCw size={12} />刷新</button></div>
     {!query.trim() && <p className="text-[10px] text-muted-foreground">记得之前讨论过什么？输入一句话中的关键词，就能找到对应会话。历史对话与索引保存在当前服务机器上。</p>}
     <div className="divide-y divide-border/10 border-y border-border/10">{results.map((result) => {
-      const canOpen = result.live || Boolean(result.nativeKey || result.resumeHistoryId);
-      const action = opening === result.sessionId ? '正在恢复…' : result.live ? '打开会话' : canOpen ? '恢复会话' : '仅供查阅';
+      const canOpen = result.live || Boolean(result.nativeKey || result.resumeHistoryId || result.recoverable);
+      const action = opening === result.sessionId ? '正在恢复…' : result.live ? '打开会话' : canOpen ? result.nativeKey || result.resumeHistoryId || result.agentNativeSessionId ? '恢复会话' : '重新打开终端' : '仅供查阅';
       const snippet = result.source === 'codex' || result.source === 'claude' ? result.snippet : searchResultSnippet(result);
       const source = result.source === 'codex' ? 'Codex 历史' : result.source === 'claude' ? 'Claude 历史' : '终端记录';
-      const content = <><div className="flex items-start gap-3"><div className="min-w-0 flex-1"><p className="break-words text-[12px] font-medium text-foreground"><HighlightedSearchText value={result.title} query={query} /></p><p className="mt-0.5 break-all text-[9px] text-muted-foreground"><HighlightedSearchText value={result.cwd || '项目目录待索引'} query={query} /></p></div><span className={`shrink-0 text-[10px] ${result.live ? 'text-[var(--success)]' : canOpen ? 'text-primary' : 'text-muted-foreground'}`}>{action}</span></div>{snippet && <p className="mt-2 line-clamp-3 break-words text-[10px] leading-relaxed text-foreground/75"><HighlightedSearchText value={snippet} query={query} /></p>}<p className="mt-2 text-[9px] text-muted-foreground">{source} · {formatDateTime(result.updatedAt)}{query.trim() ? ` · ${result.matchCount >= 999 ? '999+' : result.matchCount} 处匹配` : ''}{!canOpen ? ' · 没有可恢复记录' : ''}</p>{result.agentNativeSessionId && <p className="mt-1 select-text break-all text-[9px] text-muted-foreground">{result.agentNativeSessionId}</p>}</>;
+      const content = <><div className="flex items-start gap-3"><div className="min-w-0 flex-1"><p className="break-words text-[12px] font-medium text-foreground"><HighlightedSearchText value={result.title} query={query} /></p><p className="mt-0.5 break-all text-[9px] text-muted-foreground"><HighlightedSearchText value={result.cwd || '项目目录待索引'} query={query} /></p></div><span className={`shrink-0 text-[10px] ${result.live ? 'text-[var(--success)]' : canOpen ? 'text-primary' : 'text-muted-foreground'}`}>{action}</span></div>{snippet && <p className="mt-2 line-clamp-3 break-words text-[10px] leading-relaxed text-foreground/75"><HighlightedSearchText value={snippet} query={query} /></p>}<p className="mt-2 text-[9px] text-muted-foreground">{result.live ? '进行中' : '已关闭'} · {source} · {formatDateTime(result.updatedAt)}{query.trim() ? ` · ${result.matchCount >= 999 ? '999+' : result.matchCount} 处匹配` : ''}{!canOpen ? ' · 没有可恢复记录' : ''}</p></>;
       return canOpen
         ? <button key={result.nativeKey || result.sessionId} disabled={Boolean(opening)} onClick={() => void open(result)} className="block w-full px-2 py-3 text-left transition hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none">{content}</button>
         : <article key={result.sessionId} className="px-2 py-3">{content}</article>;

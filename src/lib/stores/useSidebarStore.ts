@@ -2,6 +2,8 @@ import { directoryCacheActions } from '../filesystem/directoryCache';
 import { parentDirectory } from '../filesystem/browserPaths';
 import { trimCache } from '../utils/cacheBudget';
 import { create } from 'zustand';
+import { isDesktopSidebarLayout, RIGHT_SIDEBAR_MIN_WIDTH_PX, TERMINAL_WORKSPACE_MIN_WIDTH_PX, PINNED_SIDEBAR_SEPARATOR_WIDTH_PX } from '../utils/sidebarLayout';
+export { RIGHT_SIDEBAR_MIN_WIDTH_PX, TERMINAL_WORKSPACE_MIN_WIDTH_PX, PINNED_SIDEBAR_SEPARATOR_WIDTH_PX } from '../utils/sidebarLayout';
 import { getSettings, updateSettings, type FileEntry, type FileSortMode, type FileWatchEvent, type GitChangedFile } from '../terminal/api';
 import { clearCache, readCache, writeCache } from '../utils/localStorageCache';
 
@@ -15,9 +17,6 @@ export type RightSidebarTab = 'git' | 'files' | 'diff' | 'android' | 'computer' 
 export type RightSidebarLayoutPreference = 'auto' | 'narrow' | 'wide';
 
 export const RIGHT_SIDEBAR_NARROW_THRESHOLD_PX = 600;
-export const RIGHT_SIDEBAR_MIN_WIDTH_PX = 320;
-export const TERMINAL_WORKSPACE_MIN_WIDTH_PX = 280;
-export const PINNED_SIDEBAR_SEPARATOR_WIDTH_PX = 5;
 
 export function clampPinnedRightSidebarWidth(
   requestedWidth: number,
@@ -53,29 +52,31 @@ const COLLAPSED_GROUPS_KEY = 'termdock-sidebar-collapsed-folder-groups';
 const LEFT_PINNED_KEY = 'termdock-left-sidebar-pinned';
 const LEFT_SIDEBAR_WIDTH_KEY = 'termdock-left-sidebar-width';
 const RIGHT_PINNED_KEY = 'termdock-right-sidebar-pinned';
-const RIGHT_PINNED_BY_CONTEXT_CACHE_KEY = 'termdock:right-sidebar:pinned-by-session:v1';
+const DESKTOP_SIDEBAR_OPEN_KEY = 'termdock:desktop-sidebar-open:v1';
 const RIGHT_SIDEBAR_WIDTH_KEY = 'termdock-right-sidebar-width';
 const RIGHT_SIDEBAR_WIDTHS_BY_CONTEXT_CACHE_KEY = 'termdock:right-sidebar:widths-by-session:v1';
 const SPLIT_SIDEBAR_STATE_INITIALIZED_CACHE_KEY = 'termdock:right-sidebar:split-state-initialized:v1';
 const RIGHT_SIDEBAR_LAYOUT_PREFERENCE_KEY = 'termdock-right-sidebar-layout-preference';
 
-export function readLeftPinnedPreference(): boolean {
-  // Desktop is the multi-task surface: keep the session navigator visible on
-  // first use. Mobile never renders the pinned layout, so this default does not
-  // consume phone screen space. Once a user unpins, the explicit "0" wins.
-  if (typeof window === 'undefined') return true;
+/** Desktop visibility belongs to this browser, never to a session or a phone drawer. */
+export function readDesktopSidebarOpen(side: 'left' | 'right'): boolean {
+  const fallback = side === 'left';
+  if (typeof window === 'undefined') return fallback;
   try {
-    const stored = window.localStorage.getItem(LEFT_PINNED_KEY);
-    return stored === null ? true : stored === '1';
+    const stored = window.localStorage.getItem(`${DESKTOP_SIDEBAR_OPEN_KEY}:${side}`);
+    if (stored === '1' || stored === '0') return stored === '1';
+    // Preserve explicit choices from the previous desktop layout on upgrade.
+    const legacy = window.localStorage.getItem(side === 'left' ? LEFT_PINNED_KEY : RIGHT_PINNED_KEY);
+    return legacy === '1' || legacy === '0' ? legacy === '1' : fallback;
   } catch {
-    return true;
+    return fallback;
   }
 }
 
-function writeLeftPinned(pinned: boolean): void {
+function writeDesktopSidebarOpen(side: 'left' | 'right', open: boolean): void {
   if (typeof window === 'undefined') return;
   try {
-    window.localStorage.setItem(LEFT_PINNED_KEY, pinned ? '1' : '0');
+    window.localStorage.setItem(`${DESKTOP_SIDEBAR_OPEN_KEY}:${side}`, open ? '1' : '0');
   } catch { /* best-effort */ }
 }
 
@@ -96,40 +97,6 @@ function writeLeftSidebarWidth(width: number): void {
   try {
     window.localStorage.setItem(LEFT_SIDEBAR_WIDTH_KEY, String(width));
   } catch { /* best-effort */ }
-}
-
-function readRightPinnedPreference(): boolean {
-  if (typeof window === 'undefined') return false;
-  try {
-    return window.localStorage.getItem(RIGHT_PINNED_KEY) === '1';
-  } catch {
-    return false;
-  }
-}
-
-function writeRightPinned(pinned: boolean): void {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.setItem(RIGHT_PINNED_KEY, pinned ? '1' : '0');
-  } catch { /* best-effort */ }
-}
-
-function readRightPinnedCache(): Record<string, boolean> {
-  return readCache(RIGHT_PINNED_BY_CONTEXT_CACHE_KEY, (value): value is Record<string, boolean> => (
-    !!value && typeof value === 'object' && !Array.isArray(value)
-    && Object.values(value).every((pinned) => typeof pinned === 'boolean')
-  )) ?? {};
-}
-
-function writeRightPinnedForContext(contextKey: string | null, pinned: boolean): void {
-  if (!contextKey) {
-    writeRightPinned(pinned);
-    return;
-  }
-  writeCache(RIGHT_PINNED_BY_CONTEXT_CACHE_KEY, {
-    ...readRightPinnedCache(),
-    [contextKey]: pinned,
-  });
 }
 
 export function readRightSidebarWidth(): number {
@@ -391,21 +358,6 @@ export function readRightSidebarWidthForContext(
   return readRightSidebarWidth();
 }
 
-export function readRightPinnedForContext(
-  sessionId: string | null,
-  rootPath: string | null,
-  splitWorkspaceId: string | null,
-): boolean {
-  const cache = readRightPinnedCache();
-  const contextKey = getRightSidebarWidthContextKey(sessionId, rootPath, splitWorkspaceId);
-  if (contextKey && cache[contextKey] !== undefined) return cache[contextKey];
-  if (splitWorkspaceId) {
-    const sessionContextKey = getSidebarContextKey(sessionId, rootPath);
-    if (sessionContextKey && cache[sessionContextKey] !== undefined) return cache[sessionContextKey];
-  }
-  return readRightPinnedPreference();
-}
-
 function readInitializedSplitSidebarStates(): Set<string> {
   const stored = readCache(SPLIT_SIDEBAR_STATE_INITIALIZED_CACHE_KEY, (value): value is string[] => (
     Array.isArray(value) && value.every((entry) => typeof entry === 'string')
@@ -519,7 +471,6 @@ function toFileTreeNode(event: FileWatchEvent): FileTreeNode | null {
 
 type InitialRightSidebarState = {
   rightOpen: boolean;
-  rightPinned: boolean;
   rightSidebarWidth: number;
   rightTab: RightSidebarTab;
 };
@@ -529,10 +480,10 @@ interface SidebarState {
   leftOpen: boolean;
   rightOpen: boolean;
 
-  // Left sidebar pinned mode (desktop inline layout)
-  leftPinned: boolean;
+  // Persistent desktop panels; leftOpen/rightOpen above are temporary drawers.
+  desktopLeftOpen: boolean;
+  desktopRightOpen: boolean;
   leftSidebarWidth: number;
-  rightPinned: boolean;
   rightSidebarWidth: number;
   rightSidebarLayoutPreference: RightSidebarLayoutPreference;
   initialRightSidebarStateBySession: Map<string, InitialRightSidebarState>;
@@ -607,11 +558,8 @@ interface SidebarState {
   openLeft: () => void;
   closeLeft: () => void;
   toggleLeft: () => void;
-  toggleLeftPinned: () => void;
-  setLeftPinned: (pinned: boolean) => void;
+  setDesktopSidebarOpen: (side: 'left' | 'right', open: boolean) => void;
   setLeftSidebarWidth: (width: number) => void;
-  toggleRightPinned: () => void;
-  setRightPinned: (pinned: boolean) => void;
   setRightSidebarWidth: (width: number) => void;
   setRightSidebarLayoutPreference: (preference: RightSidebarLayoutPreference) => void;
   openTerminalPath: (request: TerminalPathOpenRequest) => void;
@@ -676,9 +624,9 @@ export const useSidebarStore = create<SidebarState>((set) => ({
   ...directoryCacheActions(set),
   leftOpen: false,
   rightOpen: false,
-  leftPinned: readLeftPinnedPreference(),
+  desktopLeftOpen: readDesktopSidebarOpen('left'),
   leftSidebarWidth: readLeftSidebarWidth(),
-  rightPinned: readRightPinnedPreference(),
+  desktopRightOpen: readDesktopSidebarOpen('right'),
   rightSidebarWidth: readRightSidebarWidth(),
   rightSidebarLayoutPreference: readRightSidebarLayoutPreference(),
   initialRightSidebarStateBySession: new Map(),
@@ -719,37 +667,37 @@ export const useSidebarStore = create<SidebarState>((set) => ({
   projectStateCache: new Map(),
   rootDataCache: new Map(),
 
-  openLeft: () => set({ leftOpen: true }),
-  closeLeft: () => set({ leftOpen: false }),
-  toggleLeft: () => set((s) => ({ leftOpen: !s.leftOpen, rightOpen: s.leftOpen ? s.rightOpen : false })),
-  toggleLeftPinned: () =>
-    set((s) => {
-      const next = !s.leftPinned;
-      writeLeftPinned(next);
-      return { leftPinned: next, leftOpen: true };
-    }),
-  setLeftPinned: (pinned) =>
-    set(() => {
-      writeLeftPinned(pinned);
-      return { leftPinned: pinned };
-    }),
+  openLeft: () => set(() => {
+    if (isDesktopSidebarLayout()) {
+      writeDesktopSidebarOpen('left', true);
+      return { desktopLeftOpen: true };
+    }
+    return { leftOpen: true, rightOpen: false };
+  }),
+  closeLeft: () => set(() => {
+    if (isDesktopSidebarLayout()) {
+      writeDesktopSidebarOpen('left', false);
+      return { desktopLeftOpen: false };
+    }
+    return { leftOpen: false };
+  }),
+  toggleLeft: () => set((s) => {
+    if (isDesktopSidebarLayout()) {
+      writeDesktopSidebarOpen('left', !s.desktopLeftOpen);
+      return { desktopLeftOpen: !s.desktopLeftOpen };
+    }
+    return { leftOpen: !s.leftOpen, rightOpen: s.leftOpen ? s.rightOpen : false };
+  }),
+  setDesktopSidebarOpen: (side, open) => set(() => {
+    writeDesktopSidebarOpen(side, open);
+    return side === 'left' ? { desktopLeftOpen: open } : { desktopRightOpen: open };
+  }),
   setLeftSidebarWidth: (width) =>
     set((s) => {
       const clamped = Math.min(Math.max(width, 200), 500);
       if (s.leftSidebarWidth === clamped) return s;
       writeLeftSidebarWidth(clamped);
       return { leftSidebarWidth: clamped };
-    }),
-  toggleRightPinned: () =>
-    set((s) => {
-      const next = !s.rightPinned;
-      writeRightPinnedForContext(s.rightSidebarWidthContextKey, next);
-      return { rightPinned: next, rightOpen: true };
-    }),
-  setRightPinned: (pinned) =>
-    set((s) => {
-      writeRightPinnedForContext(s.rightSidebarWidthContextKey, pinned);
-      return { rightPinned: pinned };
     }),
   setRightSidebarWidth: (width) =>
     set((s) => {
@@ -766,12 +714,34 @@ export const useSidebarStore = create<SidebarState>((set) => ({
     }),
   openTerminalPath: (request) => set((s) => {
     writeRightSidebarTab(s.contextKey, 'files');
-    return { pendingTerminalPath: { ...request }, rightTab: 'files', rightOpen: true };
+    if (isDesktopSidebarLayout()) writeDesktopSidebarOpen('right', true);
+    return { pendingTerminalPath: { ...request }, rightTab: 'files',
+      ...(isDesktopSidebarLayout() ? { desktopRightOpen: true } : { rightOpen: true, leftOpen: false }) };
   }),
-  openRight: () => set({ rightOpen: true }),
-  closeRight: () => set({ rightOpen: false, rightSearchOpen: false }),
-  toggleRight: () => set((s) => ({ rightOpen: !s.rightOpen, rightSearchOpen: s.rightOpen ? false : s.rightSearchOpen, leftOpen: s.rightOpen ? s.leftOpen : false })),
-  closeAll: () => set({ leftOpen: false, rightOpen: false, rightSearchOpen: false }),
+  openRight: () => set(() => {
+    if (isDesktopSidebarLayout()) {
+      writeDesktopSidebarOpen('right', true);
+      return { desktopRightOpen: true };
+    }
+    return { rightOpen: true, leftOpen: false };
+  }),
+  closeRight: () => set(() => {
+    if (isDesktopSidebarLayout()) {
+      writeDesktopSidebarOpen('right', false);
+      return { desktopRightOpen: false };
+    }
+    return { rightOpen: false };
+  }),
+  toggleRight: () => set((s) => {
+    if (isDesktopSidebarLayout()) {
+      writeDesktopSidebarOpen('right', !s.desktopRightOpen);
+      return { desktopRightOpen: !s.desktopRightOpen };
+    }
+    return { rightOpen: !s.rightOpen, leftOpen: s.rightOpen ? s.leftOpen : false };
+  }),
+  // Dismiss temporary drawers for settings, navigation and viewport transitions.
+  // Desktop panels and their search drafts remain intact.
+  closeAll: () => set({ leftOpen: false, rightOpen: false }),
 
   setRightTab: (tab) => set((s) => {
     writeRightSidebarTab(s.contextKey, tab);
@@ -783,7 +753,6 @@ export const useSidebarStore = create<SidebarState>((set) => ({
   initializeRightSidebarForSession: (sessionId, rootPath, initialState) => set((s) => {
     const contextKey = getSidebarContextKey(sessionId, rootPath);
     if (contextKey) {
-      writeRightPinnedForContext(contextKey, initialState.rightPinned);
       writeRightSidebarWidthForContext(contextKey, initialState.rightSidebarWidth);
       writeRightSidebarTab(contextKey, initialState.rightTab);
     }
@@ -811,7 +780,6 @@ export const useSidebarStore = create<SidebarState>((set) => ({
     ) return path === s.rootPath ? s : { rootPath: path };
     const initialRightSidebarStateBySession = new Map(s.initialRightSidebarStateBySession);
     if (initialState && sessionContextKey && sessionId) {
-      writeRightPinnedForContext(sessionContextKey, initialState.rightPinned);
       writeRightSidebarWidthForContext(sessionContextKey, initialState.rightSidebarWidth);
       writeRightSidebarTab(sessionContextKey, initialState.rightTab);
       initialRightSidebarStateBySession.delete(sessionId);
@@ -912,15 +880,6 @@ export const useSidebarStore = create<SidebarState>((set) => ({
       writeRightSidebarWidthForContext(rightSidebarWidthContextKey, persistedRightSidebarWidth);
     }
     const persistedExplorerRoot = contextKey ? explorerRootCache[contextKey] : undefined;
-    const pinnedCache = readRightPinnedCache();
-    let persistedRightPinned = rightSidebarWidthContextKey
-      ? pinnedCache[rightSidebarWidthContextKey]
-      : undefined;
-    if (splitWorkspaceId && rightSidebarWidthContextKey && persistedRightPinned === undefined) {
-      persistedRightPinned = (sessionContextKey ? pinnedCache[sessionContextKey] : undefined)
-        ?? readRightPinnedPreference();
-      writeRightPinnedForContext(rightSidebarWidthContextKey, persistedRightPinned);
-    }
     const persistedSelectedFilePath = contextKey ? readSelectedFilePathCache()[contextKey] : undefined;
     return {
       rootPath: path,
@@ -929,9 +888,7 @@ export const useSidebarStore = create<SidebarState>((set) => ({
       rightSidebarWidthContextKey,
       initialRightSidebarStateBySession,
       rightSidebarWidth: initialState?.rightSidebarWidth ?? persistedRightSidebarWidth ?? readRightSidebarWidth(),
-      rightPinned: initialState?.rightPinned ?? persistedRightPinned ?? readRightPinnedPreference(),
-      // New sessions inherit visibility once. Ordinary switches still close
-      // overlays so a pinned session cannot open another session's drawer.
+      // Session switches dismiss phone drawers without changing desktop visibility.
       rightOpen: initialState?.rightOpen ?? (s.rightSidebarWidthContextKey === rightSidebarWidthContextKey ? s.rightOpen : false),
       rightTab: initialState?.rightTab ?? cached?.rightTab ?? persistedRightTab ?? 'files',
       explorerRoot: cached?.explorerRoot ?? persistedExplorerRoot ?? path,
@@ -960,9 +917,6 @@ export const useSidebarStore = create<SidebarState>((set) => ({
       ?? (state.rightSidebarWidthContextKey === splitContextKey
         ? state.rightSidebarWidth
         : undefined);
-    const pinnedCache = readRightPinnedCache();
-    const splitPinned = pinnedCache[splitContextKey]
-      ?? (state.rightSidebarWidthContextKey === splitContextKey ? state.rightPinned : undefined);
     const splitState = state.contextKey === splitContextKey
       ? {
           rightTab: state.rightTab,
@@ -976,7 +930,7 @@ export const useSidebarStore = create<SidebarState>((set) => ({
           gitBundleCacheInfo: state.gitBundleCacheInfo,
         }
       : state.projectStateCache.get(splitContextKey);
-    if (splitWidth === undefined && splitPinned === undefined && !splitState) return state;
+    if (splitWidth === undefined && !splitState) return state;
 
     const nextWidthCache = { ...widthCache };
     const projectStateCache = new Map(state.projectStateCache);
@@ -987,7 +941,6 @@ export const useSidebarStore = create<SidebarState>((set) => ({
       const sessionContextKey = getSidebarContextKey(session.sessionId, session.rootPath);
       if (!sessionContextKey) continue;
       if (splitWidth !== undefined) nextWidthCache[sessionContextKey] = splitWidth;
-      if (splitPinned !== undefined) pinnedCache[sessionContextKey] = splitPinned;
       if (splitState) {
         projectStateCache.set(sessionContextKey, {
           ...splitState,
@@ -1005,7 +958,6 @@ export const useSidebarStore = create<SidebarState>((set) => ({
       writeCache(RIGHT_SIDEBAR_WIDTHS_BY_CONTEXT_CACHE_KEY, nextWidthCache);
     }
     if (splitState) writeExplorerRootCache(explorerRootCache);
-    if (splitPinned !== undefined) writeCache(RIGHT_PINNED_BY_CONTEXT_CACHE_KEY, pinnedCache);
     trimCache(projectStateCache, 12, new Set(state.contextKey ? [state.contextKey] : []));
     return { projectStateCache, explorerRootCache, initialRightSidebarStateBySession };
   }),

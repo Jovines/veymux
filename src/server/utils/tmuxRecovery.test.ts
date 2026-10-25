@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { detectTmuxRecoveryIncident, normalizeTmuxRecoveryIncident, retainDismissedTmuxSessions } from './tmuxRecovery.js';
+import { detectTmuxRecoveryIncident, normalizeTmuxRecoveryIncident, retainDismissedTmuxSessions, shouldAutomaticallyRecoverTmuxIncident } from './tmuxRecovery.js';
 
 const candidates = [
   { sessionId: 'a', tmuxSessionName: 'tmux-a', resumable: true },
@@ -157,4 +157,32 @@ describe('unknown tmux inventory', () => {
       candidates, liveSessionNames: new Set(), existingIncident,
     })).toBe(existingIncident);
   });
+});
+
+
+it('detects a replacement shell after a generation change even when the page recreated it before the scan', () => {
+  const input = { authoritativeTmuxList: true, previousServerPid: 100, currentServerPid: 200,
+    candidates: [{ sessionId: 'original', tmuxSessionName: 'same-name', resumable: true, agentRunning: false }],
+    liveSessionNames: new Set(['same-name']) };
+  expect(detectTmuxRecoveryIncident(input)?.affectedSessionIds).toEqual(['original']);
+  expect(detectTmuxRecoveryIncident({ ...input, currentServerPid: 100 })).toBeNull();
+  expect(detectTmuxRecoveryIncident({ ...input, candidates: [{ ...input.candidates[0], agentRunning: undefined }] })).toBeNull();
+});
+
+
+it('automatically reconnects a confirmed shared loss once, leaving individual losses and retries explicit', () => {
+  const incident = { id: 'crash', detectedAt: 1, previousServerPid: 100, currentServerPid: 200, affectedSessionIds: ['a'] };
+  expect(shouldAutomaticallyRecoverTmuxIncident(incident, [])).toBe(true);
+  expect(shouldAutomaticallyRecoverTmuxIncident({ ...incident, currentServerPid: null }, [])).toBe(true);
+  expect(shouldAutomaticallyRecoverTmuxIncident(incident, ['crash'])).toBe(false);
+  expect(shouldAutomaticallyRecoverTmuxIncident({ ...incident, currentServerPid: 100 }, [])).toBe(false);
+  expect(shouldAutomaticallyRecoverTmuxIncident({ ...incident, previousServerPid: null }, [])).toBe(false);
+});
+
+it('retains a known wrapper loss when the browser rebuilt its shell before the same-server scan', () => {
+  const input = { authoritativeTmuxList: true, previousServerPid: 100, currentServerPid: 100,
+    candidates: [{ sessionId: 'original', tmuxSessionName: 'same-name', resumable: true, runtimeLost: true, agentRunning: false }],
+    liveSessionNames: new Set(['same-name']) };
+  expect(detectTmuxRecoveryIncident(input)?.affectedSessionIds).toEqual(['original']);
+  expect(detectTmuxRecoveryIncident({ ...input, candidates: [{ ...input.candidates[0], agentRunning: undefined }] })).toBeNull();
 });

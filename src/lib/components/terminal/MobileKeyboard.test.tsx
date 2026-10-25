@@ -63,6 +63,29 @@ describe('MobileKeyboard interaction state', () => {
     expect(onFilePress).not.toHaveBeenCalled();
   });
 
+  it('opens customization directly from the toolbar switcher without sending terminal input', () => {
+    const onConfigureToolbar = vi.fn(), onTextPress = vi.fn();
+    render(<MobileKeyboard {...baseProps} onConfigureToolbar={onConfigureToolbar} onTextPress={onTextPress} />);
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Switch or customize toolbar' }));
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Customize toolbar…' }));
+    expect(onConfigureToolbar).toHaveBeenCalledOnce();
+    expect(onTextPress).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: 'Customize toolbar…' })).toBeNull();
+  });
+
+  it('opens the preview editor without sending terminal keys, text or paste', () => {
+    const onPreviewAction = vi.fn(), onTextPress = vi.fn(), onKeyPress = vi.fn(), onPastePress = vi.fn();
+    render(<MobileKeyboard {...baseProps} onPreviewAction={onPreviewAction} onTextPress={onTextPress} onKeyPress={onKeyPress} onPastePress={onPastePress} />);
+    const edit = screen.getByRole('button', { name: 'Edit /undo' });
+    fireEvent.pointerDown(edit);
+    fireEvent.click(edit);
+    expect(onPreviewAction).toHaveBeenCalledExactlyOnceWith(baseProps.extraActions[0]);
+    expect(onTextPress).not.toHaveBeenCalled();
+    expect(onKeyPress).not.toHaveBeenCalled();
+    expect(onPastePress).not.toHaveBeenCalled();
+    expect(document.querySelector('[data-mobile-keyboard-primary-row]')).not.toBeNull();
+  });
+
   it('fires the paste callback from the mobile toolbar', () => {
     const onPastePress = vi.fn();
     render(<MobileKeyboard {...baseProps} onPastePress={onPastePress} />);

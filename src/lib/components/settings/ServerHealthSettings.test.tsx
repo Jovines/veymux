@@ -62,6 +62,11 @@ describe('ServerHealthSettings', () => {
 
   it('没出过事时说清「有人看管」且不点红点', () => {
     renderSettings(healthState());
+    const details = screen.getByText('Service health').closest('details')!;
+    expect(details.open).toBe(false);
+    expect(screen.getByText('Recovery on')).toBeTruthy();
+    fireEvent.click(details.querySelector('summary')!);
+    expect(details.open).toBe(true);
     expect(screen.getByText('Automatic recovery is on: the service will attempt to restart if it crashes or stops responding.')).toBeTruthy();
     expect(screen.getByText('No problems recorded.')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Got it' })).toBeNull();
@@ -87,6 +92,7 @@ describe('ServerHealthSettings', () => {
     }));
 
     expect(screen.getByText('Previous problem: Killed outright')).toBeTruthy();
+    expect(screen.getByText('Service health').closest('details')!.open).toBe(true);
     expect(screen.getByText(/ran for 12s/)).toBeTruthy();
     expect(screen.getByText('Memory was near the limit before it died; the OOM killer may have taken it.')).toBeTruthy();
     expect(screen.getByText('Restarted automatically 3 times')).toBeTruthy();
@@ -119,6 +125,7 @@ describe('enable automatic recovery', () => {
   it('prevents duplicate requests and waits for observed supervision after acceptance', async () => {
     vi.mocked(enableServerSupervision).mockResolvedValue(undefined);
     renderSettings(healthState({ supervised: false, supervisor: null, canEnableSupervision: true }));
+    fireEvent.click(screen.getByText('Service health'));
     const button = screen.getByRole('button', { name: 'Enable and restart' });
     fireEvent.click(button);
     fireEvent.click(button);
@@ -131,6 +138,7 @@ describe('enable automatic recovery', () => {
   it('shows uncertainty on request failure without claiming success', async () => {
     vi.mocked(enableServerSupervision).mockRejectedValue(new Error('offline'));
     renderSettings(healthState({ supervised: false, supervisor: null, canEnableSupervision: true }));
+    fireEvent.click(screen.getByText('Service health'));
     fireEvent.click(screen.getByRole('button', { name: 'Enable and restart' }));
     expect((await screen.findByRole('alert')).textContent).toContain('Could not confirm');
     expect((screen.getByRole('button', { name: 'Enable and restart' }) as HTMLButtonElement).disabled).toBe(false);

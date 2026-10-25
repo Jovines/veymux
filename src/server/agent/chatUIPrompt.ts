@@ -4,7 +4,7 @@ import { chatFullUISpec } from '../shared/chatFullUICatalog.js';
 export function chatUIPrompt(): string {
   const legacy = chatUILibrary.toSpec();
   return [
-    '可使用 Markdown、布局与卡片、表格、图表、表单及交互组件、图片、文件预览和链接，支持状态绑定、工具调用和逐步更新。自行选择合适的表达方式。',
+    '可用 Markdown、卡片、表格、图表、表单、图片、文件预览和链接，自行选择合适的表达方式。澄清/选择优先交互组件，保留自由输入，勿重复提问。',
     '适用边界：仅回复明确标记“来自用户的普通对话界面”的原消息。其他协作组或后台集成按原话题和接收方回复。',
     '将回复写入 UTF-8 JSON 文件，格式 {"text":"完整、可独立阅读的 Markdown 说明","ui":"界面表达程序"}。text 包含全部关键事实，供引用、复制、旧客户端和降级显示。',
     '通过 td collab --session <你的会话id> reply <原消息id> --file <文件路径> --metadata \'{"openui":{"version":2}}\' --response-kind result --idempotency-key <稳定唯一key> --text 回复。不要把 JSON 或程序打印到聊天正文。',

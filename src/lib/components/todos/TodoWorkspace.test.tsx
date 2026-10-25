@@ -343,8 +343,8 @@ it('configures source-specific automatic handling and webhook without triggering
   const c = { id: 'source', name: '渠道来源', config: data.defaults, enabled: true, schedule: null, nextRunAt: null, revision: 1, createdAt: 1, updatedAt: 1 };
   data.collectors.push(c); mocks.save.mockImplementation(async input => ({ collector: { ...c, ...input } }));
   setup(); await loaded(); fireEvent.click(screen.getByRole('button', { name: '管理收集方向' }));
-  fireEvent.click(screen.getByRole('button', { name: '编辑 渠道来源' })); fireEvent.click(screen.getByText(/收集后 ·/));
-  fireEvent.change(screen.getByRole('combobox', { name: '待办处理方式' }), { target: { value: 'existing' } });
+  fireEvent.click(screen.getByRole('button', { name: '编辑 渠道来源' }));
+  fireEvent.click(screen.getByRole('radio', { name: '自动交给会话' }));
   expect((screen.getByRole('button', { name: '仅保存' }) as HTMLButtonElement).disabled).toBe(true);
   fireEvent.change(screen.getByRole('combobox', { name: '自动处理会话' }), { target: { value: 'terminal-one' } });
   fireEvent.change(screen.getByRole('textbox', { name: '自动处理要求（可选）' }), { target: { value: '先调查，不改代码' } });

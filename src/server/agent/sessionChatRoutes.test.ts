@@ -4,6 +4,8 @@ import { once } from 'node:events';
 import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { collaborationGroupRoutes } from './collaborationGroupRoutes';
+import { collaborationRoutes } from './collaborationRoutes';
 import { sessionChatRoutes } from './sessionChatRoutes';
 import { CollaborationStore } from './collaborationStore';
 import { markEncryptedRequest } from '../federation/requestContext';
@@ -12,16 +14,18 @@ afterEach(() => clean.splice(0).reverse().forEach(fn => fn()));
 async function fixture(existingFile?: string) {
   const dir = mkdtempSync(join(tmpdir(), 'td-chat-')); clean.push(() => rmSync(dir, { recursive: true, force: true }));
   const filePath = existingFile || join(dir, 'collab.json');
-  const store = new CollaborationStore(filePath), deliver = vi.fn();
+  const store = new CollaborationStore(filePath), deliver = vi.fn(), recover = vi.fn(async (_id: string) => {});
   const app = express(); app.use(express.json());
   // Test-only authentication boundary; never mounted by the product.
   app.use((req, _res, next) => { markEncryptedRequest(req, String(req.headers['test-subject'] || 'alice'), req.headers['test-access'] !== 'scoped'); next(); });
-  app.use(sessionChatRoutes({ store, deliver, resolve: id => id === 'agent' ? { sessionId: id, agent: { slug: 'test' } } : id === 'shell' ? { sessionId: id } : undefined }));
+  app.use(sessionChatRoutes({ store, deliver, recover, resolve: id => id === 'agent' ? { sessionId: id, agent: { slug: 'test' } } : id === 'shell' ? { sessionId: id } : undefined }));
+  app.use(collaborationGroupRoutes({ store, sessions: () => [{ sessionId: 'agent' }, { sessionId: 'peer' }] }));
+  app.use('/collab', collaborationRoutes({ store, resolveSession: () => 'agent', deliver }));
   const server = app.listen(0, '127.0.0.1'); await once(server, 'listening'); clean.push(() => { server.closeAllConnections(); server.close(); });
   const address = server.address(); if (!address || typeof address === 'string') throw new Error(); const base = `http://127.0.0.1:${address.port}`;
   const post = (content: string, requestId = 'request-00000000001', subject = 'alice') => fetch(`${base}/agent/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'test-subject': subject }, body: JSON.stringify({ content, requestId }) });
   const read = (subject = 'alice', scoped = false) => fetch(`${base}/agent/chat`, { headers: { 'test-subject': subject, ...(scoped ? { 'test-access': 'scoped', 'x-termdock-full-service': '1' } : {}) } }).then(r => r.json());
-  return { store, deliver, base, post, read, filePath };
+  return { store, deliver, recover, base, post, read, filePath };
 }
 it('persists messages once and shares existing Session history across full-service clients and service reloads', async () => {
   const f = await fixture();
@@ -66,6 +70,73 @@ it('rejects shell sessions, arbitrary destinations and malformed requests withou
   expect((await fetch(`${f.base}/shell/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: 'rm -rf', requestId: 'request-00000000001' }) })).status).toBe(409);
   expect((await fetch(`${f.base}/agent/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: 'test', requestId: 'request-00000000001', sessionId: 'other' }) })).status).toBe(400);
   expect(f.deliver).not.toHaveBeenCalled(); expect(f.store.list()).toEqual([]);
+});
+
+it('projects blocked terminal delivery without leaking routing diagnostics to shared viewers', async () => {
+  const f = await fixture(), sent = await f.post('请检查结果').then(r => r.json());
+  const first = await f.read();
+  f.store.recordTransport(sent.id, { relay_online: null, peer_reachable: false, attempt_count: 0,
+    next_retry_at: Date.now() + 30000, last_error: 'TMUX_PANE_CHANGED', checked_at: Date.now(), route_state: 'identity-mismatch',
+    route_diagnostics: { expected: null, observed: [], truncated: false, recovery: 'confirmation-required', reason: 'NATIVE_IDENTITY_UNCONFIRMED', rebind_command: 'private-debug-command' } });
+  const owner = await f.read();
+  expect(owner.messages[0]).toMatchObject({ status: 'pending', delivery: { state: 'binding-required', canReconnect: true } });
+  expect(owner.revision).not.toBe(first.revision);
+  const shared = await f.read('guest', true);
+  expect(shared.messages[0].delivery).toEqual({ state: 'binding-required' });
+  expect(JSON.stringify(shared)).not.toMatch(/private-debug-command|TMUX_PANE_CHANGED|rebind|route_diagnostics/);
+  const update = await fetch(`${f.base}/agent/chat?limit=30&after=${sent.id}`).then(r => r.json());
+  expect(update.updates[0].delivery.state).toBe('binding-required');
+  f.store.markDelivered([sent.id]);
+  const delivered = await f.read();
+  expect(delivered.messages[0].status).toBe('delivered');
+  expect(delivered.messages[0].delivery).toBeUndefined();
+  expect(delivered.revision).not.toBe(owner.revision);
+});
+it('does not project recovery cards for an active paste, while retaining real interruption feedback', async () => {
+  const f = await fixture(), sent = await f.post('正常发送').then(r => r.json());
+  for (const stage of ['unknown', 'not_started', 'paste_attempted', 'paste_written', 'submit_attempted', 'submit_written'] as const) {
+    f.store.recordTransport(sent.id, { relay_online: null, peer_reachable: true, attempt_count: 1, next_retry_at: null,
+      last_error: 'DELIVERY_IN_PROGRESS', checked_at: Date.now(), write_stage: stage });
+    expect((await f.read()).messages[0].delivery).toBeUndefined();
+    expect((await f.read('shared', true)).messages[0].delivery).toBeUndefined();
+  }
+  f.store.recordTransport(sent.id, { relay_online: null, peer_reachable: false, attempt_count: 1, next_retry_at: null,
+    last_error: 'DELIVERY_OUTCOME_UNCONFIRMED', checked_at: Date.now(), write_stage: 'paste_written' });
+  expect((await f.read()).messages[0].delivery).toEqual({ state: 'outcome-unknown', attemptCount: 1 });
+  expect((await f.read('shared', true)).messages[0].delivery).toEqual({ state: 'outcome-unknown' });
+});
+it('rechecks only the authenticated current session and rejects shared or redirected recovery requests', async () => {
+  const f = await fixture();
+  const recover = (body: object = {}, scoped = false) => fetch(`${f.base}/agent/chat/recover`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(scoped ? { 'test-access': 'scoped' } : {}) }, body: JSON.stringify(body) });
+  expect((await recover({}, true)).status).toBe(403);
+  expect((await recover({ sessionId: 'another' })).status).toBe(400);
+  expect(f.recover).not.toHaveBeenCalled();
+  expect(await recover().then(r => r.json())).toEqual({ ok: true });
+  expect(f.recover).toHaveBeenCalledExactlyOnceWith('agent');
+  f.recover.mockRejectedValueOnce(new Error('private runtime details'));
+  const failed = await recover(); expect(failed.status).toBe(409);
+  expect(JSON.stringify(await failed.json())).not.toContain('private runtime details');
+});
+it('resolves uncertain chat writes in the page with owner authority and an attempt fence', async () => {
+  const f = await fixture(), sent = await f.post('Original request').then(r => r.json());
+  f.store.recordTransport(sent.id, { relay_online: null, peer_reachable: true, attempt_count: 1, next_retry_at: null,
+    last_error: 'DELIVERY_OUTCOME_UNCONFIRMED', checked_at: Date.now(), write_stage: 'paste_written' });
+  const decide = (action: string, attempt: number, scoped = false, id = sent.id) => fetch(`${f.base}/agent/chat/${id}/delivery`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(scoped ? { 'test-access': 'scoped' } : {}) }, body: JSON.stringify({ action, attempt }) });
+  expect((await decide('retry', 1, true)).status).toBe(403);
+  expect((await decide('retry', 1, false, 'another-message')).status).toBe(404);
+  expect((await decide('retry', 2)).status).toBe(409);
+  expect(f.store.hasUnconfirmedDelivery('agent')).toBe(true);
+  expect((await decide('retry', 1)).status).toBe(200);
+  expect((await decide('retry', 1)).status).toBe(200);
+  expect(f.store.hasUnconfirmedDelivery('agent')).toBe(false);
+  f.store.recordTransport(sent.id, { relay_online: null, peer_reachable: true, attempt_count: 2, next_retry_at: null,
+    last_error: 'DELIVERY_OUTCOME_UNCONFIRMED', checked_at: Date.now(), write_stage: 'submit_attempted' });
+  expect((await decide('cancel', 1)).status).toBe(409);
+  // CLI and page use the same explicit recipient decision, with no new body.
+  const cancelled = await fetch(`${f.base}/collab/message/${sent.id}/resolve-delivery`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'cancel', attempt: 2 }) });
+  expect(cancelled.status).toBe(200);
+  expect((await f.read()).messages[0]).toMatchObject({ id: sent.id, content: 'Original request', status: 'cancelled' });
+  expect(f.store.receipt(sent.id).delivered_at).toBeNull();
 });
 
 it('shares the same Session conversation with scoped viewers without relying on client headers', async () => {
@@ -203,4 +274,130 @@ it('merges statement patches before exposing the next durable UI snapshot', asyn
   const message = (await f.read()).messages[1];
   expect(message.ui.code).toContain('root = Stack([detail])'); expect(message.ui.code).toContain('更新后正文');
   expect(message.ui.revision).toBe(1); expect(message.id).toBe(reply.id);
+});
+
+it('keeps chat independent of ordinary groups and preserves explicit replies and unambiguous peer sends', async () => {
+  const f = await fixture(), sent = await f.post('普通对话').then(r => r.json());
+  const channel = f.store.getSessionChat('agent')!;
+  expect(channel.archivedAt).toBeUndefined(); expect(f.store.list()).toEqual([]); expect(f.store.groupsForSession('agent')).toEqual([]);
+  const work = f.store.save({ name: '项目协作', sessionIds: ['agent', 'peer'] });
+  const directory = await fetch(`${f.base}/collaboration-groups`).then(r => r.json());
+  expect(directory.groups.map((g: { id: string }) => g.id)).toEqual([work.id]);
+  expect(f.store.groupsForSession('agent').map(g => g.id)).toEqual([work.id]);
+  const reply = await fetch(`${f.base}/collab/reply`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messageId: sent.id, content: '正常回复', response_kind: 'result', idempotency_key: 'independent-reply' }) });
+  expect(reply.status).toBe(200); expect((await f.read()).messages.at(-1).content).toBe('正常回复');
+  const peerSend = await fetch(`${f.base}/collab/send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ targetSessionId: 'peer', message: '项目消息' }) });
+  expect(peerSend.status).toBe(200);
+  expect(() => f.store.save({ id: channel.id, name: '不应修改', sessionIds: ['agent', 'peer'] })).toThrow();
+  expect(f.store.remove(channel.id)).toBe(false);
+  f.store.archiveSession('agent');
+  expect(f.store.getSessionChat('agent')?.sessionIds).toEqual(['agent']); expect((await f.read()).messages).toHaveLength(2);
+});
+
+it('migrates legacy archived chat channels without hiding a same-name ordinary group or losing history', async () => {
+  const f = await fixture(), sent = await f.post('保留旧对话').then(r => r.json());
+  const channel = f.store.getSessionChat('agent')!;
+  const document = JSON.parse(readFileSync(f.filePath, 'utf8'));
+  const legacy = document.groups.find((g: { id: string }) => g.id === channel.id);
+  delete legacy.sessionChatSessionId; legacy.archivedAt = Date.now();
+  document.groups.push({ id: 'ordinary-same-name', name: 'Session 对话 agent', sessionIds: ['agent'], createdAt: 1, updatedAt: 1 });
+  writeFileSync(f.filePath, JSON.stringify(document));
+  const restarted = await fixture(f.filePath);
+  expect(restarted.store.list().map(g => g.id)).toEqual(['ordinary-same-name']);
+  expect(restarted.store.getSessionChat('agent')?.id).toBe(channel.id);
+  expect((await restarted.read()).messages.map((m: { id: string }) => m.id)).toEqual([sent.id]);
+  expect((await restarted.post('后续消息', 'request-00000000002').then(r => r.json())).id).toBeTruthy();
+  expect(restarted.store.getSessionChat('agent')?.id).toBe(channel.id);
+});
+
+it('projects only visible assistant message IDs and opens a page around the first unseen reply', async () => {
+  const f = await fixture(); const original = await f.post('检查多项任务').then(r => r.json());
+  const replies = Array.from({ length: 45 }, (_, i) => f.store.storeIntegrationReply(original.id, 'agent', `检查结果 ${i}`, { idempotencyKey: `attention-reply-${i}` }));
+  const latest = await fetch(`${f.base}/agent/chat?limit=10`).then(r => r.json());
+  expect(latest.chatIndex.messageIds).toEqual(replies.map(reply => reply.id));
+  expect(latest.chatIndex.messageIds).not.toContain(original.id);
+  const around = await fetch(`${f.base}/agent/chat?limit=10&around=${replies[5].id}`).then(r => r.json());
+  expect(around.page).toEqual({ mode: 'around', hasOlder: true, hasNewer: true });
+  expect(around.messages.some((message: { id: string }) => message.id === replies[5].id)).toBe(true);
+  expect(around.messages).toHaveLength(10);
+  expect((await fetch(`${f.base}/agent/chat?limit=10&around=missing`)).status).toBe(404);
+  expect((await fetch(`${f.base}/agent/chat?limit=10&around=${replies[5].id}&after=${original.id}`)).status).toBe(400);
+});
+
+it('streams assistant identifiers without a browser polling, ignores unrelated changes, and disposes its listener', async () => {
+  const { watchSessionChatIndex } = await import('./sessionChatHistory');
+  const f = await fixture(), send = vi.fn();
+  const stop = watchSessionChatIndex(f.store, 'agent', send);
+  expect(send).toHaveBeenCalledExactlyOnceWith({ conversationId: '', messageIds: [], viewedMessageIds: [] });
+  const original = await f.post('后台回复').then(r => r.json());
+  const group = f.store.getSessionChat('agent')!;
+  expect(send).toHaveBeenLastCalledWith({ conversationId: group.id, messageIds: [], viewedMessageIds: [] });
+  send.mockClear();
+  const reply = f.store.storeIntegrationReply(original.id, 'agent', '后台完成', { idempotencyKey: 'background-reply' });
+  expect(send).toHaveBeenCalledExactlyOnceWith({ conversationId: group.id, messageIds: [reply.id], viewedMessageIds: [] });
+  const single = await fetch(`${f.base}/agent/chat?limit=1&around=${reply.id}`).then(r => r.json());
+  expect(single.messages.map((message: { id: string }) => message.id)).toEqual([reply.id]);
+  send.mockClear();
+  await f.post('下一项', 'request-next-0000001');
+  expect(send).not.toHaveBeenCalled();
+  stop();
+  f.store.storeIntegrationReply(original.id, 'agent', '之后的消息', { idempotencyKey: 'after-unsubscribe' });
+  expect(send).not.toHaveBeenCalled();
+});
+
+it('shares durable message viewing across clients and broadcasts both acknowledgements and later replies', async () => {
+  const { watchSessionChatIndex } = await import('./sessionChatHistory');
+  const f = await fixture(), request = await f.post('多端查看同一对话').then(r => r.json());
+  const one = f.store.storeIntegrationReply(request.id, 'agent', '第一条结果', { idempotencyKey: 'shared-first' });
+  const two = f.store.storeIntegrationReply(request.id, 'agent', '第二条结果', { idempotencyKey: 'shared-second' });
+  const clientA = vi.fn(), clientB = vi.fn();
+  const stopA = watchSessionChatIndex(f.store, 'agent', clientA), stopB = watchSessionChatIndex(f.store, 'agent', clientB);
+  clean.push(stopA, stopB);
+  const initial = (await f.read()).chatIndex;
+  expect(initial.viewedMessageIds).toEqual([]);
+  const mark = (ids: string[], subject = 'alice', conversationId = initial.conversationId) => fetch(`${f.base}/agent/chat/viewed`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'test-subject': subject, 'test-access': 'scoped' }, body: JSON.stringify({ conversationId, messageIds: ids }) });
+  expect((await f.read('bob')).chatIndex.viewedMessageIds).toEqual([]);
+  const response = await mark([two.id]).then(r => r.json());
+  expect(response.chatIndex.viewedMessageIds).toEqual([two.id]);
+  expect((await f.read('bob')).chatIndex.viewedMessageIds).toEqual([two.id]);
+  expect(clientA).toHaveBeenLastCalledWith(response.chatIndex);
+  expect(clientB).toHaveBeenLastCalledWith(response.chatIndex);
+  const broadcasts = clientB.mock.calls.length;
+  await mark([two.id], 'bob'); expect(clientB.mock.calls).toHaveLength(broadcasts);
+  const third = f.store.storeIntegrationReply(request.id, 'agent', '新的结果仍应提示', { idempotencyKey: 'shared-third' });
+  await Promise.all([mark([one.id]), mark([two.id], 'bob')]);
+  const index = (await f.read('bob')).chatIndex;
+  expect(index.messageIds.filter((id: string) => !index.viewedMessageIds.includes(id))).toEqual([third.id]);
+  const restarted = await fixture(f.filePath);
+  expect((await restarted.read('new-device')).chatIndex.viewedMessageIds.sort()).toEqual([one.id, two.id].sort());
+  expect((await mark([third.id], 'bob', 'wrong-conversation')).status).toBe(409);
+  await mark([request.id, 'unknown-message']);
+  expect((await f.read()).chatIndex.viewedMessageIds.sort()).toEqual([one.id, two.id].sort());
+  expect(f.store.getMessage(one.id)?.status).toBe('stored');
+  expect(JSON.stringify(f.store.inbox('agent'))).not.toContain('viewedMessageIds');
+});
+
+it('streams shared attention for known unmounted sessions through the full-service control projection', async () => {
+  const { watchSessionChatIndices } = await import('./sessionChatHistory');
+  const f = await fixture(), request = await f.post('后台消息提醒').then(r => r.json());
+  const reply = f.store.storeIntegrationReply(request.id, 'agent', '未打开会话也有提醒', { idempotencyKey: 'background-attention' });
+  f.store.ensureSessionChat('other-private-session');
+  const send = vi.fn(), stop = watchSessionChatIndices(f.store, () => new Set(['agent']), send); clean.push(stop);
+  const first = send.mock.calls[0][0];
+  expect(first).toHaveLength(1); expect(first[0]).toMatchObject({ sessionId: 'agent', index: { messageIds: [reply.id], viewedMessageIds: [] } });
+  f.store.markSessionChatViewed('agent', first[0].index.conversationId, [reply.id]);
+  expect(send).toHaveBeenLastCalledWith([{ sessionId: 'agent', index: { ...first[0].index, viewedMessageIds: [reply.id] } }]);
+});
+
+it('preserves explicit reply targets and short question context even outside the current page', async () => {
+  const f = await fixture();
+  const first = await f.post('未读提示会导致界面抖动', 'request-context-00001').then(r => r.json());
+  const second = await f.post('采用方案 A', 'request-context-00002').then(r => r.json());
+  const newer = f.store.storeIntegrationReply(second.id, 'agent', '按 A 调整', { idempotencyKey: 'context-newer' });
+  const earlier = f.store.storeIntegrationReply(first.id, 'agent', '修复未读抖动', { idempotencyKey: 'context-earlier' });
+  const page = await fetch(`${f.base}/agent/chat?limit=2&replyContext=1`).then(r => r.json());
+  expect(page.messages.map((m: { id: string }) => m.id)).toEqual([newer.id, earlier.id]);
+  expect(page.messages[0]).toMatchObject({ replyTo: second.id, replyContext: { id: second.id, text: '采用方案 A' } });
+  expect(page.messages[1]).toMatchObject({ replyTo: first.id, replyContext: { id: first.id, text: '未读提示会导致界面抖动' } });
+  expect((await f.read()).messages.filter((m: { role: string }) => m.role === 'user').every((m: { replyContext?: unknown }) => m.replyContext === undefined)).toBe(true);
 });

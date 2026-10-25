@@ -2,6 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { RenderedTerminalContext } from './renderedTerminalContext.js';
 
 describe('RenderedTerminalContext', () => {
+  it('includes the live input row only for explicit input echo checks', async () => {
+    const context = new RenderedTerminalContext(80, 10);
+    context.write('stable output\r\n[td.0123456789ab] ');
+    expect(await context.snapshot()).toBe('stable output');
+    expect(await context.snapshot(true)).toContain('[td.0123456789ab]');
+    expect(await context.snapshot()).toBe('stable output');
+    context.dispose();
+  });
   it('keeps only the rendered result of carriage-return loading updates', async () => {
     const context = new RenderedTerminalContext(80, 10);
     context.write('Fix automatic titles\r\n');

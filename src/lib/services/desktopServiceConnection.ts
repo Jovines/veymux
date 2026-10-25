@@ -37,6 +37,17 @@ export function serviceConnectionInput(input: string): ServiceConnectionReview {
   return { connection: { id: url, url, label: new URL(url).host } };
 }
 
+/** New desktop connections always continue in the bundled center, which owns
+ * discovery and certificate approval. Older shells keep their native open path. */
+export async function addDesktopService(bridge: TermdockDesktopBridge, input: string): Promise<void> {
+  const { connection, invitation } = serviceConnectionInput(input);
+  if (bridge.reviewServiceConnection) {
+    await bridge.reviewServiceConnection(connection, invitation);
+    return;
+  }
+  await openDesktopService(bridge, connection, invitation);
+}
+
 export async function openDesktopService(bridge: TermdockDesktopBridge, connection: ServiceConnection, invitation?: string): Promise<void> {
   try {
     const result = await bridge.openServiceConnection!(connection, invitation);

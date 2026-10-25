@@ -85,5 +85,5 @@ it('keeps keyboard ownership in the real sidebar after pointer-up and window ref
   expect(env.send).not.toHaveBeenCalled();
   await user.click(screen.getByRole('textbox', { name: 'Fixture terminal' }));
   await new Promise(resolve => setTimeout(resolve, 10));
-  expect(env.focus).toHaveBeenCalled();
+  expect(document.activeElement).toBe(screen.getByRole('textbox', { name: 'Fixture terminal' }));
 });

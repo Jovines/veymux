@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Star, Trash2 } from 'lucide-react';
+import { AgentChoices } from '../settings/AgentChoices';
 import { saveCollaborationGroup, type AgentLauncherInfo, type CollaborationGroup, type CollaborationLaunchProfile } from '../../terminal/api';
 
 const field = 'min-h-11 w-full rounded-lg border border-border/20 bg-surface px-3 py-2 text-xs text-foreground outline-none focus:border-primary';
@@ -45,19 +46,19 @@ export function CollaborationLaunchSettings({ group, agents, busy, setBusy, refr
     finally { setBusy(null); }
   };
   return <details className="mt-3 border-t border-border/15 pt-2"><summary className="min-h-11 cursor-pointer py-3 text-xs font-medium text-foreground">Agent 启动方案 · {draft.profiles.length} 个{dirty(draft) ? ' · 未保存' : ''}</summary>
-    <section aria-label="Agent 启动方案" className="space-y-3">
-      <p className="text-xs leading-5 text-muted-foreground">保存不同模型和参数的启动命令，填写适用场景，让协调者按备注选择。保存配置不会启动 Agent。</p>
+    <section aria-label="Agent 启动方案" className="space-y-4 font-sans">
+
       <fieldset disabled={!!busy} className="space-y-3">
         <label className="block space-y-1 text-xs text-muted-foreground">默认启动方案<select aria-label="默认启动方案" className={field} value={draft.defaultId} onChange={e => change({ ...draft, defaultId: e.target.value })}><option value="">使用 Agent 默认命令</option>{draft.profiles.map(p => <option key={p.id} value={p.id}>{p.name || '未命名方案'}</option>)}</select></label>
-        <div className="flex items-center gap-2"><label className="min-w-0 flex-1 text-xs text-muted-foreground">编辑方案<select aria-label="编辑方案" className={`${field} mt-1`} value={selected} onChange={e => setSelected(e.target.value)}><option value="">选择方案</option>{draft.profiles.map(p => <option key={p.id} value={p.id}>{p.name || '未命名方案'}</option>)}</select></label><button type="button" className={`${action} self-end bg-surface text-foreground`} disabled={draft.profiles.length >= 20} onClick={add}><Plus size={14} />新增方案</button></div>
+        <div className="space-y-2"><span className="text-xs text-muted-foreground">编辑方案</span><div className="flex flex-wrap gap-2" role="group" aria-label="编辑方案">{draft.profiles.map(p => <button key={p.id} type="button" aria-pressed={selected === p.id} className={`${action} min-w-0 max-w-full border ${selected === p.id ? 'border-primary bg-surface-2 text-primary' : 'border-border/30 text-muted-foreground hover:bg-surface-2'}`} onClick={() => setSelected(p.id)}>{p.id === draft.defaultId && <Star size={13} />}<span className="truncate">{p.name || '未命名方案'}</span></button>)}<button type="button" className={`${action} border border-dashed border-border/50 text-muted-foreground hover:border-primary hover:text-primary`} disabled={draft.profiles.length >= 20} onClick={add}><Plus size={14} />新增方案</button></div></div>
         {profile ? <div className="space-y-3 rounded-lg border border-border/20 p-3">
           <label className="block space-y-1 text-xs text-muted-foreground">方案名称<input className={field} value={profile.name} maxLength={100} onChange={e => edit({ name: e.target.value })} placeholder="例如：快速排查、深度实现" /></label>
-          <label className="block space-y-1 text-xs text-muted-foreground">Agent 类型<select aria-label="Agent 类型" className={field} value={profile.agentSlug} onChange={e => edit({ agentSlug: e.target.value, command: agents.find(a => a.slug === e.target.value)?.command ?? '' })}>{!agents.some(a => a.slug === profile.agentSlug) && <option value={profile.agentSlug}>{profile.agentSlug || '选择 Agent'}（当前不可用）</option>}{agents.map(a => <option key={a.slug} value={a.slug}>{a.displayName}</option>)}</select></label>
+          <AgentChoices label="Agent 类型" agents={agents} value={profile.agentSlug} onChange={slug => edit({ agentSlug: slug, command: agents.find(a => a.slug === slug)?.command ?? '' })} />
           <label className="block space-y-1 text-xs text-muted-foreground">启动命令<input className={`${field} font-mono`} value={profile.command} maxLength={4096} onChange={e => edit({ command: e.target.value })} placeholder="填写完整命令，包括模型和启动参数" /></label>
           <label className="block space-y-1 text-xs text-muted-foreground">使用备注<textarea aria-label="使用备注" className={`${field} min-h-24 resize-y`} value={profile.notes} maxLength={2000} onChange={e => edit({ notes: e.target.value })} placeholder="适合哪些任务、何时不要使用；协调者会读取这些备注。" /></label>
           <details className="text-[11px] text-muted-foreground"><summary className="min-h-11 cursor-pointer py-3">CLI 方案标识</summary><code className="break-all">{profile.id}</code></details>
           <button type="button" className={`${action} text-destructive hover:bg-destructive/10`} onClick={() => { const profiles = draft.profiles.filter(p => p.id !== selected); change({ ...draft, profiles, defaultId: draft.defaultId === selected ? '' : draft.defaultId }); setSelected(profiles[0]?.id ?? ''); }}><Trash2 size={14} />移除方案（保存后生效）</button>
-        </div> : <p className="text-xs text-muted-foreground">尚未选择方案。新增后可填写模型、参数和备注。</p>}
+        </div> : <p className="text-xs text-muted-foreground">还没有启动方案</p>}
       </fieldset>
       {error && <p role="alert" className="text-xs leading-5 text-destructive">{error}。草稿已保留；重新载入会放弃草稿。</p>}
       {notice && <p role="status" className="text-xs leading-5 text-primary">{notice}</p>}

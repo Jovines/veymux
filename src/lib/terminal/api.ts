@@ -1185,6 +1185,18 @@ export function trySendInputExitingCopyMode(sessionId: string, data: string): bo
   return true;
 }
 
+export async function launchRecoverableTerminalAgent(sessionId: string, command: string, idempotencyKey: string): Promise<void> {
+  const csrf = await getCsrfToken();
+  const response = await fetch(`/api/terminal/${encodeURIComponent(sessionId)}/agent-launch`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-XSRF-TOKEN': csrf },
+    body: JSON.stringify({ command, idempotencyKey }),
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new TerminalApiError(data.error || 'Could not prepare the original conversation for recovery', response.status, data.code);
+  }
+}
+
 export async function sendTerminalInput(
   sessionId: string,
   data: string
@@ -1603,11 +1615,12 @@ export async function setTmuxRecoveryOperationPaused(operationId: string, paused
   if (!response.ok) throw new TerminalApiError('Failed to update recovery operation', response.status);
 }
 
-export async function dismissTmuxRecovery(): Promise<void> {
+export async function dismissTmuxRecovery(incidentId?: string): Promise<void> {
   const csrfTokenHeader = await getCsrfToken();
   const response = await fetch('/api/terminal/tmux/recovery', {
     method: 'DELETE',
-    headers: { 'X-XSRF-TOKEN': csrfTokenHeader },
+    ...(incidentId ? { body: JSON.stringify({ incidentId }) } : {}),
+    headers: { 'X-XSRF-TOKEN': csrfTokenHeader, ...(incidentId ? { 'Content-Type': 'application/json' } : {}) },
   });
   if (!response.ok) {
     throw new TerminalApiError('Failed to dismiss tmux recovery', response.status);
@@ -2372,6 +2385,8 @@ export interface ProgramDetectionConfig {
   genericProgramNames: string[];
   wrapperScriptNames: string[];
   shellNames: string[];
+  agentCommands?: Record<string, string>;
+  chatProgramNames?: string[];
 }
 
 export async function getProgramDetection(): Promise<ProgramDetectionConfig> {
@@ -4077,6 +4092,8 @@ export interface CollaborationMessage {
 }
 
 export interface OrchestrationSession {
+  /** Explicit support from the authenticated owning service; absent on old peers. */
+  canDirectContact?: boolean;
   route_state?: string;
   route_error?: string | null;
   route_checked_at?: number | null;
@@ -4108,6 +4125,8 @@ export interface SessionSearchResult {
   matchCount: number;
   live: boolean;
   resumeHistoryId: string | null;
+  recoverable?: boolean;
+  terminalSessionId?: string | null;
   source?: 'terminal' | 'codex' | 'claude';
   nativeKey?: string | null;
   agentNativeSessionId?: string | null;
@@ -4347,8 +4366,8 @@ export function searchTerminalSessions(query: string, limit = 50, signal?: Abort
   return operationsRequest(`/session-search?q=${encodeURIComponent(query)}&limit=${limit}`, { signal });
 }
 
-export function prepareSearchSession(nativeKey: string): Promise<{ sessionId?: string; command?: string; cwd?: string }> {
-  return operationsRequest('/session-search/prepare', { method: 'POST', body: JSON.stringify({ nativeKey }) });
+export function prepareSearchSession(nativeKey: string | null, terminalSessionId?: string): Promise<{ sessionId?: string; command?: string; cwd?: string; title?: string; mode?: 'shell' | 'tmux'; tmuxSessionName?: string }> {
+  return operationsRequest('/session-search/prepare', { method: 'POST', body: JSON.stringify({ nativeKey, terminalSessionId }) });
 }
 
 export type ExecutionArchive = import('../../server/agent/executionArchives').ExecutionArchive;

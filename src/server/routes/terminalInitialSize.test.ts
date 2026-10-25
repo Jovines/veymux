@@ -75,7 +75,7 @@ it('retains the window throughout refresh and presents the measured grid without
       Date, Buffer, performance, setTimeout, clearTimeout, console, process, os,
       TerminalClientAttachment, TerminalInputQueue, TerminalPasteBuffer, TmuxInitialScreen, TmuxDisplayGeometry,
       TerminalOutputDelivery, resolveTerminalReplayCursor, buildTmuxAttachArgs, claimTmuxSize: claimSize, redrawTmuxClient: redraw, PtySpawnDeferredError,
-      terminalSessions: new Map([['backend', session]]), wsClients, tmuxAttachments,
+      terminalSessions: new Map([['backend', session]]), wsClients, tmuxAttachments, globalSessionState: { sessions: [] },
       outputDeliveries: new WeakMap(), independentTmuxClients: new WeakSet(), independentTmuxReplays: new WeakMap(),
       TERMINAL_STREAM_EPOCH: 'test', attachmentSpawnBackoff: { check() {}, spawn: (fn: () => unknown) => fn() },
       getPtyProvider: getProvider,

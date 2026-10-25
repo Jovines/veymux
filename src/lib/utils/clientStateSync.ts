@@ -70,6 +70,7 @@ export interface ControlSessionNoticeEvent {
 }
 
 export type ControlEvent =
+  | { type: 'chat-attention'; sessions: { sessionId: string; index: import('../../server/shared/sessionChatAttention').SessionChatIndex }[] }
   | ControlSessionNoticeEvent
   | ControlSnapshot
   | ControlConfigUpdatedEvent
@@ -199,7 +200,7 @@ function connect(): void {
 
   ws.onmessage = (event) => {
     lastServerPingAt = Date.now();
-    let msg: { type?: string; state?: ClientStateSnapshot | TermdockUpdateState | ServerHealthState; inventory?: SessionInventory; seq?: number; key?: string; updatedAt?: number; text?: string; origin?: string | null; pinnedExplorerRoots?: unknown; id?: unknown; sessionId?: unknown; sessionName?: unknown; message?: unknown; title?: unknown; createdAt?: unknown } | null = null;
+    let msg: { sessions?: { sessionId: string; index: import('../../server/shared/sessionChatAttention').SessionChatIndex }[]; type?: string; state?: ClientStateSnapshot | TermdockUpdateState | ServerHealthState; inventory?: SessionInventory; seq?: number; key?: string; updatedAt?: number; text?: string; origin?: string | null; pinnedExplorerRoots?: unknown; id?: unknown; sessionId?: unknown; sessionName?: unknown; message?: unknown; title?: unknown; createdAt?: unknown } | null = null;
     try {
       msg = JSON.parse(event.data as string);
     } catch {
@@ -215,6 +216,11 @@ function connect(): void {
       for (const listener of sync.listeners) {
         try { listener(notice); } catch (error) { console.error('[clientStateSync] listener threw:', error); }
       }
+      return;
+    }
+    if (msg.type === 'chat-attention' && Array.isArray(msg.sessions)) {
+      const event: ControlEvent = { type: 'chat-attention', sessions: msg.sessions };
+      for (const listener of sync.listeners) { try { listener(event); } catch { /* isolate UI subscribers */ } }
       return;
     }
     if (msg.type === 'update-state') {

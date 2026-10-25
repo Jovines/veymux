@@ -7,7 +7,7 @@ it('requires product sortable contexts to use the interruption-aware wrapper', (
   const root = resolve(process.cwd(), 'src');
   const violations: string[] = [];
   for (const file of readdirSync(root, { recursive: true, encoding: 'utf8' })) {
-    if (!/\.tsx?$/.test(file) || /\.test\./.test(file)) continue;
+    if (!/\.tsx?$/.test(file) || /\.(?:test|browser)\./.test(file)) continue;
     const path = resolve(root, file);
     if (relative(root, path) === 'lib/components/DragDropContext.tsx') continue;
     const text = readFileSync(path, 'utf8');

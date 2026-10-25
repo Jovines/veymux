@@ -1,4 +1,5 @@
 import { useEffect, type RefObject } from 'react';
+import { hasNativeSelectionWithin } from '../utils/nativeTextSelection';
 
 /** Keep native scrolling inside an input panel. Only cancel outward vertical
  * movement: taps, selection, horizontal gestures and inner scrolls stay native. */
@@ -14,6 +15,11 @@ export function useTouchScrollBoundary(ref: RefObject<HTMLElement>, enabled: boo
       gesture = { id: touch.identifier, x: touch.clientX, y: touch.clientY, lastY: touch.clientY, target: event.target, vertical: false };
     };
     const move = (event: TouchEvent) => {
+      if (event.touches.length === 1 && hasNativeSelectionWithin(root)) {
+        // Selection handles can move in either direction, even at a scroll
+        // boundary. Keep the native default and stop the outer session pager.
+        event.stopPropagation(); return;
+      }
       if (!gesture || event.touches.length !== 1) { end(); return; }
       const touch = event.touches[0];
       if (touch.identifier !== gesture.id) return;

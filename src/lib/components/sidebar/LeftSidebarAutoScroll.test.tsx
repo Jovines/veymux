@@ -50,6 +50,24 @@ afterEach(() => {
 });
 
 describe('active sidebar session visibility', () => {
+  it('keeps the original avatar and pulse during work, using loading only for connection', () => {
+    const state = { cwd: null, activeProgram: 'codex', agentStatus: 'working' as const,
+      agent: { slug: 'codex', displayName: 'Codex', icon: 'codex', accentColor: 'var(--foreground)' } };
+    const { rerender } = render(view({ sessionStates: new Map([['one', state]]) }));
+    const row = () => document.querySelector('.sidebar-session-primary')!;
+    expect(row().querySelector('[title="Codex"]')).not.toBeNull();
+    expect(row().querySelector('.animate-spin')).toBeNull();
+    expect(row().querySelector('.animate-pulse')).not.toBeNull();
+    rerender(view({ sessionStates: new Map([['one', { ...state, agentStatus: 'idle', tuiProgress: {
+      source: 'osc7501', state: 'indeterminate', progress: null, message: 'Native work',
+    } }]]) }));
+    expect(row().querySelector('[title="Codex"]')).not.toBeNull();
+    expect(row().querySelector('.animate-spin')).toBeNull();
+    expect(row().querySelector('[data-terminal-output-activity]')).not.toBeNull();
+    rerender(view({ sessionStates: new Map([['one', { ...state, isConnecting: true }]]) }));
+    expect(row().querySelector('.animate-spin')).not.toBeNull();
+  });
+
   it('keeps manual folder expansion and collapse in place, then follows an actual session change', () => {
     useSidebarStore.setState({groupByFolder:true,collapsedGroups:new Set(['/manual/other'])});
     const sessions=[{id:'two',name:'Other session',mode:'shell' as const},...props.sessions];
@@ -107,38 +125,45 @@ describe('active sidebar session visibility', () => {
     expect(list().scrollTop).toBe(344);
   });
 
-  it('reveals the active session in a pinned sidebar even when the overlay is closed', () => {
+  it('defers layout work while the desktop panel is hidden, then reveals the active row on first opening', () => {
     const { rerender } = render(view({ isOpen: false }));
-    expect(list().scrollTop).toBe(344);
-    list().scrollTop = 0;
-    rerender(view({ isOpen: false, sessionStates: new Map([['one', { cwd: null, activeProgram: 'codex', agentStatus: 'working' }]]) }));
     expect(list().scrollTop).toBe(0);
+    rerender(view());
+    expect(list().scrollTop).toBe(344);
+  });
+
+  it('keeps manual desktop scrolling when the panel is collapsed and reopened', () => {
+    const { rerender } = render(view());
+    list().scrollTop = 100;
+    rerender(view({ isOpen: false }));
+    rerender(view());
+    expect(list().scrollTop).toBe(100);
   });
 
   it('remembers manual scrolling across remounts when the active row remains visible', () => {
-    const first = render(view({ isOpen: false }));
+    const first = render(view());
     list().scrollTop = 500;
     fireEvent.scroll(list());
     list().scrollTop = 520;
     fireEvent.scroll(list());
     first.unmount();
     expect(JSON.parse(localStorage.getItem(SIDEBAR_SCROLL_POSITION_KEY)!)).toBe(520);
-    render(view({ isOpen: false }));
+    render(view());
     expect(list().scrollTop).toBe(520);
   });
 
   it('adjusts a restored position only enough to reveal a selected row outside the viewport', () => {
     localStorage.setItem(SIDEBAR_SCROLL_POSITION_KEY, '100');
-    render(view({ isOpen: false }));
+    render(view());
     expect(list().scrollTop).toBe(344);
   });
 
   it('keeps the saved position while sessions are loading, then restores it', () => {
     localStorage.setItem(SIDEBAR_SCROLL_POSITION_KEY, '520');
-    const { rerender } = render(view({ sessions: [], isOpen: false }));
+    const { rerender } = render(view({ sessions: [] }));
     fireEvent(window, new Event('pagehide'));
     expect(localStorage.getItem(SIDEBAR_SCROLL_POSITION_KEY)).toBe('520');
-    rerender(view({ isOpen: false }));
+    rerender(view());
     expect(list().scrollTop).toBe(520);
   });
 
@@ -158,7 +183,7 @@ describe('active sidebar session visibility', () => {
 
   it('ignores invalid stored positions', () => {
     localStorage.setItem(SIDEBAR_SCROLL_POSITION_KEY, '"broken"');
-    render(view({ isOpen: false }));
+    render(view());
     expect(list().scrollTop).toBe(344);
   });
 });

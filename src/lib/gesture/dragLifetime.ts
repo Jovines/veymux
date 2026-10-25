@@ -27,6 +27,7 @@ export function prepareDragLifetimes(): void {
 export function observeDragLifetime(options: DragLifetimeOptions): () => void {
   prepareDragLifetimes();
   let finished = false;
+  let releaseTimer: ReturnType<typeof setTimeout> | undefined;
   const removers: (() => void)[] = [];
   const listen = (target: EventTarget, type: string, listener: EventListener) => {
     const shared = subscribers.get(type);
@@ -41,6 +42,7 @@ export function observeDragLifetime(options: DragLifetimeOptions): () => void {
   const finish = (reason: DragFinishReason, event?: MouseEvent | PointerEvent) => {
     if (finished) return;
     finished = true;
+    clearTimeout(releaseTimer);
     removers.forEach(remove => remove());
     try {
       options.onFinish(reason, event);
@@ -58,7 +60,10 @@ export function observeDragLifetime(options: DragLifetimeOptions): () => void {
     if ((event.buttons & 1) === 0) finish('buttons-lost', event);
   };
   const release = (event: MouseEvent | PointerEvent) => {
-    if (options.deferRelease) queueMicrotask(() => finish('release', event));
+    // Native event dispatch can run microtasks between capture and React's
+    // delegated bubble listener. Keep the fallback in the next task so the
+    // component can commit its drop before cleanup releases pointer capture.
+    if (options.deferRelease) releaseTimer ??= setTimeout(() => finish('release', event), 0);
     else finish('release', event);
   };
   if (options.pointerId === undefined) {

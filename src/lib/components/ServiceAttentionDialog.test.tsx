@@ -15,6 +15,7 @@ const remoteSessions = [
 ];
 
 beforeEach(() => {
+  vi.spyOn(document, 'hasFocus').mockReturnValue(true);
   localStorage.clear(); sessionStorage.clear();
   delete window.__termdockWorkspaceHost;
   useSidebarStore.setState({ leftOpen: false, rightOpen: false });

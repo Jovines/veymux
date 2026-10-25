@@ -9,6 +9,7 @@ import { SessionChatView } from './SessionChatView';
 import { clearChatSnapshots } from './chatSnapshot';
 import { SESSION_NO_SWIPE, SESSION_SWIPER_FOCUSABLE_ELEMENTS } from './sessionSwipe';
 import { readChatEditor } from './ChatRichEditor';
+import { beginSessionChatStartup, finishSessionChatStartup } from './sessionChatStartup';
 
 let root: Root | undefined;
 afterEach(async () => {
@@ -21,6 +22,25 @@ afterEach(async () => {
   await page.viewport(390, 844);
 });
 const frame = () => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+
+it.each(['resize', 'pan'] as const)('keeps the terminal entry beside a growing new-session composer (%s)', async mode => {
+  beginSessionChatStartup('native-focus-production', { slug: 'codex', displayName: 'Codex' });
+  try {
+    const input = await mount(mode);
+    const dock = document.querySelector('[data-chat-terminal-dock]')!;
+    const form = document.querySelector('[data-chat-composer]')!;
+    for (const visible of [844, 430, 844]) {
+      await page.viewport(390, visible); input.focus(); await frame();
+      for (const lines of [1, 3, 6]) {
+        await page.getByRole('textbox').fill(Array.from({ length: lines }, () => '带图片的草稿').join('\n')); await frame();
+        const gap = form.getBoundingClientRect().top - dock.getBoundingClientRect().bottom;
+        expect(gap).toBeGreaterThanOrEqual(0);
+        expect(gap).toBeLessThanOrEqual(8);
+        expect(dock.getBoundingClientRect().top).toBeGreaterThanOrEqual(document.querySelector('.session-chat-scroll')!.getBoundingClientRect().bottom);
+      }
+    }
+  } finally { finishSessionChatStartup('native-focus-production'); }
+});
 
 async function mount(mode: 'resize' | 'pan', safeBottom = 0, messages: object[] = []) {
   vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue('iPhone');
@@ -61,6 +81,8 @@ it.each(['resize', 'pan'] as const)('lets native focus place the real chat input
   const header = document.querySelector('header')!, content = document.querySelector('.session-chat-scroll')!;
   const top = content.getBoundingClientRect().top;
   const originalHeight = content.getBoundingClientRect().height;
+  const welcome = document.querySelector('.session-chat-welcome')!.getBoundingClientRect(), area = content.getBoundingClientRect();
+  expect(Math.abs(welcome.top + welcome.height / 2 - area.top - area.height / 2)).toBeLessThan(1);
   for (const visible of [430, 844, 470, 844, 400, 516]) {
     input.blur();
     await page.viewport(390, visible);
@@ -138,4 +160,28 @@ it('scrolls and touches the conversation without blurring or refocusing the edit
   input.blur(); await frame();
   expect(document.activeElement).not.toBe(input);
   expect(focus).not.toHaveBeenCalled();
+});
+
+it.each(['resize', 'pan'] as const)('keeps composer actions usable with the native keyboard and stale viewport data (%s)', async mode => {
+  const input = await mount(mode);
+  await page.viewport(390, 430); input.focus();
+  const header = document.querySelector('header')!;
+  await expect.poll(() => header.getBoundingClientRect().top).toBe(0);
+  await page.elementLocator(input).fill('保留键盘和草稿'); await frame();
+  const blur = vi.fn(); input.addEventListener('blur', blur);
+  const composer = document.querySelector('.session-chat-composer')!;
+  const before = composer.getBoundingClientRect().toJSON();
+  Object.assign(window.visualViewport!, { height: 9999, offsetTop: 9999 });
+  await commands.inputPanelDrag('[aria-label="更多会话操作"]', 0);
+  await expect.element(page.getByRole('menu', { name: '会话操作' })).toBeVisible();
+  const panel = document.querySelector('[role="menu"]')!.getBoundingClientRect();
+  expect(panel.height).toBeGreaterThanOrEqual(132);
+  expect(panel.top).toBeGreaterThanOrEqual(header.getBoundingClientRect().bottom);
+  expect(panel.bottom).toBeLessThanOrEqual(430);
+  expect(composer.getBoundingClientRect().toJSON()).toEqual(before);
+  expect(document.activeElement).toBe(input); expect(blur).not.toHaveBeenCalled();
+  await commands.inputPanelDrag('[aria-label="更多会话操作"]', 0);
+  expect(document.querySelector('[role="menu"]')).toBeNull();
+  expect(document.activeElement).toBe(input); expect(blur).not.toHaveBeenCalled();
+  expect(readChatEditor(input).text).toBe('保留键盘和草稿'); input.removeEventListener('blur', blur);
 });

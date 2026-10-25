@@ -3,6 +3,7 @@ import { readFileSync, mkdirSync, writeFileSync, renameSync, unlinkSync } from '
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { encryptedRequestSubject } from '../federation/requestContext.js';
+import type { ChatEligibility } from '../shared/chatProgramPolicy.js';
 export type SessionViewMode = 'terminal' | 'chat';
 interface Preference { mode: SessionViewMode; updatedAt: number }
 export class SessionViewModeStore {
@@ -26,17 +27,27 @@ export class SessionViewModeStore {
     return next;
   }
 }
-export function sessionViewModeRoutes(store: SessionViewModeStore, resolve: (id: string) => string | null | undefined) {
+export function sessionViewModeRoutes(store: SessionViewModeStore, resolve: (id: string) => string | null | undefined,
+  eligibility?: (id: string, command?: string) => ChatEligibility | Promise<ChatEligibility>,
+  onSave?: (id: string, mode: SessionViewMode) => Promise<void>) {
   const router = Router();
-  router.route('/:sessionId/view-mode').get((req, res) => {
+  router.route('/:sessionId/view-mode').get(async (req, res) => {
     const id = encryptedRequestSubject(req) && resolve(req.params.sessionId);
     if (!id) { res.status(404).json({ error: '会话不可用' }); return; }
-    res.setHeader('Cache-Control', 'no-store'); res.json(store.get(id) || { mode: null, updatedAt: 0 });
-  }).put((req, res) => {
+    try {
+      const chatEligibility = req.query.chatEligibility === '1' && eligibility
+        ? await eligibility(id, typeof req.query.command === 'string' ? req.query.command.slice(0, 8192) : undefined) : undefined;
+      res.setHeader('Cache-Control', 'no-store'); res.json({ ...(store.get(id) || { mode: null, updatedAt: 0 }), ...(chatEligibility ? { chatEligibility } : {}) });
+    } catch { res.status(503).json({ error: '暂时无法识别当前程序，请重试' }); }
+  }).put(async (req, res) => {
     const id = encryptedRequestSubject(req) && resolve(req.params.sessionId);
     if (!id) { res.status(404).json({ error: '会话不可用' }); return; }
     if (!req.body || Object.keys(req.body).some(key => key !== 'mode') || !['chat', 'terminal'].includes(req.body.mode)) { res.status(400).json({ error: '显示模式无效' }); return; }
-    res.json(store.set(id, req.body.mode));
+    try {
+      const preference = store.set(id, req.body.mode);
+      await onSave?.(id, preference.mode);
+      res.json(preference);
+    } catch { res.status(503).json({ error: '显示模式未保存，请重试' }); }
   });
   return router;
 }

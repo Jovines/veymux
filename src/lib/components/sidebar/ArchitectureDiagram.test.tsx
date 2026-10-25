@@ -10,13 +10,14 @@ const view: ArchitecturePerspective = { id: 'overview', title: 'Overview', summa
   nodes: [{ id: 'server', title: 'Server', summary: '', files: [] }], edges: [] };
 const getBBox = Object.getOwnPropertyDescriptor(SVGElement.prototype, 'getBBox');
 beforeEach(() => {
+  vi.spyOn(document, 'hasFocus').mockReturnValue(true);
   renderSvg.mockReset(); save.mockReset(); save.mockResolvedValue(undefined);
   renderSvg.mockImplementation(async (id: string) => ({ svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-10 -10 50 60"><script>alert(1)</script><g><g class="node" id="${id}-flowchart-n0-0"><rect x="10" y="20" width="200" height="120"/><text>Server</text></g></g></svg>` }));
   Object.defineProperty(SVGElement.prototype, 'getBBox', { configurable: true, value: () => ({ x: 10, y: 20, width: 200, height: 120 }) });
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
 });
 afterEach(() => {
-  cleanup(); vi.unstubAllGlobals();
+  cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals();
   if (getBBox) Object.defineProperty(SVGElement.prototype, 'getBBox', getBBox);
   else delete (SVGElement.prototype as { getBBox?: unknown }).getBBox;
 });

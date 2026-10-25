@@ -211,7 +211,7 @@ export function FreeSplitLayout({ layoutId, panes, preset = 'grid', initialTree,
     {!focusId && handles.map(h => <button key={h.key} type="button" role="separator" aria-label={h.side ? `调整${({ top: '上', bottom: '下', left: '左', right: '右' })[h.side]}半段分隔线` : '调整分屏大小'} aria-orientation={h.axis === 'x' ? 'vertical' : 'horizontal'} disabled={!ready}
       className={`swiper-no-swiping absolute z-10 touch-none bg-border hover:bg-primary focus-visible:bg-primary ${h.axis === 'x' ? 'w-px cursor-col-resize' : 'h-px cursor-row-resize'}`}
       style={{ left: `${h.x * 100}%`, top: `${h.y * 100}%`, ...(h.axis === 'x' ? { height: `${h.length * 100}%` } : { width: `${h.length * 100}%` }) }}
-      onPointerDown={event => { event.preventDefault(); event.stopPropagation(); trackLayoutDrag(event, container.current ?? undefined); document.dispatchEvent(new CustomEvent('termdock:gesture-lock', { detail: { locked: true } })); activeResize.current = h; container.current?.setPointerCapture?.(event.pointerId); }}
+      onPointerDown={event => { event.preventDefault(); event.stopPropagation(); trackLayoutDrag(event, event.currentTarget); document.dispatchEvent(new CustomEvent('termdock:gesture-lock', { detail: { locked: true } })); activeResize.current = h; event.currentTarget.setPointerCapture?.(event.pointerId); }}
       onDoubleClick={() => { change(h.side ? resizeFourBoundary(treeRef.current, h.side, 0.5) : resizeNode(treeRef.current, h.path!, 0.5)); persist(); }}
       onKeyDown={event => {
         if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;

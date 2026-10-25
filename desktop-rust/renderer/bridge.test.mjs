@@ -39,15 +39,36 @@ test('actual bridge preserves an invitation across failed/stale guards and suppr
  const closed=fixture({invitation});closed.listeners.get('pagehide')({});assert.equal(await closed.window.termdockDesktop.acknowledgeServiceInvitation({targetPeerId:'target-pin',fingerprint},()=>true),false);
 });
 test('Preview page confirmation waits for overlay readiness and initializes focus once; cancel never invokes native business',async()=>{
- const dom=new JSDOM('<button id="before">Before</button>'),f=fixture({context:{document:dom.window.document}}),doc=dom.window.document;let notify,unsubscribed=false;doc.querySelector('#before').focus();
+ const dom=new JSDOM('<button id="before">Before</button>',{pretendToBeVisual:true}),f=fixture({context:{document:dom.window.document}}),doc=dom.window.document;let notify,unsubscribed=false;doc.querySelector('#before').focus();
  f.window.termdockPreviewLifecycle={subscribe:callback=>{notify=callback;callback({overlayReady:false});return()=>{unsubscribed=true;};}};
  try{const pending=f.window.termdockDesktop.confirm({title:'Restart',message:'<img src=x onerror=alert(1)>',confirmLabel:'Confirm',cancelLabel:'Cancel'});await Promise.resolve();const panel=doc.querySelector('[data-desktop-confirmation]'),buttons=panel.querySelectorAll('button');assert.equal(panel.querySelector('img'),null);assert.match(panel.textContent,/<img/);assert.equal(doc.activeElement.id,'before');notify({overlayReady:true});assert.equal(doc.activeElement,buttons[0]);buttons[1].focus();notify({overlayReady:true});assert.equal(doc.activeElement,buttons[1]);buttons[0].click();assert.equal(await pending,false);assert.equal(unsubscribed,true);assert.equal(doc.querySelector('[data-desktop-confirmation]'),null);assert.equal(f.ipc.length,0);assert.equal(doc.activeElement.id,'before');}finally{dom.window.close();}
+});
+test('confirmation readiness preserves a button the user already chose',async()=>{
+ const dom=new JSDOM('<button id="before">Before</button>',{pretendToBeVisual:true}),doc=dom.window.document,f=fixture({context:{document:doc}});let notify;
+ f.window.termdockPreviewLifecycle={subscribe:callback=>{notify=callback;return()=>{};}};
+ try{doc.querySelector('#before').focus();const pending=f.window.termdockDesktop.confirm({title:'Restart',message:'Ready later',confirmLabel:'Confirm',cancelLabel:'Cancel'});await Promise.resolve();const accept=doc.querySelector('[data-desktop-confirmation] button:last-child');accept.focus();notify({overlayReady:true});assert.equal(doc.activeElement,accept);accept.click();assert.equal(await pending,true);}finally{dom.window.close();}
 });
 test('Preview confirmation accepts only the explicit button, rejects concurrent prompts and expires on secure context changes',async()=>{
  const dom=new JSDOM(''),f=fixture({context:{document:dom.window.document}}),doc=dom.window.document,options={title:'Restart',message:'Controlled only',confirmLabel:'Confirm',cancelLabel:'Cancel'};
  try{let pending=f.window.termdockDesktop.confirm(options);await assert.rejects(f.window.termdockDesktop.confirm(options),/already open/);doc.querySelector('[data-desktop-confirmation] button:last-child').click();assert.equal(await pending,true);
  pending=f.window.termdockDesktop.confirm(options);f.listeners.get('termdock:secure-state')({});assert.equal(await pending,false);assert.equal(doc.querySelector('[data-desktop-confirmation]'),null);
  pending=f.window.termdockDesktop.confirm(options);doc.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));assert.equal(await pending,false);assert.equal(f.ipc.length,0);await assert.rejects(f.window.termdockDesktop.confirm({...options,message:'x'.repeat(2049)}),/Invalid/);}finally{dom.window.close();}
+});
+test('confirmation expiration cannot refocus a password field during authorization teardown',async()=>{
+ const dom=new JSDOM('<input id="password" type="password">',{pretendToBeVisual:true}),doc=dom.window.document,f=fixture({context:{document:doc}});
+ const input=doc.querySelector('input');input.focus();
+ try{const pending=f.window.termdockDesktop.confirm({title:'Confirm',message:'Controlled',confirmLabel:'Accept',cancelLabel:'Cancel'});await Promise.resolve();
+ assert.equal(doc.activeElement,doc.querySelector('[data-desktop-confirmation] button'));
+ f.listeners.get('termdock:secure-state')({});assert.equal(await pending,false);assert.notEqual(doc.activeElement,input);
+ }finally{dom.window.close();}
+});
+test('confirmation cleanup preserves a newer editor focus choice',async()=>{
+ const dom=new JSDOM('<input id="before"><input id="next">',{pretendToBeVisual:true}),doc=dom.window.document,f=fixture({context:{document:doc}});
+ doc.querySelector('#before').focus();
+ try{const pending=f.window.termdockDesktop.confirm({title:'Confirm',message:'Controlled',confirmLabel:'Accept',cancelLabel:'Cancel'});await Promise.resolve();
+ const next=doc.querySelector('#next');next.focus();doc.querySelector('[data-desktop-confirmation] button').click();
+ assert.equal(await pending,false);assert.equal(doc.activeElement,next);
+ }finally{dom.window.close();}
 });
 test('entry, target, relay, renewal and metadata all keep their exact route', async()=>{
   const f=fixture();
@@ -150,7 +171,7 @@ test('notification focus waits for the mounted page acknowledgment and cleans pe
  assert.equal(f.ipc.length,0,'no mounted App handler means no focus receipt');
  worker.addEventListener('message',event=>{count++;assert.equal(event.data.sessionId,'session-two');event.ports[0].postMessage({type:'termdock:focus-session-ack'});});
  f.listeners.get('termdock:preview-focus-request')({detail:{requestId:'second',sessionId:'session-two',targetPeerId:'target-pin'}});
- await new Promise(resolve=>setTimeout(resolve,30));
+ for(let attempt=0;attempt<100&&!f.ipc.length;attempt++)await new Promise(resolve=>setTimeout(resolve,10));
  assert.equal(count,1);assert.equal(f.ipc.length,1);assert.equal(f.ipc[0].op,'focusReceipt');assert.equal(f.ipc[0].args.requestId,'second');
  f.listeners.get('pagehide')();
 });

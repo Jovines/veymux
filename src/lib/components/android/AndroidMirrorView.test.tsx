@@ -277,13 +277,32 @@ describe('AndroidMirrorView 截图/录屏插入', () => {
     const button = screen.getByLabelText('Screenshot and insert') as HTMLButtonElement;
     await userEvent.click(button);
     await waitFor(() => expect(insert).toHaveBeenCalledOnce());
-    expect(button.disabled).toBe(true);
+    expect(button.getAttribute('aria-busy')).toBe('true');
     expect(button.querySelector('.animate-spin')).toBeTruthy();
     expect(screen.getByText('Inserting…')).toBeTruthy();
     await userEvent.click(button);
     expect(insert).toHaveBeenCalledOnce();
     await act(async () => finish());
     expect(button.disabled).toBe(false);
+    expect(screen.getByText('Screenshot inserted')).toBeTruthy();
+  });
+
+  it('异步生成截图时保留按钮的有效操作来源', async () => {
+    let captured!: BlobCallback;
+    const insert = vi.fn(async () => {});
+    await streamingView(insert);
+    const createElement = vi.mocked(document.createElement).getMockImplementation()!;
+    vi.spyOn(document, 'createElement').mockImplementation(((tag: string) => {
+      const element = createElement(tag);
+      if (tag === 'canvas') (element as HTMLCanvasElement).toBlob = callback => { captured = callback; };
+      return element;
+    }) as typeof document.createElement);
+    const button = screen.getByLabelText('Screenshot and insert');
+    await userEvent.click(button);
+    expect(button.getAttribute('aria-busy')).toBe('true');
+    await userEvent.click(button);
+    await act(async () => captured(new Blob(['png'], { type: 'image/png' })));
+    await waitFor(() => expect(insert).toHaveBeenCalledOnce());
     expect(screen.getByText('Screenshot inserted')).toBeTruthy();
   });
 

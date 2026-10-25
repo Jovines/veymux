@@ -43,7 +43,7 @@ export function resumeConnectionAccess(): void {
   const id = savedConnection()?.targetPeerId; if (id) { accessBlocks.delete(id); deniedEntries.delete(id); }
 }
 const nativeFetch = globalThis.fetch.bind(globalThis);
-export interface ConnectionIntent { viewMode?: 'terminal' | 'chat'; url: string; targetPeerId: string; pairingCode?: string; serviceName?: string; serviceOrigin?: string; entryServiceId?: string; routeCode?: string; routeOnly?: boolean; routes?: ServiceRoute[] }
+export interface ConnectionIntent { viewLayout?: 'split'; viewMode?: 'terminal' | 'chat'; url: string; targetPeerId: string; pairingCode?: string; serviceName?: string; serviceOrigin?: string; entryServiceId?: string; routeCode?: string; routeOnly?: boolean; routes?: ServiceRoute[] }
 
 export function savedConnection(): ConnectionIntent | null {
   return selectedTarget();
@@ -450,6 +450,7 @@ export async function connectDevice(intent: ConnectionIntent, options: { remembe
     const savedRoutes = savedIntent.routes ?? connectionRoutes(savedIntent);
     const directOrigin = connectionAddresses(savedIntent)[0];
     const saved = { url: directOrigin || serviceOrigin, targetPeerId: intent.targetPeerId, serviceName,
+      ...(intent.viewMode ? { viewMode: intent.viewMode } : {}), ...(intent.viewLayout ? { viewLayout: intent.viewLayout } : {}),
       ...(directOrigin ? { serviceOrigin: directOrigin } : { entryServiceId: nextEntry?.targetPeerId || intent.entryServiceId }),
       routes: reverse ? [...savedRoutes, reverse] : savedRoutes };
     await (options.rememberOnly ? rememberServiceConnection : saveServiceConnection)({ id: existing?.id || intent.targetPeerId, ...saved, label: serviceName });

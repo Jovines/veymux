@@ -26,7 +26,8 @@ export function TodoNavigationButton({ onOpen, placement = 'sidebar' }: { onOpen
     })();
   }, []);
   return <button type="button" aria-label={placement === 'toolbar' ? '打开待办清单' : undefined} aria-description={count === null ? undefined : `${count} 项未完成`} aria-current={active ? 'page' : undefined} onClick={onOpen}
-    title="待办清单" className={`${toolbar ? 'inline-flex min-h-9 min-w-11 shrink-0 items-center justify-center gap-1 rounded-md px-1.5 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring' : 'mx-2 my-2 flex min-h-11 shrink-0 items-center gap-2.5 rounded-lg px-3 text-left text-xs'} transition ${active ? 'bg-[rgb(var(--primary-rgb)/0.1)] text-primary' : 'text-muted-foreground hover:bg-surface-2 hover:text-foreground'}`}>
-    {!toolbar && <ListTodo size={16} />}<span className={toolbar ? 'font-medium' : 'flex-1 font-medium'}>待办</span>{count !== null && count > 0 && <span className={toolbar ? 'min-w-3 text-center text-[10px] font-semibold tabular-nums text-primary' : 'rounded-md bg-surface px-1.5 py-0.5 text-[10px] tabular-nums'}>{count > 99 ? '99+' : count}</span>}
+    title={count === null ? '待办清单' : `待办清单 · ${count} 项未完成`} className={`${toolbar ? 'relative inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-xs sm:h-8 sm:w-8 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring' : 'mx-2 my-2 flex min-h-11 shrink-0 items-center gap-2.5 rounded-lg px-3 text-left text-xs'} transition ${active ? 'bg-[rgb(var(--primary-rgb)/0.1)] text-primary' : 'text-muted-foreground hover:bg-surface-2 hover:text-foreground'}`}>
+    <ListTodo size={16} />{!toolbar && <span className="flex-1 font-medium">待办</span>}
+    {count !== null && count > 0 && <span data-todo-count aria-hidden="true" className={`${toolbar ? `pointer-events-none absolute right-0 top-0 min-w-4 rounded-full px-1 text-center text-[10px] leading-4 ${count > 0 ? 'bg-primary text-primary-foreground' : 'bg-surface text-muted-foreground'}` : 'rounded-md bg-surface px-1.5 py-0.5 text-[10px]'} tabular-nums`}>{count > 99 ? '99+' : count}</span>}
   </button>;
 }

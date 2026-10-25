@@ -1,8 +1,15 @@
+import { prepareCodexThread, codexColdLaunchArgv, codexPreparedResumeCommand } from '../agent/codexLaunchPreparation.js';
+import { normalizeAgentLaunchAttempt, replayAgentLaunchAttempt, type AgentLaunchAttempt } from '../agent/agentLaunchAttempt.js';
+import { shouldAutomaticallyRecoverTmuxIncident } from '../utils/tmuxRecovery.js';
+import { isSharedCodexDaemon } from '../utils/codexSharedDaemon.js';
+import { confirmRecoveryAgent } from '../utils/recoveryAgentConfirmation.js';
 import { TmuxPaneOutputObserver } from '../utils/tmuxPaneOutput.js';
 import { TerminalOutputActivity } from '../utils/terminalOutputActivity.js';
 import { createTodoWebhookRouter } from '../todos/webhook.js';
 import { readCollectionOutputTime } from '../todos/tmuxOutput.js';
 import { sessionViewModeRoutes, SessionViewModeStore } from '../agent/sessionViewModeRoutes.js';
+import { restoreTmuxViewMode, TMUX_VIEW_MODE_OPTION } from '../utils/tmuxViewMode.js';
+import { chatProgramName, validChatProgramName } from '../shared/chatProgramPolicy.js';
 import { incompleteOscSuffix } from '../utils/oscBuffer.js';
 import { terminalProgramStatus, PROGRAM_STATUS_REPLY, type TerminalProgressReport } from '../shared/programStatus.js';
 import { sessionAttachmentRoutes } from '../agent/sessionAttachmentRoutes.js';
@@ -15,6 +22,7 @@ import { getSessionPresentation } from '../utils/sessionDisplayName.js';
 import { integrationError } from '../agent/integrationStore.js';
 import { assertNativeResumeAvailable, collectNativeResumeOwnerCandidates, type ShellVerificationFailure } from '../agent/nativeResumeOwner.js';
 import { nativeIdentityDirectory, readNativeProcessIdentity, resolveProfileNativeIdentity, type NativeProcessIdentityConfig } from '../agent/nativeProcessIdentity.js';
+import { hasUniqueForegroundResumeGroup, readForegroundResumeIdentity } from '../agent/foregroundResumeIdentity.js';
 import { closeSessionRuntime, foregroundProcessInstance, processStartIdentity, type SessionCloseTarget } from '../agent/sessionManagement.js';
 import { releaseSessionRuntime } from '../agent/sessionLifecycle.js';
 import { resumeConfigurationFingerprint } from '../agent/sessionResumeConfiguration.js';
@@ -30,6 +38,7 @@ import { TerminalClientAttachment } from '../utils/terminalClientAttachment.js';
 import { TerminalPasteBuffer } from '../utils/terminalPasteBuffer.js';
 import { SharedSessionSampler, SharedSnapshotCache, type SampleEvent } from '../utils/sharedSampling.js';
 import { batchTmuxOptions, TmuxMetadataWriter } from '../utils/tmuxMetadataWriter.js';
+import { batchTmuxCommands, batchTmuxConfiguration } from '../utils/tmuxConfigurationBatch.js';
 import { TmuxDisplayGeometry } from '../utils/tmuxDisplayGeometry.js';
 import { TmuxInitialScreen } from '../utils/tmuxInitialScreen.js';
 import { readTmuxObserverSize } from '../utils/tmuxObserverSize.js';
@@ -104,7 +113,7 @@ import {
   setActiveGitRepoSetting,
 } from '../utils/settings.js';
 import { loadContextDraft, saveContextDraft } from '../utils/contextDraft.js';
-import { getOnboardingServerUrl } from '../onboardingServer.js';
+import { getOnboardingServerUrl, getOnboardingCertificateFingerprint } from '../onboardingServer.js';
 import { inspectLinuxInotifyUsage, isWatchResourceExhaustion } from '../utils/fileWatchPolicy.js';
 import { writeResponseChunk } from '../utils/httpResponse.js';
 import {
@@ -165,6 +174,7 @@ import { buildServerHealthState, dismissServerHealth } from '../utils/serverHeal
 import { collaborationRoutes } from '../agent/collaborationRoutes.js';
 import { extrasFromBody } from '../agent/collaborationProtocol.js';
 import { sessionChatRoutes } from '../agent/sessionChatRoutes.js';
+import { watchSessionChatIndex, watchSessionChatIndices } from '../agent/sessionChatHistory.js';
 import { CollaborationStore, type CollaborationGroup, type CollaborationMessageKind, type CollaborationMessage } from '../agent/collaborationStore.js';
 import { COLLAB_NAME_FORBIDDEN, formatCollaborationDelivery } from '../agent/collaborationPrompt.js';
 import { ambiguousIdMessage } from '../agent/collaborationProtocol.js';
@@ -220,7 +230,7 @@ import {
   commitPreparedPlugin,
   preparePluginPackage,
 } from '../agent/pluginPackages.js';
-import { clearPluginAgents, registerPluginAgents } from '../agent/registry.js';
+import { clearPluginAgents, registerPluginAgents, setChatProgramNames } from '../agent/registry.js';
 import { notifyAgentTransition, notifyTerminalExit } from '../notifications/pushService.js';
 import { setClientViewingSession } from '../notifications/pushViewers.js';
 import {
@@ -253,6 +263,7 @@ import type { CollaborationService } from '../agent/collaborationService.js';
 const router: express.Router = express.Router();
 const execFileAsync = promisify(execFile);
 const TERMDOCK_DIR = `${os.homedir()}/.termdock`;
+const sessionViewModes = new SessionViewModeStore(`${TERMDOCK_DIR}/session-view-modes.json`);
 const automationStore = new AutomationStore(`${TERMDOCK_DIR}/automations.json`);
 const todoStore = new TodoStore(`${TERMDOCK_DIR}/todos.json`);
 export const collaborationTaskStore = new CollaborationTaskStore(`${TERMDOCK_DIR}/collaboration-tasks.json`);
@@ -475,6 +486,7 @@ interface PersistedClientSession {
   agentLaunchCheck?: AgentLaunchCheck | null;
   /** Retained after the one-time check resolves, fencing old asynchronous input. */
   agentLaunchGeneration?: string | null;
+  agentLaunchAttempt?: AgentLaunchAttempt | null;
   agentNativeIdentity?: NativeProcessIdentityConfig | null;
 }
 
@@ -490,6 +502,7 @@ interface TmuxInventoryMeta {
   friendlyName: string | null;
   program: string | null;
   rawArgs?: string | null;
+  foregroundProgram?: string | null;
   shellTitle?: string | null;
   cwd: string | null;
   label: string | null;
@@ -504,6 +517,7 @@ interface TmuxInventoryMeta {
 }
 
 interface SessionInventoryClientSession extends PersistedClientSession {
+  viewMode: 'terminal' | 'chat' | null;
   collectionRunId: string | null;
   displayName: string;
   displaySubtitle: string | null;
@@ -521,6 +535,8 @@ interface SessionInventoryClientSession extends PersistedClientSession {
 
 interface SessionInventoryTmuxSession {
   name: string;
+  displayName: string;
+  displaySubtitle: string | null;
   windows: number;
   attached: number;
   attachedCount: number;
@@ -617,6 +633,7 @@ let tmuxRecoveryState: {
   lastServerPid: number | null;
   incident: TmuxRecoveryIncident | null;
   dismissedSessionIds: string[];
+  runtimeLostSessionIds?: string[];
 } = { lastServerPid: null, incident: null, dismissedSessionIds: [] };
 let persistGlobalStateTimer: ReturnType<typeof setTimeout> | null = null;
 let globalSessionStateWatcher: fs.FSWatcher | null = null;
@@ -681,6 +698,7 @@ function getClientStateSemanticSignature(state: GlobalSessionState, inventory: S
     inventory: inventory ? {
       clientSessions: inventory.clientSessions.map((session) => ({
         sessionId: session.sessionId,
+        viewMode: session.viewMode,
         frontendSessionId: session.frontendSessionId,
         name: session.name,
         customName: session.customName === true,
@@ -699,6 +717,8 @@ function getClientStateSemanticSignature(state: GlobalSessionState, inventory: S
       })),
       tmuxSessions: inventory.tmuxSessions.map((session) => ({
         name: session.name,
+        displayName: session.displayName,
+        displaySubtitle: session.displaySubtitle,
         windows: session.windows,
         attached: session.attached,
         attachedCount: session.attachedCount,
@@ -976,7 +996,7 @@ async function loadTmuxRecoveryStateFromDisk(): Promise<void> {
     const data = await readJsonFileIfExists<{
       lastServerPid?: unknown;
       incident?: unknown;
-      dismissedSessionIds?: unknown;
+      dismissedSessionIds?: unknown; runtimeLostSessionIds?: unknown;
     }>(TMUX_RECOVERY_STATE_FILE);
     if (!data) { await tmuxRecoveryOperations.load(); return; }
     tmuxRecoveryState = {
@@ -984,6 +1004,7 @@ async function loadTmuxRecoveryStateFromDisk(): Promise<void> {
         ? data.lastServerPid
         : null,
       incident: normalizeTmuxRecoveryIncident(data.incident),
+      runtimeLostSessionIds: Array.isArray(data.runtimeLostSessionIds) ? data.runtimeLostSessionIds.filter((id: unknown): id is string => typeof id === 'string') : [],
       dismissedSessionIds: Array.isArray(data.dismissedSessionIds)
         ? data.dismissedSessionIds.filter((id): id is string => typeof id === 'string')
         : [],
@@ -1201,6 +1222,8 @@ async function backfillPersistedTmuxMetadata(): Promise<void> {
         // at startup so sessions created before this feature get it too.
         'allow-passthrough': 'on',
       };
+      const viewMode = sessionViewModes.get(s.sessionId)?.mode;
+      if (viewMode) baseOptions[TMUX_VIEW_MODE_OPTION] = viewMode;
       const existingCreatedAt = await getTmuxOption(s.tmuxSessionName, '@termdock-created-at');
       if (!existingCreatedAt) {
         baseOptions['@termdock-created-at'] = String(Date.now());
@@ -1437,6 +1460,7 @@ function normalizePersistedClientSession(input: unknown): PersistedClientSession
       : null,
     agentResume: normalizePersistedAgentResumeInfo(candidate.agentResume),
     agentLaunchCheck: normalizeAgentLaunchCheck(candidate.agentLaunchCheck),
+    agentLaunchAttempt: normalizeAgentLaunchAttempt(candidate.agentLaunchAttempt),
     agentLaunchGeneration: typeof candidate.agentLaunchGeneration === 'string' ? candidate.agentLaunchGeneration
       : normalizeAgentLaunchCheck(candidate.agentLaunchCheck)?.id ?? null,
     agentNativeIdentity: nativeIdentityDirectory(candidate.agentNativeIdentity)
@@ -1649,12 +1673,21 @@ function removeGlobalSessionRecord(frontendSessionId: string): boolean {
 }
 
 function archiveAgentResumeRecord(record: PersistedClientSession | null | undefined, reason: AgentResumeHistoryReason): boolean {
-  if (!record || record.mode !== 'shell' || !record.agentResume?.sessionId) return false;
+  if (!record) return false;
+  const backend = record.backendSessionId ? terminalSessions.get(record.backendSessionId) : null;
+  const metadata = searchMetadataForRecord(record, backend);
+  sessionSearchStore.update({ ...metadata, closedAt: Date.now() });
+  sessionSearchStore.flush();
+  const agent = normalizePersistedAgentResumeInfo({ ...record.agentResume,
+    slug: backend?.agent?.slug ?? record.agentResume?.slug,
+    sessionId: backend?.agentSession?.sessionId ?? record.agentResume?.sessionId,
+    updatedAt: Date.now() });
+  if (!agent?.sessionId) return false;
   return agentResumeHistory.archive({
-    title: record.name.trim() || 'Terminal',
-    titleSource: record.customName === true ? 'custom' : record.autoTitle ? 'auto' : 'default',
-    agent: record.agentResume,
-    cwd: record.cwd ?? '',
+    title: metadata.title,
+    titleSource: record.autoTitle ? 'auto' : record.customName === true ? 'custom' : 'default',
+    agent,
+    cwd: metadata.cwd,
     reason,
   }) !== null;
 }
@@ -1695,6 +1728,9 @@ async function markAllPersistedTmuxSessionsDetached(): Promise<void> {
 // scan mistakes the surviving tmux process for an unexpectedly lost GUI session.
 async function markTmuxSessionClosed(name: string, closedAt = String(Date.now())): Promise<void> {
   try {
+    const record = globalSessionState.sessions.find(session => session.mode === 'tmux' && session.tmuxSessionName === name);
+    const mode = record && sessionViewModes.get(record.sessionId)?.mode;
+    if (mode) await runTmux(['set-option', '-t', name, TMUX_VIEW_MODE_OPTION, mode]);
     await runTmux(['set-option', '-t', name, TERMDOCK_GUI_DETACHED_AT_OPTION, closedAt]);
   } catch (error) {
     const message = getErrorMessage(error);
@@ -1939,6 +1975,10 @@ async function openInventorySession(
   const termType = typeof input.termType === 'string' ? input.termType : undefined;
   const allowDefaultCwd = !reused && preferredFrontendSessionId.length === 0;
   const backend = await ensureBackendSessionForRecord(req, record, { cwd: requestedCwd, cols, rows, termType, allowDefaultCwd });
+  if (record.mode === 'tmux' && record.tmuxSessionName) {
+    const viewMode = await restoreTmuxViewMode(sessionViewModes, record.sessionId, record.tmuxSessionName, getTmuxOption);
+    if (viewMode) await setTmuxOption(record.tmuxSessionName, TMUX_VIEW_MODE_OPTION, viewMode);
+  }
   const savedRecord = upsertGlobalSessionRecord(record);
   persistAndBroadcastGlobalState();
 
@@ -1951,7 +1991,13 @@ async function openInventorySession(
     });
   }
 
-  const inventory = await getSessionInventorySnapshot({ refresh: true });
+  let inventory = await getSessionInventorySnapshot({ refresh: true });
+  // A shared build may have started before this mutation. Wait for a new build
+  // if it lacks the confirmed binding, without spawning the terminal again.
+  if (!inventory.clientSessions.some(session => session.sessionId === savedRecord.sessionId
+    && session.backendSessionId === savedRecord.backendSessionId)) {
+    inventory = await getSessionInventorySnapshot({ refresh: true });
+  }
   return {
     session: getClientSessionView(inventory, savedRecord.sessionId),
     terminalSession: makeTerminalSessionPayload(backend.backendSessionId, backend.session, backend.cols, backend.rows),
@@ -2032,18 +2078,26 @@ function orchestrationSessionSnapshot(record: PersistedClientSession): Orchestra
   };
 }
 
-function searchMetadataForBackend(backendSessionId: string, session: TerminalSession): SessionSearchMetadata | null {
-  const record = globalSessionState.sessions.find((candidate) => candidate.backendSessionId === backendSessionId);
-  if (!record) return null;
+function searchMetadataForRecord(record: PersistedClientSession, session?: TerminalSession | null): SessionSearchMetadata {
+  const cwd = session?.cwd ?? record.cwd ?? '';
   return {
-    sessionId: record.sessionId,
-    backendSessionId,
-    title: record.name,
-    cwd: session.cwd ?? record.cwd ?? '',
-    agentSlug: session.agent?.slug ?? record.agentResume?.slug ?? null,
-    agentNativeSessionId: session.agentSession?.sessionId ?? record.agentResume?.sessionId ?? null,
-    updatedAt: session.lastActivity,
+    sessionId: record.sessionId, backendSessionId: record.backendSessionId ?? null,
+    title: getSessionPresentation({ ...record, cwd,
+      activeProgram: session?.activeProgram?.command ?? record.activeProgram,
+      shellTitle: session?.lastOscTitle ?? record.shellTitle,
+      promptState: session?.lastPromptState ?? null, agent: session?.agent,
+    }, shellNamesBackend).displayName,
+    titleSource: record.autoTitle ? 'auto' : record.customName ? 'custom' : 'default',
+    cwd, mode: record.mode, tmuxSessionName: record.tmuxSessionName,
+    agentSlug: session?.agent?.slug ?? record.agentResume?.slug ?? null,
+    agentNativeSessionId: session?.agentSession?.sessionId ?? record.agentResume?.sessionId ?? null,
+    updatedAt: session?.lastActivity ?? record.lastActivity,
   };
+}
+
+function searchMetadataForBackend(backendSessionId: string, session: TerminalSession): SessionSearchMetadata | null {
+  const record = globalSessionState.sessions.find(candidate => candidate.backendSessionId === backendSessionId);
+  return record ? searchMetadataForRecord(record, session) : null;
 }
 
 async function beginAgentLaunchCheck(frontendSessionId: string, agentSlug: string, nativeSessionId: string | null = null,
@@ -2120,11 +2174,44 @@ async function automaticTerminalInput(record: PersistedClientSession, assertCurr
   return (prompt: string) => writeBracketedPrompt(backend.ptyProcess, prompt, assertCurrent, progress);
 }
 
-async function writeAutomaticTerminalPrompt(frontendSessionId: string, prompt: string, progress?: PromptWriteProgress, launchGuard?: TerminalInputGuard): Promise<void> {
+async function writeAutomaticTerminalPrompt(frontendSessionId: string, prompt: string, progress?: PromptWriteProgress, launchGuard?: TerminalInputGuard, requestId?: string): Promise<void> {
   const record = globalSessionState.sessions.find(candidate => candidate.sessionId === frontendSessionId);
   if (!record) throw new Error('SESSION_REMOVED');
-  const write = await automaticTerminalInput(record, launchGuard ?? terminalInputGuard(record), progress);
+  const assertCurrent = launchGuard ?? terminalInputGuard(record);
+  const argv = launchGuard && record.agentLaunchCheck?.agentSlug === 'codex' && !record.agentLaunchCheck.nativeSessionId
+    ? codexColdLaunchArgv(prompt) : null;
+  const attemptId = requestId ?? record.agentLaunchCheck?.id;
+  const commandHash = createHash('sha256').update(prompt).digest('hex');
+  if (launchGuard && attemptId && replayAgentLaunchAttempt(record.agentLaunchAttempt, attemptId, commandHash) === 'submitted') return;
+  const saveAttempt = async (state: AgentLaunchAttempt['state']) => {
+    assertCurrent('runtime_resolve');
+    const latest = globalSessionState.sessions.find(candidate => candidate.sessionId === frontendSessionId);
+    if (!latest || !attemptId) throw new Error('SESSION_REMOVED');
+    upsertGlobalSessionRecord(latest, { expectedGeneration: latest.agentLaunchGeneration ?? null,
+      expectedCheckId: latest.agentLaunchCheck?.id ?? null, generation: latest.agentLaunchGeneration ?? null,
+      check: latest.agentLaunchCheck ?? null, attempt: { id: attemptId, commandHash, state, updatedAt: Date.now() } });
+    await persistGlobalStateNow(true);
+    assertCurrent('runtime_resolved');
+  };
+  if (argv && attemptId) {
+    await saveAttempt('preparing');
+    try {
+      const prepared = await prepareCodexThread(argv, record.cwd || os.homedir());
+      const nativeSessionId = prepared.sessionId;
+      assertCurrent('runtime_resolved');
+      const latest = globalSessionState.sessions.find(candidate => candidate.sessionId === frontendSessionId)!;
+      upsertGlobalSessionRecord({ ...latest,
+        agentResume: { slug: 'codex', sessionId: nativeSessionId, launchArgv: prepared.launchArgv, updatedAt: Date.now() },
+      }, { expectedGeneration: latest.agentLaunchGeneration ?? null, expectedCheckId: latest.agentLaunchCheck?.id ?? null,
+        generation: latest.agentLaunchGeneration ?? null, check: latest.agentLaunchCheck ? { ...latest.agentLaunchCheck, nativeSessionId } : null });
+      await saveAttempt('prepared');
+      prompt = codexPreparedResumeCommand(prepared.launchArgv, nativeSessionId);
+    } catch (error) { await saveAttempt('failed'); throw error; }
+  }
+  const write = await automaticTerminalInput(globalSessionState.sessions.find(candidate => candidate.sessionId === frontendSessionId)!, assertCurrent, progress);
+  if (argv && attemptId) await saveAttempt('unconfirmed');
   await write(prompt);
+  if (argv && attemptId) await saveAttempt('submitted');
 }
 
 async function deliverAutomationPromptWhenReady(backendSessionId: string, prompt: string): Promise<void> {
@@ -2199,6 +2286,24 @@ export function resolveStableFederationSessionId(id: string): string | null {
   if (!id) return null;
   try { return resolveFrontendSessionId({ sessionId: id, backendSessionId: id }); }
   catch { return null; }
+}
+
+/** Reattach only an existing, already owned tmux Session after a service restart.
+ * The encrypted directory checks the viewer's scope before invoking this. */
+export async function restoreSharedFederationSession(sessionId: string): Promise<boolean> {
+  const input = { preferredFrontendSessionId: sessionId, requireExisting: true };
+  const record = globalSessionState.sessions.find(session => session.sessionId === sessionId);
+  if (!record || record.mode !== 'tmux' || !record.tmuxSessionName) return false;
+  if (record.backendSessionId && terminalSessions.has(record.backendSessionId)) return true;
+  try {
+    await withInventoryOpenLock(makeInventoryOpenLockKey(input), async () => {
+      const current = globalSessionState.sessions.find(session => session.sessionId === sessionId);
+      if (!current || current.mode !== 'tmux' || current.tmuxSessionName !== record.tmuxSessionName) throw new Error('SHARED_SESSION_UNAVAILABLE');
+      await runTmux(['has-session', '-t', `=${current.tmuxSessionName}`]);
+      return openInventorySession({} as express.Request, input);
+    });
+    return true;
+  } catch { return false; }
 }
 
 function collaborationRemoteSessions() {
@@ -2290,11 +2395,28 @@ async function inspectCollaborationTmux(binding: CollaborationBinding, requested
     if (identity.failure && !describeNativeFailure) integrationError(identity.failure === 'NATIVE_SESSION_IDENTITY_CONFLICT'
       ? 'NATIVE_SESSION_ID_MISMATCH' : 'NATIVE_SESSION_OWNER_UNCONFIRMED', 'Current process native identity evidence conflicts or cannot be uniquely verified', 409);
     const nativeSessionId = identity.nativeId;
+    // A normal resumed terminal may have no optional native writer-lock
+    // protocol. Use fresh kernel process/foreground/ancestry evidence for its
+    // exact resume argv; never weaken integration or explicitly scoped proof.
+    let foregroundProcessIdentity = nativeProcessIdentity && identity.source === 'argv' && nativeSessionId
+      && !identity.failure && !identityOverride && !binding.tmuxSessionName?.startsWith('wt-integration-')
+      && !globalSessionState.sessions.find(record => record.sessionId === binding.sessionId)?.agentNativeIdentity
+      && program?.processPid && program.rawArgs
+      ? await readForegroundResumeIdentity({ panePid: pane.pid, processPid: program.processPid, rawArgs: program.rawArgs, processComm: program.processComm }) : null;
+    if (foregroundProcessIdentity && nativeSessionId && program?.processPid) {
+      const owners = (await getProcessSnapshot()).filter(row => {
+        if (!row.args.includes(nativeSessionId)) return false;
+        const owner = detectAgentFromCommand(row.args, agentCustomCommands());
+        return !!owner && owner.slug === agent?.slug && inferResumeSessionId(owner, splitCommandToArgv(row.args)) === nativeSessionId;
+      });
+      if (!hasUniqueForegroundResumeGroup(owners, program.processPid)) foregroundProcessIdentity = null;
+    }
     return { serverPid, sessionId: layout.sessionId, paneId: pane.id, panePid: pane.pid,
       agentSlug: agent?.slug ?? '', nativeSessionId, cwd: pane.currentPath,
       isShell: shellNamesBackend.has(normalizeProgramName(program?.command ?? '')?.toLowerCase() ?? ''),
-      ...(nativeProcessIdentity ? { nativeIdentitySource: identity.source, nativeIdentityFailure: identity.failure,
-        nativeIdentityVerified: identity.source === 'linux-flock-owner' && !identity.failure } : {}) };
+      ...(nativeProcessIdentity ? { nativeIdentitySource: foregroundProcessIdentity ? 'foreground-resume' as const : identity.source, nativeIdentityFailure: identity.failure,
+        nativeIdentityVerified: (identity.source === 'linux-flock-owner' || !!foregroundProcessIdentity) && !identity.failure,
+        ...(foregroundProcessIdentity ? { foregroundProcessIdentity } : {}) } : {}) };
   }));
   const candidates = requestedPane ? panes.filter((pane) => pane.paneId === requestedPane) : panes;
   if (allowPlainPane && !binding.pane) {
@@ -2376,6 +2498,7 @@ async function rebindCollaborationRoute(frontendSessionId: string, paneId: strin
  */
 async function resolveCollaborationRoute(frontendSessionId: string): Promise<CollaborationRoute> {
   let recoveredNativeIdentity = false;
+  let previousRecoveredBinding: CollaborationBinding | null = null;
   let record = globalSessionState.sessions.find((candidate) => candidate.sessionId === frontendSessionId);
   if (!record) return { state: 'offline', reason: 'SESSION_REMOVED' };
   if (record.tmuxSessionName?.startsWith('wt-integration-') && !integrationDeliveryGuard) return { state: 'unavailable', reason: 'INTEGRATION_RUNTIME_UNAVAILABLE' };
@@ -2402,6 +2525,7 @@ async function resolveCollaborationRoute(frontendSessionId: string): Promise<Col
       if (confirmed.diagnostics.recovery !== 'automatic' || !confirmed.pane || JSON.stringify(confirmed.pane) !== JSON.stringify(assessment.pane)) {
         return { state: 'identity-mismatch', reason: 'ROUTE_CHANGED_DURING_RECOVERY', diagnostics: confirmed.diagnostics };
       }
+      previousRecoveredBinding = binding;
       binding = { ...binding, pane: confirmed.pane, routeRevision: crypto.randomUUID(),
         lastRecovery: { kind: 'native-identity', at: Date.now(), previousPane: binding.pane } };
       collaborationRouting.bind(binding);
@@ -2439,20 +2563,29 @@ async function resolveCollaborationRoute(frontendSessionId: string): Promise<Col
     if (!backend) return { state: 'detached', reason: 'TMUX_BACKEND_UNAVAILABLE' };
     assertGeneration();
     const assertCurrent = terminalInputGuard(globalSessionState.sessions.find(candidate => candidate.sessionId === frontendSessionId)!);
-    const writeText = async (prompt: string) => {
-      if (!globalSessionState.sessions.some((candidate) => candidate.sessionId === frontendSessionId)) throw new Error('SESSION_REMOVED');
-      if (recoveredNativeIdentity) {
-        const current = await inspectCollaborationTmux(binding, null, false, true, true, true);
-        const proof = current.candidates?.find(candidate => candidate.serverPid === pinned.serverPid && candidate.sessionId === pinned.sessionId
-          && candidate.paneId === pinned.paneId && candidate.panePid === pinned.panePid);
-        if (!proof?.nativeIdentityVerified || proof.nativeIdentityFailure || proof.nativeSessionId !== pinned.nativeSessionId
-          || proof.agentSlug !== pinned.agentSlug || !routeOwnershipConfirmed(frontendSessionId, binding, [proof])) throw new Error('ROUTE_NATIVE_IDENTITY_CHANGED_BEFORE_WRITE');
+    const validateRecoveredTarget = recoveredNativeIdentity ? async () => {
+      const current = await inspectCollaborationTmux(binding, null, false, true, true, true);
+      const proof = current.candidates?.find(candidate => candidate.serverPid === pinned.serverPid && candidate.sessionId === pinned.sessionId
+        && candidate.paneId === pinned.paneId && candidate.panePid === pinned.panePid);
+      if (!proof?.nativeIdentityVerified || proof.nativeIdentityFailure || proof.nativeSessionId !== pinned.nativeSessionId
+        || proof.agentSlug !== pinned.agentSlug || proof.foregroundProcessIdentity !== pane.foregroundProcessIdentity
+        || !routeOwnershipConfirmed(frontendSessionId, binding, [proof])) {
+        // Do not leave a failed adoption looking like an unchanged, trusted
+        // pane on the next retry. Never overwrite another owner's rebind.
+        if (previousRecoveredBinding && collaborationRouting.get(frontendSessionId)?.routeRevision === binding.routeRevision) {
+          collaborationRouting.bind({ ...previousRecoveredBinding, routeRevision: crypto.randomUUID() });
+        }
+        throw new Error('ROUTE_NATIVE_IDENTITY_CHANGED_BEFORE_WRITE');
       }
-      await writeCollaborationTmuxPane(runTmux, pinned, prompt, runTmuxStdin, () => { assertGeneration(); assertCurrent(); });
+    } : undefined;
+    const writeText = async (prompt: string, progress?: PromptWriteProgress) => {
+      progress?.('queue_wait');
+      if (!globalSessionState.sessions.some((candidate) => candidate.sessionId === frontendSessionId)) throw new Error('SESSION_REMOVED');
+      await writeCollaborationTmuxPane(runTmux, pinned, prompt, runTmuxStdin, () => { assertGeneration(); assertCurrent(); }, progress, validateRecoveredTarget, !!pinned.agentSlug && !pane.isShell);
       backend!.lastActivity = Date.now();
     };
-    return { state: 'ready', isShell: pane.isShell, capture: async () => captureTmuxPaneText(runTmux, pinned), writeText,
-      write: messages => writeText(formatLocalCollaborationMessages(frontendSessionId, messages)) };
+    return { state: 'ready', tracksWriteProgress: true, isShell: pane.isShell, capture: async () => captureTmuxPaneText(runTmux, pinned), writeText,
+      write: (messages, progress) => writeText(formatLocalCollaborationMessages(frontendSessionId, messages), progress) };
   }
   if (!backend || !binding.backendSessionId) return { state: 'offline', reason: 'SHELL_BACKEND_NOT_RUNNING' };
   await refreshCollaborationAgentIdentity(binding.backendSessionId, backend, Boolean(record.agentLaunchCheck));
@@ -2465,19 +2598,20 @@ async function resolveCollaborationRoute(frontendSessionId: string): Promise<Col
     const launch = await observeAgentLaunchCheck(record, { agentSlug: agent?.slug ?? null, nativeSessionId });
     if (launch) return launch;
   }
-  const writeText = async (prompt: string) => {
+  const writeText = async (prompt: string, progress?: PromptWriteProgress) => {
+    progress?.('queue_wait');
     if (!globalSessionState.sessions.some((candidate) => candidate.sessionId === frontendSessionId)) throw new Error('SESSION_REMOVED');
     if (terminalSessions.get(binding.backendSessionId!) !== target) throw new Error('SHELL_BACKEND_CHANGED');
     await writeBracketedPrompt(target.ptyProcess, prompt, () => {
       assertGeneration(); assertCurrent();
       if (terminalSessions.get(binding.backendSessionId!) !== target) throw new Error('TERMINAL_INPUT_TARGET_CHANGED');
-    });
+    }, progress, canDeliverPromptToAgent(target) ? () => target.autoTitleTerminal.snapshot(true) : undefined);
     target.lastActivity = Date.now();
   };
-  return { state: 'ready',
+  return { state: 'ready', tracksWriteProgress: true,
     isShell: backend.activeProgram?.source !== 'unknown' && shellNamesBackend.has(backend.activeProgram?.command?.toLowerCase() ?? ''),
     capture: async () => target.autoTitleContext, writeText,
-    write: messages => writeText(formatLocalCollaborationMessages(frontendSessionId, messages)) };
+    write: (messages, progress) => writeText(formatLocalCollaborationMessages(frontendSessionId, messages), progress) };
 }
 
 
@@ -3407,6 +3541,10 @@ async function enableTmuxMouse(sessionName: string): Promise<void> {
 }
 
 async function configureTmuxWheelBindings(): Promise<void> {
+  await batchTmuxConfiguration(runTmux, configureTmuxWheelBindingsIndividually);
+}
+
+async function configureTmuxWheelBindingsIndividually(runTmux: (args: string[]) => Promise<unknown>): Promise<void> {
   // Pass mouse events through to TUI programs when they request mouse
   // reporting (vim with mouse=a, htop, etc.).  When only the alternate
   // screen is active (less, man without mouse), send arrow keys instead.
@@ -3485,26 +3623,30 @@ async function applyTmuxScrollbackProfile(sessionName?: string): Promise<void> {
     );
   }
 
-  for (const args of commands) {
-    try {
-      await runTmux(args);
-    } catch (error) {
-      console.warn(`[tmux] failed to apply scrollback profile (${args.join(' ')}): ${getErrorMessage(error)}`);
+  await batchTmuxConfiguration(runTmux, async run => {
+    for (const args of commands) {
+      try {
+        await run(args);
+      } catch (error) {
+        console.warn(`[tmux] failed to apply scrollback profile (${args.join(' ')}): ${getErrorMessage(error)}`);
+      }
     }
-  }
+  });
 
   if (!sessionName) return;
 
   try {
     const windowsRaw = await runTmux(['list-windows', '-t', sessionName, '-F', '#{window_id}']);
     const windowIds = windowsRaw.split('\n').map((line) => line.trim()).filter(Boolean);
-    for (const windowId of windowIds) {
-      try {
-        await runTmux(['set-option', '-w', '-t', windowId, 'scroll-on-clear', 'off']);
-      } catch (error) {
-        console.warn(`[tmux] failed to disable scroll-on-clear for ${windowId}: ${getErrorMessage(error)}`);
+    await batchTmuxConfiguration(runTmux, async run => {
+      for (const windowId of windowIds) {
+        try {
+          await run(['set-option', '-w', '-t', windowId, 'scroll-on-clear', 'off']);
+        } catch (error) {
+          console.warn(`[tmux] failed to disable scroll-on-clear for ${windowId}: ${getErrorMessage(error)}`);
+        }
       }
-    }
+    });
   } catch (error) {
     console.warn(`[tmux] failed to list windows for scrollback profile on ${sessionName}: ${getErrorMessage(error)}`);
   }
@@ -3557,6 +3699,11 @@ async function setTmuxOptions(
   sessionName: string,
   options: Record<string, string>,
 ): Promise<void> {
+  if (!Object.keys(options).length) return;
+  try {
+    await runTmux(batchTmuxOptions(sessionName, options));
+    return;
+  } catch { /* Retry each option with its original non-fatal error handling. */ }
   await Promise.all(
     Object.entries(options).map(([key, value]) => setTmuxOption(sessionName, key, value)),
   );
@@ -3596,14 +3743,14 @@ async function tmuxSessionExists(sessionName: string): Promise<boolean> {
 
 async function ensureTmuxColorEnvironment(sessionName?: string): Promise<void> {
   const forceColor = process.env.TERMDOCK_FORCE_COLOR === '1';
-  for (const args of buildTmuxColorEnvironmentCommands(sessionName, forceColor)) {
-    await runTmux(args);
-  }
+  await batchTmuxConfiguration(runTmux, async run => {
+    for (const args of buildTmuxColorEnvironmentCommands(sessionName, forceColor)) await run(args);
+  });
 }
 
 async function ensureManagedTmuxColorCapabilities(sessionName?: string): Promise<void> {
   const innerTerm = await resolveTmuxInnerTerm();
-  await ensureTmuxColorCapabilities(runTmux, sessionName, innerTerm);
+  await batchTmuxConfiguration(runTmux, run => ensureTmuxColorCapabilities(run, sessionName, innerTerm));
 }
 
 async function listLiveTmuxInventorySessions(): Promise<TmuxInventoryMeta[]> {
@@ -3697,18 +3844,20 @@ function getTmuxRecoveryView(): SessionInventory['tmuxRecovery'] {
   const incident = tmuxRecoveryState.incident;
   const latestOperation = tmuxRecoveryOperations.latest();
   if (!incident) {
-    if (!latestOperation || latestOperation.dismissedAt !== undefined || ['succeeded', 'partial_failure'].includes(latestOperation.state)) return null;
+    if (!latestOperation || latestOperation.dismissedAt !== undefined) return null;
+    if (['succeeded', 'partial_failure'].includes(latestOperation.state)
+      && Date.now() - Math.max(0, ...latestOperation.items.map(item => item.completedAt ?? 0)) > 60_000) return null;
     const sessions = latestOperation.items.flatMap(item => {
       const record = globalSessionState.sessions.find(candidate => candidate.sessionId === item.sessionId);
       const agent = record?.agentResume ? agentBySlug(record.agentResume.slug) : null;
       if (!record?.tmuxSessionName || !record.cwd || !agent || !record.agentResume?.sessionId) return [];
-      return [{ sessionId: record.sessionId, name: record.name, tmuxSessionName: record.tmuxSessionName,
+      return [{ sessionId: record.sessionId, name: getSessionPresentation({ ...record, agent }, shellNamesBackend).displayName, tmuxSessionName: record.tmuxSessionName,
         cwd: record.cwd, agentSlug: agent.slug, agentDisplayName: agent.displayName }];
     });
     return { id: latestOperation.incidentId, detectedAt: latestOperation.createdAt, operation: latestOperation, sessions };
   }
   const operation = latestOperation?.incidentId === incident.id ? latestOperation : null;
-  const affected = new Set(incident.affectedSessionIds);
+  const affected = new Set([...incident.affectedSessionIds, ...(operation?.items.map(item => item.sessionId) ?? [])]);
   const sessions = globalSessionState.sessions.flatMap((record) => {
     if (!affected.has(record.sessionId) || record.mode !== 'tmux' || !record.tmuxSessionName
       || !record.cwd || !record.agentResume?.sessionId) return [];
@@ -3716,7 +3865,7 @@ function getTmuxRecoveryView(): SessionInventory['tmuxRecovery'] {
     if (!agent) return [];
     return [{
       sessionId: record.sessionId,
-      name: record.name,
+      name: getSessionPresentation({ ...record, agent }, shellNamesBackend).displayName,
       tmuxSessionName: record.tmuxSessionName,
       cwd: record.cwd,
       agentSlug: agent.slug,
@@ -3743,21 +3892,22 @@ async function observeTmuxServerGeneration(liveTmuxSessions: TmuxInventoryMeta[]
   const restoredSessionIds = new Set<string>();
   const candidates = globalSessionState.sessions.flatMap((record) => {
     if (record.mode !== 'tmux' || !record.tmuxSessionName) return [];
-    const backend = record.backendSessionId ? terminalSessions.get(record.backendSessionId) : null;
     const live = liveTmuxByName.get(record.tmuxSessionName);
     // rawArgs comes from the refreshed foreground probe, not persisted tmux
     // options. A live shell alone does not prove its Agent was restored.
     const liveAgent = live?.rawArgs
       ? detectAgentFromCommand(live.rawArgs, agentCustomCommands())
       : null;
-    if (live && record.agentResume?.slug
-      && (liveAgent?.slug === record.agentResume.slug || backend?.agent?.slug === record.agentResume.slug)) {
+    if (liveAgent && live?.rawArgs && isConfirmedAgentResumeProcess(record.agentResume, liveAgent.slug,
+      inferResumeSessionId(liveAgent, splitCommandToArgv(live.rawArgs)))) {
       restoredSessionIds.add(record.sessionId);
     }
     return [{
       sessionId: record.sessionId,
       tmuxSessionName: record.tmuxSessionName,
-      resumable: Boolean(record.cwd && record.agentResume?.sessionId && !backend?.agent),
+      runtimeLost: tmuxRecoveryState.runtimeLostSessionIds?.includes(record.sessionId) === true,
+      resumable: Boolean(record.cwd && record.agentResume?.sessionId),
+      agentRunning: live?.foregroundProgram && shellNamesBackend.has(live.foregroundProgram.toLowerCase()) ? false : undefined,
     }];
   });
   const dismissedSessionIds = retainDismissedTmuxSessions(
@@ -3788,7 +3938,22 @@ async function observeTmuxServerGeneration(liveTmuxSessions: TmuxInventoryMeta[]
     tmuxRecoveryState.lastServerPid = currentServerPid;
     changed = true;
   }
+  const retainedLosses = (tmuxRecoveryState.runtimeLostSessionIds ?? []).filter(id =>
+    candidates.some(candidate => candidate.sessionId === id) && !restoredSessionIds.has(id));
+  if (retainedLosses.length !== (tmuxRecoveryState.runtimeLostSessionIds?.length ?? 0)) {
+    tmuxRecoveryState.runtimeLostSessionIds = retainedLosses; changed = true;
+  }
   if (changed) await persistTmuxRecoveryState();
+  if (shouldAutomaticallyRecoverTmuxIncident(incident, tmuxRecoveryOperations.all().map(operation => operation.incidentId))) {
+    // Leave this inventory build before the worker broadcasts progress. The
+    // durable key coalesces concurrent observations and prevents replay.
+    setTimeout(() => {
+      if (tmuxRecoveryState.incident?.id !== incident.id) return;
+      void tmuxRecoveryOperations.create({ incidentId: incident.id, sessionIds: incident.affectedSessionIds,
+        scope: { kind: 'incident' }, idempotencyKey: `automatic-recovery:${incident.id}` })
+        .catch(error => console.warn('[tmux-recovery] automatic reconnect failed:', getErrorMessage(error)));
+    }, 0).unref?.();
+  }
 }
 
 async function buildSessionInventory(): Promise<SessionInventory> {
@@ -3813,7 +3978,12 @@ async function buildSessionInventory(): Promise<SessionInventory> {
     }
 
     try {
-      const metadata = await resolveLiveTmuxMetadata(tmux.name, true);
+      const recoveryPending = globalSessionState.sessions.some(record => record.tmuxSessionName === tmux.name
+        && (tmuxRecoveryState.runtimeLostSessionIds?.includes(record.sessionId)
+          || tmuxRecoveryState.incident?.affectedSessionIds.includes(record.sessionId)));
+      // A cached layout can still name the old pane/PID immediately after
+      // loss. It must never retire an incident as "already restored".
+      const metadata = await resolveLiveTmuxMetadata(tmux.name, !recoveryPending, recoveryPending);
       if (!metadata) {
         return tmux;
       }
@@ -3822,6 +3992,7 @@ async function buildSessionInventory(): Promise<SessionInventory> {
       return {
         ...tmux,
         program: metadata.program,
+        foregroundProgram: metadata.foregroundProgram,
         rawArgs: metadata.rawArgs,
         shellTitle: metadata.shellTitle,
         cwd: metadata.cwd,
@@ -3907,6 +4078,7 @@ async function buildSessionInventory(): Promise<SessionInventory> {
     return {
       ...session,
       frontendSessionId: session.sessionId,
+      viewMode: sessionViewModes.get(session.sessionId)?.mode ?? null,
       collectionRunId: collectionSessions.get(session.sessionId) ?? null,
       customName: session.customName === true,
       connected: backendLive,
@@ -3957,6 +4129,12 @@ async function buildSessionInventory(): Promise<SessionInventory> {
     const bound = clientByTmux.get(tmux.name) ?? null;
     return {
       name: tmux.name,
+      // Detached sessions still have a live pane title. Project it with the
+      // same rules as the main directory instead of reusing the CLI label.
+      ...(bound ? { displayName: bound.displayName, displaySubtitle: bound.displaySubtitle }
+        : getSessionPresentation({ name: tmux.friendlyName?.trim() || `tmux:${tmux.name}`,
+          customName: Boolean(tmux.friendlyName?.trim()), mode: 'tmux',
+          activeProgram: tmux.program, cwd: tmux.cwd, shellTitle: tmux.shellTitle }, shellNamesBackend)),
       windows: tmux.windows,
       attached: tmux.attachedCount,
       attachedCount: tmux.attachedCount,
@@ -5036,8 +5214,15 @@ async function findExternalCodexWriter(target: AgentResumeTarget): Promise<numbe
     const { stdout } = await execFileAsync('lsof', ['-t', '--', sessionFile], { timeout: 2500, maxBuffer: 64 * 1024 });
     // Our search worker reads these files in this process; that read-only
     // descriptor must not be mistaken for an external Codex conversation owner.
-    const pid = stdout.split(/\s+/).map(Number).find((value) => Number.isInteger(value) && value > 1 && value !== process.pid);
-    return pid ?? null;
+    const codexHome = process.env.CODEX_HOME || path.join(os.homedir(), '.codex');
+    for (const pid of stdout.split(/\s+/).map(Number)) {
+      if (!Number.isInteger(pid) || pid <= 1 || pid === process.pid) continue;
+      // The managed daemon retains original threads after a TUI disconnects.
+      // A normal Codex resume reconnects to that owner, as verified on Linux.
+      if (await isSharedCodexDaemon(pid, codexHome)) continue;
+      return pid;
+    }
+    return null;
   } catch {
     return null;
   }
@@ -5065,6 +5250,7 @@ interface ProgramDetectionConfig {
   /** User-defined wrapper→agent rules: a personal launcher (`cc`) is branded
    *  like the agent it launches (`claude`). Applies to the launcher only. */
   agentCommands?: Record<string, string>;
+  chatProgramNames?: string[];
 }
 
 const DEFAULT_PROGRAM_DETECTION: ProgramDetectionConfig = {
@@ -5072,12 +5258,14 @@ const DEFAULT_PROGRAM_DETECTION: ProgramDetectionConfig = {
   wrapperScriptNames: ['npx', 'yarn', 'dlx'],
   shellNames: ['bash', 'zsh', 'fish', 'sh', 'dash', 'ksh', 'tcsh', 'csh', 'nu'],
   agentCommands: {},
+  chatProgramNames: [],
 };
 
 let genericProgramNames = new Set(DEFAULT_PROGRAM_DETECTION.genericProgramNames);
 let wrapperScriptNames = new Set(DEFAULT_PROGRAM_DETECTION.wrapperScriptNames);
 let shellNamesBackend = new Set(DEFAULT_PROGRAM_DETECTION.shellNames);
 let agentCommandsMap: Record<string, string> = { ...DEFAULT_PROGRAM_DETECTION.agentCommands };
+let chatProgramNames = new Set<string>();
 
 async function loadProgramDetectionFromDisk(): Promise<ProgramDetectionConfig> {
   try {
@@ -5087,6 +5275,7 @@ async function loadProgramDetectionFromDisk(): Promise<ProgramDetectionConfig> {
       genericProgramNames: Array.isArray(parsed.genericProgramNames) ? parsed.genericProgramNames : DEFAULT_PROGRAM_DETECTION.genericProgramNames,
       wrapperScriptNames: Array.isArray(parsed.wrapperScriptNames) ? parsed.wrapperScriptNames : DEFAULT_PROGRAM_DETECTION.wrapperScriptNames,
       shellNames: Array.isArray(parsed.shellNames) ? parsed.shellNames : DEFAULT_PROGRAM_DETECTION.shellNames,
+      chatProgramNames: Array.isArray(parsed.chatProgramNames) ? parsed.chatProgramNames.filter(name => typeof name === 'string' && validChatProgramName(name)) : [],
       agentCommands: parsed.agentCommands && typeof parsed.agentCommands === 'object' && !Array.isArray(parsed.agentCommands)
         ? Object.fromEntries(
             Object.entries(parsed.agentCommands as Record<string, unknown>)
@@ -5103,6 +5292,8 @@ function applyProgramDetectionConfig(config: ProgramDetectionConfig): void {
   wrapperScriptNames = new Set(config.wrapperScriptNames);
   shellNamesBackend = new Set(config.shellNames);
   agentCommandsMap = { ...(config.agentCommands ?? {}) };
+  chatProgramNames = new Set(config.chatProgramNames ?? []);
+  setChatProgramNames([...chatProgramNames]);
 }
 
 async function saveProgramDetectionToDisk(config: ProgramDetectionConfig): Promise<void> {
@@ -5330,7 +5521,7 @@ function getCwdFromTmuxLayout(layout: TmuxLayout): string | null {
   return activePane?.currentPath || null;
 }
 
-async function resolveLiveTmuxMetadata(tmuxSessionName: string, cached = false, freshProcess = false): Promise<(TmuxRuntimeMetadata & { shellTitle: string | null }) | null> {
+async function resolveLiveTmuxMetadata(tmuxSessionName: string, cached = false, freshProcess = false): Promise<(TmuxRuntimeMetadata & { shellTitle: string | null; foregroundProgram: string | null }) | null> {
   const layout = cached ? await getCachedTmuxLayout(tmuxSessionName) : await getTmuxLayout(tmuxSessionName);
   const activePane = getActivePaneFromLayout(layout);
   if (!activePane) {
@@ -5349,6 +5540,7 @@ async function resolveLiveTmuxMetadata(tmuxSessionName: string, cached = false, 
       rawArgs: resolved?.rawArgs ?? null,
     }),
     shellTitle: activePane.title || null,
+    foregroundProgram: program,
   };
 }
 
@@ -5745,7 +5937,7 @@ async function ensureSharedTmuxServerReady(): Promise<void> {
   await configureTmuxWheelBindings();
 }
 
-async function stampTmuxMetadata(sessionName: string): Promise<void> {
+async function tmuxSessionStamp(sessionName: string): Promise<Record<string, string>> {
   const baseOptions: Record<string, string> = {
     '@termdock-version': TERMDOCK_VERSION,
     '@termdock-host': TERMDOCK_HOST,
@@ -5755,7 +5947,11 @@ async function stampTmuxMetadata(sessionName: string): Promise<void> {
   if (!existingCreatedAt) {
     baseOptions['@termdock-created-at'] = String(Date.now());
   }
-  await setTmuxOptions(sessionName, baseOptions);
+  return baseOptions;
+}
+
+async function stampTmuxMetadata(sessionName: string): Promise<void> {
+  await setTmuxOptions(sessionName, await tmuxSessionStamp(sessionName));
 }
 
 async function ensureManagedTmuxSessionReady(sessionName: string): Promise<void> {
@@ -5792,17 +5988,59 @@ async function ensureManagedTmuxSessionReady(sessionName: string): Promise<void>
   // the shell-integration path, which early-returns) so every managed
   // session gets them regardless of shell type.
   try {
-    await runTmux(['set-environment', '-t', sessionName, 'TERMDOCK', '1']);
-    await runTmux(['set-option', '-t', sessionName, 'allow-passthrough', 'on']);
+    await batchTmuxConfiguration(runTmux, async run => {
+      await run(['set-environment', '-t', sessionName, 'TERMDOCK', '1']);
+      await run(['set-option', '-t', sessionName, 'allow-passthrough', 'on']);
+    });
   } catch (error) {
     console.warn(`Failed to enable agent-hook plumbing for ${sessionName}: ${getErrorMessage(error)}`);
   }
 }
 
+async function configureManagedTmuxSessionBatch(sessionName: string): Promise<void> {
+  const [innerTerm, stamp, windowsRaw, switchesRaw] = await Promise.all([
+    resolveTmuxInnerTerm(), tmuxSessionStamp(sessionName),
+    runTmux(['list-windows', '-t', sessionName, '-F', '#{window_id}']),
+    runTmux(['show-options', '-gqv', 'focus-events', ';', 'show-options', '-gqv', 'extended-keys']),
+  ]);
+  const [focusEvents, extendedKeys] = switchesRaw.trim().split('\n');
+  // Reapply the full contract on every preparation. Batching removes process
+  // overhead without trusting a success cache after external edits or restart.
+  const commands: string[][] = [
+    ...(focusEvents === 'off' ? [] : [['set-option', '-g', 'focus-events', 'off']]),
+    ...buildTmuxColorEnvironmentCommands(sessionName, process.env.TERMDOCK_FORCE_COLOR === '1'),
+  ];
+  const collect = async (args: string[]) => { commands.push(args); };
+  await ensureTmuxColorCapabilities(collect, sessionName, innerTerm);
+  commands.push(
+    ['set-option', '-g', 'history-limit', String(TERMDOCK_TMUX_HISTORY_LIMIT)],
+    ['set-option', '-gw', 'scroll-on-clear', 'off'],
+    ['set-option', '-t', sessionName, 'history-limit', String(TERMDOCK_TMUX_HISTORY_LIMIT)],
+    ...(extendedKeys === 'on' ? [] : [['set-option', '-g', 'extended-keys', 'on']]),
+  );
+  await configureTmuxWheelBindingsIndividually(collect);
+  commands.push(
+    ['set-option', '-t', sessionName, 'status', 'off'],
+    ['set-option', '-t', sessionName, 'mouse', 'on'],
+    ...windowsRaw.split('\n').map(value => value.trim()).filter(Boolean)
+      .map(id => ['set-option', '-w', '-t', id, 'scroll-on-clear', 'off']),
+    ...Object.entries(stamp).map(([key, value]) => ['set-option', '-t', sessionName, key, value]),
+    ['set-environment', '-t', sessionName, 'TERMDOCK', '1'],
+    ['set-option', '-t', sessionName, 'allow-passthrough', 'on'],
+  );
+  await runTmux(batchTmuxCommands(commands));
+}
+
 async function prepareManagedTmuxSessionUnlocked(sessionName: string, cwd?: string): Promise<void> {
   await ensureTmuxSessionExists(sessionName, cwd);
-  await ensureSharedTmuxServerReady();
-  await ensureManagedTmuxSessionReady(sessionName);
+  try {
+    await configureManagedTmuxSessionBatch(sessionName);
+  } catch {
+    // Old tmux versions can reject individual options. Preserve the established
+    // fallbacks, retries and non-fatal handling instead of skipping preparation.
+    await ensureSharedTmuxServerReady();
+    await ensureManagedTmuxSessionReady(sessionName);
+  }
 }
 
 async function prepareManagedTmuxSession(sessionName: string, cwd?: string): Promise<void> {
@@ -6325,7 +6563,11 @@ function processSessionOutput(sessionId: string, session: TerminalSession, data:
       const buf = session.oscSniffBuf + data;
       const result = sniffOsc(buf, home);
       session.oscSniffBuf = result.remaining;
-      const progress = terminalProgramStatus(session).feed(data);
+      // tmux consumes native status OSCs and display replays are not program
+      // output. Its control observer owns status parsing from the pane stream.
+      const progress = session.mode === 'tmux' && session.paneOutputObserver
+        ? { changed: false, query: false, progress: session.tuiProgress, endedApps: [] as string[] }
+        : terminalProgramStatus(session).feed(data);
       if (progress.query && opts.broadcast) session.ptyProcess.write(PROGRAM_STATUS_REPLY);
 
       // CWD change
@@ -6402,6 +6644,26 @@ function startTmuxPaneOutputActivity(sessionId: string, session: TerminalSession
         if (terminalSessions.get(sessionId) !== session) return;
         session.outputActivity?.dispose(true);
         session.outputActivity = undefined;
+        const interrupted = globalSessionState.sessions.find(record => record.backendSessionId === sessionId);
+    if (session.mode === 'tmux' && interrupted?.agentResume?.sessionId && (session.agent || interrupted.agentLaunchAttempt?.state === 'submitted')) {
+      tmuxRecoveryState.runtimeLostSessionIds = [...new Set([...(tmuxRecoveryState.runtimeLostSessionIds ?? []), interrupted.sessionId])];
+      void persistTmuxRecoveryState();
+    }
+    const progress = terminalProgramStatus(session).exit();
+        if (progress.changed) {
+          session.tuiProgress = progress.progress;
+          broadcastEvent(sessionId, { type: 'tui-progress', tuiProgress: session.tuiProgress });
+        }
+      },
+      undefined,
+      (sequence, pane) => {
+        if (terminalSessions.get(sessionId) !== session) return;
+        const progress = terminalProgramStatus(session).feed(sequence, `pane${pane.slice(1)}`);
+        if (progress.changed) {
+          session.tuiProgress = progress.progress;
+          broadcastEvent(sessionId, { type: 'tui-progress', tuiProgress: session.tuiProgress });
+        }
+        if (progress.endedApps.length) scheduleNativeStatusRecovery(sessionId, session, progress.endedApps);
       },
     );
     session.paneOutputObserver.start();
@@ -6416,6 +6678,11 @@ function setupPtyHandlers(sessionId: string, session: TerminalSession): void {
 
   session.exitDisposable = session.ptyProcess.onExit(({ exitCode, signal }) => {
     console.log(`Terminal session ${sessionId} exited with code ${exitCode}, signal ${signal}`);
+    const interrupted = globalSessionState.sessions.find(record => record.backendSessionId === sessionId);
+    if (session.mode === 'tmux' && interrupted?.agentResume?.sessionId && (session.agent || interrupted.agentLaunchAttempt?.state === 'submitted')) {
+      tmuxRecoveryState.runtimeLostSessionIds = [...new Set([...(tmuxRecoveryState.runtimeLostSessionIds ?? []), interrupted.sessionId])];
+      void persistTmuxRecoveryState();
+    }
     const progress = terminalProgramStatus(session).exit();
     if (progress.changed) {
       session.tuiProgress = progress.progress;
@@ -6434,6 +6701,9 @@ function setupPtyHandlers(sessionId: string, session: TerminalSession): void {
       notifyTerminalExit(sessionId, typeof exitCode === 'number' ? exitCode : null);
     }
     cleanupSession(sessionId, { killProcess: false });
+    if (session.mode === 'tmux') {
+      void reconcileClientState().catch(error => console.warn('[tmux-recovery] terminal exit observation failed:', getErrorMessage(error)));
+    }
   });
 }
 
@@ -6994,6 +7264,8 @@ router.get('/tmux/sessions', async (_req, res) => {
     const inventory = await getSessionInventorySnapshot();
     const sessions = inventory.tmuxSessions.map((session) => ({
       name: session.name,
+      displayName: session.displayName,
+      displaySubtitle: session.displaySubtitle,
       windows: session.windows,
       attached: session.attachedCount,
       attachedCount: session.attachedCount,
@@ -7039,11 +7311,21 @@ async function restoreTmuxRecoverySession(operationId: string, frontendSessionId
   const target: AgentResumeTarget = { slug: agent.slug, nativeSessionId: record.agentResume.sessionId, command };
   await collaborationDeliveryWorker.reconfigure(frontendSessionId, () => tmuxLifecycle.run(`restore:${record.tmuxSessionName}`, async () => {
     // Reconcile ownership again inside the per-terminal serialization fence.
-    if (findActiveAgentResumeOwner('', target) || await findExternalCodexWriter(target)) return;
     reportPhase('runtime_resolving');
     await prepareManagedTmuxSessionUnlocked(record.tmuxSessionName!, record.cwd!);
-    const metadata = await resolveLiveTmuxMetadata(record.tmuxSessionName!, false, true);
-    const foreground = metadata?.program?.toLowerCase() ?? null;
+    let metadata = await resolveLiveTmuxMetadata(record.tmuxSessionName!, false, true);
+    // A recreated pane can exist before its login shell is observable. Keep
+    // the recovery pending while initialization settles, just as cold launch.
+    const shellDeadline = Date.now() + 5000;
+    const shellReady = () => {
+      const command = (metadata?.foregroundProgram ?? metadata?.program)?.toLowerCase();
+      return command && (shellNamesBackend.has(command) || detectAgentFromCommand(metadata?.rawArgs ?? command, agentCustomCommands()));
+    };
+    while (!shellReady() && Date.now() < shellDeadline) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      metadata = await resolveLiveTmuxMetadata(record.tmuxSessionName!, false, true);
+    }
+    const foreground = (metadata?.foregroundProgram ?? metadata?.program)?.toLowerCase() ?? null;
     if (!foreground) {
       throw Object.assign(new Error('Recovery target foreground is unknown'), { code: 'RECOVERY_TARGET_UNCONFIRMED' });
     }
@@ -7053,6 +7335,9 @@ async function restoreTmuxRecoverySession(operationId: string, frontendSessionId
       // Keep the running pane; the normal session attachment path reconnects it.
       if (liveAgent?.slug === agent.slug) return;
       throw Object.assign(new Error(`pane is busy with ${foreground}`), { code: 'RECOVERY_TARGET_BUSY' });
+    }
+    if (findActiveAgentResumeOwner(record.backendSessionId ?? '', target) || await findExternalCodexWriter(target)) {
+      throw Object.assign(new Error('The original conversation is open elsewhere; reconnect to its terminal'), { code: 'AGENT_SESSION_ACTIVE_ELSEWHERE' });
     }
     const previous = collaborationRouting.get(frontendSessionId);
     if (previous) collaborationRouting.bind({ ...previous, pane: null });
@@ -7069,6 +7354,14 @@ async function restoreTmuxRecoverySession(operationId: string, frontendSessionId
       throw Object.assign(new Error(message), { code, operationId, sessionId: frontendSessionId });
     }
   }));
+  reportPhase('verifying_agent');
+  await confirmRecoveryAgent({ expectedSlug: agent.slug, expectedNativeId: target.nativeSessionId, observe: async () => {
+    const metadata = await resolveLiveTmuxMetadata(record.tmuxSessionName!, false, true);
+    const detected = metadata?.rawArgs ? detectAgentFromCommand(metadata.rawArgs, agentCustomCommands()) : null;
+    return { slug: detected?.slug ?? null, nativeId: detected && metadata?.rawArgs
+      ? inferResumeSessionId(detected, splitCommandToArgv(metadata.rawArgs)) : null,
+      shell: Boolean(metadata?.foregroundProgram && shellNamesBackend.has(metadata.foregroundProgram.toLowerCase())) };
+  } });
   const incident = tmuxRecoveryState.incident;
   if (incident?.affectedSessionIds.includes(frontendSessionId)) {
     const remaining = incident.affectedSessionIds.filter(id => id !== frontendSessionId);
@@ -7216,17 +7509,21 @@ router.post('/tmux/recovery/operations/:id/resume', async (req, res) => {
 });
 
 router.delete('/tmux/recovery', async (_req, res) => {
+  const incident = tmuxRecoveryState.incident;
+  const requestedId = typeof _req.body?.incidentId === 'string' ? _req.body.incidentId : getTmuxRecoveryView()?.id;
+  if (requestedId && getTmuxRecoveryView()?.id !== requestedId) return res.status(409).json({ code: 'RECOVERY_INCIDENT_CHANGED', error: 'Recovery incident changed; refresh before dismissing' });
   try {
-    await tmuxRecoveryOperations.dismissPausedOperations();
+    await tmuxRecoveryOperations.dismissPausedOperations(requestedId);
   } catch (error) {
     if ((error as { code?: string }).code !== 'RECOVERY_OPERATION_ACTIVE') throw error;
     return res.status(409).json({ error: getErrorMessage(error), code: 'RECOVERY_OPERATION_ACTIVE' });
   }
   tmuxRecoveryState.dismissedSessionIds = Array.from(new Set([
     ...tmuxRecoveryState.dismissedSessionIds,
-    ...(tmuxRecoveryState.incident?.affectedSessionIds ?? []),
+    ...(incident?.affectedSessionIds ?? []),
   ]));
-  tmuxRecoveryState.incident = null;
+  tmuxRecoveryState.runtimeLostSessionIds = (tmuxRecoveryState.runtimeLostSessionIds ?? []).filter(id => !incident?.affectedSessionIds.includes(id));
+  if (tmuxRecoveryState.incident?.id === incident?.id) tmuxRecoveryState.incident = null;
   await persistTmuxRecoveryState();
   latestSessionInventoryAt = 0;
   broadcastClientState();
@@ -7631,13 +7928,38 @@ export function collaborationLocalActivity() {
 }
 export function deliverPeerCollaboration(sessionId: string): void { void tryDeliverCollaborationInbox(sessionId); }
 
-router.use(sessionViewModeRoutes(new SessionViewModeStore(`${TERMDOCK_DIR}/session-view-modes.json`), resolveStableFederationSessionId));
+router.use(sessionViewModeRoutes(sessionViewModes, resolveStableFederationSessionId, async (id, command) => {
+  if (command === undefined) {
+    const record = globalSessionState.sessions.find(session => session.sessionId === id);
+    const backend = record ? resolveOrchestrationBackend(record) : null;
+    // Read the current foreground process rather than a cached Agent title/resume identity.
+    const live = record?.mode === 'tmux' && record.tmuxSessionName
+      ? await resolveLiveTmuxMetadata(record.tmuxSessionName, false, true) : null;
+    command = live?.rawArgs ?? backend?.activeProgram?.rawArgs ?? backend?.activeProgram?.command ?? '';
+  }
+  const program = chatProgramName(command);
+  const agent = detectAgentFromCommand(command, agentCustomCommands());
+  return { allowed: Boolean(agent) || Boolean(program && chatProgramNames.has(program)), program,
+    ...(agent ? { agent: { slug: agent.slug, displayName: agent.displayName } } : {}) };
+}, async (id, mode) => {
+  const record = globalSessionState.sessions.find(session => session.sessionId === id);
+  if (record?.mode === 'tmux' && record.tmuxSessionName) {
+    await setTmuxOption(record.tmuxSessionName, TMUX_VIEW_MODE_OPTION, mode);
+  }
+}));
 router.use(sessionAttachmentRoutes(`${TERMDOCK_DIR}/chat-attachments`, resolveStableFederationSessionId));
 
 router.use(sessionChatRoutes({ store: collaborationStore, resolve: id => {
   const stable = resolveStableFederationSessionId(id);
   return stable ? collaborationDirectorySessions().find(s => s.sessionId === stable) : undefined;
-}, deliver: deliverPeerCollaboration }));
+}, deliver: deliverPeerCollaboration, recover: async id => {
+  await collaborationDeliveryWorker.reconfigure(id, async () => {});
+  await collaborationDeliveryWorker.run(id);
+  if (collaborationStore.pendingCount(id) && collaborationDeliveryWorker.state(id).state !== 'ready') throw new Error('CHAT_RECOVERY_UNCONFIRMED');
+}, canMention: (source, target, groupId, req) => source !== target && (groupId
+  ? collaborationStore.groupsForSession(source).some(group => !group.archivedAt && group.id === groupId && group.sessionIds.includes(target))
+  : target.startsWith('remote:') ? req.app.locals.collaborationService?.resolveDirectContact(target) === target
+    : globalSessionState.sessions.some(session => session.sessionId === target)) }));
 
 router.use('/operations/collaboration-tasks', collaborationTaskRoutes({ agent: false, store: collaborationStore, resolveSession: resolveFrontendSessionId }));
 router.use('/operations/orchestration/tasks', collaborationTaskRoutes({ agent: true, store: collaborationStore, resolveSession: resolveFrontendSessionId }));
@@ -7998,6 +8320,11 @@ router.post('/operations/orchestration/drive', async (req, res) => {
 });
 
 router.use('/operations/orchestration', collaborationRoutes({ store: collaborationStore, resolveSession: resolveFrontendSessionId,
+  resolveContact: (id, req) => id.startsWith('remote:') ? req.app.locals.collaborationService?.resolveDirectContact(id) ?? null
+    : globalSessionState.sessions.some(session => session.sessionId === id) ? id : null,
+  resolveReplyContact: (id, req) => id.startsWith('remote:') ? req.app.locals.collaborationService?.resolveDirectReply(id) ?? null
+    : globalSessionState.sessions.some(session => session.sessionId === id) ? id : null,
+  remoteContacts: true,
   deliver: tryDeliverCollaborationInbox, rebind: rebindCollaborationRoute, diagnoseRoute: describeCollaborationRoute,
   resolveNames: (ids) => {
     const names = new Map([...collaborationRemoteSessions(),
@@ -8040,20 +8367,51 @@ router.get('/operations/session-search', async (req, res) => {
   const controller = new AbortController();
   const disconnected = () => { if (!res.writableEnded) controller.abort(); };
   res.once('close', disconnected);
-  const terminalResults = sessionSearchStore.search(query, 100).map((result) => {
-    const live = globalSessionState.sessions.some((candidate) => candidate.sessionId === result.sessionId);
+  // Refresh from the single session inventory, including renames without output.
+  for (const record of globalSessionState.sessions) sessionSearchStore.update(searchMetadataForRecord(record,
+    record.backendSessionId ? terminalSessions.get(record.backendSessionId) : null));
+  const history = agentResumeHistory.list();
+  const terminalMatches = sessionSearchStore.search(query, 5000).map((result) => {
+    const liveRecord = globalSessionState.sessions.find(candidate => candidate.sessionId === result.sessionId
+      || result.mode === 'tmux' && result.tmuxSessionName && candidate.tmuxSessionName === result.tmuxSessionName);
+    const live = Boolean(liveRecord);
     const resumeEntry = result.agentNativeSessionId
-      ? agentResumeHistory.list().find((entry) => entry.agent.slug === result.agentSlug && entry.agent.sessionId === result.agentNativeSessionId)
+      ? history.find((entry) => entry.agent.slug === result.agentSlug && entry.agent.sessionId === result.agentNativeSessionId)
       : null;
-    return { ...result, source: 'terminal' as const, nativeKey: null, live, resumeHistoryId: resumeEntry?.id ?? null };
+    return { ...result, ...(liveRecord ? searchMetadataForRecord(liveRecord, liveRecord.backendSessionId ? terminalSessions.get(liveRecord.backendSessionId) : null) : {}), title: liveRecord ? searchMetadataForRecord(liveRecord).title : resumeEntry?.title ?? result.title, source: 'terminal' as const, nativeKey: null, live, recoverable: Boolean(result.cwd), terminalSessionId: result.cwd ? result.sessionId : undefined, resumeHistoryId: resumeEntry?.id ?? null };
   });
+  // Reopening an existing tmux can create a new browser identity. Keep one
+  // result for its conversation, while older logs remain searchable.
+  const terminalByIdentity = new Map<string, typeof terminalMatches[number]>();
+  for (const result of terminalMatches) {
+    const identity = result.agentSlug && result.agentNativeSessionId ? `agent:${result.agentSlug}:${result.agentNativeSessionId}`
+      : result.mode === 'tmux' && result.tmuxSessionName ? `tmux:${result.tmuxSessionName}` : result.sessionId;
+    const previous = terminalByIdentity.get(identity);
+    if (!previous || result.live && !previous.live) terminalByIdentity.set(identity, result);
+  }
+  const terminalResults = [...terminalByIdentity.values()];
+  const identities = new Set(terminalResults.map(entry => `${entry.agentSlug}:${entry.agentNativeSessionId}`));
+  for (const entry of history) {
+    const identity = `${entry.agent.slug}:${entry.agent.sessionId}`;
+    if (identities.has(identity) || query && !`${entry.title}\n${entry.cwd}\n${entry.agent.slug}\n${entry.agent.sessionId}`.toLocaleLowerCase().includes(query.toLocaleLowerCase())) continue;
+    terminalResults.push({ sessionId: `history:${entry.id}`, backendSessionId: null, title: entry.title,
+      cwd: entry.cwd, agentSlug: entry.agent.slug, agentNativeSessionId: entry.agent.sessionId,
+      updatedAt: entry.closedAt, snippet: '', matchCount: query ? 1 : 0, source: 'terminal', nativeKey: null,
+      live: false, recoverable: true, terminalSessionId: undefined, resumeHistoryId: entry.id });
+    identities.add(identity);
+  }
+  const storedSessions = sessionSearchStore.list();
+  const storedByNative = new Map(storedSessions.slice().sort((a, b) => a.updatedAt - b.updatedAt)
+    .map(entry => [`${entry.agentSlug}:${entry.agentNativeSessionId}`, entry]));
   try {
     // Preserve the names users see in Termdock as searchable aliases, including
     // custom titles for conversations that have already been closed.
     const titles = [
-      ...sessionSearchStore.search('', 100).flatMap(entry => entry.agentSlug && entry.agentNativeSessionId ? [{ agentSlug: entry.agentSlug, agentNativeSessionId: entry.agentNativeSessionId, title: entry.title }] : []),
-      ...agentResumeHistory.list().reverse().map(entry => ({ agentSlug: entry.agent.slug, agentNativeSessionId: entry.agent.sessionId!, title: entry.title })),
-      ...globalSessionState.sessions.flatMap(entry => entry.customName && entry.agentResume?.sessionId ? [{ agentSlug: entry.agentResume.slug, agentNativeSessionId: entry.agentResume.sessionId, title: entry.name }] : []),
+      ...storedSessions.slice().sort((a, b) => a.updatedAt - b.updatedAt).flatMap(entry => entry.titleSource !== 'default' && !/^(?:tmux:|remote:|wt-)/i.test(entry.title) && entry.agentSlug && entry.agentNativeSessionId ? [{ agentSlug: entry.agentSlug, agentNativeSessionId: entry.agentNativeSessionId, title: entry.title }] : []),
+      ...history.slice().reverse().filter(entry => entry.titleSource !== 'default').map(entry => ({ agentSlug: entry.agent.slug, agentNativeSessionId: entry.agent.sessionId!, title: entry.title })),
+      ...storedSessions.filter(entry => globalSessionState.sessions.some(record => record.sessionId === entry.sessionId))
+        .flatMap(entry => entry.titleSource !== 'default' && entry.agentSlug && entry.agentNativeSessionId
+          ? [{ agentSlug: entry.agentSlug, agentNativeSessionId: entry.agentNativeSessionId, title: entry.title }] : []),
     ];
     const native = await nativeSessionSearch.search(query, limit + terminalResults.length, titles, controller.signal);
     if (controller.signal.aborted) return;
@@ -8063,7 +8421,7 @@ router.get('/operations/session-search', async (req, res) => {
       const owner = findActiveAgentResumeOwner('', { slug: result.agentSlug, nativeSessionId: result.agentNativeSessionId, command: '' });
       const liveRecord = owner ? globalSessionState.sessions.find(candidate => candidate.backendSessionId === owner) : null;
       return { ...result, source: result.agentSlug, nativeKey: result.key, sessionId: liveRecord?.sessionId || `native:${result.key}`,
-        live: Boolean(liveRecord), resumeHistoryId: null };
+        live: Boolean(liveRecord), resumeHistoryId: null, terminalSessionId: storedByNative.get(`${result.agentSlug}:${result.agentNativeSessionId}`)?.sessionId ?? null };
     });
     res.json({ query, results: [...results, ...additional].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, limit), total: native.total + additional.length, index: native.index });
   } catch (error) {
@@ -8074,6 +8432,33 @@ router.get('/operations/session-search', async (req, res) => {
 });
 
 router.post('/operations/session-search/prepare', async (req, res) => {
+  const terminalId = typeof req.body?.terminalSessionId === 'string' ? req.body.terminalSessionId : '';
+  if (terminalId) {
+    const live = globalSessionState.sessions.find(entry => entry.sessionId === terminalId);
+    if (live) return res.json({ sessionId: live.sessionId });
+    const entry = sessionSearchStore.get(terminalId);
+    if (!entry?.cwd) return res.status(404).json({ error: '这条终端记录已无法恢复，请重新搜索' });
+    try {
+      const cwd = await resolveWorkingDirectory(req, entry.cwd);
+      if (entry.mode === 'tmux' && entry.tmuxSessionName && await tmuxSessionExists(`=${entry.tmuxSessionName}`)) {
+        return res.json({ mode: 'tmux', tmuxSessionName: entry.tmuxSessionName, cwd, title: entry.title });
+      }
+      if (entry.agentSlug && entry.agentNativeSessionId) {
+        const agent = agentBySlug(entry.agentSlug);
+        const history = agentResumeHistory.list().find(item => item.agent.slug === entry.agentSlug && item.agent.sessionId === entry.agentNativeSessionId);
+        const command = agent ? buildResumeCommand(agent, entry.agentNativeSessionId, history?.agent.launchArgv) : null;
+        if (!command) return res.status(410).json({ error: '当前 Agent 不支持恢复这条历史会话' });
+        const target = { slug: entry.agentSlug, nativeSessionId: entry.agentNativeSessionId, command };
+        const owner = findActiveAgentResumeOwner('', target);
+        const liveRecord = owner ? globalSessionState.sessions.find(candidate => candidate.backendSessionId === owner) : null;
+        if (liveRecord) return res.json({ sessionId: liveRecord.sessionId });
+        if (owner || await findExternalCodexWriter(target)) return res.status(409).json({ error: '这条会话已在其他终端运行，请先切换到原终端或关闭后恢复', code: 'AGENT_SESSION_ACTIVE_ELSEWHERE' });
+        return res.json({ command, cwd, title: entry.title, agent });
+      }
+      // A terminated process cannot be resumed. Reopen its project directory.
+      return res.json({ mode: 'shell', cwd, title: entry.title });
+    } catch (error) { return res.status(400).json({ error: `无法重新打开终端：${getErrorMessage(error)}` }); }
+  }
   const key = typeof req.body?.nativeKey === 'string' ? req.body.nativeKey : '';
   if (!/^[a-f0-9]{64}$/.test(key)) return res.status(400).json({ error: '无效的历史会话' });
   try {
@@ -8464,6 +8849,7 @@ async function getSettingsPayload() {
       ...localAccess,
       interfaces,
       onboardingUrl: localAccess.status === 'loopback-only' ? null : getOnboardingServerUrl() ?? null,
+      caFingerprint: localAccess.status === 'loopback-only' ? null : getOnboardingCertificateFingerprint(),
     },
   };
 }
@@ -8493,6 +8879,16 @@ router.post('/update/check', async (_req, res) => {
     res.status(202).json(npmAutoUpdateManager.getState());
   } catch (error) {
     res.status(503).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+router.post('/update/prepare-restart', (req, res) => {
+  try {
+    const version = req.body?.version;
+    if (typeof version !== 'string' || !version) return res.status(400).json({ error: 'Invalid update version' });
+    res.json(npmAutoUpdateManager.prepareRestart(version));
+  } catch (error) {
+    res.status(409).json({ error: error instanceof Error ? error.message : String(error), state: npmAutoUpdateManager.getState() });
   }
 });
 
@@ -9221,6 +9617,7 @@ router.put('/program-detection', async (req, res) => {
     res.status(400).json({ error: 'Expected object with genericProgramNames, wrapperScriptNames, shellNames' });
     return;
   }
+  const previous = await loadProgramDetectionFromDisk();
   const validated: ProgramDetectionConfig = {
     genericProgramNames: Array.isArray(config.genericProgramNames)
       ? config.genericProgramNames.filter((s: unknown) => typeof s === 'string' && s.trim())
@@ -9231,6 +9628,12 @@ router.put('/program-detection', async (req, res) => {
     shellNames: Array.isArray(config.shellNames)
       ? config.shellNames.filter((s: unknown) => typeof s === 'string' && s.trim())
       : DEFAULT_PROGRAM_DETECTION.shellNames,
+    agentCommands: config.agentCommands && typeof config.agentCommands === 'object' && !Array.isArray(config.agentCommands)
+      ? Object.fromEntries(Object.entries(config.agentCommands).filter((entry): entry is [string, string] => validChatProgramName(entry[0]) && typeof entry[1] === 'string' && Boolean(agentBySlug(entry[1]))))
+      : previous.agentCommands ?? {},
+    chatProgramNames: Array.isArray(config.chatProgramNames)
+      ? [...new Set<string>(config.chatProgramNames.filter((name: unknown): name is string => typeof name === 'string').map((name: string) => name.trim().toLowerCase()).filter((name: string) => validChatProgramName(name)))]
+      : previous.chatProgramNames ?? [],
   };
   await saveProgramDetectionToDisk(validated);
   broadcastControlEvent({
@@ -9375,6 +9778,9 @@ router.get('/:sessionId/stream', async (req, res) => {
   }
 
   const stopSampling = subscribeTerminalSampling(sessionId, session, event => writeSse(res, event));
+  const chatSessionId = globalSessionState.sessions.find(record => record.backendSessionId === sessionId)?.sessionId;
+  const stopChatAttention = chatSessionId ? watchSessionChatIndex(collaborationStore, chatSessionId,
+    chatIndex => writeSse(res, { type: 'session-chat-index', chatIndex })) : () => {};
 
   const heartbeatInterval = setInterval(() => {
     if (!writeResponseChunk(res, ': heartbeat\n\n')) {
@@ -9393,6 +9799,7 @@ router.get('/:sessionId/stream', async (req, res) => {
 
   const cleanup = () => {
     clearInterval(heartbeatInterval);
+    stopChatAttention();
     stopSampling();
     closeClient(session, sessionId, clientId);
     console.log(`Client ${clientId} disconnected from terminal session ${sessionId}`);
@@ -9465,6 +9872,62 @@ router.get('/:sessionId/attach', async (req, res) => {
     activeProgramRaw: session.activeProgram?.rawArgs ?? null,
     activeProgramSource: session.activeProgram?.source ?? null,
   });
+});
+
+async function waitForRecoverableLaunchShell(frontendSessionId: string, backendSessionId: string): Promise<void> {
+  const record = globalSessionState.sessions.find(candidate => candidate.sessionId === frontendSessionId);
+  if (!record || record.backendSessionId !== backendSessionId) throw new Error('TERMINAL_INPUT_TARGET_CHANGED');
+  const assertCurrent = terminalInputGuard(record);
+  await waitForIntegrationShell({ async observe() {
+    assertCurrent('runtime_resolve');
+    const latest = globalSessionState.sessions.find(candidate => candidate.sessionId === frontendSessionId);
+    const backend = terminalSessions.get(backendSessionId);
+    if (!latest || !backend || latest.backendSessionId !== backendSessionId) throw new Error('TERMINAL_INPUT_TARGET_CHANGED');
+    if (latest.mode === 'tmux') {
+      const inspected = await inspectCollaborationTmux({ sessionId: frontendSessionId, backendSessionId,
+        mode: 'tmux', tmuxSessionName: latest.tmuxSessionName, agentSlug: null, nativeSessionId: null, pane: null }, null, true, false, true);
+      assertCurrent('runtime_resolved');
+      const pane = inspected.pane;
+      if (!pane) return { binding: null, confirmed: false, agent: false, reason: inspected.reason ?? 'PANE_UNCONFIRMED', pgid: null, tpgid: null };
+      const shell = await inspectIntegrationShell(pane);
+      return { binding: { serverPid: pane.serverPid, sessionId: pane.sessionId, paneId: pane.paneId, panePid: pane.panePid, agentSlug: '', nativeSessionId: null },
+        confirmed: shell.confirmed, agent: Boolean(pane.agentSlug), reason: shell.failure, pgid: shell.pgid, tpgid: shell.tpgid };
+    }
+    const pid = backend.ptyProcess.pid;
+    if (typeof pid !== 'number' || pid <= 1) return { binding: null, confirmed: false, agent: false, reason: 'SHELL_PROCESS_UNCONFIRMED', pgid: null, tpgid: null };
+    const program = await detectShellActiveProgram(backend, true);
+    assertCurrent('runtime_resolved');
+    const shell = await inspectIntegrationShell({ isShell: Boolean(program?.command && program.source !== 'unknown' && shellNamesBackend.has(program.command.toLowerCase())), panePid: pid });
+    return { binding: { serverPid: process.pid, sessionId: frontendSessionId, paneId: backendSessionId, panePid: pid, agentSlug: '', nativeSessionId: null },
+      confirmed: shell.confirmed, agent: Boolean(detectAgentFromCommand(program?.rawArgs ?? program?.command ?? '', agentCustomCommands())),
+      reason: shell.failure, pgid: shell.pgid, tpgid: shell.tpgid };
+  } });
+}
+
+router.post('/:sessionId/agent-launch', async (req, res) => {
+  const backendSessionId = req.params.sessionId;
+  const command = typeof req.body?.command === 'string' ? req.body.command.trim() : '';
+  const requestId = typeof req.body?.idempotencyKey === 'string' ? req.body.idempotencyKey : '';
+  if (!codexColdLaunchArgv(command) || !/^[A-Za-z0-9:._-]{1,200}$/.test(requestId)) {
+    return res.status(400).json({ error: 'This launch needs a direct Codex command and request identity', code: 'INVALID_RECOVERABLE_LAUNCH' });
+  }
+  const record = globalSessionState.sessions.find(candidate => candidate.backendSessionId === backendSessionId);
+  if (!record || !terminalSessions.has(backendSessionId)) return res.status(404).json({ error: 'Terminal session not found' });
+  try {
+    await collaborationDeliveryWorker.reconfigure(record.sessionId, async () => {
+      const latest = globalSessionState.sessions.find(candidate => candidate.sessionId === record.sessionId);
+      if (!latest || latest.backendSessionId !== backendSessionId) throw new Error('TERMINAL_INPUT_TARGET_CHANGED');
+      if (replayAgentLaunchAttempt(latest.agentLaunchAttempt, requestId, createHash('sha256').update(command).digest('hex')) === 'submitted') return;
+      // The normal UI waits for renderer readiness before calling this route.
+      // Resolve current process state before preparing or writing any launcher.
+      await waitForRecoverableLaunchShell(record.sessionId, backendSessionId);
+      const guard = await beginAgentLaunchCheck(record.sessionId, 'codex');
+      await writeAutomaticTerminalPrompt(record.sessionId, command, undefined, guard, requestId);
+    });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(409).json({ error: getErrorMessage(error), code: (error as { code?: string }).code ?? 'RECOVERABLE_LAUNCH_FAILED' });
+  }
 });
 
 router.post('/:sessionId/input', express.text({ type: '*/*' }), (req, res) => {
@@ -9695,11 +10158,11 @@ router.delete('/:sessionId', async (req, res) => {
       record.mode === 'tmux' && record.tmuxSessionName ? [record.tmuxSessionName] : []));
     if (session?.mode === 'tmux' && session.tmuxSessionName) tmuxNames.add(session.tmuxSessionName);
     for (const name of tmuxNames) await markTmuxSessionClosed(name);
+    for (const record of records) archiveAgentResumeRecord(record, 'closed');
     if (session) cleanupSession(sessionId, { killProcess: true });
     // Complete the close on the server even if the page exits before its second
     // DELETE (inventory removal). A stale/missing wrapper can still own a record.
     for (const record of records) {
-      archiveAgentResumeRecord(record, 'closed');
       removeGlobalSessionRecord(record.sessionId);
     }
     if (records.length) {
@@ -10180,6 +10643,10 @@ export function handleTerminalWebSocket(
   const stopSampling = subscribeTerminalSampling(sessionId, session, event => {
     if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(event));
   });
+  const chatSessionId = globalSessionState.sessions.find(record => record.backendSessionId === sessionId)?.sessionId;
+  const stopChatAttention = chatSessionId ? watchSessionChatIndex(collaborationStore, chatSessionId, chatIndex => {
+    if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ type: 'session-chat-index', chatIndex }));
+  }) : () => {};
 
   const pasteInput = new TerminalPasteBuffer(error => {
     if (ws.readyState === ws.OPEN) {
@@ -10366,6 +10833,11 @@ export function handleTerminalWebSocket(
           break;
         }
         case 'agent-review-ack': {
+          const progress = terminalProgramStatus(session).acknowledgeCompletion();
+          if (progress.changed) {
+            session.tuiProgress = progress.progress;
+            broadcastEvent(sessionId, { type: 'tui-progress', tuiProgress: session.tuiProgress });
+          }
           if (session.agentSession && session.agentSession.reviewed === false) {
             session.agentSession.reviewed = true;
             session.lastAgentReviewed = null;
@@ -10395,6 +10867,7 @@ export function handleTerminalWebSocket(
   // Cleanup on close
   ws.on('close', () => {
     inputQueue.close();
+    stopChatAttention();
     pasteInput.clear();
     initialScreen?.cancel();
     initialScreen = null;
@@ -10434,6 +10907,10 @@ ensureSharedTmuxServerReady().catch(() => {});
 // heartbeat to detect zombie sockets on iOS PWA resumes.
 export function handleControlWebSocket(ws: WebSocket, clientId: string): void {
   controlClients.set(clientId, ws);
+  const stopChatAttention = watchSessionChatIndices(collaborationStore,
+    () => new Set(globalSessionState.sessions.map(record => record.sessionId)), sessions => {
+      if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ type: 'chat-attention', sessions }));
+    });
 
   // Initial snapshot — same shape the HTTP GET returns, with an inventory
   // projection when tmux/backend state can be queried immediately.
@@ -10494,6 +10971,7 @@ export function handleControlWebSocket(ws: WebSocket, clientId: string): void {
 
   const cleanup = (): void => {
     clearInterval(heartbeat);
+    stopChatAttention();
     if (controlClients.get(clientId) === ws) {
       controlClients.delete(clientId);
     }

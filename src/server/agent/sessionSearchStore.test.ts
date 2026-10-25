@@ -101,3 +101,29 @@ describe('SessionSearchStore', () => {
     expect(fs.readFileSync(path.join(directory, 'session.log'), 'utf8')).toBe('fresh output');
   });
 });
+
+it('retains closed names independently of the terminal output budget and beyond fifty sessions', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'td-history-retention-'));
+  try {
+    const store = new SessionSearchStore(directory, { maxTotalBytes: 0 });
+    for (let index = 0; index < 70; index++) store.append({ sessionId: `closed-${index}`, backendSessionId: null,
+      title: `已关闭的项目 ${index}`, cwd: '/repo', agentSlug: null, agentNativeSessionId: null,
+      mode: 'tmux', tmuxSessionName: `wt-${index}`, closedAt: Date.now(), updatedAt: Date.now() }, 'output');
+    store.flush(); store.enforceBudget();
+    const restored = new SessionSearchStore(directory);
+    expect(restored.search('', 200)).toHaveLength(70);
+    expect(restored.search('已关闭的项目 0')[0]).toMatchObject({ sessionId: 'closed-0', mode: 'tmux' });
+    expect(restored.search('closed-69')[0]?.sessionId).toBe('closed-69');
+    expect(restored.get('closed-0')?.tmuxSessionName).toBe('wt-0');
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+});
+
+it('projects legacy internal names through the shared presentation rule', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'td-history-names-'));
+  try {
+    fs.writeFileSync(path.join(directory, 'sessions.json'), JSON.stringify({ sessions: [{ sessionId: 'old',
+      backendSessionId: null, title: 'tmux:wt-old', cwd: '/work/my-project', agentSlug: null,
+      agentNativeSessionId: null, updatedAt: Date.now() }] }));
+    expect(new SessionSearchStore(directory).list()[0]).toMatchObject({ title: 'my-project', titleSource: 'default', mode: 'tmux', tmuxSessionName: 'wt-old' });
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+});

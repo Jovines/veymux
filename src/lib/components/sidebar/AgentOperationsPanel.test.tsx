@@ -23,6 +23,8 @@ const apiMocks = vi.hoisted(() => ({
   listCollaborationGroups: vi.fn().mockResolvedValue({ groups: [], sessions: [] }),
   listCollaborationMessages: vi.fn().mockResolvedValue({ messages: [] }),
   searchTerminalSessions: vi.fn().mockResolvedValue({ results: [] }),
+  prepareSearchSession: vi.fn(),
+  updateSessionInventoryEntry: vi.fn(),
   saveCollaborationGroup: vi.fn(),
   removeCollaborationGroup: vi.fn(),
   sendCollaborationMessage: vi.fn(),
@@ -48,6 +50,8 @@ vi.mock('../../terminal/api', () => ({
   retryCollaborationPeers: vi.fn(),
   listCollaborationMessages: apiMocks.listCollaborationMessages,
   prepareAgentResumeHistory: vi.fn(),
+  prepareSearchSession: apiMocks.prepareSearchSession,
+  updateSessionInventoryEntry: apiMocks.updateSessionInventoryEntry,
   removeAgentAutomation: vi.fn(),
   removeCollaborationGroup: apiMocks.removeCollaborationGroup,
   runAgentAutomation: vi.fn(),
@@ -72,6 +76,8 @@ afterEach(() => {
   apiMocks.listAgentAutomations.mockReset().mockResolvedValue({ automations: [], runs: [] });
   apiMocks.listCollaborationGroups.mockReset().mockResolvedValue({ groups: [], sessions: [] });
   apiMocks.searchTerminalSessions.mockReset().mockResolvedValue({ results: [] });
+  apiMocks.prepareSearchSession.mockReset();
+  apiMocks.updateSessionInventoryEntry.mockReset().mockResolvedValue({});
   apiMocks.saveCollaborationGroup.mockReset();
   apiMocks.removeCollaborationGroup.mockReset();
   apiMocks.sendCollaborationMessage.mockReset();
@@ -93,7 +99,7 @@ it('uses the sidebar title in the create-group picker and follows renames while 
   ] });
   const user = userEvent.setup();
   render(<AgentOperationsPanel activeSessionId={record.sessionId} onClose={() => {}} onNewSession={() => {}} />);
-  await user.click(await screen.findByText(/复用已有会话（选填）/));
+  await user.click(await screen.findByText(/添加现有会话/));
   await user.type(screen.getByPlaceholderText('例如：发布准备'), '保留组名草稿');
   const title = getSessionDirectorySnapshot()[0].displayName;
   const checkbox = await screen.findByRole('checkbox', { name: new RegExp(title) });
@@ -261,10 +267,10 @@ describe('AgentOperationsPanel', () => {
     render(<AgentOperationsPanel activeSessionId="one" onClose={() => undefined} onNewSession={() => undefined} />);
 
     await user.click(screen.getByRole('button', { name: '协作组' }));
-    await user.click(screen.getByText(/复用已有会话（选填）/));
+    await user.click(screen.getByText(/添加现有会话/));
     expect(await screen.findByText(/检查发布产物/)).toBeTruthy();
     expect(screen.getAllByText('在线').length).toBeGreaterThan(0);
-    expect(screen.getByText('已选 0 个')).toBeTruthy();
+    expect(screen.getByText('选填')).toBeTruthy();
     expect(document.body.textContent).not.toContain('transcript_path');
     expect(document.body.textContent).not.toContain('/secret/path');
   });
@@ -309,7 +315,7 @@ describe('AgentOperationsPanel', () => {
     const user = userEvent.setup();
     render(<AgentOperationsPanel activeSessionId={null} onClose={() => undefined} onNewSession={() => undefined} />);
     await user.click(screen.getByRole('button', { name: '协作组' }));
-    await user.click(screen.getByText(/复用已有会话（选填）/));
+    await user.click(screen.getByText(/添加现有会话/));
     expect(await screen.findByRole('checkbox', { name: /本服务会话/ })).toBeTruthy();
     await user.click(screen.getByText('协作连接与管理'));
     expect(screen.getByRole('button', { name: '重试连接' })).toBeTruthy();
@@ -995,4 +1001,51 @@ it('shows a preserved pending message with binding blocking instead of presentin
   expect(screen.getByText('目标会话绑定已变化，投递暂停。原消息已保留，请确认目标会话后继续。')).toBeTruthy();
   expect(screen.queryByText('已写入接收方终端 · 等待接手确认')).toBeNull();
   expect(apiMocks.sendCollaborationMessage).not.toHaveBeenCalled();
+});
+
+
+describe('closed session search recovery', () => {
+  const closed = { sessionId: 'closed-tmux', title: '原来的项目名称', cwd: '/work/project', agentSlug: 'codex',
+    agentNativeSessionId: 'native-original', updatedAt: Date.now(), snippet: '', matchCount: 1,
+    source: 'codex', nativeKey: 'native-key', live: false, resumeHistoryId: null, terminalSessionId: 'closed-tmux' };
+  it('waits for creation and preserves the original name when restoring closed tmux', async () => {
+    apiMocks.searchTerminalSessions.mockResolvedValue({ results: [closed], total: 1 });
+    apiMocks.prepareSearchSession.mockResolvedValue({ mode: 'tmux', tmuxSessionName: 'wt-original', cwd: '/work/project' });
+    const onClose = vi.fn(), onNewSession = vi.fn();
+    const user = userEvent.setup();
+    render(<AgentOperationsPanel activeSessionId={null} onClose={onClose} onNewSession={onNewSession} />);
+    await user.click(screen.getByRole('button', { name: '历史搜索' }));
+    await user.click(await screen.findByRole('button', { name: /原来的项目名称/ }));
+    await waitFor(() => expect(onNewSession).toHaveBeenCalledOnce());
+    expect(apiMocks.prepareSearchSession).toHaveBeenCalledWith(null, 'closed-tmux');
+    const launch = onNewSession.mock.calls[0][0];
+    expect(launch).toMatchObject({ mode: 'tmux', tmuxSessionName: 'wt-original', cwd: '/work/project' });
+    expect(onClose).not.toHaveBeenCalled();
+    await act(async () => launch.onResult({ ok: true, sessionId: 'restored' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+    expect(apiMocks.updateSessionInventoryEntry).toHaveBeenCalledWith('restored', { name: closed.title, customName: true });
+  });
+  it('keeps search open on failed restore and lets the user retry', async () => {
+    apiMocks.searchTerminalSessions.mockResolvedValue({ results: [closed] });
+    apiMocks.prepareSearchSession.mockRejectedValueOnce(new Error('目录已不存在'));
+    const onClose = vi.fn(), onNewSession = vi.fn();
+    const user = userEvent.setup();
+    render(<AgentOperationsPanel activeSessionId={null} onClose={onClose} onNewSession={onNewSession} />);
+    await user.click(screen.getByRole('button', { name: '历史搜索' }));
+    await user.click(await screen.findByRole('button', { name: /原来的项目名称/ }));
+    expect(await screen.findByText('目录已不存在')).toBeTruthy();
+    expect(onClose).not.toHaveBeenCalled(); expect(onNewSession).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: /原来的项目名称/ }).hasAttribute('disabled')).toBe(false);
+  });
+  it('labels plain terminal reopening separately and surfaces creation failure', async () => {
+    apiMocks.searchTerminalSessions.mockResolvedValue({ results: [{ ...closed, source: 'terminal', nativeKey: null,
+      agentSlug: null, agentNativeSessionId: null, recoverable: true }] });
+    apiMocks.prepareSearchSession.mockResolvedValue({ mode: 'shell', cwd: '/work/project' });
+    const onClose = vi.fn(), user = userEvent.setup();
+    render(<AgentOperationsPanel activeSessionId={null} onClose={onClose} onNewSession={options => options.onResult?.({ ok: false, error: 'connection' })} />);
+    await user.click(screen.getByRole('button', { name: '历史搜索' }));
+    await user.click(await screen.findByRole('button', { name: /重新打开终端/ }));
+    expect(await screen.findByText('无法创建恢复会话，请检查目录和连接后重试')).toBeTruthy();
+    expect(onClose).not.toHaveBeenCalled();
+  });
 });

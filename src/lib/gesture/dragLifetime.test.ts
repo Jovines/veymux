@@ -83,6 +83,8 @@ it('lets normal component release handlers finish before fallback cleanup', asyn
   window.removeEventListener('pointerup', release);
   expect(order).toEqual(['drop']);
   await Promise.resolve();
+  expect(order).toEqual(['drop']);
+  await new Promise(resolve => setTimeout(resolve, 0));
   expect(order).toEqual(['drop', 'cleanup']);
 });
 

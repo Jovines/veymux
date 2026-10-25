@@ -81,6 +81,40 @@ it('never offers collaboration discovery to a shared Session with input rights',
   setEditor(screen.getByRole('textbox') as HTMLElement, '@');
   expect(screen.queryByRole('button', { name: '提及协作成员' })).toBeNull(); expect(screen.queryByRole('listbox')).toBeNull(); expect(api.groups).not.toHaveBeenCalled();
 });
+it('mentions an Agent outside all groups without adding a group or inventing group context', async () => {
+  api.groups.mockResolvedValue({ groups: [], sessions: [] });
+  const view = await mount();
+  setEditor(screen.getByRole('textbox') as HTMLElement, '@设计');
+  const option = await screen.findByRole('option');
+  expect(option.textContent).toContain('直接联系');
+  fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter' });
+  expect(editorText()).toBe('@「设计助手」 ');
+  expect(posts).toHaveLength(0);
+  view.unmount(); await mount();
+  expect(screen.getByRole('button', { name: '移除提及 设计助手' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: '发送消息' }));
+  await screen.findByRole('button', { name: '修改草稿' });
+  expect(parseChatDraft(posts[0].content).mentions).toEqual([{ sessionId: 'worker', groupId: '', groupName: '', name: '设计助手' }]);
+});
+it('keeps existing group context without duplicating its members as direct contacts', async () => {
+  await mount(); setEditor(screen.getByRole('textbox') as HTMLElement, '@');
+  expect(await screen.findAllByRole('option')).toHaveLength(2);
+  expect(screen.queryByText('直接联系')).toBeNull();
+});
+it('uses projected peer titles for supported cross-service direct mentions and hides old peers', async () => {
+  const id = 'remote:https%3A%2F%2Fpeer.test:remote-agent';
+  const peer = { sessionId: id, name: 'legacy raw title', displayName: '远端设计助手', displaySubtitle: '远端项目',
+    serviceOrigin: 'https://peer.test', serviceLabel: '工作电脑', canDirectContact: true,
+    agent: { slug: 'codex', displayName: 'Codex' }, backendSessionId: null, cwd: '', status: 'ready', capability: '', currentTask: '', updatedAt: 1 };
+  api.groups.mockResolvedValue({ groups: [], sessions: [peer, { ...peer, sessionId: 'remote:https%3A%2F%2Fold.test:old', displayName: '旧服务助手', canDirectContact: undefined }] });
+  await mount(); setEditor(screen.getByRole('textbox') as HTMLElement, '@远端');
+  const option = await screen.findByRole('option');
+  expect(option.textContent).toContain('远端设计助手'); expect(option.textContent).toContain('工作电脑');
+  expect(screen.queryByText('legacy raw title')).toBeNull();
+  fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter' });
+  fireEvent.click(screen.getByRole('button', { name: '发送消息' })); await screen.findByRole('button', { name: '修改草稿' });
+  expect(parseChatDraft(posts[0].content).mentions).toEqual([{ sessionId: id, groupId: '', groupName: '', name: '远端设计助手', subtitle: '远端项目 · 工作电脑' }]);
+});
 it('anchors attachments in prose, retains text typed during upload, and reuses the same numbered reference', async () => {
   let finish!: (value: unknown) => void;
   api.upload.mockImplementation(() => new Promise(resolve => { finish = resolve; }));

@@ -19,6 +19,7 @@ import { buildTmuxScreenReplacement } from '../../terminal/tmuxScreenPresentatio
 import { buildTmuxDefaultColorReplies } from '../../terminal/tmuxColors';
 import type { TerminalMode, TerminalStreamEvent, TmuxActionPayload, TmuxLayout } from '../../terminal';
 import { TerminalViewport, type RefreshReason, type TerminalController, type TerminalViewportInputOptions } from '../terminal/TerminalViewport';
+import { isTerminalResponse } from '../../terminal/terminalResponse';
 import { getTerminalTheme, type TermdockColorTheme } from '../../terminal';
 import { createTermdockAPI } from '../../terminal/factory';
 import { TerminalApiError, listDirectory, openSessionInventoryEntry, probeTerminalConnection, reconnectTerminalConnectionNow, sendTerminalFlowControlState, sendTerminalFocusState, sendTerminalViewingState, updateSessionInventoryEntry, uploadFiles } from '../../terminal/api';
@@ -26,13 +27,12 @@ import {
   computeTerminalLogicalFocus,
   computeTerminalLogicalViewing,
   shouldAutoFocusTerminalAfterInsert,
-  shouldRestoreTerminalFocusAfterInteraction,
 } from '../../terminal/focus';
 import { getTermdockDesktopBridge } from '../../desktop/nativeBridge';
 import { isTmuxMouseOrFocusInput, shouldConsumeAfterTmuxCopyModeExit } from '../../terminal/copyModeInput';
 import { ErrorBoundary } from '../ui/ErrorBoundary';
 import { MobileKeyboard, getSequenceForKey } from '../terminal/MobileKeyboard';
-import { buildDesktopToolbarPresetOptions, buildToolbarPresetOptions, decodeToolbarSequence, detectToolbarPreset, getToolbarActionLabel, getToolbarPreset, normalizeActiveProgram, sanitizeToolbarPresets, splitToolbarSequenceSegments, TOOLBAR_SEGMENT_DELAY_MS, type ToolbarPresetDefinition, type ToolbarPresetMode } from '../terminal/mobileKeyboardPresets';
+import { buildDesktopToolbarPresetOptions, buildToolbarPresetOptions, decodeToolbarSequence, detectToolbarPreset, getToolbarRuntimeActions, getToolbarPresetDisplayName, getToolbarPreset, sanitizeToolbarPresets, splitToolbarSequenceSegments, TOOLBAR_SEGMENT_DELAY_MS, type ToolbarConfigurationTarget, type ToolbarPresetDefinition, type ToolbarPresetMode } from '../terminal/mobileKeyboardPresets';
 import { DebugPanel } from '../terminal/DebugPanel';
 import { ConnectionStatus } from '../terminal/ConnectionStatus';
 import { createDebugLogger } from '../../utils/debug';
@@ -46,9 +46,6 @@ import {
   isInitialContentWriteSettled,
   shouldRestartMissingTerminalConnection,
 } from '../../terminal/resumeScheduling';
-import {
-  getActivationRefreshMode,
-} from '../../terminal/refreshRedraw';
 import {
   CONFIRMED_SESSION_MISSING_MESSAGE,
   isConfirmedSessionMissing,
@@ -120,6 +117,7 @@ interface TerminalViewProps {
   terminalSettings?: TerminalSettings;
   colorTheme?: TermdockColorTheme;
   toolbarPresets?: ToolbarPresetDefinition[];
+  onConfigureToolbar?: (target: ToolbarConfigurationTarget) => void;
   isActive?: boolean;
   focusSuspended?: boolean;
   /** A visible sidebar may explicitly paste while ordinary terminal input stays paused. */
@@ -142,7 +140,6 @@ interface TerminalViewProps {
   suppressKeyboard?: boolean;
   keyboardPortalTarget?: HTMLElement | null;
   sharedMobileKeyboardLayout?: boolean;
-  suppressPageFlipRefresh?: boolean;
   showDebug?: boolean;
   onStatusChange?: (status: { isConnecting: boolean; isRestarting: boolean; hasError: boolean; sessionId: string | null }) => void;
 }
@@ -154,6 +151,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   terminalSettings = getDefaultTerminalSettings(),
   colorTheme = 'dark',
   toolbarPresets: configuredToolbarPresets = [],
+  onConfigureToolbar,
   isActive = true,
   focusSuspended: externalFocusSuspended = false,
   allowOwnedPasteWhileFocusSuspended = false,
@@ -175,7 +173,6 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   suppressKeyboard = false,
   keyboardPortalTarget = null,
   sharedMobileKeyboardLayout = false,
-  suppressPageFlipRefresh = false,
   showDebug: externalShowDebug,
   onStatusChange,
 }) => {
@@ -407,7 +404,6 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   allowOwnedPasteWhileFocusSuspendedRef.current = allowOwnedPasteWhileFocusSuspended;
   const isMobileRef = React.useRef(isMobile);
   const desktopResumeFocusTimerRef = React.useRef<number | null>(null);
-  const desktopInteractionFocusTimerRef = React.useRef<number | null>(null);
   const pendingShellTitleRef = React.useRef<{ sessionId: string; title: string | null } | null>(null);
   const shellTitleRafRef = React.useRef<number | null>(null);
   const mobileCopyFeedbackTimerRef = React.useRef<number | null>(null);
@@ -580,55 +576,19 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
     return result.terminalSession;
   }, [desiredSessionMode, desiredTmuxSessionName, fallbackTmuxSessionName, sessionId]);
 
-  // Swiper 翻到本页（isActive 从 false→true）：让编排器走一遍刷新。
-  //
-  // 注意只在 isActive 由 false→true 时才跑。terminalSessionId 变化、初次 mount
-  // 不应该触发——那些场景由 'connected' / 'session-key-change' / 'mount' 自己
-  // 的 refresh 负责，page-flip 多来一次会让用户看到 connected 之后再"闪一下"。
-  const wasActiveRef = React.useRef(isActive);
+  // Geometry activation belongs to TerminalViewport's measured reveal/selection
+  // lifecycle, shared by sidebar, keyboard, Swiper and split-pane navigation.
   React.useEffect(() => {
-    if (!isActive) {
-      terminalControllerRef.current?.blur();
-      wasActiveRef.current = false;
-      return;
-    }
-    if (wasActiveRef.current) {
-      // 已经处于 active，依赖里其它值变化（terminalSessionId）触发的 effect，
-      // 不是真正的翻页，直接跳过。
-      return;
-    }
-    wasActiveRef.current = true;
-    const activationRefreshMode = getActivationRefreshMode(isMobile, suppressPageFlipRefresh);
-    // A visible split pane is stationary. Coalesce its activation repaint with
-    // the focus event under the same reason instead of running the full Swiper
-    // settle sequence. This also repairs a stale renderer when focus transfer
-    // is intentionally unavailable (for example while another control owns it).
-    if (activationRefreshMode === 'single') {
-      terminalControllerRef.current?.requestRefresh('focus', {
-        skipResizePush: true,
-        skipScrollToBottom: true,
-      });
-      return;
-    }
-    // Mobile activation separately schedules a forced resize refresh below.
-    if (activationRefreshMode === 'none') {
-      return;
-    }
-    // Desktop selection snaps Swiper before paint. The orchestrator already
-    // schedules one frame; a second pass 360ms later only revisits a settled
-    // grid. Real geometry changes remain covered by ResizeObserver.
-    terminalControllerRef.current?.requestRefresh('page-flip', {
-      reconcileServerSize: true,
-      skipScrollToBottom: true,
-    });
-  }, [isActive, isMobile, suppressPageFlipRefresh, terminalSessionId]);
+    if (!isActive) terminalControllerRef.current?.blur();
+  }, [isActive]);
 
   React.useEffect(() => {
     isMobileRef.current = isMobile;
   }, [isMobile]);
 
   const focusTerminalIfActive = React.useCallback(() => {
-    if (!isActiveRef.current || focusSuspendedRef.current) {
+    if (!isActiveRef.current || !isLayoutVisibleRef.current || focusSuspendedRef.current || isKeyboardLayerOpen()
+      || document.hidden || !isWorkspaceActive()) {
       return;
     }
     terminalControllerRef.current?.focus();
@@ -657,7 +617,8 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
     if (typeof window === 'undefined' || typeof document === 'undefined') {
       return;
     }
-    if (!isActiveRef.current || focusSuspendedRef.current || isMobileRef.current || document.hidden || !isWorkspaceActive()) {
+    if (!isActiveRef.current || !isLayoutVisibleRef.current || focusSuspendedRef.current || isKeyboardLayerOpen()
+      || isMobileRef.current || document.hidden || !document.hasFocus() || !isWorkspaceActive()) {
       return;
     }
 
@@ -667,20 +628,17 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
 
     desktopResumeFocusTimerRef.current = window.setTimeout(() => {
       desktopResumeFocusTimerRef.current = null;
-      if (!isActiveRef.current || focusSuspendedRef.current || isMobileRef.current || document.hidden || !isWorkspaceActive()) {
+      if (!isActiveRef.current || !isLayoutVisibleRef.current || focusSuspendedRef.current || isKeyboardLayerOpen()
+        || isMobileRef.current || document.hidden || !document.hasFocus() || !isWorkspaceActive()) {
         return;
       }
 
       const activeElement = document.activeElement as HTMLElement | null;
       const isTerminalInput = activeElement?.getAttribute('data-terminal-input-anchor') === 'true';
-      const isEditableElement =
-        activeElement instanceof HTMLInputElement ||
-        activeElement instanceof HTMLTextAreaElement ||
-        activeElement instanceof HTMLSelectElement ||
-        activeElement?.isContentEditable === true;
-
-      if ((isEditableElement && !isTerminalInput) || activeElement?.closest('[data-file-browser-keyboard]')) {
-        debugKeyboard('desktop resume focus skipped: editable active', { reason });
+      // Buttons, menus, previews and frames also own keyboard input. Resume
+      // may fill an unclaimed body; it cannot override a newer user choice.
+      if (!isTerminalInput && activeElement && activeElement !== document.body && activeElement !== document.documentElement) {
+        debugKeyboard('desktop resume focus skipped: another control active', { reason });
         return;
       }
 
@@ -696,7 +654,9 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
         skipResizePush: true,
         skipScrollToBottom: true,
       });
-      terminalControllerRef.current?.focus();
+      // A window focus event does not imply the editable lost DOM focus.
+      // Refresh the renderer without echoing focus into the native IME path.
+      if (!isTerminalInput) terminalControllerRef.current?.focus();
     }, 50);
   }, [debugKeyboard]);
 
@@ -706,10 +666,6 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
         window.clearTimeout(desktopResumeFocusTimerRef.current);
       }
       desktopResumeFocusTimerRef.current = null;
-      if (desktopInteractionFocusTimerRef.current !== null && typeof window !== 'undefined') {
-        window.clearTimeout(desktopInteractionFocusTimerRef.current);
-      }
-      desktopInteractionFocusTimerRef.current = null;
       if (mobileCopyFeedbackTimerRef.current !== null && typeof window !== 'undefined') {
         window.clearTimeout(mobileCopyFeedbackTimerRef.current);
       }
@@ -728,54 +684,6 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       cursorPositionCandidateTimerRef.current = null;
     };
   }, []);
-
-  React.useEffect(() => {
-    if (typeof document === 'undefined' || typeof window === 'undefined') {
-      return;
-    }
-
-    const handleDesktopPointerUp = () => {
-      if (desktopInteractionFocusTimerRef.current !== null) {
-        window.clearTimeout(desktopInteractionFocusTimerRef.current);
-      }
-      // Wait until the click handler has opened/focused any real editor. Other
-      // interactions normally leave focus on body or a button, in which case
-      // the active terminal retakes keyboard ownership.
-      desktopInteractionFocusTimerRef.current = window.setTimeout(() => {
-        desktopInteractionFocusTimerRef.current = null;
-        const activeElement = document.activeElement as HTMLElement | null;
-        // File rows and previews use arrow keys; pointer-up must not hand
-        // their keyboard ownership back to the terminal.
-        if (activeElement?.closest('[data-file-browser-keyboard]')) return;
-        const isTerminalInput = activeElement?.getAttribute('data-terminal-input-anchor') === 'true';
-        const activeElementIsEditable = !isTerminalInput && Boolean(activeElement && (
-          activeElement instanceof HTMLInputElement ||
-          activeElement instanceof HTMLTextAreaElement ||
-          activeElement instanceof HTMLSelectElement ||
-          activeElement.isContentEditable
-        ));
-
-        if (!shouldRestoreTerminalFocusAfterInteraction({
-          isActive: isActiveRef.current && !focusSuspendedRef.current,
-          isMobile: isMobileRef.current,
-          documentVisible: !document.hidden,
-          activeElementIsEditable,
-        })) {
-          return;
-        }
-        focusTerminalIfActive();
-      }, 0);
-    };
-
-    document.addEventListener('pointerup', handleDesktopPointerUp);
-    return () => {
-      document.removeEventListener('pointerup', handleDesktopPointerUp);
-      if (desktopInteractionFocusTimerRef.current !== null) {
-        window.clearTimeout(desktopInteractionFocusTimerRef.current);
-        desktopInteractionFocusTimerRef.current = null;
-      }
-    };
-  }, [focusTerminalIfActive]);
 
   const restartEnsureSession = React.useCallback(() => {
     hasInitializedRef.current = false;
@@ -933,7 +841,11 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       setIsWindowFocused(true);
       scheduleDesktopResumeFocus('window-focus');
     };
-    const handleWindowBlur = () => setIsWindowFocused(false);
+    const handleWindowBlur = () => {
+      setIsWindowFocused(false);
+      if (desktopResumeFocusTimerRef.current !== null) window.clearTimeout(desktopResumeFocusTimerRef.current);
+      desktopResumeFocusTimerRef.current = null;
+    };
     document.addEventListener('visibilitychange', handleVisibility);
     window.addEventListener(WORKSPACE_VISIBILITY_EVENT, handleVisibility);
     window.addEventListener('pageshow', handlePageShow);
@@ -1558,6 +1470,10 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
                 useTerminalStore.getState().setSessionTuiProgress(storeSessionId, event.tuiProgress ?? null);
                 break;
               }
+              case 'session-chat-index': {
+                if (event.chatIndex) useTerminalStore.getState().setSessionChatIndex(storeSessionId, event.chatIndex);
+                break;
+              }
               case 'exit': {
                 const exitCode =
                   typeof event.exitCode === 'number' ? event.exitCode : null;
@@ -2005,15 +1921,16 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
 
   const handleViewportInput = React.useCallback(
     (data: string, options?: TerminalViewportInputOptions) => {
+      const terminalResponse = options?.terminalResponse === true && isTerminalResponse(data);
       const ownedPaste = options?.ownedPaste
         ? consumeOwnedTerminalPaste(options.ownedPaste, sessionId, data) : false;
       if (options?.ownedPaste && !ownedPaste) return Promise.resolve(false);
-      if ((externalFocusSuspendedRef.current && !(ownedPaste && allowOwnedPasteWhileFocusSuspendedRef.current)) || ((focusSuspendedRef.current || isKeyboardLayerOpen()) && !ownedPaste)) {return Promise.resolve(false);}
+      if (!terminalResponse && ((externalFocusSuspendedRef.current && !(ownedPaste && allowOwnedPasteWhileFocusSuspendedRef.current)) || ((focusSuspendedRef.current || isKeyboardLayerOpen()) && !ownedPaste))) {return Promise.resolve(false);}
       const ownedCurrent = () => !!options?.ownedPaste && isOwnedTerminalPasteCurrent(options.ownedPaste, sessionId)
         && (isActiveRef.current || options?.targeted === true) && (!externalFocusSuspendedRef.current || allowOwnedPasteWhileFocusSuspendedRef.current) && isStreamReadyRef.current
         && !isConnectionTransitionRef.current && !document.hidden && navigator.onLine !== false && isWorkspaceActive();
       if (ownedPaste && !ownedCurrent()) return Promise.resolve(false);
-      if (!isActiveRef.current && !options?.targeted) {
+      if (!terminalResponse && !isActiveRef.current && !options?.targeted) {
         return;
       }
 
@@ -2029,7 +1946,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       const isMouseOrFocusSeq = isTmuxMouseOrFocusInput(data);
       const isMouseWheelSeq = /^(\x1b\[<6[45];[0-9]+;[0-9]+M)+$/.test(data);
 
-      if (Date.now() < suppressInputUntilRef.current) return Promise.resolve(false);
+      if (!terminalResponse && Date.now() < suppressInputUntilRef.current) return Promise.resolve(false);
 
       let payload = data;
       let modifierConsumed = options?.consumeModifier ?? false;
@@ -2064,6 +1981,9 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       const sendPayload = async () => {
         if (terminalIdRef.current !== terminalId || terminalOperationEpochRef.current !== operationEpoch) return false;
         try {
+          // A retained/hover-only terminal must answer the program's queries
+          // without claiming user interaction or marking results reviewed.
+          if (terminalResponse) { await terminal.sendInput(terminalId, payload); return true; }
           if (!isMouseOrFocusSeq || isMouseWheelSeq) interactiveOutputRef.current.input(performance.now());
           if (isTmuxMode && isMouseWheelSeq) shouldExitTmuxCopyModeOnInputRef.current = true;
           // 只有非鼠标序列的真键盘输入才触发退出 copy-mode；
@@ -2585,26 +2505,15 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
     : toolbarPresetMode;
   const effectivePresetId = renderPresetMode === 'auto' ? detectedPreset : renderPresetMode;
   const toolbarPreset = React.useMemo(() => getToolbarPreset(toolbarPresets, effectivePresetId), [effectivePresetId, toolbarPresets]);
-  const runtimeToolbarActions = React.useMemo(
-    () => toolbarPreset.actions
-      .filter((action: { sequence: string }) => action.sequence.trim().length > 0)
-      .map((action: { id: string; label: string; sequence: string; doubleTapSequence?: string }, index: number) => ({
-        ...action,
-        label: getToolbarActionLabel(action, index),
-      })),
-    [toolbarPreset.actions]
-  );
-  const activeProgramLabel = React.useMemo(() => normalizeActiveProgram(detectedActiveProgram), [detectedActiveProgram]);
-  const presetLabel = toolbarPreset.label;
+  const runtimeToolbarActions = React.useMemo(() => getToolbarRuntimeActions(toolbarPreset), [toolbarPreset.actions]);
+  const presetLabel = getToolbarPresetDisplayName(toolbarPreset, t('toolbarPresets.baseName'));
   const presetModeLabel = React.useMemo(() => {
     if (renderPresetMode !== 'auto') {
-      return `Manual preset: ${toolbarPreset.label}`;
+      return t('toolbarPresets.manualToolbar', { name: presetLabel });
     }
 
-    return activeProgramLabel
-      ? `Auto preset · ${toolbarPreset.label} (${activeProgramLabel})`
-      : 'Auto preset';
-  }, [activeProgramLabel, renderPresetMode, toolbarPreset.label]);
+    return t('toolbarPresets.autoToolbar', { name: presetLabel });
+  }, [renderPresetMode, presetLabel, t]);
   const handlePresetSelect = React.useCallback((mode: ToolbarPresetMode) => {
     setToolbarPresetMode(mode);
   }, []);
@@ -2634,8 +2543,8 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
     setShowExtendedKeyboard(nextExpanded);
   }, []);
   const presetOptions = React.useMemo(
-    () => (isMobile ? buildToolbarPresetOptions(toolbarPresets) : buildDesktopToolbarPresetOptions(toolbarPresets)),
-    [isMobile, toolbarPresets],
+    () => (isMobile ? buildToolbarPresetOptions(toolbarPresets) : buildDesktopToolbarPresetOptions(toolbarPresets)).map(option => ({ ...option, label: option.id === 'auto' ? t('toolbarPresets.automatic') : getToolbarPresetDisplayName(getToolbarPreset(toolbarPresets, option.id), t('toolbarPresets.baseName')) })),
+    [isMobile, toolbarPresets, t],
   );
 
   const xtermTheme = React.useMemo(() => getTerminalTheme(colorTheme), [colorTheme]);
@@ -2689,10 +2598,14 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
     handleTmuxScroll(direction, normalizedLines);
   }, [handleTmuxScroll, quickKeysDisabled]);
 
+  const previousKeyboardGeometryRef = React.useRef({ open: isViewportKeyboardOpen, height: viewportKeyboardHeight });
   React.useEffect(() => {
-    if (!isActive || !isMobile) return;
-    const controller = terminalControllerRef.current;
-    controller?.requestRefresh('resize', {
+    const previous = previousKeyboardGeometryRef.current;
+    previousKeyboardGeometryRef.current = { open: isViewportKeyboardOpen, height: viewportKeyboardHeight };
+    // Selection is measured by the shared activation lifecycle. This path only
+    // handles a real keyboard change, rather than issuing another selection fit.
+    if (!isActive || !isMobile || (previous.open === isViewportKeyboardOpen && previous.height === viewportKeyboardHeight)) return;
+    terminalControllerRef.current?.requestRefresh('resize', {
       skipScrollToBottom: !isViewportKeyboardOpen,
       force: true,
     });
@@ -2752,6 +2665,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       onLongPressModeToggle={handleLongPressModeToggle}
       onModifierToggle={handleModifierToggle}
       onPresetSelect={handlePresetSelect}
+      onConfigureToolbar={onConfigureToolbar ? () => onConfigureToolbar({ presetId: toolbarPreset.id, mode: renderPresetMode, presentation: isMobile ? 'mobile' : 'desktop-actions', select: handlePresetSelect }) : undefined}
       onExpandedChange={handleExpandedChange}
     />
   );
@@ -2847,6 +2761,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
               getPasteOwnerKey={getPasteOwnerKey}
               backendSessionId={terminalSessionId}
               isLayoutVisible={isLayoutVisible}
+              isActive={isActive}
               chunks={viewportChunks}
               onInput={handleViewportInput}
               onResize={handleViewportResize}

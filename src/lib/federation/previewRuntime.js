@@ -1,7 +1,56 @@
 /* Runs only in the opaque preview frame. All local reads use its directory capability. */
 function installPreviewRuntime(capability, base, externalOrigins, shimUrl) {
+  // The desktop proxy can enforce base-uri 'self'. A real <base> pointing to
+  // our virtual origin would be blocked there. Keep resolution in this opaque
+  // runtime instead; the module shim and user scripts read the virtual base,
+  // while native requests still cannot leave the directory-scoped bridge.
+  Object.defineProperty(document, 'baseURI', { value: base });
+  const NativeRequest = window.Request;
+  Object.defineProperty(window, 'Request', { configurable: false, writable: false, value: class extends NativeRequest {
+    constructor(input, init) {
+      super(typeof input === 'string' || input instanceof URL ? new URL(input, base).href : input, init);
+    }
+  } });
   const external = new Set(externalOrigins);
-  const report = () => parent.postMessage({ type: 'preview-error', capability }, '*');
+  const report = event => {
+    let message = '部分动态内容无法运行';
+    if (event?.type === 'securitypolicyviolation') {
+      const directive = event.effectiveDirective || event.violatedDirective || '';
+      message = directive.startsWith('base-uri') ? '页面尝试更改链接的解析地址，已阻止。'
+        : directive.startsWith('img-src') ? '部分图片未能加载。'
+        : directive.startsWith('style-src') ? '部分样式未能加载，显示可能不完整。'
+        : directive.startsWith('script-src') ? '部分脚本未能运行，交互可能受影响。'
+        : directive.startsWith('font-src') ? '部分字体未能加载，已使用默认字体。'
+        : directive.startsWith('connect-src') ? '部分数据未能读取，内容可能不完整。'
+        : directive.startsWith('frame-src') ? '页面中的嵌入内容无法预览。'
+        : '部分内容受预览限制，未能加载。';
+    }
+    else if (event?.message) message = '页面脚本运行失败：' + event.message;
+    else if (event?.reason) message = '页面脚本运行失败：' + String(event.reason?.message || event.reason);
+    else if (event?.target?.tagName && event.target !== window) message = '页面资源加载失败：' + event.target.tagName.toLowerCase();
+    parent.postMessage({ type: 'preview-error', capability, message: message.slice(0, 240) }, '*');
+  };
+  // Opaque frames cannot access browser storage. Reports commonly read it
+  // during startup, so supply disposable, per-document storage instead. This
+  // never reads the service page's storage or persists a preview's data.
+  for (const name of ['localStorage', 'sessionStorage']) {
+    const values = new Map();
+    const storage = {
+      get length() { return values.size; },
+      key(index) { return [...values.keys()][Number(index)] ?? null; },
+      getItem(key) { return values.get(String(key)) ?? null; },
+      setItem(key, value) { values.set(String(key), String(value)); },
+      removeItem(key) { values.delete(String(key)); },
+      clear() { values.clear(); },
+    };
+    Object.defineProperty(window, name, { configurable: false, value: new Proxy(storage, {
+      get(target, key) { return key in target ? Reflect.get(target, key) : values.get(String(key)); },
+      set(_target, key, value) { values.set(String(key), String(value)); return true; },
+      deleteProperty(_target, key) { values.delete(String(key)); return true; },
+      ownKeys() { return [...values.keys()]; },
+      getOwnPropertyDescriptor(target, key) { return values.has(String(key)) ? { configurable: true, enumerable: true, writable: true, value: values.get(String(key)) } : Reflect.getOwnPropertyDescriptor(target, key); },
+    }) });
+  }
   const nativeFetch = window.fetch.bind(window);
   const nativeWorker = window.Worker;
   const externalUrl = value => {
@@ -121,7 +170,25 @@ function installPreviewRuntime(capability, base, externalOrigins, shimUrl) {
     else { externalUrl(url.href); parent.postMessage({ type: 'preview-external', capability, url: url.href }, '*'); }
   };
   Object.defineProperty(window, 'open', { configurable: false, writable: false, value: value => { navigate(value); return null; } });
-  document.addEventListener('click', event => { const anchor = event.target.closest?.('a,area'); const href = anchor?.getAttribute('href'); if (href && !href.startsWith('#')) { event.preventDefault(); navigate(href); } }, true);
+  document.addEventListener('click', event => {
+    const anchor = event.target.closest?.('a,area'); const href = anchor?.getAttribute('href');
+    if (!href) return;
+    event.preventDefault();
+    // Resolve anchors inside the current report without changing the shell's
+    // capability fragment or navigating to a virtual resource address.
+    if (href.startsWith('#')) {
+      let id; try { id = decodeURIComponent(href.slice(1)); } catch { return; }
+      const target = document.getElementById(id) || document.getElementsByName(id)[0];
+      for (let node = target?.parentElement; node; node = node.parentElement) if (node.tagName === 'DETAILS') node.open = true;
+      if (target) target.scrollIntoView();
+      else if (!id) window.scrollTo(0, 0);
+      return;
+    }
+    navigate(href);
+  }, true);
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && !event.defaultPrevented && !event.isComposing) parent.postMessage({ type: 'preview-escape', capability }, '*');
+  });
   document.addEventListener('submit', event => {
     event.preventDefault(); const form = event.target;
     const url = new URL(form.getAttribute('action') || base, base);

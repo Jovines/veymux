@@ -1,7 +1,7 @@
 import { LoadingSpinner as LoaderCircle } from '../components/ui/Loading';
 import { Terminal } from 'lucide-react';
 import { listServiceConnections, saveServiceConnection, normalizeServiceAddress, parseSavedService, sameService, type ServiceConnection } from '../services/serviceDirectory';
-import { desktopConnectionIntent, openDesktopService, serviceConnectionInput } from '../services/desktopServiceConnection';
+import { addDesktopService, desktopConnectionIntent, openDesktopService } from '../services/desktopServiceConnection';
 import { readDeviceProfile } from './readDeviceProfile';
 import { currentConnectionPath, currentEntryClient } from './browserIntegration';
 import type { DeviceProfile } from '../../server/federation/deviceProfile';
@@ -10,10 +10,10 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import FederationAccess, { type FederationGrant, type FederationInviteInput } from '../../components/FederationAccess';
 import type { PendingInvitation } from '../../server/federation/invitations';
 import { connectDevice, connectionRoutes, connectionAddresses, createEntryInvitation, authenticateKnownConnection, preferDirectConnection, connectServiceAddress, connectOpenService, currentSecureClient, getActiveClient, getIdentity, invalidateSecureTransport, savedConnection, SECURE_STATE_EVENT, type ConnectionIntent } from './browserIntegration';
-import { createInviteLink, parseInviteLink } from './inviteLink';
+import { createInviteLink, createOnboardingInviteLink, parseInviteLink } from './inviteLink';
 import { SessionAccessView } from './SessionAccessView';
 import { LoginScreen } from '../components/auth/LoginScreen';
-import { OPEN_SERVICE_ACCESS_EVENT } from './accessEvents';
+import { OPEN_SERVICE_ACCESS_EVENT, type SessionShareRequest } from './accessEvents';
 import { DeviceAuthorizationRequired, readDeviceAuthorization } from './deviceAuthorization';
 import { IS_WORKSPACE_DOCUMENT, saveSelectedTarget } from './clientScope';
 import { ServiceSwitcher, OPEN_SAVED_SERVICE_EVENT } from '../components/ServiceSwitcher';
@@ -60,7 +60,8 @@ export function SecureAccessGate({ children }: { children: ReactNode }) {
   const [grants, setGrants] = useState<FederationGrant[]>([]);
   const [invitations, setInvitations] = useState<PendingInvitation[]>([]);
   const [sessions, setSessions] = useState<{ sessionId: string; name: string; sourceSessionId?: string }[]>([]);
-  const [shareRequest, setShareRequest] = useState<{ inviteSessionId: string; viewMode?: 'terminal' | 'chat' }>();
+  const [shareRequest, setShareRequest] = useState<SessionShareRequest>();
+  const [sharedLayout, setSharedLayout] = useState<'split' | undefined>(initialInvitation?.viewLayout);
   const [fullService, setFullService] = useState(false);
   const [canManage, setCanManage] = useState(false);
   const [deviceIdentity, setDeviceIdentity] = useState('');
@@ -325,12 +326,24 @@ export function SecureAccessGate({ children }: { children: ReactNode }) {
       window.removeEventListener(SECURE_STATE_EVENT, visible);
     };
   }, []);
-  const refresh = async () => {
+  const refresh = async (shareSessionIds: string[] = []) => {
     const client = currentSecureClient(); if (!client) return;
     setLoadingAccess(true); setAccessError('');
     try {
-      const result = await client.request({ type: 'session-list' }); setSessions(result.items as {sessionId: string; name: string; sourceSessionId?: string}[]);
-    } catch { setAccessError('暂时无法读取终端列表，请重试。'); }
+      let result = await client.request({ type: 'session-list' });
+      if (canManage && shareSessionIds.length) {
+        const listed = result.items as { sessionId: string; sourceSessionId?: string }[];
+        const missing = [...new Set(shareSessionIds)].filter(id => !listed.some(session => session.sessionId === id || session.sourceSessionId === id));
+        for (const id of missing) {
+          // Attach the existing inventory entry without a guessed client grid.
+          // The normal persistence/control chain ingests the resulting update.
+          const response = await client.fetch('/api/terminal/session-inventory/open', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ preferredFrontendSessionId: id, requireExisting: true }) });
+          if (!response.ok) throw new Error('SHARE_SESSION_UNAVAILABLE');
+        }
+        if (missing.length) result = await client.request({ type: 'session-list' });
+      }
+      setSessions(result.items as {sessionId: string; name: string; sourceSessionId?: string}[]);
+    } catch (failure) { setAccessError(failure instanceof Error && failure.message === 'SHARE_SESSION_UNAVAILABLE' ? '此会话暂时无法分享，请确认终端仍在运行后重试。' : '暂时无法读取终端列表，请重试。'); }
     try {
       if (canManage) {
         const result = await client.request({ type: 'grants-list' });
@@ -349,26 +362,32 @@ export function SecureAccessGate({ children }: { children: ReactNode }) {
     finally { setLoadingAccess(false); }
   };
   useEffect(() => {
-    const show = (event: Event) => { setShareRequest((event as CustomEvent).detail); setOpen(true); if (ready) void refresh(); };
+    const show = (event: Event) => { const request = (event as CustomEvent<SessionShareRequest>).detail; setShareRequest(request); setOpen(true); if (ready) void refresh(request?.inviteSessionIds || (request?.inviteSessionId ? [request.inviteSessionId] : [])); };
     window.addEventListener(OPEN_SERVICE_ACCESS_EVENT, show);
     return () => window.removeEventListener(OPEN_SERVICE_ACCESS_EVENT, show);
   }, [ready, canManage]);
   const [inviteAddresses, setInviteAddresses] = useState<{ url: string; label: string }[]>([]);
+  const inviteSetup = useRef<{ serviceId: string; url: string; fingerprint: string; origins: string[] }>();
+  const inviteSetupLoading = useRef<Promise<void>>();
   useEffect(() => {
-    if (!open || !canManage || inviteAddresses.length) return;
+    if (!open || !canManage) return;
     let canceled = false;
-    void (async () => {
+    inviteSetup.current = undefined;
+    setInviteAddresses([]);
+    inviteSetupLoading.current = (async () => {
       const client = await getActiveClient();
       const response = await client.fetch('/api/terminal/settings');
       const settings = await response.json();
       if (canceled) return;
-      const local = (settings.localAccess ?? {}) as { url?: unknown; status?: unknown; interfaces?: unknown };
+      const local = (settings.localAccess ?? {}) as { url?: unknown; status?: unknown; interfaces?: unknown; onboardingUrl?: unknown; caFingerprint?: unknown };
       const items: { url: string; label: string }[] = [];
+      const localOrigins: string[] = [];
       const push = (url: string, label: string) => {
         try {
           const origin = new URL(url);
           if (origin.protocol === 'http:' && !['localhost', '127.0.0.1', '[::1]'].includes(origin.hostname)) return;
           const key = origin.origin;
+          localOrigins.push(key);
           if (key === location.origin || items.some(item => item.url === key)) return;
           items.push({ url: key, label });
         } catch { /* Ignore unusable address entries. */ }
@@ -380,9 +399,11 @@ export function SecureAccessGate({ children }: { children: ReactNode }) {
         push(item.url, (typeof item.label === 'string' && item.label) || (typeof item.name === 'string' && item.name) || 'IP 地址');
       }
       setInviteAddresses(items);
+      inviteSetup.current = typeof local.onboardingUrl === 'string' && typeof local.caFingerprint === 'string' && local.status !== 'loopback-only'
+        ? { serviceId: client.targetPeerId, url: local.onboardingUrl, fingerprint: local.caFingerprint, origins: localOrigins } : undefined;
     })().catch(() => { /* The address list only feeds invite options; keep defaults on failure. */ });
     return () => { canceled = true; };
-  }, [open, canManage, inviteAddresses.length]);
+  }, [open, canManage, displayOrigin]);
   const openOtherDesktopService = async (intent: ConnectionIntent): Promise<boolean> => {
     const desktop = window.termdockDesktop;
     if (!desktop?.openServiceConnection || !intent.targetPeerId) return false;
@@ -411,6 +432,8 @@ export function SecureAccessGate({ children }: { children: ReactNode }) {
       if (activateServiceWorkspace(service)) { setOpen(false); return; }
     }
     await connectDevice(intent);
+    setSharedLayout(intent.viewLayout);
+    try { sessionStorage.setItem(`termdock:shared-layout:${intent.targetPeerId}`, intent.viewLayout || 'single'); } catch { /* Optional layout preference. */ }
     if (intent.viewMode) try { sessionStorage.setItem(`termdock:shared-view:${intent.targetPeerId}`, intent.viewMode); } catch { /* optional display preference */ }
     setRemoteSession(undefined); sessionStorage.removeItem(OPEN_SESSION_KEY);
     setServiceName(intent.serviceName ?? new URL(intent.url).hostname);
@@ -451,8 +474,7 @@ export function SecureAccessGate({ children }: { children: ReactNode }) {
   });
   const addService = async (input: string, password?: string) => {
     if (window.termdockDesktop?.openServiceConnection) {
-      const request = serviceConnectionInput(input);
-      await openDesktopService(window.termdockDesktop, request.connection, request.invitation);
+      await addDesktopService(window.termdockDesktop, input);
       setOpen(false); return;
     }
     if (input.includes('#termdock-invite=')) {
@@ -465,7 +487,8 @@ export function SecureAccessGate({ children }: { children: ReactNode }) {
   };
   const invite = async (input: FederationInviteInput) => {
     const client = await getActiveClient();
-    const { includeBackup = true, entryAddress, viewMode, ...grantInput } = input;
+    await inviteSetupLoading.current;
+    const { includeBackup = true, entryAddress, viewMode, viewLayout, ...grantInput } = input;
     const selected = savedConnection();
     const backups = selected ? connectionRoutes(selected) : [];
     let backup: { url: string; targetPeerId: string; routeCode: string } | undefined;
@@ -476,7 +499,7 @@ export function SecureAccessGate({ children }: { children: ReactNode }) {
       } catch { /* Only an entry administrator can delegate that entry. */ }
       if (!backup) throw new Error('无法分享备用连接：需要入口管理员授权。也可以关闭此选项，生成直接连接邀请。');
     }
-    let targetUrl = selected?.serviceOrigin || location.origin;
+    let targetUrl = selected?.serviceOrigin || selected?.url || location.origin;
     if (entryAddress) {
       try { targetUrl = new URL(entryAddress).origin; } catch { throw new Error('邀请接入地址无效。'); }
     }
@@ -490,7 +513,15 @@ export function SecureAccessGate({ children }: { children: ReactNode }) {
     if (typeof result.code !== 'string' || typeof result.expiresAt !== 'number') throw new Error('暂时无法生成邀请。');
     window.dispatchEvent(new Event('termdock:sharing-changed'));
     await refresh();
-    return { id: typeof result.invitationId === 'string' ? result.invitationId : undefined, url: createInviteLink({ viewMode, v: 1, serviceId: client.targetPeerId, code: result.code, entryUrl: backup?.url || targetUrl, serviceUrl: targetUrl, name: serviceName, entryServiceId: backup?.targetPeerId, routeCode: backup?.routeCode }), expiresAt: result.expiresAt };
+    let url = createInviteLink({ viewMode, viewLayout, v: 1, serviceId: client.targetPeerId, code: result.code, entryUrl: backup?.url || targetUrl, serviceUrl: targetUrl, name: serviceName, entryServiceId: backup?.targetPeerId, routeCode: backup?.routeCode });
+    const setup = inviteSetup.current;
+    const hostname = new URL(targetUrl).hostname;
+    const localHostname = hostname.endsWith('.local') || /^(?:192\.168\.|10\.|172\.(?:1[6-9]|2\d|3[01])\.)/.test(hostname) || hostname.startsWith('[fd') || hostname.startsWith('[fc');
+    if (!backup && localHostname && setup?.serviceId === client.targetPeerId && setup.origins.includes(new URL(targetUrl).origin)) {
+      try { url = createOnboardingInviteLink(url, setup.url); }
+      catch { throw new Error('证书引导地址暂不可用，请重新打开分享后重试。'); }
+    }
+    return { id: typeof result.invitationId === 'string' ? result.invitationId : undefined, url, ...(url.startsWith('http:') && setup ? { certificateFingerprint: setup.fingerprint } : {}), expiresAt: result.expiresAt };
   };
   const recoverAccess = async (expectedTarget = savedConnection()?.targetPeerId) => {
     if (expectedTarget !== savedConnection()?.targetPeerId) throw new Error('SERVICE_SELECTION_CHANGED');
@@ -507,7 +538,7 @@ export function SecureAccessGate({ children }: { children: ReactNode }) {
   return <>
     <div className="h-full min-h-0" style={accessFailure ? { visibility: 'hidden' } : undefined}
       ref={element => element?.toggleAttribute('inert', !!accessFailure)} aria-hidden={accessFailure ? true : undefined}>
-    {ready ? fullService && !remoteSession ? children : <SessionAccessView client={currentSecureClient()!} initialSessionId={remoteSession} initialViewMode={savedConnection()?.viewMode} /> : accessFailure ? null : checking && !error && !open ? <StartupScreen
+    {ready ? fullService && !remoteSession ? children : <SessionAccessView client={currentSecureClient()!} initialSessionId={remoteSession} initialViewLayout={sharedLayout || savedConnection()?.viewLayout} initialViewMode={savedConnection()?.viewMode} /> : accessFailure ? null : checking && !error && !open ? <StartupScreen
       status={showConnectionDetails ? '连接时间较长，仍在等待服务…' : connectionMessage}
       detail={showConnectionDetails ? displayName : undefined}
       actionLabel={showConnectionDetails ? '管理服务' : undefined}
@@ -528,7 +559,7 @@ export function SecureAccessGate({ children }: { children: ReactNode }) {
     </div> : <><div className="fixed left-0 right-0 top-[var(--safe-top-inset)] z-chrome sm:right-auto sm:w-72"><ServiceSwitcher /></div><LoginScreen serviceOrigin={displayOrigin} onManageServices={() => setOpen(true)} focusEnabled={!open} onLoginSuccess={() => { void readPermissions().catch(() => setError(true)); }} /></>}
     </div>
     {accessFailure && <AccessRecoveryScreen key={JSON.stringify([accessFailure.code, accessFailure.context])} failure={accessFailure} target={savedConnection()} settingsOpen={open} onRecovered={() => recoverAccess(accessFailure.context.targetServiceId)} onSettings={() => setOpen(true)} />}
-    {open && <FederationAccess initialShareSessionId={shareRequest?.inviteSessionId} initialViewMode={shareRequest?.viewMode} onConnect={connect} onClose={() => { setOpen(false); setShareRequest(undefined); }} onAddService={addService} onOpenService={openService} onConnectWithPassword={connectWithPassword} paired={ready || !!savedConnection()} initialInvite={incomingInvitation} initialServicePage={accessFailure && savedConnection() ? { kind: accessFailure.code === 'RELAY_AUTHORIZATION_REQUIRED' ? 'routes' : 'edit', service: { ...savedConnection()!, id: savedConnection()!.targetPeerId, label: displayName } } : undefined} currentServiceName={displayName} currentServiceId={currentSecureClient()?.targetPeerId || savedConnection()?.targetPeerId} currentServiceOrigin={displayOrigin} currentIdentity={deviceIdentity} grants={grants} sessions={sessions} loading={loadingAccess} loadError={accessError} onRetry={() => void refresh()}
+    {open && <FederationAccess initialShareSessionId={shareRequest?.inviteSessionId} initialShareSessionIds={shareRequest?.inviteSessionIds} initialViewLayout={shareRequest?.viewLayout} initialViewMode={shareRequest?.viewMode} onConnect={connect} onClose={() => { setOpen(false); setShareRequest(undefined); }} onAddService={addService} onOpenService={openService} onConnectWithPassword={connectWithPassword} paired={ready || !!savedConnection()} initialInvite={incomingInvitation} initialServicePage={accessFailure && savedConnection() ? { kind: accessFailure.code === 'RELAY_AUTHORIZATION_REQUIRED' ? 'routes' : 'edit', service: { ...savedConnection()!, id: savedConnection()!.targetPeerId, label: displayName } } : undefined} currentServiceName={displayName} currentServiceId={currentSecureClient()?.targetPeerId || savedConnection()?.targetPeerId} currentServiceOrigin={displayOrigin} currentIdentity={deviceIdentity} grants={grants} sessions={sessions} loading={loadingAccess} loadError={accessError} onRetry={() => void refresh()}
       onRename={async (subjectId, name) => { await (await getActiveClient()).request({ type: 'device-name', subjectId, name }); await refresh(); }}
       hasBackup={!!savedConnection() && connectionRoutes(savedConnection()!).length > 0} inviteAddresses={inviteAddresses} onCreateInvite={canManage ? invite : undefined}
       invitations={canManage ? invitations : []} onRevokeInvitation={canManage ? async invitationId => { try { const result = await (await getActiveClient()).request({ type: 'invite-revoke', invitationId }); if (result.revoked !== true) throw new Error('INVITATION_NOT_PENDING'); } finally { await refresh(); } } : undefined}

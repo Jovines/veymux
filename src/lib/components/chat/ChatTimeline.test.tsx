@@ -102,3 +102,57 @@ it('retains cards for older attachments without inline references and attachment
   view.rerender(<ChatUserContent content={composeChatDraft('', files, [])} />);
   expect(within(screen.getByRole('list', { name: '消息附件' })).getByText('新图.png')).toBeTruthy();
 });
+
+it('places the reply placeholder after a new question and reuses the author when actual content arrives', () => {
+  const props = { agentName: 'Codex', agentSlug: 'codex', sessionId: 'reply-placeholder', uiWritable: true, canWrite: true, copied: '', onCopy: vi.fn(), onReference: vi.fn(), onAction: async () => true };
+  const pending = <div data-pending-question>下一轮问题</div>;
+  const view = render(<ChatTimeline {...props} messages={messages} pendingMessage={pending} replyFeedback={<span role="status">发送中</span>} />);
+  const feedback = view.container.querySelector('[data-chat-reply-feedback]')!;
+  expect(feedback.previousElementSibling?.hasAttribute('data-pending-question')).toBe(true);
+  expect(feedback.querySelector('[data-chat-agent-header]')).toBeTruthy();
+  const next = [...messages, { ...messages[0], id: 'new-user', role: 'user' as const }, { ...messages[1], id: 'new-reply', role: 'assistant' as const }];
+  view.rerender(<ChatTimeline {...props} messages={next} />);
+  expect(view.container.querySelectorAll('[data-chat-agent-header]')).toHaveLength(2);
+  expect(view.container.querySelector('[data-chat-agent-awaiting]')).toBeNull();
+  expect(screen.queryByRole('status')).toBeNull();
+  view.rerender(<ChatTimeline {...props} messages={next} />);
+  expect(view.container.querySelector('[data-chat-reply-feedback]')).toBeNull();
+});
+
+it('moves the status to the newest reply footer while preserving existing reply actions', () => {
+  const props = { agentName: 'Codex', sessionId: 'footer-status', uiWritable: true, canWrite: true, copied: '', onCopy: vi.fn(), onReference: vi.fn(), onAction: async () => true };
+  const view = render(<ChatTimeline {...props} messages={messages} replyStatus={<button>处理中</button>} />);
+  const footer = (id: string) => view.container.querySelector(`[data-chat-message="${id}"] [data-chat-message-actions]`)!;
+  const original = footer('a2'), tools = original.querySelector('.chat-message-tools');
+  expect(original.firstElementChild?.contains(screen.getByRole('button', { name: '处理中' }))).toBe(true);
+  expect(footer('a1').contains(screen.getByRole('button', { name: '处理中' }))).toBe(false);
+  view.rerender(<ChatTimeline {...props} messages={messages} />);
+  expect(footer('a2')).toBe(original); expect(original.querySelector('.chat-message-tools')).toBe(tools);
+  expect(screen.queryByRole('button', { name: '处理中' })).toBeNull();
+  const next = [...messages, { ...messages[2], id: 'a3', content: '最新进展' }];
+  view.rerender(<ChatTimeline {...props} messages={next} replyStatus={<button>处理中</button>} />);
+  expect(footer('a2')).toBe(original);
+  expect(footer('a3').firstElementChild?.contains(screen.getByRole('button', { name: '处理中' }))).toBe(true);
+  expect(original.contains(screen.getByRole('button', { name: '处理中' }))).toBe(false);
+});
+
+it('identifies the exact question for out-of-order replies without repeating the same context on every update', () => {
+  const props = { agentName: 'Codex', sessionId: 'reply-target', uiWritable: true, canWrite: true, copied: '', onCopy: vi.fn(), onReference: vi.fn(), onAction: async () => true };
+  const older = { ...messages[0], id: 'old-question', content: '未读消息会抖动' };
+  const latest = { ...messages[0], id: 'latest-question', content: '采用 A' };
+  const list: ChatMessage[] = [older, latest,
+    { ...messages[1], id: 'new-reply', replyTo: latest.id },
+    { ...messages[1], id: 'old-reply', replyTo: older.id },
+    { ...messages[1], id: 'old-followup', replyTo: older.id },
+    { ...messages[1], id: 'unassociated' },
+  ];
+  const view = render(<ChatTimeline {...props} messages={list} />);
+  const context = (id: string) => view.container.querySelector(`[data-chat-message="${id}"] [data-chat-reply-context]`);
+  expect(context('new-reply')?.getAttribute('data-chat-reply-context')).toBe(latest.id);
+  expect(context('old-reply')?.textContent).toContain('未读消息会抖动');
+  expect(context('old-followup')).toBeNull(); expect(context('unassociated')).toBeNull();
+  view.rerender(<ChatTimeline {...props} messages={[{ ...list[3], replyContext: { id: older.id, text: '未读消息会抖动', createdAt: 1 } }]} />);
+  expect(context('old-reply')?.textContent).toContain('未读消息会抖动');
+  view.rerender(<ChatTimeline {...props} messages={[{ ...list[3], replyContext: { id: 'unrelated', text: '不可展示的错误关联', createdAt: 1 } }]} />);
+  expect(context('old-reply')).toBeNull();
+});

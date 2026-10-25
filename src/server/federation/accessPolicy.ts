@@ -75,9 +75,11 @@ export function resolveAccessRequest(method: string, path: string): ResolvedAcce
   if (read && serviceReads.has(route)) return { action: 'service.view' };
   if (read && route === 'directory-suggestions') return { action: 'file.read' };
   if (method === 'POST' && route === 'create') return { action: 'service.create-session' };
-  const attachment = /^([^/]+)\/chat\/attachments$/.exec(route);
+  const attachment = /^([^/]+)\/chat\/attachments(?:\/recording)?$/.exec(route);
   if (method === 'POST' && attachment && !reservedSessionIds.has(attachment[1].toLowerCase())) return { action: 'session.input', sessionId: attachment[1] };
   const chatState = /^([^/]+)\/chat\/[^/]+\/state$/.exec(route);
+  const chatViewed = /^([^/]+)\/chat\/viewed$/.exec(route);
+  if (method === 'POST' && chatViewed && !reservedSessionIds.has(chatViewed[1].toLowerCase())) return { action: 'session.view', sessionId: chatViewed[1] };
   if (method === 'PUT' && chatState && !reservedSessionIds.has(chatState[1].toLowerCase())) return { action: 'session.input', sessionId: chatState[1] };
   const session = /^([^/]+)(?:\/(health|attach|stream|input|resize|tmux|restart|agent-resume|chat|view-mode))?$/.exec(route);
   if (session && !reservedSessionIds.has(session[1].toLowerCase())) {
@@ -96,11 +98,11 @@ export function resolveAccessRequest(method: string, path: string): ResolvedAcce
   return null;
 }
 /** WS control mapping; caller must bind sessionId to the opened channel. */
-export function terminalMessageAction(type: string): string | null {
+export function terminalMessageAction(type: string, action?: unknown): string | null {
   switch (type) {
     case 'input': case 'focus': case 'agent-review-ack': return 'session.input';
     case 'resize': return 'session.resize';
-    case 'tmux': return 'service.configure';
+    case 'tmux': return action === 'copy-selection' ? 'session.view' : 'service.configure';
     case 'ping': case 'viewing': case 'output-subscription': case 'output-ack': return 'session.view';
     // Legacy flow-control can pause the shared PTY; grant only to controllers.
     case 'flow-control': return 'session.input';

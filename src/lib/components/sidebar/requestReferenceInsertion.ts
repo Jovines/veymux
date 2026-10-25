@@ -1,6 +1,7 @@
 import { getActiveKeyboardLayer, isKeyboardLayerSource } from '../../hooks/useKeyboardLayer';
 import { currentSecureClient, savedConnection } from '../../federation/browserIntegration';
 import { createOwnedTerminalPasteRequest, releaseOwnedTerminalPasteRequest } from '../../terminal/ownedPaste';
+import type { ContextReference } from '../../terminal/contextReference';
 import type { TerminalSequenceOptions } from '../../terminal/sequencePayload';
 
 /** Freeze the visible action and service before any capture, save or upload awaits. */
@@ -17,7 +18,7 @@ export function captureReferenceInsertionScope(source?: HTMLElement): () => bool
 }
 
 /** An ACK confirms local input acceptance, not execution or an Agent reply. */
-export function requestReferenceInsertion(text: string, sessionId: string | null, isCurrent: () => boolean, source?: HTMLElement, options?: TerminalSequenceOptions & { focus?: boolean }): Promise<boolean> {
+export function requestReferenceInsertion(text: string, sessionId: string | null, isCurrent: () => boolean, source?: HTMLElement, options?: TerminalSequenceOptions & { focus?: boolean; reference?: ContextReference }): Promise<boolean> {
   if (!text || !sessionId || !isCurrent()) return Promise.resolve(false);
   const owned = source ? createOwnedTerminalPasteRequest(source, sessionId, text, options?.submitAfterPaste === true) : null;
   if (source && !owned) return Promise.resolve(false);
@@ -39,7 +40,7 @@ export function requestReferenceInsertion(text: string, sessionId: string | null
     const timer = window.setTimeout(() => finish(false), 1500);
     window.addEventListener('termdock-insert-reference-ack', onAck);
     window.dispatchEvent(new CustomEvent('termdock-insert-reference', {
-      detail: owned ? { ...owned, focus: options?.focus ?? owned.focus } : { text, sessionId, nonce, focus: false, paste: true, submitAfterPaste: false, ...options },
+      detail: owned ? { ...owned, ...(options?.reference ? { reference: { ...options.reference, text } } : {}), focus: options?.focus ?? owned.focus } : { text, sessionId, nonce, focus: false, paste: true, submitAfterPaste: false, ...options, ...(options?.reference ? { reference: { ...options.reference, text } } : {}) },
     }));
   });
 }

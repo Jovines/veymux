@@ -6,6 +6,16 @@ import { I18nProvider } from '../../i18n';
 import type { TermdockUpdateState } from '../../terminal/api';
 import type { DesktopAppUpdateState } from '../../desktop/nativeBridge';
 import { TermdockUpdateSettings } from './TermdockUpdateSettings';
+import { summarizeServiceUpdates } from '../../terminal/serviceUpdateOverview';
+
+const plan = { targetId: 'target', interfaceId: 'entry', nodes: [
+  { intent: { url: 'https://target.example', targetPeerId: 'target' }, label: 'Work', role: 'target' as const },
+  { intent: { url: 'https://entry.example', targetPeerId: 'entry' }, label: 'Home', role: 'interface' as const },
+] };
+const current: TermdockUpdateState = { status: 'current', currentVersion: '1.0.1', latestVersion: '1.0.1', source: 'official', checkedAt: 1, error: null };
+const context = (entry: TermdockUpdateState | undefined, retry = false) => ({
+  ...summarizeServiceUpdates(plan, { target: { state: current }, entry: { state: entry } }, false, retry), check: vi.fn(async () => undefined),
+});
 
 afterEach(() => {
   cleanup();
@@ -35,12 +45,44 @@ function renderSettings(state: TermdockUpdateState, desktopState?: DesktopAppUpd
 }
 
 describe('TermdockUpdateSettings', () => {
+  it('keeps the combined action available after the target is current so a failed relay update can be retried', () => {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ locale: 'en' })));
+    const restart = vi.fn();
+    const props = {
+      state: { status: 'current' as const, currentVersion: '1.0.1', latestVersion: null, source: null, checkedAt: null, error: null },
+      pending: false, onCheck: vi.fn(), onConfirmRestart: restart,
+      updateContext: context({ ...current, status: 'ready', currentVersion: '1.0.0' }, true),
+      updateProgress: 'Home relay: restart failed',
+    };
+    const view = render(<I18nProvider><TermdockUpdateSettings {...props} /></I18nProvider>);
+    expect(screen.getByRole('status').textContent).toContain('restart failed');
+    fireEvent.click(screen.getByRole('button', { name: 'Retry update' }));
+    expect(restart).toHaveBeenCalledOnce();
+    view.rerender(<I18nProvider><TermdockUpdateSettings {...props} pending updateProgress="Home relay: installing update…" /></I18nProvider>);
+    expect(screen.getByRole('status').textContent).toContain('installing');
+    expect((screen.getByRole('button', { name: 'Retry update' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+  it.each([current, undefined])('offers a check instead of a restart when the entry is current or unknown (%j)', entry => {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ locale: 'en' })));
+    const onCheck = vi.fn(), onConfirmRestart = vi.fn();
+    render(<I18nProvider><TermdockUpdateSettings state={current} pending={false} onCheck={onCheck} onConfirmRestart={onConfirmRestart} updateContext={context(entry)} /></I18nProvider>);
+    expect(screen.queryByRole('button', { name: /restart/i })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Check again' }));
+    expect(onCheck).toHaveBeenCalledOnce(); expect(onConfirmRestart).not.toHaveBeenCalled();
+    expect(screen.getByText('Version details')).toBeTruthy();
+  });
+  it('does not let the target ready state bypass an unresolved entry status', () => {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ locale: 'en' })));
+    render(<I18nProvider><TermdockUpdateSettings state={{ ...current, status: 'ready', currentVersion: '1.0.0' }} pending={false} onCheck={vi.fn()} onConfirmRestart={vi.fn()} updateContext={context(undefined)} /></I18nProvider>);
+    expect(screen.queryByRole('button', { name: /restart/i })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Check for updates' })).toBeTruthy();
+  });
   it('offers an explicit manual update check', () => {
     const actions = renderSettings({
       status: 'current', currentVersion: '1.4.76', latestVersion: '1.4.76',
       source: 'official', checkedAt: Date.now(), error: null,
     });
-    expect(screen.getByText('Termdock is up to date.')).toBeTruthy();
+    expect(screen.getByText('This service is up to date.')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Check again' }));
     expect(actions.onCheck).toHaveBeenCalledOnce();
     expect(actions.onConfirmRestart).not.toHaveBeenCalled();

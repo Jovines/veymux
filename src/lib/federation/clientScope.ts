@@ -4,7 +4,7 @@ const GLOBAL_KEYS = new Set([TARGET_KEY, ENTRY_KEY, 'termdock-color-theme', 'ter
 const rawGet = typeof Storage === 'undefined' ? undefined : Storage.prototype.getItem;
 const rawSet = typeof Storage === 'undefined' ? undefined : Storage.prototype.setItem;
 const LEGACY_OWNER_KEY = 'termdock-secure-legacy-owner';
-export interface SavedTarget { url: string; targetPeerId: string; serviceName?: string; serviceOrigin?: string; entryServiceId?: string; routes?: { url: string; targetPeerId: string }[] }
+export interface SavedTarget { viewMode?: 'terminal' | 'chat'; viewLayout?: 'split'; url: string; targetPeerId: string; serviceName?: string; serviceOrigin?: string; entryServiceId?: string; routes?: { url: string; targetPeerId: string }[] }
 export const IS_WORKSPACE_DOCUMENT = typeof window !== 'undefined' && window.parent !== window && location.pathname === '/workspace.html';
 export function readSelectedTarget(): SavedTarget | null {
   if (typeof window === 'undefined') return null;

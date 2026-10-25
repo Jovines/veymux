@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createInviteLink, parseInviteLink } from './inviteLink';
+import { createInviteLink, createOnboardingInviteLink, parseInviteLink } from './inviteLink';
 const serviceId = '12D3KooWQGDWJi8Zf2xfrgbfrDCYtobhQ9twqH1qz6qTYFcEk9LX';
 const code = 'a'.repeat(43);
 describe('trusted invitation links', () => {
@@ -18,4 +18,31 @@ describe('trusted invitation links', () => {
     const url = createInviteLink({ v: 1, serviceId, code, entryUrl: 'https://entry.example', entryServiceId: serviceId, routeCode: 'b'.repeat(43) });
     expect(parseInviteLink(url)).toMatchObject({ entryServiceId: serviceId, routeCode: 'b'.repeat(43) });
   });
+});
+
+describe('HTTP certificate setup invitation', () => {
+  it('keeps the secret in the fragment and connects only to the original HTTPS service', () => {
+    const original = createInviteLink({ v: 1, serviceId, code, entryUrl: 'https://192.168.1.20:9834', viewMode: 'chat', viewLayout: 'split' });
+    const setup = createOnboardingInviteLink(original, 'http://192.168.1.10:21000/ca');
+    expect(new URL(setup).origin).toBe('http://192.168.1.20:21000');
+    expect(new URL(setup).pathname).toBe('/connect');
+    expect(new URL(setup).search).toBe('');
+    expect(new URL(setup).hash).toBe(new URL(original).hash);
+    expect(parseInviteLink(setup)).toEqual(parseInviteLink(original));
+    expect(() => parseInviteLink(setup.replace('192.168.1.20', 'attacker.example'))).toThrow();
+    expect(() => parseInviteLink(setup.replace('/connect#', '/#'))).toThrow();
+    expect(() => parseInviteLink(setup.replace('/connect#', '/connect?redirect=bad#'))).toThrow();
+    expect(() => parseInviteLink(setup.replace('http://', 'http://user@'))).toThrow();
+  });
+  it('does not convert HTTP business targets or accept unsafe setup schemes', () => {
+    const local = createInviteLink({ v: 1, serviceId, code, entryUrl: 'http://localhost:9834' });
+    const secure = createInviteLink({ v: 1, serviceId, code, entryUrl: 'https://192.168.1.20:9834' });
+    expect(() => createOnboardingInviteLink(local, 'http://localhost:21000')).toThrow();
+    expect(() => createOnboardingInviteLink(secure, 'javascript:alert(1)')).toThrow();
+  });
+});
+
+it('preserves the split presentation without adding authorization to the URL', () => {
+  const url = createInviteLink({ v: 1, serviceId, code, entryUrl: 'https://entry.example', viewLayout: 'split' });
+  expect(parseInviteLink(url)).toMatchObject({ viewLayout: 'split', targetPeerId: serviceId });
 });

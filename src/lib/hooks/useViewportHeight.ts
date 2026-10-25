@@ -515,10 +515,8 @@ export function useViewportHeight(options: UseViewportHeightOptions = {}): numbe
 
     const resetKeyboardSession = (source: string) => {
       settleUntil = 0;
-      const activeElement = document.activeElement;
-      if (activeElement instanceof HTMLElement && hasFocusedEditableElement()) {
-        activeElement.blur();
-      }
+      // Reset geometry without ending the browser/native editing session.
+      // Window visibility does not authorize moving focus or cancelling IME.
 
       lastKeyboardHeightRef.current = 0;
       lastKeyboardOpenRef.current = false;

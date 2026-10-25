@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import express from 'express';
 import { once } from 'node:events';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, mkdirSync, writeFileSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { WebSocket, WebSocketServer } from 'ws';
@@ -10,6 +10,9 @@ import { RelayClient, RelayRouter } from '../federation/relay';
 import { RelaySocket } from '../../lib/federation/relaySocket';
 import { connect } from '../../lib/federation/secureClient';
 import { sessionAttachmentRoutes } from './sessionAttachmentRoutes';
+import filesystem from '../routes/filesystem';
+import { sessionAttachmentRoot } from '../federation/sessionAttachmentAccess';
+import { sharedFileBoundary } from '../routes/sharedFiles';
 import androidRouter from '../routes/android';
 import { androidRecordings } from '../android/recording';
 const cleanup: Array<() => void> = [];
@@ -28,8 +31,8 @@ async function dial(url: string, ready = false) {
 it.each([false, true])('uploads Session attachments without directory grants, encrypted and relay-only=%s', async relayed => {
   vi.stubGlobal('CloseEvent', class extends Event { code = 1000; reason = ''; });
   const directory = mkdtempSync(join(tmpdir(), 'td-session-attachment-')); cleanup.push(() => rmSync(directory, { recursive: true, force: true }));
-  const app = express(); app.use(express.json()); app.use('/api/terminal', sessionAttachmentRoutes(join(directory, 'attachments'), id => id === 'one' ? 'stable-one' : undefined)); app.use('/api/android', androidRouter);
-  const runtime = await createFederationRuntime(app, join(directory, 'federation'), { terminal() {}, control() {} }, { resolveSessionId: id => id }); cleanup.push(() => runtime.close());
+  const app = express(); app.use(express.json()); app.use('/api/terminal', sessionAttachmentRoutes(join(directory, 'attachments'), id => id === 'one' ? 'stable-one' : undefined)); app.use('/api/android', androidRouter); app.use('/api/terminal/fs', sharedFileBoundary, filesystem);
+  const runtime = await createFederationRuntime(app, join(directory, 'federation'), { terminal() {}, control() {} }, { resolveSessionId: id => id === 'one' ? 'stable-one' : id, sessionAttachmentDirectory: join(directory, 'attachments') }); cleanup.push(() => runtime.close());
   const target = await endpoint(), wire: string[] = [];
   target.server.on('connection', ws => { ws.on('message', data => wire.push(String(data))); void runtime.accept(ws); });
   let url = target.url, socketFactory = (address: string) => new WebSocket(address) as unknown as globalThis.WebSocket;
@@ -47,6 +50,8 @@ it.each([false, true])('uploads Session attachments without directory grants, en
   const grant = runtime.store.grant({ subjectId: client.identity.peerId, scope: { kind: 'sessions', sessionIds: ['one'] }, actions: ['session.view', 'session.input'], resources: { android: [{ serial: 'phone', access: 'view' }] } });
   const response = await upload(); expect(response.status).toBe(200); const { files } = await response.json();
   expect(files).toHaveLength(1); expect(files[0].path.startsWith(join(directory, 'attachments') + '/')).toBe(true); expect(readFileSync(files[0].path, 'utf8')).toBe('private-chat-attachment');
+  const preview = await client.fetch(`/api/terminal/fs/blob?path=${encodeURIComponent(files[0].path)}`);
+  expect(await preview.text()).toBe('private-chat-attachment');
   const second = await upload(); expect((await second.json()).files[0].path).not.toBe(files[0].path);
   // Session attachments must get the file-upload budget on both direct and
   // relay channels, rather than the 5 MiB ordinary request limit.
@@ -66,16 +71,48 @@ it.each([false, true])('uploads Session attachments without directory grants, en
   const start = vi.spyOn(androidRecordings, 'start').mockResolvedValue(job);
   vi.spyOn(androidRecordings, 'info').mockImplementation(async (id, owner) => { if (id !== job.id || owner !== client.identity.peerId) throw new Error('not owned'); return job; });
   vi.spyOn(androidRecordings, 'stop').mockResolvedValue({ ...job, status: 'ready' });
-  vi.spyOn(androidRecordings, 'save').mockResolvedValue('/server/private-recording.mp4');
+  const saveRecording = vi.spyOn(androidRecordings, 'save').mockImplementation(async (_id, destination) => {
+    if (!destination) return '/server/private-recording.mp4';
+    const file = join(destination, job.name); writeFileSync(file, 'private-recording-content'); return file;
+  });
   const post = (path: string, data = {}) => client.fetch('/api/android' + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
   expect((await post('/recordings', { serial: 'phone' })).status).toBe(200); expect(start).toHaveBeenCalledWith('phone', client.identity.peerId);
   expect((await post('/recordings', { serial: 'not-shared' })).status).toBe(403);
   expect((await post(`/recordings/${job.id}/stop`)).status).toBe(200);
   expect((await post(`/recordings/${job.id}/save`, { directory: '/tmp' })).status).toBe(403);
   expect((await post(`/recordings/${job.id}/save`)).status).toBe(200);
+  const attachRecording = (session = 'one', body = { recordingId: job.id }) => client.fetch(`/api/terminal/${session}/chat/attachments/recording`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const recordingResponse = await attachRecording();
+  expect(recordingResponse.status).toBe(200);
+  const recordingPath = (await recordingResponse.json()).path;
+  expect(recordingPath.startsWith(sessionAttachmentRoot(join(directory, 'attachments'), 'stable-one') + '/')).toBe(true);
+  expect(saveRecording).toHaveBeenLastCalledWith(job.id, join(recordingPath, '..'), client.identity.peerId);
+  expect(await (await client.fetch(`/api/terminal/fs/video?path=${encodeURIComponent(recordingPath)}`)).text()).toBe('private-recording-content');
+  await expect(attachRecording('other')).rejects.toThrow();
+  expect((await attachRecording('one', { recordingId: 'not-owned' })).status).toBe(400);
+  expect((await attachRecording('one', { recordingId: job.id, directory: '/tmp' } as { recordingId: string })).status).toBe(400);
   expect((await post('/recordings/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/stop')).status).toBe(403);
   runtime.store.revoke(grant.id);
-  runtime.store.grant({ subjectId: client.identity.peerId, scope: { kind: 'sessions', sessionIds: ['one'] }, actions: ['session.view'] });
+  const inputOnly = runtime.store.grant({ subjectId: client.identity.peerId, scope: { kind: 'sessions', sessionIds: ['one'] }, actions: ['session.view', 'session.input'] });
+  expect((await attachRecording()).status).toBe(403);
+  runtime.store.revoke(inputOnly.id);
+  const viewer = runtime.store.grant({ subjectId: client.identity.peerId, scope: { kind: 'sessions', sessionIds: ['one'] }, actions: ['session.view'] });
+  await expect(attachRecording()).rejects.toThrow();
+  expect(await (await client.fetch(`/api/terminal/fs/blob?path=${encodeURIComponent(files[0].path)}`)).text()).toBe('private-chat-attachment');
+  const otherRoot = sessionAttachmentRoot(join(directory, 'attachments'), 'other');
+  mkdirSync(otherRoot, { recursive: true }); writeFileSync(join(otherRoot, 'hidden.txt'), 'other-session-secret');
+  symlinkSync(join(otherRoot, 'hidden.txt'), join(files[0].path, '..', 'escape.txt'));
+  for (const [method, path] of [
+    ['GET', `/api/terminal/fs/blob?path=${encodeURIComponent(join(otherRoot, 'hidden.txt'))}`],
+    ['GET', `/api/terminal/fs/blob?path=${encodeURIComponent(join(files[0].path, '..', 'escape.txt'))}`],
+    ['GET', `/api/terminal/fs/list?path=${encodeURIComponent(join(files[0].path, '..'))}`],
+    ['DELETE', `/api/terminal/fs/file?path=${encodeURIComponent(files[0].path)}`],
+    ['PUT', `/api/terminal/fs/write?path=${encodeURIComponent(files[0].path)}`],
+    ['POST', `/api/terminal/fs/upload?dir=${encodeURIComponent(join(files[0].path, '..'))}`],
+    ['GET', `/api/terminal/fs/blob?path=${encodeURIComponent(files[0].path)}&path=/etc/passwd`],
+  ]) await expect(client.fetch(path, { method })).rejects.toThrow();
+  runtime.store.revoke(viewer.id);
+  await expect(client.fetch(`/api/terminal/fs/blob?path=${encodeURIComponent(files[0].path)}`)).rejects.toThrow();
   await expect(upload()).rejects.toThrow();
   expect(wire.every(chunk => !chunk.includes('private-chat-attachment') && !chunk.includes('image.png'))).toBe(true);
   client.close(); await expect(upload()).rejects.toThrow();

@@ -6,6 +6,54 @@ let updateAvailable = false;
 let accepted = false;
 let initialized = false;
 const listeners = new Set<() => void>();
+
+/** Flush every retained workspace, not just the iframe initiating the update. */
+export function flushApplicationDrafts(view: Window = window): void {
+  const event = view.document.createEvent('Event');
+  event.initEvent('termdock:before-update', false, false);
+  view.dispatchEvent(event);
+  for (const frame of view.document.querySelectorAll('iframe[data-workspace-key]')) {
+    const child = (frame as HTMLIFrameElement).contentWindow;
+    if (child) flushApplicationDrafts(child);
+  }
+}
+
+/** A service restart does not activate a waiting PWA worker. Fetch the new
+ * manifest, await installation, activate it, then reload the whole application. */
+export async function reloadApplicationAfterServiceUpdate(): Promise<void> {
+  const view = window.top && window.top.location.origin === location.origin ? window.top : window;
+  flushApplicationDrafts(view);
+  const workers = view.navigator.serviceWorker;
+  const registration = await workers?.getRegistration('/');
+  if (registration) {
+    await registration.update();
+    const installing = registration.installing;
+    if (installing && installing.state !== 'installed' && installing.state !== 'activated') {
+      await new Promise<void>((resolve, reject) => {
+        const cleanup = () => { clearTimeout(timer); installing.removeEventListener('statechange', changed); };
+        const changed = () => {
+          if (installing.state === 'installed' || installing.state === 'activated') { cleanup(); resolve(); }
+          else if (installing.state === 'redundant') { cleanup(); reject(new Error('Interface update installation failed')); }
+        };
+        const timer = setTimeout(() => { cleanup(); reject(new Error('Interface update installation timed out')); }, 60_000);
+        installing.addEventListener('statechange', changed); changed();
+      });
+    }
+    const waiting = registration.waiting;
+    if (waiting) {
+      await new Promise<void>((resolve, reject) => {
+        const cleanup = () => { clearTimeout(timer); workers.removeEventListener('controllerchange', changed); };
+        const changed = () => { cleanup(); resolve(); };
+        const timer = setTimeout(() => { cleanup(); reject(new Error('Interface update activation timed out')); }, 30_000);
+        workers.addEventListener('controllerchange', changed);
+        waiting.postMessage({ type: 'SKIP_WAITING' });
+      });
+    }
+  }
+  // Changes made while installation was finishing must also survive the reload.
+  flushApplicationDrafts(view);
+  view.location.reload();
+}
 function notifyUpdate(): void {
   updateAvailable = true;
   listeners.forEach((listener) => listener());

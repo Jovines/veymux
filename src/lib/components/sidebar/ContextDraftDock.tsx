@@ -382,7 +382,7 @@ export function ContextDraftDock({
           <button
             type="button"
             onClick={handleSend}
-            disabled={!hasDraft || pending}
+            disabled={!hasDraft}
             aria-busy={pending}
             className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition active:scale-95 disabled:opacity-30 ${
               hasDraft
@@ -504,7 +504,7 @@ export function ContextDraftDock({
               type="button"
               onPointerDown={keepFocus}
               onClick={handleInsert}
-              disabled={!hasDraft || pending}
+              disabled={!hasDraft}
               aria-busy={pending}
               className="inline-flex h-6 shrink-0 items-center justify-center gap-1 rounded-md px-2 text-[10px] font-medium text-foreground/75 transition hover:bg-surface-2 hover:text-foreground active:scale-[0.98] disabled:opacity-30"
             >
@@ -515,7 +515,7 @@ export function ContextDraftDock({
               type="button"
               onPointerDown={keepFocus}
               onClick={handleSend}
-              disabled={!hasDraft || pending}
+              disabled={!hasDraft}
               aria-busy={pending}
               className="inline-flex h-6 shrink-0 items-center justify-center gap-1 rounded-md bg-primary px-2 text-[10px] font-semibold text-primary-foreground transition hover:bg-primary/90 active:scale-[0.98] disabled:opacity-30"
               title={`${labels.insertAndSend} · ${sendShortcut}`}

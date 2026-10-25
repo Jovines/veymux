@@ -50,6 +50,7 @@ import { useTerminalStore } from '../stores/useTerminalStore';
 import { useSidebarStore } from '../stores/useSidebarStore';
 import { useCollaborationPanelDock } from '../stores/useCollaborationPanelDock';
 import { useSessionOrderStore } from '../stores/useSessionOrderStore';
+import { readSessionViewMode } from './chat/sessionViewMode';
 
 const originalSetTerminalSession = useTerminalStore.getState().setTerminalSession;
 
@@ -156,6 +157,9 @@ describe('MultiTerminalView session recovery and keyboard ownership', () => {
   }
 
   it('gives the split chooser keyboard ownership, loops focus, and releases it on Escape', async () => {
+    // Removing the focused dialog makes JSDOM report an unfocused document;
+    // this test models a foreground window, as the browser integration does.
+    const windowFocus = vi.spyOn(document, 'hasFocus').mockReturnValue(true);
     const user = userEvent.setup();
     await ready();
     const terminal = screen.getByRole('textbox', { name: 'Terminal one' });
@@ -182,6 +186,7 @@ describe('MultiTerminalView session recovery and keyboard ownership', () => {
     expect(isKeyboardLayerOpen()).toBe(false);
     expect(document.activeElement).toBe(terminal);
     expect(isKeyboardLayerSource(terminal)).toBe(true);
+    windowFocus.mockRestore();
   });
 
   it.each([false, true])('keeps a user selection while a real creation resolves (switch back: %s)', async (switchBack) => {
@@ -207,6 +212,52 @@ describe('MultiTerminalView session recovery and keyboard ownership', () => {
     expect(window.localStorage.getItem('termdock-active-session')).toBe(expected);
     expect(useTerminalStore.getState().sessions.get('created')?.terminalSessionId).toBe('backend-created');
     expect(onResult).toHaveBeenCalledWith({ ok: true, sessionId: 'created' });
+  });
+
+  it.each([
+    ['chat', 'codex', true, 'chat'],
+    ['terminal', 'codex', true, 'terminal'],
+    ['chat', undefined, false, 'terminal'],
+    ['chat', 'vim', false, 'terminal'],
+  ] as const)('creates from %s with command %s in %s mode', async (sourceMode, command, allowed, expected) => {
+    const createdId = `mode-created-${sourceMode}-${command || 'shell'}`;
+    api.sendTerminalInput.mockResolvedValue(undefined);
+    const created = { ...sessions[0], sessionId: createdId, frontendSessionId: createdId, name: 'Created Agent', backendSessionId: `backend-${createdId}` };
+    const modes = new Map<string, string>([['one', sourceMode]]);
+    localStorage.setItem(`termdock:session-view:${location.origin}:one`, sourceMode);
+    vi.stubGlobal('fetch', vi.fn(async (url, init?: RequestInit) => {
+      const id = /terminal\/([^/]+)\/view-mode/.exec(String(url))?.[1] || '';
+      if (init?.body) modes.set(id, JSON.parse(String(init.body)).mode);
+      return Response.json({ mode: modes.get(id) ?? null, chatEligibility: { allowed, program: command || null } });
+    }));
+    api.openSessionInventoryEntry.mockResolvedValue({ session: created, terminalSession: { sessionId: created.backendSessionId, cols: 80, rows: 24 }, inventory: { ...inventory, clientSessions: [...sessions, created] }, reused: false });
+    const updates = vi.fn(); render(<MultiTerminalView onSessionDataUpdate={updates} />);
+    await waitFor(() => expect(updates.mock.lastCall?.[0].activeSessionId).toBe('one'));
+    await waitFor(() => expect(readSessionViewMode('one')).toBe(sourceMode));
+    dispatch('new-terminal-session', { command });
+    await waitFor(() => expect(updates.mock.lastCall?.[0].activeSessionId).toBe(createdId));
+    expect(readSessionViewMode(createdId)).toBe(expected);
+    if (expected === 'chat') await screen.findByRole('button', { name: `Chat ready ${createdId}` });
+  });
+
+  it.each(['chat', 'terminal'] as const)('restores a detached tmux session in its saved %s mode before rendering it', async viewMode => {
+    const createdId = `restored-tmux-${viewMode}`;
+    const created = { ...sessions[0], sessionId: createdId, frontendSessionId: createdId, name: 'Restored Agent',
+      mode: 'tmux', tmuxSessionName: 'wt-preserved', backendSessionId: `backend-${createdId}`, viewMode };
+    const modes = new Map<string, string>();
+    vi.stubGlobal('fetch', vi.fn(async (url, init?: RequestInit) => {
+      const id = /terminal\/([^/]+)\/view-mode/.exec(String(url))?.[1] || '';
+      if (init?.body) modes.set(id, JSON.parse(String(init.body)).mode);
+      return Response.json({ mode: modes.get(id) ?? null });
+    }));
+    api.openSessionInventoryEntry.mockResolvedValue({ session: created, terminalSession: { sessionId: created.backendSessionId, cols: 80, rows: 24 },
+      inventory: { ...inventory, clientSessions: [...sessions, created] }, reused: false });
+    const updates = vi.fn(); render(<MultiTerminalView onSessionDataUpdate={updates} />);
+    await waitFor(() => expect(updates.mock.lastCall?.[0].activeSessionId).toBe('one'));
+    dispatch('new-terminal-session', { mode: 'tmux', tmuxSessionName: 'wt-preserved' });
+    await waitFor(() => expect(updates.mock.lastCall?.[0].activeSessionId).toBe(createdId));
+    expect(readSessionViewMode(createdId)).toBe(viewMode);
+    expect(modes.get(createdId)).toBe(viewMode);
   });
 
   it('claims split shortcuts before terminal handlers while yielding to forms, composition, and the chooser', async () => {
@@ -399,6 +450,34 @@ describe('MultiTerminalView session recovery and keyboard ownership', () => {
     dispatch('close-terminal-session-by-backend', 'rebuilt-backend');
     await waitFor(() => expect(api.removeSessionInventoryEntry).toHaveBeenCalledWith('one'));
   });
+  it('puts shared sidebar controls on every pane without a redundant group header or remounting terminals', async () => {
+    const updates = vi.fn(), toggleRight = vi.fn(), toggleLeft = vi.fn();
+    const props = { desktopFloatingTitle: true, desktopLeftSidebarPinned: true, leftSidebarOpen: true,
+      onSessionDataUpdate: updates, onToggleRightSidebar: toggleRight, onToggleLeftSidebar: toggleLeft };
+    const view = render(<MultiTerminalView {...props} />);
+    await screen.findByRole('textbox', { name: 'Terminal one' });
+    dispatch('combine-terminal-split-sessions', { primaryId: 'one', secondaryId: 'two' });
+    expect(view.container.querySelector('[data-split-window-header]')).toBeNull();
+    const terminal = screen.getByRole('textbox', { name: 'Terminal two' });
+    const titles = view.container.querySelectorAll<HTMLElement>('[data-pane-titlebar]');
+    expect(titles).toHaveLength(2);
+    for (const title of titles) expect(within(title).getByRole('button', { name: 'Expand tools panel' })).toBeTruthy();
+    fireEvent.click(within(titles[1]).getByRole('button', { name: 'Expand tools panel' }));
+    await waitFor(() => expect(updates.mock.lastCall![0].activeSessionId).toBe('two'));
+    expect(toggleRight).toHaveBeenCalledOnce();
+    view.rerender(<MultiTerminalView {...props} rightSidebarOpen leftSidebarOpen={false} desktopLeftSidebarPinned={false} />);
+    expect(view.container.querySelector('[data-split-window-header]')).toBeNull();
+    const closeButtons = screen.getAllByRole('button', { name: 'Collapse tools panel' });
+    expect(closeButtons).toHaveLength(2);
+    expect(closeButtons.every(button => button.getAttribute('aria-expanded') === 'true')).toBe(true);
+    fireEvent.click(closeButtons[0]);
+    await waitFor(() => expect(updates.mock.lastCall![0].activeSessionId).toBe('one'));
+    expect(toggleRight).toHaveBeenCalledTimes(2);
+    fireEvent.click(screen.getByRole('button', { name: 'Expand session list' }));
+    expect(toggleLeft).toHaveBeenCalledOnce();
+    expect(screen.getByRole('textbox', { name: 'Terminal two' })).toBe(terminal);
+  });
+
   it('split window chrome follows actual platform/Preview/pin facts and preserves pane mounts on pin changes',async()=>{
     const updates=vi.fn();
     const previousBridge=window.termdockDesktop,previousPreview=document.documentElement.dataset.termdockPreview;

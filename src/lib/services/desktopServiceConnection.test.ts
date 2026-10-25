@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createInviteLink } from '../federation/inviteLink';
 import type { TermdockDesktopBridge } from '../desktop/nativeBridge';
-import { desktopCertificateTrust, desktopConnectionIntent, openDesktopService, serviceConnectionInput } from './desktopServiceConnection';
+import { addDesktopService, desktopCertificateTrust, desktopConnectionIntent, openDesktopService, serviceConnectionInput } from './desktopServiceConnection';
 import { parseInviteLink } from '../federation/inviteLink';
 
 afterEach(() => vi.restoreAllMocks());
@@ -12,6 +12,30 @@ function bridge() {
   return { openServiceConnection: vi.fn().mockResolvedValue({ ok: true }), reviewServiceConnection: vi.fn().mockResolvedValue(undefined) } as unknown as TermdockDesktopBridge;
 }
 describe('shared desktop connection actions', () => {
+  it('delegates a new workspace address to the center before discovery or certificate failure', async () => {
+    const native = bridge();
+    await addDesktopService(native, 'computer.example:9834');
+    expect(native.reviewServiceConnection).toHaveBeenCalledExactlyOnceWith({
+      id: 'https://computer.example:9834', url: 'https://computer.example:9834', label: 'computer.example:9834',
+    }, undefined);
+    expect(native.openServiceConnection).not.toHaveBeenCalled();
+  });
+  it('opens from the center and older shells through the same normalized native request', async () => {
+    const native = bridge();
+    delete native.reviewServiceConnection;
+    await addDesktopService(native, 'computer.example:9834');
+    expect(native.openServiceConnection).toHaveBeenCalledExactlyOnceWith({
+      id: 'https://computer.example:9834', url: 'https://computer.example:9834', label: 'computer.example:9834',
+    }, undefined);
+  });
+  it('preserves the routed invitation during an add and never bypasses a rejected center handoff', async () => {
+    const invitation = createInviteLink({ v: 1, serviceId: target, entryServiceId: entry, entryUrl: service.url, serviceUrl: service.serviceOrigin, code: 'c'.repeat(32), routeCode: 'd'.repeat(32), viewMode: 'chat' });
+    const native = bridge();
+    vi.mocked(native.reviewServiceConnection!).mockRejectedValue(new Error('Center busy'));
+    await expect(addDesktopService(native, invitation)).rejects.toThrow('Center busy');
+    expect(native.reviewServiceConnection).toHaveBeenCalledExactlyOnceWith(serviceConnectionInput(invitation).connection, invitation);
+    expect(native.openServiceConnection).not.toHaveBeenCalled();
+  });
   it.each([true, false])('bootstraps a relay target through the entry with direct address known=%s', known => {
     const request = desktopConnectionIntent({ targetPeerId: target, url: known ? 'https://target.internal' : 'https://entry.example',
       ...(known ? { serviceOrigin: 'https://target.internal' } : { entryServiceId: entry }),

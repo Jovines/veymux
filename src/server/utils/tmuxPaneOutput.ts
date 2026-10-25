@@ -1,10 +1,45 @@
 import { spawn, type ChildProcess, type SpawnOptions } from 'node:child_process';
 
-/** Consume protocol framing only. Never retain or decode pane contents, even
- * when tmux sends a multi-megabyte line without a newline until its end. */
+/** Extract only bounded status OSCs from tmux's octal-escaped output. Ordinary
+ * pane contents are never retained or forwarded to the metadata consumer. */
+class TmuxPaneStatusParser {
+  private pending = '';
+  constructor(private readonly emit: (sequence: string) => void) {}
+  feed(bytes: Buffer) {
+    const prefixes = ['\\033]7501;', '\\033]133;', '\\033]9;4;'];
+    for (let offset = 0; offset < bytes.length; offset += 16384) {
+      const buffer = this.pending + bytes.subarray(offset, offset + 16384).toString('ascii');
+      const pattern = /\\033\](?:7501;|133;|9;4;)[^\\]*(?:\\007|\\033\\134)/g;
+      let match: RegExpExecArray | null, consumed = 0;
+      while ((match = pattern.exec(buffer))) {
+        consumed = pattern.lastIndex;
+        this.emit(match[0].replace(/\\([0-7]{3})/g, (_, code: string) => String.fromCharCode(parseInt(code, 8))));
+      }
+      const start = buffer.lastIndexOf('\\033]');
+      const candidate = start >= consumed ? buffer.slice(start) : '';
+      this.pending = candidate && candidate.length <= 4096 && prefixes.some(prefix => prefix.startsWith(candidate) || candidate.startsWith(prefix)) ? candidate : '';
+      if (!this.pending) for (const prefix of ['\\033', '\\03', '\\0', '\\']) if (buffer.endsWith(prefix)) { this.pending = prefix; break; }
+    }
+  }
+}
+
+/** Consume framing in constant space, optionally extracting explicit status. */
 export class TmuxPaneOutputParser {
   private prefix = '';
   private line: 'header' | 'output' | 'ignore' = 'header';
+  private pane = '';
+  private readonly status = new Map<string, TmuxPaneStatusParser>();
+  constructor(private readonly onStatus?: (sequence: string, pane: string) => void) {}
+  private statusBytes(bytes: Buffer) {
+    if (!this.onStatus || !bytes.length) return;
+    let parser = this.status.get(this.pane);
+    if (!parser) {
+      if (this.status.size >= 256) this.status.delete(this.status.keys().next().value!);
+      const pane = this.pane;
+      parser = new TmuxPaneStatusParser(sequence => this.onStatus!(sequence, pane)); this.status.set(pane, parser);
+    }
+    parser.feed(bytes);
+  }
 
   feed(bytes: Buffer): boolean {
     let output = false;
@@ -14,11 +49,14 @@ export class TmuxPaneOutputParser {
       if (this.line === 'header') {
         const fragment = bytes.subarray(start, Math.min(end, start + 64 - this.prefix.length)).toString('ascii');
         this.prefix += fragment;
-        const header = /^%output %\d+ /.exec(this.prefix);
+        const header = /^%output (%\d+) /.exec(this.prefix);
         if (header) {
           // The protocol escapes embedded newlines and backslashes; a pane
           // cannot forge a second notification inside its output payload.
           output ||= this.prefix.length > header[0].length || end - start > fragment.length;
+          this.pane = header[1];
+          this.statusBytes(Buffer.from(this.prefix.slice(header[0].length), 'ascii'));
+          this.statusBytes(bytes.subarray(start + fragment.length, end));
           this.line = 'output';
           this.prefix = '';
         } else if (this.prefix.length >= 64) {
@@ -26,6 +64,7 @@ export class TmuxPaneOutputParser {
         }
       } else if (this.line === 'output' && end > start) {
         output = true;
+        this.statusBytes(bytes.subarray(start, end));
       }
       if (newline < 0) break;
       this.prefix = ''; this.line = 'header';
@@ -51,12 +90,13 @@ export class TmuxPaneOutputObserver {
     private readonly onOutput: () => void,
     private readonly onUnavailable: () => void,
     private readonly spawnControl = (binary: string, args: string[], options: SpawnOptions): ChildProcess => spawn(binary, args, options),
+    private readonly onStatus?: (sequence: string, pane: string) => void,
   ) {}
 
   start(): void {
     if (this.disposed || this.child || this.retry !== undefined) return;
     this.startedAt = performance.now();
-    const parser = new TmuxPaneOutputParser();
+    const parser = new TmuxPaneOutputParser(this.onStatus);
     let child: ChildProcess;
     try {
       // -r is read-only,ignore-size: this client must never take ownership of

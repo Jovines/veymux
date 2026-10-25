@@ -32,6 +32,17 @@ describe('background collaboration delivery', () => {
     return store.send({ groupId, fromSessionId: 'a', toSessionIds: [target], kind: 'message', content: 'Please verify', expiresAt })[0]!;
   }
 
+  it('retains failed probe guidance across restart and blocks replay of the header and later messages', async () => {
+    const message = send(); send();
+    store.recordTransport(message.id, { relay_online: null, peer_reachable: true, next_retry_at: null, checked_at: Date.now(), attempt_count: 1,
+      write_stage: 'paste_attempted', last_error: 'TERMINAL_WRITE_FAILED: TERMINAL_INPUT_ECHO_UNCONFIRMED' }, true);
+    store = new CollaborationStore(file); worker = makeWorker();
+    await worker.run('b'); await vi.advanceTimersByTimeAsync(10000); await worker.run('b');
+    expect(write).not.toHaveBeenCalled();
+    expect(store.getMessage(message.id)?.status).toBe('pending');
+    expect(store.diagnostic(message.id)?.last_error).toContain('TERMINAL_INPUT_ECHO_UNCONFIRMED');
+  });
+
   it('requires sender confirmation only for a known shell, preserving the queued message', async () => {
     const message = send();
     resolve.mockResolvedValue({ state: 'ready', isShell: true, write, capture: async () => '$ ' });
@@ -86,16 +97,47 @@ describe('background collaboration delivery', () => {
 
   it('persists transport failures and retry deadlines across restart', async () => {
     const message = send();
-    write.mockRejectedValueOnce(new Error('broken pipe'));
+    resolve.mockResolvedValueOnce({ state: 'ready', write: async (_messages, progress) => { progress?.('queue_wait'); throw new Error('broken pipe'); } });
     await worker.run('b');
     store = new CollaborationStore(file);
     worker = makeWorker();
     await worker.run('b');
-    expect(write).toHaveBeenCalledTimes(1);
+    expect(write).not.toHaveBeenCalled();
     expect(store.receipt(message.id)).toMatchObject({ status: 'pending', attempt_count: 1, last_error: 'TERMINAL_WRITE_FAILED: broken pipe' });
     await vi.advanceTimersByTimeAsync(2_000);
     await worker.run('b');
     expect(store.receipt(message.id)).toMatchObject({ status: 'delivered', attempt_count: 2 });
+  });
+
+  it.each(['unknown', 'paste_attempted', 'paste_written', 'submit_attempted'] as const)('pauses an uncertain terminal write across restart (%s), preserving FIFO and TTL', async stage => {
+    const first = send('b', Date.now() + 1000), later = send();
+    store.recordTransport(first.id, { relay_online: null, peer_reachable: true, attempt_count: 1,
+      next_retry_at: Date.now(), last_error: 'DELIVERY_IN_PROGRESS', checked_at: Date.now(), write_stage: stage });
+    store = new CollaborationStore(file); worker = makeWorker();
+    await vi.advanceTimersByTimeAsync(2000); await worker.run('b');
+    expect(store.receipt(first.id)).toMatchObject({ status: 'pending', last_error: 'DELIVERY_OUTCOME_UNCONFIRMED', delivery: { stage: 'outcome_unconfirmed', write_stage: stage } });
+    expect(store.receipt(later.id)).toMatchObject({ status: 'pending', attempt_count: 0 });
+    expect(write).not.toHaveBeenCalled(); expect(resolve).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(60000); await worker.run('b');
+    expect(store.receipt(first.id).status).toBe('pending'); expect(write).not.toHaveBeenCalled();
+  });
+
+  it('settles durable submit completion after restart without resolving or writing to a replacement terminal', async () => {
+    const message = send('b', Date.now() + 1000);
+    store.recordTransport(message.id, { relay_online: null, peer_reachable: true, attempt_count: 1,
+      next_retry_at: Date.now(), last_error: 'DELIVERY_IN_PROGRESS', checked_at: Date.now(), write_stage: 'submit_written' });
+    store = new CollaborationStore(file); worker = makeWorker();
+    await vi.advanceTimersByTimeAsync(2000); await worker.run('b');
+    expect(store.receipt(message.id)).toMatchObject({ status: 'delivered', attempt_count: 1 });
+    expect(write).not.toHaveBeenCalled(); expect(resolve).not.toHaveBeenCalled();
+  });
+
+  it('keeps legacy in-flight attempts unconfirmed instead of replaying them', async () => {
+    const message = send();
+    store.recordTransport(message.id, { relay_online: null, peer_reachable: true, attempt_count: 1,
+      next_retry_at: Date.now(), last_error: 'DELIVERY_IN_PROGRESS', checked_at: Date.now() });
+    store = new CollaborationStore(file); worker = makeWorker(); await worker.run('b');
+    expect(store.receipt(message.id).last_error).toBe('DELIVERY_OUTCOME_UNCONFIRMED'); expect(write).not.toHaveBeenCalled();
   });
 
   it.each(['SESSION_REMOVED', 'SESSION_REMOVED_DURING_RECOVERY'])('stops retrying a removed terminal (%s) and preserves its failed message', async reason => {
@@ -145,6 +187,14 @@ describe('background collaboration delivery', () => {
     await worker.run('b');
     expect(store.receipt(message.id).status).toBe('delivered');
   });
+  it('expires a message that waits past its TTL before the first paste', async () => {
+    const message = send('b', Date.now() + 1000), bytes = vi.fn();
+    resolve.mockResolvedValueOnce({ state: 'ready', tracksWriteProgress: true, write: async (_messages, progress) => {
+      progress?.('queue_wait'); vi.setSystemTime(Date.now() + 2000); progress?.('paste_attempted'); bytes();
+    } });
+    await worker.run('b');
+    expect(bytes).not.toHaveBeenCalled(); expect(store.receipt(message.id).status).toBe('expired');
+  });
 
   it('serializes explicit rebinding behind an in-flight delivery and clears route backoff', async () => {
     const message = send();
@@ -169,6 +219,18 @@ describe('background collaboration delivery', () => {
     await expect(worker.run('b')).rejects.toThrow('disk full');
     expect(write).not.toHaveBeenCalled();
     expect(store.receipt(message.id)).toMatchObject({ status: 'pending', attempt_count: 0 });
+  });
+
+  it('does not paste when the durable pre-write journal cannot be flushed', async () => {
+    const message = send();
+    const bytes = vi.fn();
+    resolve.mockResolvedValue({ state: 'ready', tracksWriteProgress: true, write: async (_messages, progress) => {
+      progress?.('queue_wait'); progress?.('paste_attempted'); bytes();
+    } });
+    vi.spyOn(fs, 'fsyncSync').mockImplementationOnce(() => { throw new Error('cannot flush write journal'); });
+    await worker.run('b');
+    expect(bytes).not.toHaveBeenCalled();
+    expect(store.receipt(message.id)).toMatchObject({ status: 'pending', attempt_count: 1 });
   });
 
   it('does not rewrite terminal input when receipt persistence fails after a successful write', async () => {

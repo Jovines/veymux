@@ -16,6 +16,12 @@ it('can recover changed physical identities only from verified original native i
   expect(result.diagnostics.observed[0]).not.toHaveProperty('cwd');
   expect(result.diagnostics.rebind_command).toBe('td collab --session logical rebind --pane %2');
 });
+it('accepts a live verified foreground resume for ordinary terminals with an older null pane UUID', () => {
+  const legacy = { ...binding, pane: { ...original, nativeSessionId: null } };
+  const live = { ...current, nativeIdentitySource: 'foreground-resume' as const, foregroundProcessIdentity: '400:1234/390:1000' };
+  expect(assessCollaborationRouteIdentity(legacy, [live], true, false)).toMatchObject({ state: 'ready', diagnostics: { recovery: 'automatic' } });
+  expect(assessCollaborationRouteIdentity(legacy, [{ ...live, nativeIdentityVerified: false }], true, false).state).toBe('identity-mismatch');
+});
 it.each([
   { nativeIdentityVerified: false }, { nativeIdentityVerified: undefined, nativeIdentitySource: 'argv' as const },
   { nativeSessionId: null }, { nativeSessionId: 'different' }, { agentSlug: 'different' },

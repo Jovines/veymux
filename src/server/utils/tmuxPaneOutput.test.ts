@@ -53,3 +53,14 @@ it('backs off synchronous spawn failures and cancels retries when disposed', () 
   observer.start(); expect(vi.getTimerCount()).toBe(1); vi.advanceTimersByTime(1000); expect(spawn).toHaveBeenCalledTimes(2);
   observer.dispose(); vi.advanceTimersByTime(60_000); expect(spawn).toHaveBeenCalledTimes(2); expect(vi.getTimerCount()).toBe(0);
 });
+
+it('extracts native status consumed by tmux, across arbitrary framing and octal boundaries, without treating literal escapes as status', () => {
+  const status = vi.fn(), parser = new TmuxPaneOutputParser(status);
+  const raw = '%output %12 \\033]7501;state=working:app=codex\\033\\134\n';
+  for (const byte of Buffer.from(raw)) parser.feed(Buffer.from([byte]));
+  expect(status).toHaveBeenCalledExactlyOnceWith('\x1b]7501;state=working:app=codex\x1b\\', '%12');
+  parser.feed(Buffer.from('%output %13 \\134033]7501;state=working:app=forged\\134033\\134\n'));
+  expect(status).toHaveBeenCalledTimes(1);
+  parser.feed(Buffer.from('%output %13 \\033]9;4;3\\007\n%output %13 \\033]133;A\\007\n'));
+  expect(status.mock.calls.slice(1)).toEqual([['\x1b]9;4;3\x07', '%13'], ['\x1b]133;A\x07', '%13']]);
+});

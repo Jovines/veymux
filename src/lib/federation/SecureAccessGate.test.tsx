@@ -34,6 +34,8 @@ import { consumeWorkspaceSession, installWorkspaceHost } from '../services/works
 import { writeBrowserServices } from '../services/serviceDirectory';
 import { openRemoteSession } from './remoteSession';
 import { ConnectionAccessError } from './accessFailure';
+import { ConnectionCenterServices } from '../../components/services/ConnectionCenterServices';
+import type { ServiceConnectionReview } from '../services/desktopServiceConnection';
 const permitted = { type: 'result', id: 'permissions', fullService: true, grants: [{ actions: ['service:*'] }] };
 it('keeps an incoming invitation ahead of an expired saved login and enters the scoped Session after acceptance', async () => {
   vi.resetModules();
@@ -458,6 +460,36 @@ describe('entry recovery and invitation address contract', () => {
   });
 });
 
+it('offers local certificate guidance while keeping credentials and all business requests on HTTPS', async () => {
+  const peer = `12D3KooW${'a'.repeat(44)}`;
+  mocks.client.targetPeerId = peer;
+  mocks.saved.mockReturnValue({ url: 'https://192.168.1.20:9834', targetPeerId: peer });
+  mocks.fetch.mockResolvedValue(Response.json({ localAccess: {
+    status: 'active', url: 'https://computer.termdock.local:9834',
+    interfaces: [{ url: 'https://192.168.1.20:9834' }],
+    onboardingUrl: 'http://192.168.1.20:21000/connect', caFingerprint: 'AA:BB:CC',
+  } }));
+  mocks.request.mockImplementation(async (input: { type: string }) => input.type === 'invite-create' ? { code: 'b'.repeat(32), expiresAt: Date.now() + 600000 } : permitted);
+  render(<SecureAccessGate><div>Active terminal</div></SecureAccessGate>);
+  await screen.findByText('Active terminal');
+  fireEvent(window, new Event('termdock:open-services'));
+  await screen.findByText('Service management');
+  await waitFor(() => expect(mocks.accessProps.inviteAddresses).toHaveLength(2));
+  const { parseInviteLink } = await import('./inviteLink');
+  const input = { scope: { kind: 'service' }, actions: ['session.view'], viewMode: 'chat', viewLayout: 'split' };
+  const generated = await mocks.accessProps.onCreateInvite(input);
+  expect(new URL(generated.url).origin).toBe('http://192.168.1.20:21000');
+  expect(new URL(generated.url).pathname).toBe('/connect');
+  expect(new URL(generated.url).search).toBe('');
+  expect(generated.certificateFingerprint).toBe('AA:BB:CC');
+  expect(parseInviteLink(generated.url)).toMatchObject({ url: 'https://192.168.1.20:9834', pairingCode: 'b'.repeat(32), viewMode: 'chat', viewLayout: 'split' });
+  const custom = await mocks.accessProps.onCreateInvite({ ...input, entryAddress: 'https://public.example' });
+  expect(new URL(custom.url).protocol).toBe('https:');
+  expect(custom.certificateFingerprint).toBeUndefined();
+  expect(mocks.fetch).toHaveBeenCalledTimes(1);
+  expect(mocks.fetch).toHaveBeenCalledWith('/api/terminal/settings');
+});
+
 describe('native target display without authorization side effects', () => {
   it.each([
     { url: 'https://entry.example', serviceOrigin: 'https://target.example', label: 'Actual target' },
@@ -527,6 +559,61 @@ describe('actual Preview bridge invitation receipt after real Gate permission su
  }
  beforeEach(()=>{vi.stubGlobal('crypto',webcrypto);mocks.client.targetPeerId=peer;mocks.saved.mockReturnValue({url:'https://service.example',targetPeerId:peer});install();});
  afterEach(()=>{window.fetch=originalFetch;window.WebSocket=originalSocket;Reflect.deleteProperty(window,'__TAURI_INTERNALS__');vi.unstubAllGlobals();});
+ it.each(['remote.example:9834', invitation])('adds %s through the real Preview bridge and center certificate flow without changing the source selection', async input => {
+  let pending: ServiceConnectionReview | null = null, trusted = false;
+  const dispatch = vi.fn(async (_command: string, { op, args }: { op: string; args: any }) => {
+   if (op === 'reviewConnection') { pending = args; return; }
+   if (op === 'takeConnectionReview') { const request = pending; pending = null; return request; }
+   if (op === 'connections') return [];
+   if (op === 'certificatePins') return {};
+   if (op === 'inspectCertificate') return { origin: args.origin, fingerprint: 'a'.repeat(64), receipt: 'center-receipt' };
+   if (op === 'trustCertificate') { trusted = true; return; }
+   if (op === 'openConnection') {
+    if (!trusted) throw 'Cannot discover service. Verify the address and Preview certificate fingerprint.';
+    return { ok: true };
+   }
+  });
+  Object.assign(window, { __TAURI_INTERNALS__: { invoke: dispatch } });
+  render(<SecureAccessGate><textarea aria-label="source draft" defaultValue="keep input" /></SecureAccessGate>);
+  await screen.findByText('Service management');
+  const selected = mocks.saved();
+  await act(async () => mocks.accessProps.onAddService(input));
+  expect(dispatch.mock.calls.filter(([, request]) => request.op === 'openConnection')).toHaveLength(0);
+  const request = pending!;
+  expect(request.connection.url).toBe(input === invitation ? 'https://entry.example' : 'https://remote.example:9834');
+  expect(request.invitation).toBe(input === invitation ? invitation : undefined);
+  expect(mocks.saved()).toBe(selected);
+  expect(mocks.connect).not.toHaveBeenCalled(); expect(mocks.authenticate).not.toHaveBeenCalled();
+  // A separate bundled document consumes the same native queue; it alone can approve TLS.
+  cleanup();
+  Object.assign(window, { __TD_PREVIEW_BOOT__: { local: true, origin: location.origin, platform: 'darwin' } });
+  vm.runInNewContext(source, { window, location, navigator, sessionStorage, Request, Response, URL, TypeError, Error, Uint8Array, TextEncoder, crypto: webcrypto, atob, Number, Promise, Object, Set, String, JSON, queueMicrotask });
+  render(<ConnectionCenterServices bridge={window.termdockDesktop!} />);
+  await screen.findByRole('region', { name: 'HTTPS 证书确认' });
+  expect(trusted).toBe(false);
+  fireEvent.click(screen.getByRole('checkbox'));
+  fireEvent.click(screen.getByRole('button', { name: '信任此指纹并重试一次' }));
+  await waitFor(() => expect(screen.queryByRole('region', { name: '来自工作区的连接请求' })).toBeNull());
+  const opens = dispatch.mock.calls.filter(([, request]) => request.op === 'openConnection');
+  expect(opens).toHaveLength(2);
+  expect(opens.map(([, value]) => value.args)).toEqual([request, request]);
+  expect(dispatch.mock.calls.filter(([, request]) => request.op === 'trustCertificate')).toHaveLength(1);
+  expect(mocks.saved()).toBe(selected);
+ });
+ it('retains the source management dialog when the center rejects a new connection request', async () => {
+  const dispatch = vi.fn(async (_command: string, { op }: { op: string }) => {
+   if (op === 'reviewConnection') throw new Error('Center busy');
+   if (op === 'connections') return [];
+   return {};
+  });
+  Object.assign(window, { __TAURI_INTERNALS__: { invoke: dispatch } });
+  render(<SecureAccessGate><div>Source terminal</div></SecureAccessGate>);
+  await screen.findByText('Service management');
+  await expect(mocks.accessProps.onAddService('remote.example:9834')).rejects.toThrow('Center busy');
+  expect(screen.getByText('Service management')).toBeTruthy();
+  expect(dispatch.mock.calls.filter(([, request]) => request.op === 'openConnection')).toHaveLength(0);
+  expect(mocks.connect).not.toHaveBeenCalled(); expect(mocks.authenticate).not.toHaveBeenCalled();
+ });
  it('repairs a leaked selection with the actual Preview bridge and rechecks permissions in the restored document',async()=>{
   const reload=vi.fn(),documentLocation=location;
   vi.stubGlobal('location',{origin:documentLocation.origin,hostname:documentLocation.hostname,reload});
@@ -583,4 +670,18 @@ describe('actual Preview bridge invitation receipt after real Gate permission su
   if(change==='client')mocks.client={...mocks.client,closed:true};else if(change==='target')mocks.saved.mockReturnValue({url:'https://other.example',targetPeerId:entry});else fireEvent(window,new Event('pagehide'));
   await act(async()=>{finish(permitted);await expect(pending).rejects.toThrow('SERVICE_SELECTION_CHANGED');});expect(sessionStorage.getItem('termdock-secure-preview-invitation-v1')).toBeNull();
  });
+});
+
+it('prepares a requested inventory Session before sharing it when chat has no attached terminal backend', async () => {
+  let attached = false;
+  mocks.request.mockImplementation(async (packet: { type: string }) => packet.type === 'permissions' ? permitted : packet.type === 'session-list' ? { items: attached ? [{ sessionId: 'backend', sourceSessionId: 'chat-session', name: 'Chat task' }] : [] } : { grants: [], invitations: [] });
+  mocks.fetch.mockImplementation(async (path: string, init?: RequestInit) => {
+    if (path === '/api/terminal/session-inventory/open') { expect(JSON.parse(String(init?.body))).toEqual({ preferredFrontendSessionId: 'chat-session', requireExisting: true }); attached = true; }
+    return Response.json({});
+  });
+  render(<SecureAccessGate><div>Full terminal</div></SecureAccessGate>);
+  await screen.findByText('Full terminal');
+  act(() => window.dispatchEvent(new CustomEvent('termdock:open-services', { detail: { inviteSessionId: 'chat-session', viewMode: 'chat' } })));
+  await waitFor(() => expect(mocks.accessProps.sessions).toEqual([{ sessionId: 'backend', sourceSessionId: 'chat-session', name: 'Chat task' }]));
+  expect(mocks.fetch.mock.calls.filter(([path]) => path === '/api/terminal/session-inventory/open')).toHaveLength(1);
 });

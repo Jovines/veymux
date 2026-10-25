@@ -1,6 +1,6 @@
-// Keep editor selection, horizontal content and embedded controls local. The
+// Keep live text selections, horizontal content and embedded controls local. The
 // conversation canvas (including the empty state) belongs to the Session pager.
-export const SESSION_NO_SWIPE = "[data-mobile-keyboard='true'], [data-chat-no-swipe], [data-session-chat] pre, [data-session-chat] table, [data-session-chat] input, [data-session-chat] textarea, [data-session-chat] select";
+export const SESSION_NO_SWIPE = "[data-mobile-keyboard='true'], [data-chat-no-swipe], [data-session-chat][data-chat-text-selection], [data-session-chat] pre, [data-session-chat] table, [data-session-chat] input, [data-session-chat] textarea, [data-session-chat] select";
 
 // Swiper directly blurs matching active fields on pointerdown AND pointermove,
 // even when touchStartPreventDefault=false or inner handlers preventDefault.

@@ -12,6 +12,18 @@ export default defineConfig({
       enabled: true, headless: true, screenshotFailures: false,
       viewport: { width: 1280, height: 900 },
       commands: {
+        async peekResize(context, dx: number, dy: number) {
+          const grip = context.iframe.getByRole('button', { name: '调整终端预览大小' });
+          const box = await grip.boundingBox(); if (!box) throw new Error('Missing resize grip');
+          const root = context.iframe.locator('html');
+          const rootBox = await root.boundingBox();
+          const layout = await root.evaluate(element => ({ width: element.clientWidth, height: element.clientHeight }));
+          const sx = rootBox!.width / layout.width, sy = rootBox!.height / layout.height;
+          await context.page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+          await context.page.mouse.down();
+          await context.page.mouse.move(box.x + box.width / 2 + dx * sx, box.y + box.height / 2 + dy * sy, { steps: 8 });
+          await context.page.mouse.up();
+        },
         async peekMove(context, selector: string, x = .5, y = .5) {
           const box = await context.iframe.locator(selector).boundingBox();
           if (!box) throw new Error(`Missing pointer target ${selector}`);

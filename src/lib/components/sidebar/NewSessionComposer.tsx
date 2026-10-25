@@ -46,6 +46,7 @@ export function NewSessionComposer({
   footerActions,
   launchPending = false,
   launchError,
+  launchFeedback,
 }: {
   directories: string[];
   tmuxAvailable: boolean;
@@ -68,6 +69,7 @@ export function NewSessionComposer({
   footerActions?: ReactNode;
   launchPending?: boolean;
   launchError?: string | null;
+  launchFeedback?: ReactNode;
 }) {
   const { t, locale } = useI18n();
   const panelRef = useRef<HTMLElement>(null);
@@ -359,6 +361,7 @@ export function NewSessionComposer({
       </fieldset>
 
       <div className="shrink-0 bg-surface px-3 pb-3 pt-2">
+        {launchFeedback}
         {launchError && <p role="alert" className="mb-2 text-[11px] leading-relaxed text-destructive">{launchError}</p>}
         <button type="button" onClick={startSession} disabled={launchPending || (customCommandSelected && !launchCommand.trim())} className="flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary px-3 text-[12px] font-semibold text-primary-foreground transition hover:brightness-110 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40" aria-label={t('sidebar.launchSessionWith', { name: launchName })}>
           {launchPending ? <LoaderCircle size={14} /> : launchAgent ? <AgentBrandAvatar agent={launchAgent} size={15} /> : <Terminal size={14} />}<span className="truncate">{launchPending ? t('sidebar.sessionCreating') : t('sidebar.launchSessionWith', { name: launchName })}</span>

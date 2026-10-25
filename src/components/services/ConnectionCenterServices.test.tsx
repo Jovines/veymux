@@ -24,8 +24,10 @@ function fixture(initial: ServiceConnectionReview | null = null) {
 }
 it('receives a request queued before mount, checks the entry certificate, and retries the full saved route once', async () => {
   const f = fixture({ connection });
-  render(<ConnectionCenterServices bridge={f.native} />);
+  const onReview = vi.fn();
+  render(<ConnectionCenterServices bridge={f.native} onReview={onReview} />);
   await screen.findByRole('region', { name: 'HTTPS 证书确认' });
+  expect(onReview).toHaveBeenCalledOnce();
   expect(f.native.inspectCertificate).toHaveBeenCalledExactlyOnceWith(connection.url);
   expect(screen.queryByRole('button', { name: '继续' })).toBeNull();
   expect(f.native.trustCertificate).not.toHaveBeenCalled();
@@ -38,11 +40,14 @@ it('receives a request queued before mount, checks the entry certificate, and re
 });
 it('preserves a center draft and clears the inspection receipt when a workspace request is cancelled', async () => {
   const f = fixture();
-  render(<ConnectionCenterServices bridge={f.native} />);
+  const onReview = vi.fn();
+  render(<ConnectionCenterServices bridge={f.native} onReview={onReview} />);
   fireEvent.click(await screen.findByRole('button', { name: '添加服务' }));
+  expect(onReview).not.toHaveBeenCalled();
   fireEvent.change(screen.getByLabelText('服务地址或邀请链接'), { target: { value: 'keep-my-draft.example' } });
   await act(async () => f.deliver({ connection }));
   await screen.findByRole('region', { name: 'HTTPS 证书确认' });
+  expect(onReview).toHaveBeenCalledOnce();
   fireEvent.click(screen.getByRole('button', { name: '返回服务' }));
   await waitFor(() => expect(f.native.discardCertificateInspection).toHaveBeenCalledWith('one-shot'));
   expect((screen.getByLabelText('服务地址或邀请链接') as HTMLInputElement).value).toBe('keep-my-draft.example');

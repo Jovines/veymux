@@ -63,6 +63,7 @@ describe('overlay z-index single source of truth', () => {
       'z-menu-backdrop',
       'z-menu-panel',
       'z-modal-backdrop',
+      'z-modal-editor',
       'z-modal-panel',
       'z-popover',
       'z-sidebar-backdrop',
@@ -85,7 +86,8 @@ describe('overlay z-index single source of truth', () => {
     // Modals are launched FROM the settings drawer, so they must outrank it.
     expect(s['z-drawer-panel']!).toBeLessThan(s['z-modal-backdrop']!);
     expect(s['z-modal-backdrop']!).toBeLessThan(s['z-modal-panel']!);
-    expect(s['z-modal-panel']!).toBeLessThan(s['z-toast']!);
+    expect(s['z-modal-panel']!).toBeLessThan(s['z-modal-editor']!);
+    expect(s['z-modal-editor']!).toBeLessThan(s['z-toast']!);
     expect(s['z-toast']!).toBeLessThan(s['z-popover']!);
   });
 

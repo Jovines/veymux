@@ -1,5 +1,8 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { captureTmuxPaneText, sendTmuxPaneKey, writeCollaborationTmuxPane } from './collaborationTmuxDelivery.js';
 
@@ -21,6 +24,33 @@ function stdinFor(socket: string) {
 }
 
 describe.skipIf(process.platform === 'win32')('collaboration tmux transport', () => {
+  it.each([true, false])('checks real application echo (%s), preserving one submit and stopping before body on failure', async echo => {
+    const directory = await mkdtemp(join(tmpdir(), 'td-input-echo-'));
+    const out = join(directory, 'input');
+    const socket = `td-echo-${process.pid}-${Date.now()}`;
+    const run = async (args: string[]) => (await execFileAsync('tmux', ['-L', socket, ...args], { timeout: 5000 })).stdout;
+    try {
+      await run(['new-session', '-d', '-s', 'peer', `sh -c 'stty raw -echo; ${echo ? `tee ${out}` : `cat > ${out}`}'`]);
+      for (let attempt = 0; attempt < 100; attempt++) {
+        if ((await run(['display-message', '-p', '-t', 'peer', '#{pane_current_command}'])).trim() === (echo ? 'tee' : 'cat')) break;
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+      const parts = (await run(['display-message', '-p', '-t', 'peer', '#{pid}:#{session_id}:#{pane_id}:#{pane_pid}'])).trim().split(':');
+      const pane = { serverPid: Number(parts[0]), sessionId: parts[1]!, paneId: parts[2]!, panePid: Number(parts[3]), agentSlug: 'test', nativeSessionId: null };
+      await run(['select-pane', '-d', '-t', pane.paneId]);
+      await expect(writeCollaborationTmuxPane(run, pane, 'MUST-NOT-WRITE', stdinFor(socket), undefined, undefined, undefined, true)).rejects.toThrow('TERMINAL_INPUT_UNAVAILABLE');
+      expect(await readFile(out, 'utf8')).toBe('');
+      await run(['select-pane', '-e', '-t', pane.paneId]);
+      const result = writeCollaborationTmuxPane(run, pane, 'BODY', stdinFor(socket), undefined, undefined, undefined, true);
+      if (echo) await result;
+      else await expect(result).rejects.toThrow('TERMINAL_INPUT_ECHO_UNCONFIRMED');
+      await new Promise(resolve => setTimeout(resolve, 100));
+      const bytes = await readFile(out, 'utf8');
+      expect(bytes).toMatch(echo ? /^\[td\.[a-f0-9]{12}\] BODY\r$/ : /^\[td\.[a-f0-9]{12}\] $/);
+      expect(await run(['list-buffers'])).not.toContain(`termdock-collab-${process.pid}`);
+    } finally { await run(['kill-server']).catch(() => undefined); await rm(directory, { recursive: true, force: true }); }
+  }, 15000);
+
   it('delivers to the pinned pane without a browser/client, even when another pane is active', async () => {
     const socket = `td-collab-${process.pid}-${Date.now()}`;
     const run = async (args: string[]) => (await execFileAsync('tmux', ['-L', socket, ...args], { timeout: 5_000 })).stdout;

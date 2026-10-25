@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { getSessionPresentation } from '../utils/sessionDisplayName.js';
 
 export interface SessionSearchMetadata {
   sessionId: string;
@@ -9,6 +10,10 @@ export interface SessionSearchMetadata {
   agentSlug: string | null;
   agentNativeSessionId: string | null;
   updatedAt: number;
+  mode?: 'shell' | 'tmux';
+  tmuxSessionName?: string | null;
+  closedAt?: number;
+  titleSource?: 'custom' | 'auto' | 'default';
 }
 
 export interface SessionSearchResult extends SessionSearchMetadata {
@@ -19,8 +24,8 @@ export interface SessionSearchResult extends SessionSearchMetadata {
 const MAX_LOG_BYTES = 2 * 1024 * 1024;
 const LOG_SEGMENT_BYTES = MAX_LOG_BYTES / 2;
 const DEFAULT_MAX_TOTAL_BYTES = 64 * 1024 * 1024;
-const DEFAULT_MAX_SESSIONS = 50;
-const DEFAULT_MAX_AGE_MS = 30 * 24 * 60 * 60_000;
+const DEFAULT_MAX_SESSIONS = 1000;
+const DEFAULT_MAX_AGE_MS = 365 * 24 * 60 * 60_000;
 const BUDGET_MAINTENANCE_INTERVAL_MS = 10 * 60_000;
 const ANSI_PATTERN = /[\u001B\u009B][[\]()#;?]*(?:(?:(?:[a-zA-Z\d]*(?:;[-a-zA-Z\d\/#&.:=?%@~_]+)*)?\u0007)|(?:(?:\d{1,4}(?:[;:]\d{0,4})*)?[\dA-PR-TZcf-nq-uy=><~]))/g;
 
@@ -68,26 +73,33 @@ export class SessionSearchStore {
     if (!this.flushTimer) this.flushTimer = setTimeout(() => this.flush(), 750);
   }
 
+  list(): SessionSearchMetadata[] { return [...this.metadata.values()].map(entry => ({ ...entry })); }
+
+  get(sessionId: string): SessionSearchMetadata | null {
+    const entry = this.metadata.get(sessionId);
+    return entry ? { ...entry } : null;
+  }
+
   search(query: string, limit = 30): SessionSearchResult[] {
     this.flush();
     const needle = query.trim().toLocaleLowerCase();
     if (!needle) return [...this.metadata.values()].sort((a, b) => b.updatedAt - a.updatedAt)
-      .slice(0, Math.max(1, Math.min(limit, 100))).map(metadata => ({ ...metadata, snippet: '', matchCount: 0 }));
+      .slice(0, Math.max(1, Math.min(limit, 5000))).map(metadata => ({ ...metadata, snippet: '', matchCount: 0 }));
     const results: SessionSearchResult[] = [];
     for (const metadata of this.metadata.values()) {
       const text = this.readLog(metadata.sessionId);
-      const searchable = `${metadata.title}\n${metadata.cwd}\n${metadata.agentSlug ?? ''}\n${text}`;
+      const searchable = `${metadata.title}\n${metadata.cwd}\n${metadata.agentSlug ?? ''}\n${metadata.sessionId}\n${metadata.agentNativeSessionId ?? ''}\n${text}`;
       const lower = searchable.toLocaleLowerCase();
       const first = lower.indexOf(needle);
       if (first < 0) continue;
       let count = 0;
       let cursor = 0;
       while ((cursor = lower.indexOf(needle, cursor)) >= 0 && count < 999) { count += 1; cursor += needle.length; }
-      const sourceStart = Math.max(0, first - 100);
-      const sourceEnd = Math.min(searchable.length, first + needle.length + 180);
-      results.push({ ...metadata, snippet: searchable.slice(sourceStart, sourceEnd).replace(/\s+/g, ' ').trim(), matchCount: count });
+      const outputMatch = text.toLocaleLowerCase().indexOf(needle);
+      const snippet = outputMatch < 0 ? '' : text.slice(Math.max(0, outputMatch - 100), outputMatch + needle.length + 180).replace(/\s+/g, ' ').trim();
+      results.push({ ...metadata, snippet, matchCount: count });
     }
-    return results.sort((a, b) => b.updatedAt - a.updatedAt).slice(0, Math.max(1, Math.min(limit, 100)));
+    return results.sort((a, b) => b.updatedAt - a.updatedAt).slice(0, Math.max(1, Math.min(limit, 5000)));
   }
 
   flush(): void {
@@ -151,10 +163,8 @@ export class SessionSearchStore {
       if (totalBytes <= maxTotalBytes) break;
       try { fs.rmSync(file.path, { force: true }); } catch { continue; }
       totalBytes -= file.size;
-      if (!file.previous) {
-        this.metadata.delete(file.sessionId);
-        changed = true;
-      }
+      // Output has a separate disk budget. Keep names and recovery metadata
+      // searchable after bulky terminal logs have been rotated away.
     }
     if (changed) {
       this.metadataDirty = true;
@@ -167,7 +177,11 @@ export class SessionSearchStore {
     try {
       const parsed = JSON.parse(fs.readFileSync(this.metadataPath(), 'utf8')) as { sessions?: SessionSearchMetadata[] };
       for (const item of parsed.sessions ?? []) {
-        if (item && typeof item.sessionId === 'string') this.metadata.set(item.sessionId, item);
+        if (item && typeof item.sessionId === 'string') this.metadata.set(item.sessionId, { ...item, title: /^(?:tmux:|remote:|wt-)/i.test(item.title)
+          ? getSessionPresentation({ name: item.title, cwd: item.cwd }).displayName : item.title,
+          titleSource: /^(?:tmux:|remote:|wt-)/i.test(item.title) ? 'default' : item.titleSource,
+          mode: item.mode ?? (item.title.startsWith('tmux:') ? 'tmux' : undefined),
+          tmuxSessionName: item.tmuxSessionName ?? (item.title.startsWith('tmux:') ? item.title.slice(5) : undefined) });
       }
       this.lastMetadataWriteAt = Date.now();
     } catch { /* first run */ }
@@ -188,6 +202,10 @@ export class SessionSearchStore {
     return !previous
       || previous.backendSessionId !== next.backendSessionId
       || previous.title !== next.title
+      || previous.titleSource !== next.titleSource
+      || previous.closedAt !== next.closedAt
+      || previous.mode !== next.mode
+      || previous.tmuxSessionName !== next.tmuxSessionName
       || previous.cwd !== next.cwd
       || previous.agentSlug !== next.agentSlug
       || previous.agentNativeSessionId !== next.agentNativeSessionId;

@@ -1,10 +1,14 @@
+import { codexColdLaunchArgv } from '../../server/shared/codexLaunchCommand';
+import { openSessionShare } from '../federation/accessEvents';
 import { usesNativeKeyboardLayout } from '../hooks/nativeKeyboardLayout';
 import { sessionOption, useSessionDirectory, useSessionDirectoryStore } from '../stores/useSessionDirectory';
 import { getKeyboardPanelStyles } from './layout/keyboardPanelLayout';
-import { useSessionViewMode } from './chat/sessionViewMode';
+import { initializeSessionViewMode, readSessionViewMode, useSessionViewMode } from './chat/sessionViewMode';
+import { prepareNewSessionPresentation } from './chat/chatModeEntry';
+import { beginSessionChatStartup, failSessionChatStartup } from './chat/sessionChatStartup';
 import { SessionWorkspace } from './chat/SessionWorkspace';
 import { SESSION_NO_SWIPE, SESSION_SWIPER_FOCUSABLE_ELEMENTS } from './chat/sessionSwipe';
-import { canDismissTmuxRecoveryOperation } from '../../server/utils/tmuxRecoveryDismissal';
+import { TmuxRecoveryNotice } from './TmuxRecoveryNotice';
 import { classifySessionCreationError, openSessionWithRecovery, type NewSessionRequestOptions } from '../terminal/newSessionRequest';
 import { useAppFeedback } from './ui/AppFeedback';
 import { useCollaborationPanelDock } from '../stores/useCollaborationPanelDock';
@@ -13,6 +17,8 @@ import { FreeSplitLayout } from './FreeSplitLayout';
 import { useSessionOrderStore } from '../stores/useSessionOrderStore';
 import { useSettledViewportWindow } from '../hooks/useSettledViewportWindow';
 import { isKeyboardLayerOpen, useKeyboardLayer } from '../hooks/useKeyboardLayer';
+import { hasUnclaimedFocus } from '../utils/focusOwnership';
+import { isWorkspaceActive } from '../services/workspaceHost';
 import { canHandleSplitShortcut } from '../terminal/splitKeyboardShortcut';
 import React, { useEffect, useLayoutEffect, useCallback, useState, useRef, useMemo } from 'react';
 import { Swiper, SwiperSlide } from 'swiper/react';
@@ -20,6 +26,7 @@ import type { Swiper as SwiperInstance } from 'swiper';
 import 'swiper/css';
 import { TerminalView } from './views/TerminalView';
 import { SplitPaneTitle } from './SplitPaneTitle';
+import { SidebarVisibilityButton } from './sidebar/SidebarVisibilityButton';
 import { getTermdockDesktopBridge } from '../desktop/nativeBridge';
 import { useSessionPersistence, type PersistedSession } from '../hooks/useSessionPersistence';
 import { VIEWPORT_LAYOUT_CHANGE_EVENT } from '../hooks/useViewportHeight';
@@ -30,6 +37,7 @@ import {
   restoreAllTmuxAgentSessions,
   setTmuxRecoveryOperationPaused,
   sendTerminalInput,
+  launchRecoverableTerminalAgent,
   suspendTerminalConnectionReconnects,
 } from '../terminal/api';
 import type { TerminalMode } from '../terminal';
@@ -56,7 +64,6 @@ import {
   PINNED_SIDEBAR_SEPARATOR_WIDTH_PX,
   clampPinnedRightSidebarWidth,
   getRightSidebarWidthContextKey,
-  readRightPinnedForContext,
   readRightSidebarWidthForContext,
   useSidebarStore,
 } from '../stores/useSidebarStore';
@@ -66,9 +73,9 @@ import { usesTouchTerminalLayout } from '../utils/touchTerminalLayout';
 import { clientLog } from '../utils/clientLog';
 import { markStartupMilestone } from '../utils/startupPerformance';
 import { pickSessionAfterClose } from '../utils/sessionSelection';
-import type { ToolbarPresetDefinition } from './terminal/mobileKeyboardPresets';
+import type { ToolbarPresetDefinition, ToolbarConfigurationTarget } from './terminal/mobileKeyboardPresets';
 import { activateSplitPaneForWheel } from './splitPaneWheelActivation';
-import { AlertTriangle, Check, Columns2, Folder, Plus, RotateCcw, X } from 'lucide-react';
+import { Check, Columns2, Folder, Plus, X } from 'lucide-react';
 import { useI18n } from '../i18n';
 import {
   combineSplitWorkspaces,
@@ -375,6 +382,7 @@ interface MultiTerminalViewProps {
   terminalSettings?: TerminalSettings;
   colorTheme?: TermdockColorTheme;
   toolbarPresets?: ToolbarPresetDefinition[];
+  onConfigureToolbar?: (target: ToolbarConfigurationTarget) => void;
   showDebug?: boolean;
   terminalFocusAvailable?: boolean;
   terminalReferenceAvailable?: boolean;
@@ -384,6 +392,9 @@ interface MultiTerminalViewProps {
   connectionPriorityReady?: boolean;
   desktopRightSidebarEnabled?: boolean;
   onToggleRightSidebar?: () => void;
+  onToggleLeftSidebar?: () => void;
+  leftSidebarOpen?: boolean;
+  rightSidebarOpen?: boolean;
   desktopFloatingTitle?: boolean;
   desktopLeftSidebarPinned?: boolean;
   desktopPinnedLeftSidebarWidth?: number;
@@ -428,6 +439,7 @@ export const MultiTerminalView: React.FC<MultiTerminalViewProps> = ({
   terminalSettings = getDefaultTerminalSettings(),
   colorTheme = 'dark',
   toolbarPresets = [],
+  onConfigureToolbar,
   showDebug,
   terminalFocusAvailable = true,
   terminalReferenceAvailable = terminalFocusAvailable,
@@ -437,6 +449,9 @@ export const MultiTerminalView: React.FC<MultiTerminalViewProps> = ({
   connectionPriorityReady = true,
   desktopRightSidebarEnabled = false,
   onToggleRightSidebar,
+  onToggleLeftSidebar,
+  leftSidebarOpen = false,
+  rightSidebarOpen = false,
   desktopFloatingTitle = false,
   desktopLeftSidebarPinned = false,
   desktopPinnedLeftSidebarWidth = 0,
@@ -447,9 +462,9 @@ export const MultiTerminalView: React.FC<MultiTerminalViewProps> = ({
   onInitialRecoveryRequired,
 }) => {
   const { t } = useI18n();
-  const showSplitWindowHeader = desktopFloatingTitle && !desktopLeftSidebarPinned
-    && getTermdockDesktopBridge()?.platform === 'darwin'
+  const splitHeaderHasWindowControls = getTermdockDesktopBridge()?.platform === 'darwin'
     && document.documentElement.dataset.termdockPreview === 'true';
+  const showSplitWindowHeader = desktopFloatingTitle && !desktopLeftSidebarPinned && splitHeaderHasWindowControls;
   const debugSession = useMemo(() => createDebugLogger('session'), []);
   const debugTerminal = useMemo(() => createDebugLogger('terminal'), []);
   const [sessions, setSessions] = useState<TerminalSession[]>([]);
@@ -484,7 +499,8 @@ export const MultiTerminalView: React.FC<MultiTerminalViewProps> = ({
       return next;
     });
   }, []);
-  const pendingStartupCommandsRef = useRef(new Map<string, { backendSessionId: string; command: string }>());
+  const pendingStartupCommandsRef = useRef(new Map<string, { backendSessionId: string; command: string; requestId: string }>());
+  const [pendingStartupSessionIds, setPendingStartupSessionIds] = useState<ReadonlySet<string>>(() => new Set());
   const [deferredViewportSessionIds, setDeferredViewportSessionIds] = useState<ReadonlySet<string>>(() => new Set());
   const restoredRef = useRef(false);
   const swiperRef = useRef<SwiperInstance | null>(null);
@@ -523,7 +539,7 @@ export const MultiTerminalView: React.FC<MultiTerminalViewProps> = ({
     setActiveSessionIdState(next);
   }, []);
   useEffect(() => useSidebarStore.subscribe((next, previous) => {
-    if (next.rightOpen !== previous.rightOpen || next.rightTab !== previous.rightTab) {
+    if (next.rightOpen !== previous.rightOpen || next.desktopRightOpen !== previous.desktopRightOpen || next.rightTab !== previous.rightTab) {
       navigationRevisionRef.current += 1;
     }
   }), []);
@@ -601,14 +617,14 @@ export const MultiTerminalView: React.FC<MultiTerminalViewProps> = ({
     setTmuxRecoveryPending('dismiss');
     setTmuxRecoveryError(null);
     try {
-      await dismissTmuxRecovery();
+      await dismissTmuxRecovery(tmuxRecovery?.id);
       await restoreSessions();
     } catch {
       setTmuxRecoveryError(t('tab.tmuxRecoveryDismissFailed'));
     } finally {
       setTmuxRecoveryPending(null);
     }
-  }, [restoreSessions, t]);
+  }, [restoreSessions, t, tmuxRecovery?.id]);
 
   // 分组状态（与顶栏 tab / 侧边栏共享同一份）。
   const groupByFolder = useSidebarStore((s) => s.groupByFolder);
@@ -616,7 +632,7 @@ export const MultiTerminalView: React.FC<MultiTerminalViewProps> = ({
   const sidebarOverlayOpen = useSidebarStore((s) => s.leftOpen || s.rightOpen);
   const sidebarWidthContextKey = useSidebarStore((s) => s.rightSidebarWidthContextKey);
   const sidebarWidth = useSidebarStore((s) => s.rightSidebarWidth);
-  const sidebarPinned = useSidebarStore((s) => s.rightPinned);
+  const sidebarPinned = useSidebarStore((s) => s.desktopRightOpen);
 
   // 订阅 useTerminalStore 的 cwd（分组按 cwd 归类）。只取 id→cwd 的 Map，
   // 浅比较避免终端高频输出导致的重渲染。
@@ -672,14 +688,7 @@ export const MultiTerminalView: React.FC<MultiTerminalViewProps> = ({
         cwdById.get(firstSession.id) ?? null,
         slide.workspace?.id ?? null,
       );
-      const pinned = widthContextKey === sidebarWidthContextKey
-        ? sidebarPinned
-        : readRightPinnedForContext(
-            firstSession.id,
-            cwdById.get(firstSession.id) ?? null,
-            slide.workspace?.id ?? null,
-          );
-      if (!pinned) continue;
+      if (!sidebarPinned) continue;
       // Selection changes before App publishes the sidebar context. Never
       // apply another workspace's live width to this already fitted slide.
       const requestedWidth = widthContextKey === sidebarWidthContextKey
@@ -793,6 +802,7 @@ export const MultiTerminalView: React.FC<MultiTerminalViewProps> = ({
       const session = sessions.find(candidate => candidate.id === sessionId);
       if (!session || session.sessionId !== pending.backendSessionId) {
         pendingStartupCommandsRef.current.delete(sessionId);
+        setPendingStartupSessionIds(current => { const next = new Set(current); next.delete(sessionId); return next; });
         continue;
       }
       if (!readySessionIds.has(sessionId)
@@ -804,8 +814,14 @@ export const MultiTerminalView: React.FC<MultiTerminalViewProps> = ({
       // the stream, parser and initial size synchronization instead of a timer.
       // Remove before sending so rerenders/reconnects cannot launch it twice.
       pendingStartupCommandsRef.current.delete(sessionId);
-      void sendTerminalInput(pending.backendSessionId, `${pending.command}\r`).catch(error => {
+      const launch = codexColdLaunchArgv(pending.command)
+        ? launchRecoverableTerminalAgent(pending.backendSessionId, pending.command, pending.requestId)
+        : sendTerminalInput(pending.backendSessionId, `${pending.command}\r`);
+      void launch.catch(error => {
         console.error('[Session] Failed to send startup command:', error);
+        failSessionChatStartup(sessionId);
+      }).finally(() => {
+        setPendingStartupSessionIds(current => { const next = new Set(current); next.delete(sessionId); return next; });
       });
     }
   }, [sessions, readySessionIds, viewportReadySessionIds, contentReadySessionIds]);
@@ -920,11 +936,15 @@ export const MultiTerminalView: React.FC<MultiTerminalViewProps> = ({
     // The target slide is already active so the selection takes effect as soon
     // as the sidebar closes. Keep focus/cursor presentation suspended for a
     // few paint opportunities after its authoritative content arrives.
+    const focusOwner = document.activeElement;
+    const navigationRevision = navigationRevisionRef.current;
     const timer = window.setTimeout(() => {
       setPendingSwitchSessionId((current) => (
         current === pendingSwitchSessionId ? null : current
       ));
-      if (terminalFocusAvailableRef.current && !isMobileRef.current) {
+      if (navigationRevisionRef.current === navigationRevision && isWorkspaceActive() && document.hasFocus() && !document.hidden
+        && !isKeyboardLayerOpen() && (document.activeElement === focusOwner || hasUnclaimedFocus())
+        && terminalFocusAvailableRef.current && !isMobileRef.current) {
         setFocusTransferRequest({ sessionId: pendingSwitchSessionId, token: Date.now() });
       }
     }, 80);
@@ -1251,7 +1271,7 @@ export const MultiTerminalView: React.FC<MultiTerminalViewProps> = ({
 
   const updateSwiperLayout = useCallback((reason: string) => {
     const swiper = swiperRef.current;
-    if (!swiper) return;
+    if (!swiper || swiper.destroyed) return;
     const el = swiper.el as HTMLElement | undefined;
     logSwiperState('[swiper:layout-before]', { reason, scrollLeft: el?.scrollLeft ?? null });
     if (el) el.scrollLeft = 0;
@@ -1268,7 +1288,7 @@ export const MultiTerminalView: React.FC<MultiTerminalViewProps> = ({
     syncSwiperToActiveIndex(`layout:${reason}`, { immediate: true });
     requestAnimationFrame(() => {
       const current = swiperRef.current;
-      if (!current) return;
+      if (!current || current.destroyed) return;
       if (isTouchSwipeRef.current) return;
       if (current.animating) return;
       forceSwiperTranslate(current, activeSessionIndexRef.current);
@@ -1641,6 +1661,7 @@ export const MultiTerminalView: React.FC<MultiTerminalViewProps> = ({
 
   // Handle new session creation from custom event
   const handleNewSession = useCallback(async (options?: NewSessionEventDetail) => {
+    const presentation = prepareNewSessionPresentation(activeSessionId, activeSessionId ? readSessionViewMode(activeSessionId) : 'terminal', options?.command);
     const creationRevision = ++creationRevisionRef.current;
     setCreationRecovering(false);
     const navigationRevision = navigationRevisionRef.current;
@@ -1652,7 +1673,6 @@ export const MultiTerminalView: React.FC<MultiTerminalViewProps> = ({
       const sidebar = useSidebarStore.getState();
       const initialSidebarState = activeSessionId ? {
         rightOpen: sidebar.rightOpen,
-        rightPinned: sidebar.rightPinned,
         rightSidebarWidth: sidebar.rightSidebarWidth,
         rightTab: sidebar.rightTab,
       } : null;
@@ -1681,7 +1701,17 @@ export const MultiTerminalView: React.FC<MultiTerminalViewProps> = ({
         cwd: effectiveCwd,
         termType: 'xterm-256color',
         createIfEmpty: options?.createIfEmpty === true,
-      }, request => openSession(request, { shouldActivate }), { current: shouldActivate,
+      }, request => openSession(request, { shouldActivate, beforeApply: async opened => {
+        const view = await presentation;
+        if (opened.session.viewMode) {
+          initializeSessionViewMode(opened.session.sessionId, opened.session.viewMode);
+          return;
+        }
+        if (opened.reused) return;
+        initializeSessionViewMode(opened.session.sessionId, view.mode);
+        if (view.mode === 'chat' && view.agent) beginSessionChatStartup(opened.session.sessionId, view.agent);
+        if (options?.command?.trim()) setPendingStartupSessionIds(current => new Set([...current, opened.session.sessionId]));
+      } }), { current: shouldActivate,
         pending: value => { if (creationRevision === creationRevisionRef.current) setCreationRecovering(value); } });
       // An explicitly closed frontend ID must not be resurrected by a pending
       // reopen/reuse response, even in the runtime list or startup queue.
@@ -1712,7 +1742,9 @@ export const MultiTerminalView: React.FC<MultiTerminalViewProps> = ({
         pendingStartupCommandsRef.current.set(nextSession.id, {
           backendSessionId: terminalSession.sessionId,
           command,
+          requestId: crypto.randomUUID(),
         });
+        setPendingStartupSessionIds(current => new Set([...current, nextSession.id]));
       }
 
       setSessions((prev) => upsertRuntimeSession(prev, nextSession));
@@ -2002,7 +2034,8 @@ export const MultiTerminalView: React.FC<MultiTerminalViewProps> = ({
 
     const handleFocusActiveSessionEvent = () => {
       const sessionId = activeSessionIdRef.current;
-      if (!sessionId || isMobileRef.current) return;
+      if (!sessionId || isMobileRef.current || !terminalFocusAvailableRef.current
+        || isKeyboardLayerOpen() || !isWorkspaceActive() || !hasUnclaimedFocus()) return;
       setFocusTransferRequest({ sessionId, token: Date.now() });
     };
 
@@ -2204,7 +2237,6 @@ export const MultiTerminalView: React.FC<MultiTerminalViewProps> = ({
       showPaneTitle?: boolean;
       keyboardPortalTarget?: HTMLElement | null;
       sharedMobileKeyboardLayout?: boolean;
-      suppressPageFlipRefresh?: boolean;
       hidden?: boolean;
       containerStyle?: React.CSSProperties;
     } = {},
@@ -2258,20 +2290,24 @@ export const MultiTerminalView: React.FC<MultiTerminalViewProps> = ({
       >
         {options.showPaneTitle && (
           <SplitPaneTitle
+            onShareWorkspace={findSplitWorkspace(splitWorkspaces, session.id) ? () => openSessionShare({ inviteSessionIds: findSplitWorkspace(splitWorkspaces, session.id)!.sessionIds, viewMode: 'terminal', viewLayout: 'split' }) : undefined}
             session={session}
             active={isActive}
             onActivate={() => activateSplitPane(session.id)}
-            onToggleRightSidebar={isActive ? onToggleRightSidebar : undefined}
+            onToggleLeftSidebar={!showSplitWindowHeader && !leftSidebarOpen && findSplitWorkspace(splitWorkspaces, session.id)?.sessionIds[0] === session.id ? onToggleLeftSidebar : undefined}
+            onToggleRightSidebar={onToggleRightSidebar}
+            rightSidebarOpen={rightSidebarOpen}
           />
         )}
         <div className="min-h-0 flex-1 app-chrome-bg">
-          <SessionWorkspace sessionId={session.id} terminalReady={readySessionIds.has(session.id) && viewportReadySessionIds.has(session.id)} name={getSessionLabel(session).primary} active={isActive && isLayoutVisible} onChatReadyChange={handleChatReadyChange} onKeyboardChange={open => handleKeyboardVisibilityChange(session.id, open)}>{(terminalVisible, terminalInteractive) => shouldMountViewport && <TerminalView
+          <SessionWorkspace sessionId={session.id} terminalStartupPending={pendingStartupSessionIds.has(session.id)} terminalReady={readySessionIds.has(session.id) && viewportReadySessionIds.has(session.id)} name={getSessionLabel(session).primary} active={isActive && isLayoutVisible} visible={isLayoutVisible} onChatReadyChange={handleChatReadyChange} onKeyboardChange={open => handleKeyboardVisibilityChange(session.id, open)}>{(terminalVisible, terminalInteractive) => shouldMountViewport && <TerminalView
             sessionId={session.id}
             mode={session.mode}
             tmuxSessionName={session.tmuxSessionName}
             terminalSettings={terminalSettings}
             colorTheme={colorTheme}
             toolbarPresets={toolbarPresets}
+            onConfigureToolbar={onConfigureToolbar}
             isActive={isActive}
             focusSuspended={!terminalInteractive || !terminalFocusAvailable || pendingSwitchSessionId !== null}
             allowOwnedPasteWhileFocusSuspended={terminalReferenceAvailable && pendingSwitchSessionId === null}
@@ -2285,7 +2321,6 @@ export const MultiTerminalView: React.FC<MultiTerminalViewProps> = ({
             suppressKeyboard={options.suppressKeyboard || !terminalVisible}
             keyboardPortalTarget={options.keyboardPortalTarget}
             sharedMobileKeyboardLayout={options.sharedMobileKeyboardLayout}
-            suppressPageFlipRefresh={options.suppressPageFlipRefresh}
             focusRequestToken={focusTransferRequest?.sessionId === session.id ? focusTransferRequest.token : 0}
             resumeRequestToken={resumeRequest.token}
             resumeRequestReason={resumeRequest.reason}
@@ -2318,75 +2353,10 @@ export const MultiTerminalView: React.FC<MultiTerminalViewProps> = ({
           <button type="button" className="shrink-0 rounded-lg p-1 hover:bg-surface-2" aria-label={t('common.close')} onClick={() => setCloseFailure(null)}><X size={16} /></button>
         </div>
       )}
-      {tmuxRecovery && (
-        <section
-          className="fixed inset-x-3 top-[calc(var(--safe-top-inset)+0.75rem)] z-toast mx-auto max-w-lg rounded-2xl border border-warning/30 bg-surface-elevated px-4 py-3.5 shadow-[0_20px_60px_var(--app-shadow-strong)]"
-          role="alert"
-          aria-live="assertive"
-        >
-          <div className="flex items-start gap-3">
-            <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-warning/15 text-warning">
-              <AlertTriangle size={18} />
-            </span>
-            <div className="min-w-0 flex-1">
-              <h2 className="text-[13px] font-semibold text-foreground">
-                {t('tab.tmuxRecoveryTitle', { count: tmuxRecovery.sessions.length })}
-              </h2>
-              <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-                {t('tab.tmuxRecoveryHint')}
-              </p>
-              <p className="mt-1.5 truncate text-[10px] text-foreground/70">
-                {tmuxRecovery.sessions.map((session) => session.name).join(' · ')}
-              </p>
-              {tmuxRecovery.operation && (
-                <div className="mt-2 rounded-lg bg-surface-2 px-2.5 py-2 text-[10px] text-muted-foreground" aria-live="polite">
-                  <p>{t('tab.tmuxRecoveryProgress', { total: tmuxRecovery.operation.total, queued: tmuxRecovery.operation.queued, paused: tmuxRecovery.operation.paused_count, resourceWait: tmuxRecovery.operation.resource_wait, running: tmuxRecovery.operation.running, succeeded: tmuxRecovery.operation.succeeded, failed: tmuxRecovery.operation.failed })}</p>
-                  {tmuxRecovery.operation.pauseReason === 'resources' && <p className="mt-1">{t('tab.tmuxRecoveryPausedForResources')}</p>}
-                  <div className="mt-1 max-h-24 overflow-y-auto">
-                  {tmuxRecovery.operation.items.map(item => (
-                    <p key={item.sessionId} className={`mt-1 ${item.errorCode ? 'text-destructive' : ''}`}>
-                      {item.sessionId}: {item.errorCode ?? item.resourceWaitReason ?? item.phase}
-                      {item.memAvailableBytes !== undefined ? ` · 可用内存 ${(item.memAvailableBytes / 1024 ** 3).toFixed(1)} GiB` : ''}
-                      {item.actualRssBytes !== undefined ? ` · 实际 RSS ${(item.actualRssBytes / 1024 ** 2).toFixed(0)} MiB` : ''}
-                      {item.estimatedRssBytes !== undefined && item.actualRssBytes === undefined ? ` · 预估 RSS ${(item.estimatedRssBytes / 1024 ** 2).toFixed(0)} MiB` : ''}
-                    </p>
-                  ))}
-                  </div>
-                </div>
-              )}
-              {tmuxRecoveryError && (
-                <p className="mt-2 text-[10px] text-destructive">{tmuxRecoveryError}</p>
-              )}
-              <div className="mt-3 flex items-center gap-2">
-                <button
-                  type="button"
-                  disabled={tmuxRecoveryPending !== null || Boolean(tmuxRecovery.operation && !['succeeded', 'partial_failure'].includes(tmuxRecovery.operation.state))}
-                  onClick={() => void handleRestoreAllTmuxAgents()}
-                  className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-primary px-3 text-[11px] font-medium text-primary-foreground transition active:opacity-80 disabled:opacity-50"
-                >
-                  <RotateCcw size={13} className={tmuxRecoveryPending === 'restore' ? 'animate-spin' : ''} />
-                  {tmuxRecoveryPending === 'restore'
-                    ? t('tab.tmuxRecoveryRestoring')
-                    : tmuxRecovery.operation && !['succeeded', 'partial_failure'].includes(tmuxRecovery.operation.state) ? t('tab.tmuxRecoveryInProgress') : t('tab.tmuxRecoveryRestoreAll')}
-                </button>
-                {tmuxRecovery.operation && ['queued', 'resource_wait', 'running', 'paused'].includes(tmuxRecovery.operation.state) && (
-                  <button type="button" disabled={tmuxRecoveryPending !== null} onClick={() => void handlePauseTmuxRecovery()} className="inline-flex min-h-9 items-center rounded-lg px-3 text-[11px] text-muted-foreground transition hover:bg-surface-2 disabled:opacity-50">
-                    {tmuxRecovery.operation.paused ? t('tab.tmuxRecoveryResume') : t('tab.tmuxRecoveryPause')}
-                  </button>
-                )}
-                <button
-                  type="button"
-                  disabled={tmuxRecoveryPending !== null || Boolean(tmuxRecovery.operation && !canDismissTmuxRecoveryOperation(tmuxRecovery.operation))}
-                  onClick={() => void handleDismissTmuxRecovery()}
-                  className="inline-flex min-h-9 items-center rounded-lg px-3 text-[11px] text-muted-foreground transition hover:bg-surface-2 hover:text-foreground disabled:opacity-50"
-                >
-                  {t('tab.tmuxRecoveryDismiss')}
-                </button>
-              </div>
-            </div>
-          </div>
-        </section>
-      )}
+      {tmuxRecovery && <TmuxRecoveryNotice key={tmuxRecovery.id} recovery={tmuxRecovery} pending={tmuxRecoveryPending} error={tmuxRecoveryError}
+        onRestore={() => void handleRestoreAllTmuxAgents()} onPause={() => void handlePauseTmuxRecovery()}
+        onDismiss={() => void handleDismissTmuxRecovery()}
+        onOpenSession={sessionId => { initializeSessionViewMode(sessionId, 'terminal'); activateSplitPane(sessionId, { preserveMobileKeyboard: false }); }} />}
       <div className="flex-1 overflow-hidden">
         <Swiper
           onSwiper={(instance) => {
@@ -2510,8 +2480,11 @@ export const MultiTerminalView: React.FC<MultiTerminalViewProps> = ({
                     {showSplitWindowHeader && !isMobileLayout && <header
                       data-termdock-window-header="true"
                       data-split-window-header="true"
-                      className="flex h-[46px] min-h-[46px] shrink-0 items-center app-chrome-bg pl-[88px] pr-3 text-[12px] text-muted-foreground"
-                    ><span className="min-w-0 truncate">{workspace?.name || t('tab.splitWorkspace')}</span></header>}
+                      className={`flex h-[46px] min-h-[46px] shrink-0 items-center gap-2 app-chrome-bg pr-3 text-[12px] text-muted-foreground ${splitHeaderHasWindowControls && !desktopLeftSidebarPinned ? 'pl-[88px]' : 'pl-2'}`}
+                    >
+                      {onToggleLeftSidebar && !leftSidebarOpen && <SidebarVisibilityButton side="left" expanded={leftSidebarOpen} onClick={onToggleLeftSidebar} className="h-8 w-8" />}
+                      <span className="min-w-0 flex-1 truncate">{workspace?.name || t('tab.splitWorkspace')}</span>
+                    </header>}
                     <div className="min-h-0 min-w-0 flex-1" style={getKeyboardPanelStyles(isMobileLayout && activeViewMode !== 'chat' && usesNativeKeyboardLayout()).contentStyle}>
                     <FreeSplitLayout layoutId={slide.key} preset={workspace?.layout ?? 'horizontal'} initialTree={legacySplitTree(slide.sessions.map(session => session.id), effectiveLayout, workspace?.ratios, workspace?.gridColumnRatios, workspace?.gridRowRatios)} mobile={isMobileLayout}
                       focusId={mobileKeyboardFocusMode ? mobileKeyboardOpenSessionId : null}
@@ -2520,7 +2493,6 @@ export const MultiTerminalView: React.FC<MultiTerminalViewProps> = ({
                         suppressKeyboard: isMobileLayout && session.id !== splitToolbarOwnerId,
                         keyboardPortalTarget: isMobileLayout ? splitKeyboardPortalTarget : null,
                         sharedMobileKeyboardLayout: isMobileLayout,
-                        suppressPageFlipRefresh: true,
                       }) }))} />
                     </div>
                     {isMobileLayout && (

@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { getSessionPresentation } from '../utils/sessionDisplayName.js';
 import { randomUUID } from 'node:crypto';
 import { normalizePersistedAgentResumeInfo, type PersistedAgentResumeInfo } from './resumePersistence.js';
 
@@ -33,7 +34,8 @@ function normalizeEntry(input: unknown): AgentResumeHistoryEntry | null {
   if (!id || !title || !cwd || !agent) return null;
   return {
     id,
-    title,
+    title: candidate.titleSource !== 'custom' && candidate.titleSource !== 'auto' && /^(?:tmux:|remote:|wt-)/i.test(title)
+      ? getSessionPresentation({ name: title, cwd }).displayName : title,
     titleSource: candidate.titleSource === 'custom' || candidate.titleSource === 'auto'
       ? candidate.titleSource
       : 'default',
@@ -49,7 +51,7 @@ function normalizeEntry(input: unknown): AgentResumeHistoryEntry | null {
 export class AgentResumeHistoryStore {
   private entries: AgentResumeHistoryEntry[] = [];
 
-  constructor(private readonly filePath: string, private readonly maxEntries = 30) {
+  constructor(private readonly filePath: string, private readonly maxEntries = 1000) {
     this.load();
   }
 

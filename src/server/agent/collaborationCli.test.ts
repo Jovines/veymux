@@ -17,6 +17,8 @@ describe('collaboration CLI contract', () => {
     expect(f.output.join('\n')).toContain('Slider(');
     expect(f.output.join('\n')).not.toContain('支持 OpenUI');
     expect(f.output.join('\n')).toContain('自行选择合适的表达方式');
+    expect(f.output.join('\n')).toContain('澄清/选择优先交互组件，保留自由输入，勿重复提问');
+    expect(Buffer.byteLength(f.output.join('\n').split('\n\n')[0])).toBeLessThanOrEqual(202);
     expect(f.output.join('\n')).not.toContain('比较用表格');
     expect(f.output.join('\n')).not.toContain('不要为每句话套卡片');
     expect(f.output.join('\n')).not.toContain('Use Cards to wrap charts');

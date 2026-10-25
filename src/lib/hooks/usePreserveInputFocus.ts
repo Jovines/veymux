@@ -1,4 +1,5 @@
 import { useEffect, type RefObject } from 'react';
+import { hasNativeSelectionWithin } from '../utils/nativeTextSelection';
 
 /** Preserve the existing editor focus during touch browsing. Cancel only the
  * compatibility mouse focus action; never cancel native touch scrolling, call
@@ -24,6 +25,7 @@ export function usePreserveInputFocus(surface: RefObject<HTMLElement>, input: Re
       if (!fromTouch || !(event.target instanceof Element)) return;
       const control = event.target.closest('input, textarea, select, button, a, label, summary, [contenteditable]:not([contenteditable="false"]), [role="button"]');
       if (control && control !== root) return;
+      if (hasNativeSelectionWithin(root)) return;
       event.preventDefault();
     };
     root.addEventListener('pointerdown', pointerDown, { capture: true, passive: true });

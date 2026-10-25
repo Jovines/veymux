@@ -56,6 +56,7 @@ export default {
         'drawer-panel': 'var(--z-drawer-panel)',
         'modal-backdrop': 'var(--z-modal-backdrop)',
         'modal-panel': 'var(--z-modal-panel)',
+        'modal-editor': 'var(--z-modal-editor)',
         'toast': 'var(--z-toast)',
         'popover': 'var(--z-popover)',
       },

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { useI18n } from '../../i18n';
+import { restoreFocusIfUnclaimed } from '../../utils/focusOwnership';
 import { uploadFiles } from '../../terminal/api';
 import { formatReviewReference, type ReferenceEvidence } from './reviewReference';
 
@@ -64,7 +65,7 @@ export function ReviewReferenceDialog({ reference, draftEnabled, onInsert, onCan
       controllerRef.current?.abort();
       document.body.style.overflow = previousOverflow;
       document.removeEventListener('keydown', keydown, true);
-      if (previous?.isConnected) previous.focus();
+      restoreFocusIfUnclaimed(previous, dialogRef.current);
     };
   }, []);
 

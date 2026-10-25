@@ -20,6 +20,21 @@ function setup(item = file) {
   return { onInsert, onDone };
 }
 describe('server recording confirmation', () => {
+  it('saves shared recordings as Session attachments and preserves the busy action source', async () => {
+    let finish!: (value: { path: string }) => void;
+    const saveAttachment = vi.fn(() => new Promise<{ path: string }>(resolve => { finish = resolve; }));
+    const onInsert = vi.fn(async () => true), onDone = vi.fn();
+    render(<RecordingSaveDialog file={file} initialPath="/" saveAttachment={saveAttachment} onInsert={onInsert} onDone={onDone} />);
+    const button = screen.getByText('Insert directly');
+    await userEvent.click(button);
+    await userEvent.click(button);
+    expect(saveAttachment).toHaveBeenCalledOnce();
+    expect(button.getAttribute('aria-busy')).toBe('true');
+    finish({ path: '/attachments/session/recording/video.mp4' });
+    await waitFor(() => expect(onDone).toHaveBeenCalledOnce());
+    expect(saveAndroidRecording).not.toHaveBeenCalled();
+    expect(onInsert).toHaveBeenCalledWith('/attachments/session/recording/video.mp4', button);
+  });
   it('inserts a server path only after explicit selection', async () => {
     const { onInsert, onDone } = setup();
     expect(saveAndroidRecording).not.toHaveBeenCalled();

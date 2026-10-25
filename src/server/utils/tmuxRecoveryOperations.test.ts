@@ -196,3 +196,17 @@ it('rejects dismissal while a manually paused operation still has an in-flight l
   expect(store.get(operation.id)?.paused_count).toBe(1);
   await store.flush();
 });
+
+it('persists acknowledgement of completed recovery without dismissing a later incident', async () => {
+  const { store, file } = await makeStore();
+  store.setRunner(async () => {});
+  const completed = await store.create({ incidentId: 'old', sessionIds: ['a'], scope: { kind: 'incident' }, idempotencyKey: 'old-success' });
+  await vi.waitFor(() => expect(store.get(completed.id)?.state).toBe('succeeded'));
+  store.setRunner(async () => new Promise<void>(() => {}));
+  const later = await store.create({ incidentId: 'new', sessionIds: ['b'], scope: { kind: 'incident' }, idempotencyKey: 'later-pending' });
+  await store.dismissPausedOperations('old');
+  expect(store.get(completed.id)?.dismissedAt).toBeDefined();
+  expect(store.get(later.id)?.dismissedAt).toBeUndefined();
+  const restarted = new TmuxRecoveryOperationStore(file, 2); await restarted.load();
+  expect(restarted.get(completed.id)?.dismissedAt).toBeDefined();
+});

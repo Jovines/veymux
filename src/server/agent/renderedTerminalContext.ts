@@ -41,16 +41,16 @@ export class RenderedTerminalContext {
     });
   }
 
-  async snapshot(): Promise<string> {
+  async snapshot(includeCursor = false): Promise<string> {
     if (this.disposed) return '';
     const terminal = this.terminal;
     const generation = this.generation;
     await new Promise<void>((resolve) => terminal.write('', resolve));
     if (this.disposed || generation !== this.generation || terminal !== this.terminal) return '';
-    return this.read();
+    return this.read(includeCursor);
   }
 
-  read(): string {
+  read(includeCursor = false): string {
     if (this.disposed) return '';
     const buffer = this.terminal.buffer.active;
     const start = Math.max(0, buffer.length - AUTO_TITLE_SCROLLBACK_LINES - this.terminal.rows);
@@ -60,7 +60,7 @@ export class RenderedTerminalContext {
     const logicalLines: string[] = [];
 
     for (let row = start; row < buffer.length; row += 1) {
-      if (row === activeRow) continue;
+      if (!includeCursor && row === activeRow) continue;
       const line = buffer.getLine(row);
       if (!line) continue;
       const text = line.translateToString(true);

@@ -120,7 +120,8 @@ export class TermdockAutoUpdateManager {
     return this.checkPromise;
   }
 
-  confirmRestart(expectedVersion?: string): TermdockUpdateState {
+  /** Validate every participant before a coordinated restart interrupts any of them. */
+  prepareRestart(expectedVersion?: string): TermdockUpdateState {
     if (this.state.status !== 'ready' || !hasPendingTermdockUpdate(this.state)) {
       throw new TermdockUpdateStateChangedError('No installed Termdock update is waiting for restart.');
     }
@@ -133,6 +134,11 @@ export class TermdockAutoUpdateManager {
       this.dependencies.verifyRestartEntry?.();
     }
     catch (error) { this.installationError(error); throw error; }
+    return this.getState();
+  }
+
+  confirmRestart(expectedVersion?: string): TermdockUpdateState {
+    this.prepareRestart(expectedVersion);
     this.setState({ ...this.state, status: 'restarting', error: null });
     try { this.dependencies.requestRestart(); }
     catch (error) { this.installationError(error); throw error; }

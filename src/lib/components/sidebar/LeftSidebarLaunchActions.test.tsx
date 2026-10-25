@@ -32,12 +32,56 @@ vi.mock('../../terminal/api', async (importOriginal) => ({
   listCollaborationTasks: vi.fn().mockResolvedValue({ tasks: [] }),
 }));
 
+const originalGetAnimations = Object.getOwnPropertyDescriptor(Element.prototype, 'getAnimations');
 afterEach(() => {
   cleanup();
+  if (originalGetAnimations) Object.defineProperty(Element.prototype, 'getAnimations', originalGetAnimations);
+  else Reflect.deleteProperty(Element.prototype, 'getAnimations');
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
 describe('LeftSidebar launch actions', () => {
+  it.each(['New Codex', 'New terminal'])('shows waiting on the requested launcher (%s), then clears it on failure and retry', async (name) => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ locale: 'en' }) })));
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const onNewSession = vi.fn();
+    render(<I18nProvider><AppFeedbackHost /><LeftSidebar isOpen pinned drawerWidthPx={320} sessions={[]}
+      activeSessionId={null} sessionStates={new Map()} onNewSession={onNewSession}
+      onClose={vi.fn()} onCloseSession={vi.fn()} onSplitSession={vi.fn()} onCloseSplit={vi.fn()}
+      onRemoveFromSplit={vi.fn()} splitWorkspaces={[]} onSetSplitLayout={vi.fn()}
+      onReorderSplitWorkspace={vi.fn()} onRenameSplitWorkspace={vi.fn()} onCombineSplitSessions={vi.fn()}
+      onReorderSessions={vi.fn()} onOpenSettings={vi.fn()} /></I18nProvider>);
+    const button = screen.getByRole('button', { name });
+    const other = screen.getByRole('button', { name: name === 'New Codex' ? 'New terminal' : 'New Codex' });
+    await user.click(button);
+    expect(button.getAttribute('aria-busy')).toBe('true');
+    expect(other.getAttribute('aria-busy')).toBe('false');
+    expect(button.querySelector('.td-loading-spinner')).toBeTruthy();
+    expect(other.querySelector('.td-loading-spinner')).toBeNull();
+    expect(button.textContent).toContain(name === 'New Codex' ? 'Codex' : 'Terminal');
+    expect(screen.queryByText('Still waiting for the service…')).toBeNull();
+    await user.click(button);
+    expect(onNewSession).toHaveBeenCalledOnce();
+    act(() => vi.advanceTimersByTime(8000));
+    expect(screen.getByText('Still waiting for the service…')).toBeTruthy();
+    expect(screen.getByText('8s')).toBeTruthy();
+    expect(screen.getByText('You can keep using your current session.')).toBeTruthy();
+    act(() => onNewSession.mock.calls[0][0].onResult({ ok: false, error: 'connection' }));
+    expect(screen.queryByText('Still waiting for the service…')).toBeNull();
+    expect(button.getAttribute('aria-busy')).toBe('false');
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(onNewSession).toHaveBeenCalledTimes(2);
+    expect(button.getAttribute('aria-busy')).toBe('true');
+    expect(screen.queryByText('Still waiting for the service…')).toBeNull();
+    act(() => onNewSession.mock.calls[1][0].onResult({ ok: true, sessionId: 'new' }));
+    expect(button.hasAttribute('disabled')).toBe(false);
+    expect(button.getAttribute('aria-busy')).toBe('false');
+    act(() => vi.advanceTimersByTime(10000));
+    expect(screen.queryByText('Still waiting for the service…')).toBeNull();
+  });
+
   it('keeps Terminal and the default Agent one tap away while reserving disclosure for options', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({
       ok: true,
@@ -123,19 +167,22 @@ describe('LeftSidebar launch actions', () => {
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
-  it('keeps recoverable tmux sessions visible and restores them in one click', async () => {
+  it('keeps the mobile sidebar open for recovery, supports retry after failure and refreshes on success', async () => {
+    Object.defineProperty(Element.prototype, 'getAnimations', { configurable: true, value: () => [] });
     vi.stubGlobal('fetch', vi.fn(async () => ({
       ok: true,
       json: async () => ({ locale: 'en' }),
     })));
     const user = userEvent.setup();
     const onNewSession = vi.fn();
+    const onClose = vi.fn();
+    const onRefresh = vi.fn();
 
     render(
       <I18nProvider>
         <LeftSidebar
           isOpen
-          pinned
+          pinned={false}
           drawerWidthPx={320}
           sessions={[]}
           activeSessionId={null}
@@ -149,7 +196,8 @@ describe('LeftSidebar launch actions', () => {
             cwd: '/work/web-terminal',
           }]}
           onNewSession={onNewSession}
-          onClose={vi.fn()}
+          onClose={onClose}
+          onRefreshRecoverableTmuxSessions={onRefresh}
           onCloseSession={vi.fn()}
           onSplitSession={vi.fn()}
           onCloseSplit={vi.fn()}
@@ -165,12 +213,25 @@ describe('LeftSidebar launch actions', () => {
       </I18nProvider>,
     );
 
-    expect(screen.getByRole('region', { name: 'Recoverable sessions' })).toBeTruthy();
+    const recovery = screen.getByRole('button', { name: 'Recoverable sessions' });
+    expect(recovery.closest('[data-session-sidebar-header]')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Restore Fix session recovery' })).toBeNull();
+    await user.click(recovery);
+    expect(screen.getByRole('dialog', { name: 'Recoverable sessions' })).toBeTruthy();
     await user.click(screen.getByRole('button', { name: 'Restore Fix session recovery' }));
-    expect(onNewSession).toHaveBeenCalledWith({
+    expect(onNewSession).toHaveBeenCalledWith(expect.objectContaining({
       mode: 'tmux',
       tmuxSessionName: 'wt-codex',
       cwd: '/work/web-terminal',
-    });
+    }));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog', { name: 'Recoverable sessions' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Restore Fix session recovery' }).hasAttribute('disabled')).toBe(true);
+    act(() => onNewSession.mock.calls[0][0].onResult({ ok: false, error: 'connection' }));
+    await user.click(screen.getByRole('button', { name: 'Restore Fix session recovery' }));
+    expect(onNewSession).toHaveBeenCalledTimes(2);
+    act(() => onNewSession.mock.calls[1][0].onResult({ ok: true, sessionId: 'restored' }));
+    expect(onRefresh).toHaveBeenCalledOnce();
+    expect(onClose).not.toHaveBeenCalled();
   });
 });

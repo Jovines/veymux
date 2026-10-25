@@ -12,7 +12,7 @@ beforeEach(() => {
   const modes = new Map<string, string>();
   vi.stubGlobal('fetch', vi.fn(async (url, init?: RequestInit) => {
     if (init?.body) modes.set(String(url), JSON.parse(String(init.body)).mode);
-    return Response.json({ mode: modes.get(String(url)) ?? 'terminal', updatedAt: 1 });
+    return Response.json({ mode: modes.get(String(url)) ?? 'terminal', updatedAt: 1, chatEligibility: { allowed: true, program: 'codex' } });
   }));
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); localStorage.clear(); useSessionDirectoryStore.getState().replace([]); useTerminalStore.setState({ sessions: new Map() }); });
@@ -47,4 +47,20 @@ it('switches only the selected pane and retains its terminal when returning', as
   fireEvent.click(back);
   expect(screen.getByRole('textbox', { name: 'Terminal One' })).toBe(terminal);
   expect(terminal).toHaveProperty('value', 'preserved one');
+});
+
+it('activates an inactive pane before toggling the shared sidebar and reflects its shared state', () => {
+  const calls: string[] = [];
+  const props = { session: { id: 'tools-pane', name: 'Tools', customName: true, mode: 'shell' as const, tmuxSessionName: null },
+    onActivate: () => calls.push('activate'), onToggleRightSidebar: () => calls.push('toggle') };
+  const view = render(<SplitPaneTitle {...props} active={false} />);
+  const open = screen.getByRole('button', { name: 'sidebar.expandTools' });
+  expect(open.getAttribute('aria-expanded')).toBe('false');
+  fireEvent.click(open);
+  expect(calls).toEqual(['activate', 'toggle']);
+  view.rerender(<SplitPaneTitle {...props} active rightSidebarOpen />);
+  const close = screen.getByRole('button', { name: 'sidebar.collapseTools' });
+  expect(close.getAttribute('aria-expanded')).toBe('true');
+  fireEvent.click(close);
+  expect(calls).toEqual(['activate', 'toggle', 'toggle']);
 });

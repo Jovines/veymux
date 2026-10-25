@@ -2,7 +2,7 @@ import { IntegrationRuntime, integrationSocketPath } from './agent/integrationSe
 import { CollaborationService } from './agent/collaborationService.js';
 import { X509Certificate } from 'node:crypto';
 import { CollaborationPeerTransport, connectCollaborationRpc, type CollaborationRpc } from './agent/collaborationPeerTransport.js';
-import { collaborationStore, collaborationTaskStore, deliverPeerCollaboration, collaborationLocalActivity, collaborationDirectorySessions, todoWebhookRouter, prepareCollaborationTaskWorker, integrationSessionAdapter } from './routes/terminal.js';
+import { collaborationStore, collaborationTaskStore, deliverPeerCollaboration, collaborationLocalActivity, collaborationDirectorySessions, todoWebhookRouter, prepareCollaborationTaskWorker, integrationSessionAdapter, restoreSharedFederationSession } from './routes/terminal.js';
 import { CollaborationTaskService } from './agent/collaborationTaskService.js';
 import { setPushTargetPeerId } from './notifications/pushService.js';
 import { desktopServiceTargets } from './federation/desktopTargets.js';
@@ -564,7 +564,7 @@ export function startServer(options: ServerOptions = {}): StartServerResult {
   let activeRouteIds = (): string[] => [];
   const desktopTargets = () => desktopServiceTargets(homedir(), federationServiceId);
   const routeAccess = new RouteAccess(path.join(homedir(), '.termdock', 'federation', 'routes.json'), Date.now,
-    (subjectId, targetServiceId) => routeInvitations?.allows(subjectId, targetServiceId) === true || collaborationTransport?.canRoute(subjectId, targetServiceId) === true,
+    (subjectId, targetServiceId) => routeInvitations?.allows(subjectId, targetServiceId) === true || collaborationTransport?.canRoute(subjectId, targetServiceId) === true || collaborationService?.canRoute(subjectId, targetServiceId) === true,
     desktopTargets, () => activeRouteIds());
   const relayRouter = new RelayRouter<RoutePrincipal>({
     requirePasswordProtectedTargets: true,
@@ -588,6 +588,8 @@ export function startServer(options: ServerOptions = {}): StartServerResult {
     terminal: handleTerminalWebSocket, control: handleControlWebSocket, android: handleAndroidWebSocket, computer: handleComputerWebSocket,
   }, {
     webTransport: webTransportDescriptor,
+    sessionAttachmentDirectory: path.join(homedir(), '.termdock', 'chat-attachments'),
+    restoreSharedSession: restoreSharedFederationSession,
     resolveSessionId: resolveStableFederationSessionId,
     collaborationConnected: (subjectId, rpc) => {
       const channels = collaborationChannels.get(subjectId) ?? new Set<CollaborationRpc>();
@@ -639,7 +641,7 @@ export function startServer(options: ServerOptions = {}): StartServerResult {
       return routeAccess.issueRouteTicket(subjectId, serviceId);
     },
     issueSelfRelayTicket: (serviceId: string) => routeAccess.issueSelfRelayTicket(serviceId),
-    hasRouteGrant: (subjectId: string, serviceId: string) => routeInvitations?.allows(subjectId, serviceId) === true || collaborationTransport?.canRoute(subjectId, serviceId) === true,
+    hasRouteGrant: (subjectId: string, serviceId: string) => routeInvitations?.allows(subjectId, serviceId) === true || collaborationTransport?.canRoute(subjectId, serviceId) === true || collaborationService?.canRoute(subjectId, serviceId) === true,
     createRouteInvitation: (issuerId: string, serviceId: string) => {
       if (!routeInvitations) throw new Error('ROUTE_NOT_AVAILABLE');
       return routeInvitations.create(issuerId, serviceId);
@@ -661,6 +663,17 @@ export function startServer(options: ServerOptions = {}): StartServerResult {
       if (['localhost', '127.0.0.1', '[::1]'].includes(new URL(peer.origin).hostname)) throw new Error('WAITING_FOR_PEER_CONNECTION');
       return connectCollaborationRpc(runtime.identity, peer, undefined, packet => receiveCollaboration(peer.serviceId, packet));
     };
+    const connectVia = async (peer: import('./agent/collaborationPeerTransport.js').CollaborationNode, via: import('./agent/collaborationPeerTransport.js').CollaborationNode) => {
+      const entry = await connectCollaborationRpc(runtime.identity, via);
+      try {
+        const ticket = await entry.request({ type: 'route-ticket', serviceId: peer.serviceId });
+        if (typeof ticket.routeToken !== 'string') throw new Error('ROUTE_UNAVAILABLE');
+        const url = new URL('/api/federation/relay', via.origin.replace(/^https:/, 'wss:'));
+        url.searchParams.set('routeToken', ticket.routeToken);
+        // TLS authenticates the entry; Noise pins the final destination.
+        return await connectCollaborationRpc(runtime.identity, { ...via, serviceId: peer.serviceId }, url.href, packet => receiveCollaboration(peer.serviceId, packet));
+      } finally { entry.close(); }
+    };
     collaborationTransport = new CollaborationPeerTransport({
       reverse: reverseCollaboration,
       file: path.join(homedir(), '.termdock', 'federation', 'collaboration-peers.json'), serviceId: runtime.serviceId,
@@ -668,15 +681,7 @@ export function startServer(options: ServerOptions = {}): StartServerResult {
       scopeFor: serviceId => collaborationService?.effectiveScope(serviceId),
       connect: async (peer, via) => {
         if (!via) return connectPeer(peer);
-        const entry = await connectCollaborationRpc(runtime.identity, via);
-        try {
-          const ticket = await entry.request({ type: 'route-ticket', serviceId: peer.serviceId });
-          if (typeof ticket.routeToken !== 'string') throw new Error('ROUTE_UNAVAILABLE');
-          const url = new URL('/api/federation/relay', via.origin.replace(/^https:/, 'wss:'));
-          url.searchParams.set('routeToken', ticket.routeToken);
-          // TLS authenticates the entry; Noise pins the final destination.
-          return await connectCollaborationRpc(runtime.identity, { ...via, serviceId: peer.serviceId }, url.href, packet => receiveCollaboration(peer.serviceId, packet));
-        } finally { entry.close(); }
+        return connectVia(peer, via);
       },
     });
     app.locals.collaborationTransport = collaborationTransport;
@@ -685,7 +690,16 @@ export function startServer(options: ServerOptions = {}): StartServerResult {
     app.locals.collaborationNode = { serviceId: runtime.serviceId, ...(caFingerprint256 ? { caFingerprint256 } : {}) };
     collaborationService = new CollaborationService({ file: path.join(homedir(), '.termdock', 'federation', 'collaboration-services.json'),
       store: collaborationStore, transport: collaborationTransport, node: () => app.locals.collaborationNode,
-      sessions: collaborationDirectorySessions, reverse: reverseCollaboration, connect: connectPeer,
+      sessions: collaborationDirectorySessions, deliver: deliverPeerCollaboration, reverse: reverseCollaboration,
+      connect: async peer => {
+        try { return await connectPeer(peer); } catch (directError) {
+          for (const via of collaborationService?.routeNodes() ?? []) {
+            if (via.serviceId === peer.serviceId) continue;
+            try { return await connectVia(peer, via); } catch { /* Try the next authorized encrypted entry. */ }
+          }
+          throw directError;
+        }
+      },
       tasks: {
         receive: (peer, packet) => app.locals.collaborationTasks.receive(peer, packet),
         heads: ids => app.locals.collaborationTasks?.heads(ids) ?? [],

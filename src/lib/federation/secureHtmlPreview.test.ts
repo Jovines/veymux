@@ -15,6 +15,7 @@ describe('secure HTML resource pack', () => {
     const preview = await prepareSecureHtmlPreview(root + 'index.html', { fetch, origin: location.origin });
     expect(fetch.mock.calls.map(([path]) => path)).toEqual([root + 'index.html', root + 'style.css', root + 'app.js']);
     expect(preview.html).not.toContain('<iframe');
+    expect(new DOMParser().parseFromString(preview.html, 'text/html').querySelector('base')).toBeNull();
     expect(preview.html).not.toContain(token);
     expect(preview.errors).toContain('已阻止预览访问目录之外的资源');
     expect(preview.shellUrl).toMatch(/^\/preview-shell.html#[a-f0-9-]+$/);

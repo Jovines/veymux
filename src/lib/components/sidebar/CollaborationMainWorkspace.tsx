@@ -1,5 +1,6 @@
+import { SidebarVisibilityButton } from './SidebarVisibilityButton';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { PanelLeft, PanelRight, Workflow } from 'lucide-react';
+import { Workflow } from 'lucide-react';
 import { useAppFeedback } from '../ui/AppFeedback';
 import { CollaborationTab, openCollaborationSession } from './AgentOperationsPanel';
 import { collaborationPanelClientId, openCollaborationMessagesPanel } from '../../collaboration/panelPreferences';
@@ -52,10 +53,10 @@ export default function CollaborationMainWorkspace({ groupId, activeSessionId, o
   };
   return <section aria-label="协作主工作区" className="absolute inset-0 flex min-h-0 min-w-0 flex-col bg-[var(--chrome-bg)] text-foreground">
     <header data-termdock-window-header="true" className="flex min-h-14 shrink-0 items-center gap-1 border-b border-border/15 px-2 sm:min-h-16 sm:gap-3 sm:px-6">
-      {!leftSidebarVisible && <button type="button" aria-label="打开会话侧栏" className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-muted-foreground hover:bg-surface-2" onClick={onOpenSidebar}><PanelLeft size={17} /></button>}
+      {!leftSidebarVisible && <SidebarVisibilityButton side="left" expanded={leftSidebarVisible} className="min-h-11 min-w-11" onClick={onOpenSidebar} />}
       <Workflow size={18} className="hidden shrink-0 text-primary sm:block" />
       <div className="min-w-0 flex-1"><h2 ref={title} tabIndex={-1} className="truncate text-base font-semibold outline-none">{group?.name ?? '协作工作区'}</h2><p className="text-[11px] text-muted-foreground">{group ? `${group.sessionIds.length} 位成员` : '正在连接工作组'}</p></div>
-      {onToggleRightSidebar && <button type="button" aria-label="文件侧栏" title="文件侧栏" aria-pressed={rightSidebarOpen} className={`inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg ${rightSidebarOpen ? 'bg-surface-2 text-primary' : 'text-muted-foreground hover:bg-surface-2'}`} onClick={onToggleRightSidebar}><PanelRight size={17} /></button>}
+      {onToggleRightSidebar && !rightSidebarOpen && <SidebarVisibilityButton side="right" expanded={rightSidebarOpen} className="min-h-11 min-w-11" onClick={onToggleRightSidebar} />}
     </header>
     <div className="flex min-h-0 flex-1 flex-col px-4 py-2 sm:px-6">
       {notice && <p role="status" className="mb-3 shrink-0 text-xs text-primary">{notice}</p>}

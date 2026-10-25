@@ -1,4 +1,10 @@
 import type { AgentStatus, TuiProgressReport } from '../terminal/types';
+import type { SessionChatAttention } from '../../server/shared/sessionChatAttention';
+
+export function sessionNeedsReview(state?: { agentNeedsReview?: boolean; chatAttention?: SessionChatAttention }): boolean {
+  const chat = state?.chatAttention;
+  return !!chat?.unreadIds.length || (chat?.mode && chat.index ? false : !!state?.agentNeedsReview);
+}
 
 /** Native terminal progress is a visual fallback, not an Agent phase. Idle
  * and acknowledged done states must not hide a new native progress report. */
@@ -6,22 +12,24 @@ export function shouldShowTuiLoading(state?: {
   agentStatus: AgentStatus | null;
   agentNeedsReview?: boolean;
   tuiProgress?: TuiProgressReport | null;
+  chatAttention?: SessionChatAttention;
 }): boolean {
   const progress = state?.tuiProgress?.state;
   return (progress === 'set' || progress === 'indeterminate')
     && state?.agentStatus !== 'working'
     && state?.agentStatus !== 'waiting'
-    && !state?.agentNeedsReview;
+    && !(state?.chatAttention?.mode && state.chatAttention.index ? false : state?.agentNeedsReview);
 }
 
 export interface AgentAttentionSession {
   sessionId: string;
   agentStatus: AgentStatus | null;
   agentNeedsReview?: boolean;
+  chatAttention?: SessionChatAttention;
 }
 
 export function needsAgentAttention(session: AgentAttentionSession): boolean {
-  return session.agentStatus === 'waiting' || session.agentNeedsReview === true;
+  return session.agentStatus === 'waiting' || sessionNeedsReview(session);
 }
 
 export function isAgentRunning(session: AgentAttentionSession): boolean {

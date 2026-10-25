@@ -60,6 +60,7 @@ describe('workspace floating controls', () => {
     render(<ServiceWorkspaceHost><button>Entry session</button></ServiceWorkspaceHost>);
     act(() => { host.activate(remote); });
     const frame = screen.getByTitle('Remote') as HTMLIFrameElement;
+    expect(frame.parentElement).toBe(document.body);
     const view = frame.contentWindow!;
     // Native load may run before React has installed SecureAccessGate's effect.
     fireEvent.load(frame);

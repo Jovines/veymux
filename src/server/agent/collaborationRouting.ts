@@ -100,9 +100,10 @@ export class CollaborationRoutingStore {
 export interface CollaborationPaneCandidate extends CollaborationPaneBinding {
   cwd: string;
   isShell?: boolean;
-  nativeIdentitySource?: 'argv' | 'linux-flock-owner' | null;
+  nativeIdentitySource?: 'argv' | 'linux-flock-owner' | 'foreground-resume' | null;
   nativeIdentityFailure?: string | null;
   nativeIdentityVerified?: boolean;
+  foregroundProcessIdentity?: string;
 }
 
 /** Metadata only: never terminal text, argv, environment or credentials. */

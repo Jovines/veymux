@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import type { AgentStatusPayload } from '../terminal/api';
 import { sendAgentReviewAck } from '../terminal/api';
+import type { SessionChatIndex } from '../../server/shared/sessionChatAttention';
+import { viewedChatMessages, saveViewedChatMessages, syncViewedChatMessages } from '../components/chat/chatViewedMessages';
 import type { TerminalSession, TerminalChunk, TerminalSessionState, TuiProgressReport } from '../terminal';
 import {
   drainTerminalOutputFrame,
@@ -58,6 +60,9 @@ export interface TerminalStore {
   setSessionAgentStatus: (sessionId: string, payload: AgentStatusPayload) => void;
   setAgentResumeRecovered: (sessionId: string, recovered: boolean) => void;
   clearAgentNeedsReview: (sessionId: string) => void;
+  setSessionChatIndex: (sessionId: string, index: SessionChatIndex) => void;
+  setSessionChatMode: (sessionId: string, mode: boolean) => void;
+  markChatMessagesViewed: (sessionId: string, ids: string[]) => void;
   setConnecting: (sessionId: string, isConnecting: boolean) => void;
   recordTerminalOutput: (sessionId: string) => void;
   clearTerminalOutputActivity: (sessionId: string) => void;
@@ -319,15 +324,7 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
     // When user switches to a session, clear its needs-review flag
     // and tell the server so it survives page refresh.
     if (id) {
-      const session = get().sessions.get(id);
-      if (session?.agentNeedsReview) {
-        const newSessions = new Map(get().sessions);
-        newSessions.set(id, { ...session, agentNeedsReview: false, updatedAt: Date.now() });
-        set({ sessions: newSessions });
-        if (session.terminalSessionId) {
-          sendAgentReviewAck(session.terminalSessionId);
-        }
-      }
+      get().clearAgentNeedsReview(id);
     }
   },
 
@@ -361,6 +358,7 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
         cwd: terminalSession.cwd ?? existing?.cwd ?? baseState.cwd,
         agent: existing?.agent ?? getCachedAgentIdentity(sessionId) ?? baseState.agent,
         agentResumeRecovered: existing?.agentResumeRecovered ?? baseState.agentResumeRecovered,
+        chatAttention: existing?.chatAttention,
         shellTitle: existing?.shellTitle ?? readCachedShellTitles()[sessionId] ?? baseState.shellTitle,
         sessionId,
         isConnecting: false,
@@ -450,7 +448,8 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
         existing.tuiProgress?.source === nextReport?.source &&
         existing.tuiProgress?.app === nextReport?.app &&
         existing.tuiProgress?.message === nextReport?.message &&
-        existing.tuiProgress?.kind === nextReport?.kind
+        existing.tuiProgress?.kind === nextReport?.kind &&
+        existing.tuiProgress?.reviewed === nextReport?.reviewed
       ) return state;
       const newSessions = new Map(state.sessions);
       newSessions.set(sessionId, { ...existing, tuiProgress: nextReport, updatedAt: Date.now() });
@@ -622,17 +621,85 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
 
   clearAgentNeedsReview: (sessionId: string) => {
     const session = get().sessions.get(sessionId);
-    if (!session?.agentNeedsReview) return;
+    const nativeDone = session?.tuiProgress?.source === 'osc7501' && session.tuiProgress.state === 'done' && !session.tuiProgress.reviewed;
+    if (!session || !session.agentNeedsReview && !nativeDone) return;
     set((state) => {
       const newSessions = new Map(state.sessions);
       const existing = newSessions.get(sessionId);
-      if (!existing || !existing.agentNeedsReview) return state;
-      newSessions.set(sessionId, { ...existing, agentNeedsReview: false, updatedAt: Date.now() });
+      if (!existing) return state;
+      newSessions.set(sessionId, { ...existing, agentNeedsReview: false,
+        tuiProgress: nativeDone && existing.tuiProgress ? { ...existing.tuiProgress, reviewed: true } : existing.tuiProgress,
+        updatedAt: Date.now() });
       return { sessions: newSessions };
     });
     if (session.terminalSessionId) {
       sendAgentReviewAck(session.terminalSessionId);
     }
+  },
+
+  setSessionChatIndex: (sessionId, index) => {
+    if (!index || typeof index.conversationId !== 'string' || !Array.isArray(index.messageIds) || index.messageIds.some(id => typeof id !== 'string')
+      || index.viewedMessageIds !== undefined && (!Array.isArray(index.viewedMessageIds) || index.viewedMessageIds.some(id => typeof id !== 'string'))) return;
+    const previousIndex = get().sessions.get(sessionId)?.chatAttention?.index;
+    if (index.viewedMessageIds && previousIndex?.conversationId === index.conversationId && previousIndex.viewedMessageIds) {
+      // An older HTTP snapshot must not undo a newer stream acknowledgement.
+      index = { ...index, viewedMessageIds: [...new Set([...index.viewedMessageIds, ...previousIndex.viewedMessageIds])] };
+    }
+    const local = viewedChatMessages(sessionId, index);
+    const shared = index.viewedMessageIds !== undefined;
+    set(state => {
+      const existing = state.sessions.get(sessionId) ?? { ...createEmptySessionState(sessionId), isConnecting: false };
+      const attention = existing.chatAttention, seen = shared ? new Set(index.viewedMessageIds) : local;
+      // Retain acknowledgements in memory when browser storage is unavailable.
+      const previouslyUnread = new Set(attention?.unreadIds);
+      if (!shared && attention?.index?.conversationId === index.conversationId) for (const id of attention.index.messageIds) if (!previouslyUnread.has(id)) seen.add(id);
+      const unreadIds = index.messageIds.filter(id => !seen.has(id));
+      if (JSON.stringify(attention?.index) === JSON.stringify(index) && JSON.stringify(attention?.unreadIds) === JSON.stringify(unreadIds)) return state;
+      const sessions = new Map(state.sessions);
+      sessions.set(sessionId, { ...existing, chatAttention: { mode: attention?.mode ?? false, index, unreadIds } });
+      return { sessions };
+    });
+    if (shared) {
+      const serverSeen = new Set(index.viewedMessageIds);
+      for (const id of serverSeen) local.add(id);
+      saveViewedChatMessages(sessionId, index, local);
+      const pending = index.messageIds.filter(id => local.has(id) && !serverSeen.has(id));
+      syncViewedChatMessages(sessionId, index, pending, result => {
+        const current = get().sessions.get(sessionId)?.chatAttention?.index;
+        if (current?.conversationId === result.conversationId) get().setSessionChatIndex(sessionId, { ...current, viewedMessageIds: [...new Set([...current.viewedMessageIds ?? [], ...result.viewedMessageIds ?? []])] });
+      });
+    }
+  },
+
+  setSessionChatMode: (sessionId, mode) => set(state => {
+    const existing = state.sessions.get(sessionId) ?? { ...createEmptySessionState(sessionId), isConnecting: false };
+    if (existing.chatAttention?.mode === mode) return state;
+    const sessions = new Map(state.sessions);
+    sessions.set(sessionId, { ...existing, chatAttention: { ...existing.chatAttention, mode, unreadIds: existing.chatAttention?.unreadIds ?? [] } });
+    return { sessions };
+  }),
+
+  markChatMessagesViewed: (sessionId, ids) => {
+    const existing = get().sessions.get(sessionId), attention = existing?.chatAttention;
+    if (!existing || !attention?.index) return;
+    const viewed = new Set(ids), unreadIds = attention.unreadIds.filter(id => !viewed.has(id));
+    if (unreadIds.length === attention.unreadIds.length) return;
+    const unread = new Set(unreadIds);
+    const cache = viewedChatMessages(sessionId, attention.index);
+    for (const id of attention.index.messageIds) if (!unread.has(id)) cache.add(id);
+    saveViewedChatMessages(sessionId, attention.index, cache);
+    if (attention.index.viewedMessageIds !== undefined) {
+      // Preserve the reminder until the server durably acknowledges it. The
+      // local cache is a retry outbox, not a second authoritative read state.
+      syncViewedChatMessages(sessionId, attention.index, ids.filter(id => attention.unreadIds.includes(id)), result => {
+        const current = get().sessions.get(sessionId)?.chatAttention?.index;
+        if (current?.conversationId === result.conversationId) get().setSessionChatIndex(sessionId, { ...current, viewedMessageIds: [...new Set([...current.viewedMessageIds ?? [], ...result.viewedMessageIds ?? []])] });
+      });
+      return;
+    }
+    const sessions = new Map(get().sessions);
+    sessions.set(sessionId, { ...existing, chatAttention: { ...attention, unreadIds } });
+    set({ sessions });
   },
 
   setConnecting: (sessionId: string, isConnecting: boolean) => {

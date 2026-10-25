@@ -75,3 +75,22 @@ it('keeps a read-only viewer on the remote grid even if a caller asks to fit it 
   expect(f.geometry.applyRemoteSize({ cols: 0, rows: 50 })).toBe(false);
   expect(fixture().geometry.applyRemoteSize({ cols: 80, rows: 24 })).toBe(false);
 });
+
+it('ignores rounded CSS cell jitter at an unchanged layout while accepting a real one-column resize', () => {
+  const f = fixture();
+  const cell = { width: 16.8, height: 40 };
+  Object.assign(f.terminal, { dimensions: { device: { cell } } });
+  f.geometry.fit('initialize', true);
+  f.size({ cols: 119, rows: 40 });
+  f.geometry.fit('update', true, 'refresh:resize');
+  f.geometry.fit('reveal', true);
+  expect(f.geometry.dimensions).toEqual({ cols: 120, rows: 40 });
+  expect(f.terminal.resize).toHaveBeenCalledOnce();
+  f.box({ width: 992, height: 600 });
+  f.geometry.fit('update', true, 'refresh:resize');
+  expect(f.geometry.dimensions).toEqual({ cols: 119, rows: 40 });
+  cell.width = 17;
+  f.size({ cols: 118, rows: 40 });
+  f.geometry.fit('update', true, 'refresh:resize');
+  expect(f.geometry.dimensions).toEqual({ cols: 118, rows: 40 });
+});

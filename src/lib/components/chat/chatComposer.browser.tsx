@@ -13,15 +13,18 @@ import { clearChatSnapshots } from './chatSnapshot';
 import { composeChatDraft } from './chatComposerContent';
 import { readChatEditor, setChatEditorCaret } from './ChatRichEditor';
 import { useSessionDirectoryStore } from '../../stores/useSessionDirectory';
+import { uploadFiles } from '../../terminal/api';
+const peerMentions = vi.hoisted(() => ({ sessions: [] as unknown[] }));
 vi.mock('../../terminal/api', async original => ({ ...await original<typeof import('../../terminal/api')>(),
-  listCollaborationGroups: async () => ({ groups: [{ id: 'team', name: '界面打磨', sessionIds: ['browser-composer', 'worker'] }], sessions: [] }),
+  listCollaborationGroups: async () => ({ groups: [{ id: 'team', name: '界面打磨', sessionIds: ['browser-composer', 'worker'] }], sessions: peerMentions.sessions }),
   subscribeCollaborationGroups: () => () => {},
-  uploadFiles: async () => ({ files: [{ path: '/tmp/pasted.png' }] }),
+  uploadFiles: vi.fn(async () => ({ files: [{ path: '/tmp/pasted.png' }] })),
 }));
 
 declare module 'vitest/browser' {
   interface BrowserCommands { touchDrag(selector: string, dx: number, dy: number): Promise<void> }
 }
+
 let root: Root | undefined, swiper: SwiperInstance | undefined;
 afterEach(async () => { root?.unmount(); root = undefined; useTerminalStore.getState().clearAllTerminalSessions(); clearChatSnapshots(); sessionStorage.clear(); vi.unstubAllGlobals(); document.body.replaceChildren(); useSessionDirectoryStore.getState().replace([]); await page.viewport(390, 844); });
 const frame = () => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
@@ -299,7 +302,7 @@ it.each([390, 1280])('previews a video in the editor and sent message at width %
   expect(saved).toHaveLength(1);
 });
 
-it.each([390, 1280])('shows compact status next to the initial author at width %i', async width => {
+it.each([390, 1280])('keeps reply loading in the conversation and the terminal entry above the composer at width %i', async width => {
   await page.viewport(width, 844);
   const agent = { displayName: 'Codex', slug: 'codex' };
   await mount([], agent);
@@ -313,36 +316,177 @@ it.each([390, 1280])('shows compact status next to the initial author at width %
   await page.getByRole('textbox').fill('检查本次构建');
   await page.getByRole('button', { name: '发送消息', exact: true }).click();
   await expect.element(page.getByRole('status', { name: 'Codex发送中' })).toBeVisible();
-  const header = document.querySelector<HTMLElement>('[data-chat-agent-header]')!, card = document.querySelector<HTMLElement>('[data-chat-reply-status]')!;
-  expect(header.textContent).toContain('Codex');
-  expect(header.querySelector('[aria-hidden="true"]')).not.toBeNull();
-  expect(header.contains(card)).toBe(true);
-  const label = header.querySelector('[data-terminal-peek-trigger], span')!.getBoundingClientRect();
-  expect(card.getBoundingClientRect().left).toBeGreaterThanOrEqual(label.right);
+  const card = document.querySelector<HTMLElement>('[data-chat-reply-status]')!;
+  const dock = document.querySelector<HTMLElement>('[data-chat-terminal-dock]')!;
+  const form = document.querySelector<HTMLElement>('[data-chat-composer]')!;
+  expect(dock.contains(card)).toBe(true);
+  expect(card.closest('.session-chat-scroll')).toBeNull();
+  expect(card.getBoundingClientRect().bottom).toBeLessThanOrEqual(form.getBoundingClientRect().top);
+  expect(dock.querySelector('[data-chat-terminal-access]')?.textContent).toContain('详情');
   expect(document.activeElement).toBe(input);
   messages.push({ id: 'sent-author', role: 'user', content: '检查本次构建', createdAt: Date.now(), status: 'delivered' });
   acknowledge(Response.json({ id: 'sent-author', status: 'delivered' }));
   await expect.element(page.getByRole('status', { name: 'Codex发送中' })).not.toBeInTheDocument();
   await expect.element(page.getByRole('status', { name: 'Codex等待回复' })).toBeVisible();
-  expect(document.querySelector('[data-chat-reply-status]')).toBe(card);
+
   const store = useTerminalStore.getState();
   store.setTerminalSession('browser-composer', { sessionId: 'backend-composer', cols: 80, rows: 24 });
   store.setTerminalOutputActivity('browser-composer', true);
-  await expect.element(page.getByRole('status', { name: 'Codex工作中' })).toBeVisible();
+  await expect.element(page.getByRole('status', { name: 'Codex处理中' })).toBeVisible();
   expect(document.querySelectorAll('[data-chat-agent-header]')).toHaveLength(1);
-  expect(document.querySelector('[data-chat-reply-status]')?.textContent).toBe('工作中…');
-  expect(document.querySelector('[data-chat-reply-status]')).toBe(card);
+  expect(document.querySelector('[data-chat-reply-status]')?.textContent).toContain('处理中…');
+
   store.setTerminalOutputActivity('browser-composer', false);
   await expect.element(page.getByRole('status', { name: 'Codex等待回复' })).toBeVisible();
-  expect(document.querySelector('[data-chat-reply-status]')).toBe(card);
+
   store.setTerminalOutputActivity('browser-composer', true);
   await page.screenshot({ path: `/tmp/termdock-agent-waiting-${width}.png` });
   messages.push({ id: 'progress-author', role: 'assistant', content: Array.from({ length: 24 }, (_, index) => `正在核对第 ${index} 项结果。`).join('\n\n'), createdAt: Date.now(), status: 'stored', responseKind: 'progress' });
   window.dispatchEvent(new Event('online'));
   await expect.element(page.getByText('正在核对第 23 项结果。')).toBeVisible();
   const tailStatus = document.querySelector<HTMLElement>('[data-chat-reply-status]')!;
-  expect(tailStatus.hasAttribute('data-chat-reply-inline')).toBe(false);
+  expect(tailStatus.closest('[data-chat-terminal-dock]')).not.toBeNull();
+  expect(document.querySelector('[data-chat-agent-awaiting]')).toBeNull();
+  expect(tailStatus.closest('[data-chat-message-actions]')).toBeNull();
   expect(document.querySelector('[data-chat-agent-header]')?.contains(tailStatus)).toBe(false);
-  await expect.element(page.getByRole('status', { name: 'Codex工作中' })).toBeVisible();
+  expect(tailStatus.querySelector('.td-loading-spinner')).not.toBeNull();
+  await expect.element(page.getByRole('status', { name: 'Codex处理中' })).toBeVisible();
   await page.screenshot({ path: `/tmp/termdock-agent-reply-status-${width}.png` });
+});
+
+it.each([390, 1280])('selects and sends a direct mention without creating group context at width %i', async width => {
+  await page.viewport(width, 844);
+  useSessionDirectoryStore.getState().replace([{ sessionId: 'outside-group', name: '组外助手', customName: true, lastActivity: 1,
+    agent: { slug: 'codex', displayName: 'Codex', accentColor: 'var(--primary)', icon: null } }]);
+  await mount();
+  const posts: Array<{ content: string }> = [];
+  vi.mocked(fetch).mockImplementation(async (_url, init) => {
+    if (init?.method === 'POST') { posts.push(JSON.parse(String(init.body))); return Response.json({ id: 'direct-chat-request', status: 'pending', createdAt: Date.now() }); }
+    return Response.json({ agentAvailable: true, messages: [] });
+  });
+  await page.getByRole('button', { name: '提及协作成员' }).click();
+  await expect.element(page.getByRole('option')).toHaveTextContent('直接联系');
+  await page.getByRole('option').click();
+  expect(readChatEditor(document.querySelector('[role="textbox"]') as HTMLElement).text).toBe('@「组外助手」 ');
+  expect(posts).toHaveLength(0);
+  await page.getByRole('button', { name: '发送消息', exact: true }).click();
+  await expect.poll(() => posts.length).toBe(1);
+  expect(posts[0].content).toContain('"sessionId":"outside-group","groupId":"","groupName":""');
+});
+
+it('selects a supported remote Session outside the group using its owning service title', async () => {
+  peerMentions.sessions = [{ sessionId: 'remote:https%3A%2F%2Fpeer.test:worker', name: 'Legacy name', displayName: '远端助手', displaySubtitle: '远端项目',
+    serviceOrigin: 'https://peer.test', serviceLabel: '工作电脑', canDirectContact: true, agent: { slug: 'codex', displayName: 'Codex' },
+    backendSessionId: null, cwd: '', status: 'ready', capability: '', currentTask: '', updatedAt: 1 }];
+  try {
+    await mount(); await page.getByRole('button', { name: '提及协作成员' }).click();
+    await expect.element(page.getByRole('option')).toHaveTextContent('远端助手');
+    await expect.element(page.getByRole('option')).toHaveTextContent('工作电脑');
+    await page.getByRole('option').click();
+    expect(readChatEditor(document.querySelector('[role="textbox"]') as HTMLElement).text).toBe('@「远端助手」 ');
+  } finally { peerMentions.sessions = []; }
+});
+
+it.each([390, 1280])('keeps history and input stationary through image upload states at width %i', async width => {
+  await page.viewport(width, 844);
+  let finish!: (value: Awaited<ReturnType<typeof uploadFiles>>) => void;
+  let fail!: (error: Error) => void;
+  let progress: ((percent: number) => void) | undefined;
+  vi.mocked(uploadFiles).mockImplementation((_directory, _files, _signal, onProgress) => {
+    progress = onProgress;
+    return new Promise((resolve, reject) => { finish = resolve; fail = reject; });
+  });
+  try {
+    await mount(Array.from({ length: 5 }, (_, index) => ({ id: `upload-${index}`, role: 'user', content: `消息 ${index}\n${'多行正文\n'.repeat(8)}`, createdAt: index, status: 'stored' })));
+    const editor = document.querySelector<HTMLElement>('[role="textbox"]')!;
+    const scroll = document.querySelector<HTMLElement>('.session-chat-scroll')!;
+    scroll.scrollTop = scroll.scrollHeight / 2;
+    editor.focus(); await frame();
+    const geometry = () => ({ historyHeight: scroll.clientHeight, historyScroll: scroll.scrollTop, inputTop: editor.getBoundingClientRect().top, composerHeight: document.querySelector('.session-chat-composer')!.getBoundingClientRect().height });
+    const before = geometry();
+    const paste = () => {
+      const clipboardData = new DataTransfer();
+      clipboardData.items.add(new File(['image'], '截图.png', { type: 'image/png' }));
+      editor.dispatchEvent(new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true }));
+    };
+    paste();
+    await expect.element(page.getByText('正在上传文件 · 0%')).toBeVisible(); await frame();
+    await page.screenshot({ path: `/tmp/chat-upload-floating-${width}.png` });
+    expect(geometry()).toEqual(before);
+    progress?.(63);
+    await expect.element(page.getByText('正在上传文件 · 63%')).toBeVisible();
+    expect(document.activeElement).toBe(editor);
+    expect(geometry()).toEqual(before);
+    const status = page.getByRole('status').filter({ hasText: '正在上传文件' });
+    const toast = status.element().getBoundingClientRect(), composer = document.querySelector('[data-chat-composer]')!.getBoundingClientRect();
+    expect(toast.bottom).toBeLessThanOrEqual(composer.top);
+    expect(toast.left).toBeGreaterThanOrEqual(0); expect(toast.right).toBeLessThanOrEqual(width);
+    await page.getByRole('button', { name: '取消', exact: true }).click();
+    await expect.element(page.getByText('已取消上传')).toBeVisible();
+    expect(geometry()).toEqual(before);
+    await page.getByRole('button', { name: '重试上传' }).click();
+    await expect.element(page.getByText('正在上传文件 · 0%')).toBeVisible();
+    fail(new Error('network interrupted'));
+    await expect.element(page.getByText('上传未完成，文件尚未添加')).toBeVisible();
+    expect(geometry()).toEqual(before);
+    await page.getByRole('button', { name: '关闭上传提示' }).click();
+    await expect.element(page.getByText('上传未完成，文件尚未添加')).not.toBeInTheDocument();
+    expect(geometry()).toEqual(before);
+    paste(); await expect.element(page.getByText('正在上传文件 · 0%')).toBeVisible();
+    finish({ files: [{ name: 'pasted.png', path: '/tmp/pasted.png', size: 1 }] });
+    await expect.element(page.getByText('正在上传文件 · 0%')).not.toBeInTheDocument(); await frame();
+    expect(editor.querySelector('[data-chat-inline-token]')).not.toBeNull();
+    expect(document.querySelector('[data-chat-upload-status]')).toBeNull();
+    expect(scroll.scrollTop).toBe(before.historyScroll);
+    // The inserted attachment chip has its own text metrics. Remove it before
+    // comparing with the empty draft, so this measures only the transient UI.
+    await page.getByRole('button', { name: /移除附件 termdock-clipboard-/ }).click(); await frame();
+    expect(geometry()).toEqual(before);
+  } finally {
+    vi.mocked(uploadFiles).mockReset().mockResolvedValue({ files: [{ name: 'pasted.png', path: '/tmp/pasted.png', size: 1 }] });
+  }
+});
+
+
+it.each([0, 300])('sends without resetting native input focus or caret at keyboard inset %i', async height => {
+  await mount([], { displayName: 'Codex', slug: 'codex' });
+  const editor = page.getByRole('textbox').element() as HTMLElement;
+  await page.getByRole('textbox').fill('保留键盘当前状态');
+  document.documentElement.style.setProperty('--kb-height', `${height}px`);
+  document.documentElement.style.setProperty('--app-base-vh', '844px');
+  const posts: string[] = [];
+  vi.mocked(fetch).mockImplementation(async (_url, init) => {
+    if (init?.method === 'POST') { posts.push(JSON.parse(String(init.body)).content); return Response.json({ id: 'keyboard-sent', status: 'pending' }); }
+    return Response.json({ agentAvailable: true, messages: [] });
+  });
+  const focus = vi.spyOn(editor, 'focus'), caret = vi.spyOn(getSelection()!, 'addRange');
+  let focused = 0, blurred = 0;
+  const onFocus = () => focused++, onBlur = () => blurred++;
+  editor.addEventListener('focus', onFocus); editor.addEventListener('blur', onBlur);
+  try {
+    await commands.composerTap('button[aria-label="发送消息"]');
+    await expect.poll(() => posts.length).toBe(1); await frame();
+    expect(posts[0]).toBe('保留键盘当前状态');
+    expect(readChatEditor(editor).text).toBe('');
+    expect(document.activeElement).toBe(editor);
+    expect(focus).not.toHaveBeenCalled(); expect(caret).not.toHaveBeenCalled();
+    expect(focused).toBe(0); expect(blurred).toBe(0);
+    if (height) { await userEvent.keyboard('继续输入'); expect(readChatEditor(editor).text).toBe('继续输入'); }
+  } finally {
+    focus.mockRestore(); caret.mockRestore(); editor.removeEventListener('focus', onFocus); editor.removeEventListener('blur', onBlur);
+    document.documentElement.style.removeProperty('--kb-height'); document.documentElement.style.removeProperty('--app-base-vh');
+  }
+});
+
+it('does not focus the editor when sending after it has lost focus', async () => {
+  await mount([], { displayName: 'Codex', slug: 'codex' });
+  await page.getByRole('textbox').fill('关闭输入后发送');
+  const editor = page.getByRole('textbox').element() as HTMLElement; editor.blur();
+  const focus = vi.spyOn(editor, 'focus'), caret = vi.spyOn(getSelection()!, 'addRange');
+  try {
+    await commands.composerTap('button[aria-label="发送消息"]'); await frame();
+    expect(readChatEditor(editor).text).toBe('');
+    expect(document.activeElement).not.toBe(editor);
+    expect(focus).not.toHaveBeenCalled(); expect(caret).not.toHaveBeenCalled();
+  } finally { focus.mockRestore(); caret.mockRestore(); }
 });

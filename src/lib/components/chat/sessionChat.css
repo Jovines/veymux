@@ -41,3 +41,35 @@ html[data-termdock-touch-viewport='true'] .session-chat-keyboard-hint { display:
 .session-chat-rich-editor [data-chat-inline-token] button { user-select: auto; -webkit-user-select: auto; }
 /* Growing editable text must not become the page's scroll anchor. */
 .session-chat-composer { overflow-anchor: none; }
+
+/* Waiting for the first reply: a gentle wave across avatar then name, without
+   adding a spinner or moving the header's layout box. */
+.chat-agent-waiting > * { animation: chat-agent-wave 1800ms ease-in-out infinite; }
+.chat-agent-waiting > :last-child { animation-delay: 160ms; }
+@keyframes chat-agent-wave { 0%, 60%, 100% { opacity: .55; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-2px); } }
+@media (prefers-reduced-motion: reduce) { .chat-agent-waiting > * { animation: none; opacity: 1; transform: none; } }
+
+/* A quiet margin rail groups new replies without painting over their content.
+   Seen rows fade only the rail; message positions and actions stay still. */
+.chat-message-attention { position: relative; }
+.chat-message-attention::before { content: ''; position: absolute; left: -8px; top: 2px; bottom: 2px; width: 2px; border-radius: 2px; background: color-mix(in srgb, var(--warning) 55%, transparent); pointer-events: none; }
+.chat-replies > .chat-message-attention:has(+ .chat-message-attention)::before { bottom: -4px; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.chat-replies > .chat-message-attention + .chat-message-attention::before { top: -4px; border-top-left-radius: 0; border-top-right-radius: 0; }
+.chat-replies > .chat-message-attention + .chat-message-attention [data-chat-unread-label] { visibility: hidden; }
+.chat-message-attention[data-chat-highlight='true']::before { animation: chat-message-viewed 2000ms ease-out both; }
+/* Reference navigation marks the actual bubble, without a new row or wash. */
+[data-chat-located='true'] [data-chat-user-bubble] { outline: 1px solid var(--accent); outline-offset: 3px; animation: chat-reference-located 2200ms ease-out both; }
+.chat-replies > [data-chat-located='true'] { box-shadow: -2px 0 var(--accent); border-radius: 2px; animation: chat-reference-located 2200ms ease-out both; }
+@keyframes chat-reference-located { from { outline-color: var(--accent); } to { outline-color: transparent; box-shadow: none; } }
+@media (prefers-reduced-motion: reduce) { [data-chat-located='true'] [data-chat-user-bubble], .chat-replies > [data-chat-located='true'] { animation: none; } }
+@keyframes chat-message-viewed { from { opacity: 1; } to { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .chat-message-attention[data-chat-highlight='true']::before { animation: none; opacity: 0; } }
+
+/* A brief read acknowledgement must not add/remove a row above the composer. */
+.chat-new-message-prompt { animation: chat-new-message-enter 140ms ease-out 900ms both; }
+@keyframes chat-new-message-enter { from { visibility: hidden; opacity: 0; transform: translateY(3px); } to { visibility: visible; opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .chat-new-message-prompt { animation-duration: 0ms; } }
+@media (hover: none), (pointer: coarse) {
+  .terminal-peek-header { height: 40px; }
+  .terminal-peek-action { width: 32px; height: 32px; }
+}

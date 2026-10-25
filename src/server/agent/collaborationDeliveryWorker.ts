@@ -1,12 +1,15 @@
 import type { CollaborationStore, CollaborationMessage } from './collaborationStore.js';
 import type { CollaborationRouteState, CollaborationRouteIdentity } from './collaborationRouting.js';
+import { hasUnconfirmedTerminalWrite, type TransportDiagnostic } from './collaborationProtocol.js';
+import type { PromptWriteProgress } from './terminalInput.js';
 
 export interface CollaborationRoute {
   state: CollaborationRouteState;
   isShell?: boolean;
   reason?: string;
   diagnostics?: CollaborationRouteIdentity;
-  write?: (messages: CollaborationMessage[]) => Promise<void>;
+  write?: (messages: CollaborationMessage[], progress?: PromptWriteProgress) => Promise<void>;
+  tracksWriteProgress?: boolean;
   /** Plain task handoff using the same pinned recipient and input queue. */
   writeText?: (text: string) => Promise<void>;
   /** Best-effort capture of the recipient terminal after a successful write. */
@@ -116,10 +119,23 @@ export class CollaborationDeliveryWorker {
       this.complete(id, first);
       return;
     }
+    const prior = first && store.diagnostic(first.id);
+    if (first && prior?.write_stage === 'submit_written') {
+      this.complete(id, first);
+      return;
+    }
+    if (first && hasUnconfirmedTerminalWrite(prior)) {
+      // A retry may repeat network packets with the same id, but cannot undo
+      // or safely replay an uncertain terminal paste/Enter after a restart.
+      if (prior?.last_error !== 'DELIVERY_OUTCOME_UNCONFIRMED' && !/TERMINAL_INPUT_ECHO_UNCONFIRMED|TERMINAL_INPUT_UNAVAILABLE/.test(prior?.last_error ?? '')) store.recordRecipientTransport(id, {
+        last_error: 'DELIVERY_OUTCOME_UNCONFIRMED', next_retry_at: null, checked_at: Date.now() });
+      this.states.set(id, { state: 'unavailable', reason: 'DELIVERY_OUTCOME_UNCONFIRMED', checkedAt: Date.now() });
+      return;
+    }
     if (first && (store.diagnostic(first.id)?.next_retry_at ?? 0) > Date.now()) {
       const diagnostic = store.diagnostic(first.id);
       if (diagnostic?.route_state === 'identity-mismatch') {
-        const { attempt_count: _, ...blocked } = diagnostic;
+        const { attempt_count: _, write_stage: _writeStage, ...blocked } = diagnostic;
         store.recordRecipientTransport(id, blocked);
       }
       return;
@@ -150,7 +166,7 @@ export class CollaborationDeliveryWorker {
     }
     const message = pending[0]!;
     if (route.isShell && message.shellConfirmed !== true) {
-      if (route.capture) {
+      if (route.capture && !message.direct) {
         try { store.setSnapshot(message.id, await route.capture()); } catch { /* best effort */ }
       }
       this.retry(id, pending, `SHELL_CONFIRMATION_REQUIRED: 目标当前处于 shell，消息可能作为命令执行。确定发送请运行 td collab message confirm-shell ${message.id}`, true);
@@ -162,19 +178,30 @@ export class CollaborationDeliveryWorker {
         relay_online: null, peer_reachable: true,
         attempt_count: attempts + 1,
         next_retry_at: Date.now() + 2_000, last_error: 'DELIVERY_IN_PROGRESS', checked_at: Date.now(),
-      });
-      try { await route.write(pending); }
+        write_stage: 'unknown',
+      }, !route.tracksWriteProgress);
+      let writeStage: TransportDiagnostic['write_stage'] = 'unknown';
+      const progress: PromptWriteProgress = stage => {
+        if (stage === 'paste_attempted' && store.getMessage(message.id)?.status !== 'pending') throw new Error('MESSAGE_NOT_PENDING_BEFORE_PASTE');
+        const next = stage === 'queue_wait' ? 'not_started'
+          : ['paste_attempted', 'paste_written', 'submit_attempted', 'submit_written'].includes(stage) ? stage as TransportDiagnostic['write_stage'] : undefined;
+        if (!next || next === writeStage) return;
+        store.recordTransport(message.id, { ...store.diagnostic(message.id)!, write_stage: next, checked_at: Date.now() }, next === 'paste_attempted' || next === 'submit_written');
+        writeStage = next;
+      };
+      try { await route.write(pending, progress); }
       catch (error) {
         this.retry(id, pending, `TERMINAL_WRITE_FAILED: ${error instanceof Error ? error.message : String(error)}`, true);
         return;
       }
       this.submitted.add(message.id);
+      if (store.diagnostic(message.id)?.write_stage !== 'submit_written') store.recordTransport(message.id, { ...store.diagnostic(message.id)!, write_stage: 'submit_written', checked_at: Date.now() }, true);
       // Capture the recipient terminal before marking delivered, so a sender
       // waiting on delivered always finds the snapshot present. The capture is
       // strictly best-effort: a failure must never block delivery completion.
       // Delayed briefly so the pane shows the rendered paste rather than the
       // input box mid-write.
-      if (route.capture) {
+      if (route.capture && !message.direct) {
         const snapshotDelay = this.options.snapshotDelayMs ?? 200;
         if (snapshotDelay > 0) await new Promise((resolve) => setTimeout(resolve, snapshotDelay));
         try {
@@ -184,7 +211,8 @@ export class CollaborationDeliveryWorker {
       }
     }
     // If persistence fails after writing, the in-process guard avoids a
-    // second write on retry. Across a crash, transport is at-least-once.
+    // second write on retry. After a crash, durable write stages decide
+    // whether to settle the receipt, retry, or pause an uncertain outcome.
     this.complete(id, message);
   }
 
@@ -196,6 +224,7 @@ export class CollaborationDeliveryWorker {
     store.recordTransport(message.id, {
       relay_online: null, peer_reachable: true, attempt_count: store.diagnostic(message.id)?.attempt_count ?? 1,
       next_retry_at: null, last_error: null, checked_at: Date.now(),
+      write_stage: 'submit_written',
     });
     this.failures.delete(id);
   }
@@ -210,6 +239,7 @@ export class CollaborationDeliveryWorker {
       return;
     }
     for (const message of messages) this.options.store.recordTransport(message.id, {
+      ...this.options.store.diagnostic(message.id),
       relay_online: null, peer_reachable: reachable,
       attempt_count: this.options.store.diagnostic(message.id)?.attempt_count ?? 0,
       next_retry_at: next, last_error: reason, checked_at: Date.now(),

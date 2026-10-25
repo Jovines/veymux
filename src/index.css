@@ -93,6 +93,7 @@
    *   menu     60/70   tab 菜单、md 大纲等轻量浮层
    *   drawer   80/90   设置抽屉、仓库选择器（承载下面的 modal 子弹窗）
    *   modal   100/110  从抽屉/侧栏里再弹出的弹窗、图片 lightbox，必须盖住 drawer
+   *   modal-editor 115 工具栏弹窗内的按钮编辑、确认，必须盖住 modal
    *   toast    120      顶层瞬时提示、调试面板
    *   popover  200      必须从一切之上弹出的控件（键盘预设、portal 下拉菜单）
    *
@@ -110,6 +111,7 @@
   --z-drawer-panel: 90;
   --z-modal-backdrop: 100;
   --z-modal-panel: 110;
+  --z-modal-editor: 115;
   --z-toast: 120;
   --z-popover: 200;
 
@@ -557,6 +559,16 @@ select {
   accent-color: var(--primary);
 }
 
+/* A visible chevron restores the choice affordance after the native reset. */
+select:not([multiple]):not([size]) {
+  padding-right: 2.25rem;
+  background-image: linear-gradient(45deg, transparent 50%, var(--muted-foreground) 50%),
+    linear-gradient(135deg, var(--muted-foreground) 50%, transparent 50%);
+  background-position: calc(100% - 16px) center, calc(100% - 12px) center;
+  background-size: 4px 4px;
+  background-repeat: no-repeat;
+}
+
 ::highlight(termdock-file-search-match) {
   background-color: rgba(var(--warning-rgb), 0.24);
   color: var(--foreground);
@@ -779,14 +791,29 @@ body {
 
 /*
  * The app disables text selection globally so terminal gestures and mobile
- * chrome stay predictable. The right sidebar is a reading/copying surface,
- * though: file previews, Markdown, search results and diffs should keep the
- * browser's native long-press selection/copy handles on phones.
+ * chrome stay predictable. Reading surfaces (including chat replies and the
+ * right sidebar) restore native long-press selection/copy handles on phones.
  */
 .termdock-native-select,
 .termdock-native-select :where(
   p,
   span,
+  a,
+  strong,
+  em,
+  b,
+  i,
+  s,
+  del,
+  u,
+  small,
+  sub,
+  sup,
+  kbd,
+  samp,
+  dt,
+  dd,
+  caption,
   mark,
   pre,
   code,
@@ -2036,3 +2063,8 @@ html:root:root {
   --openui-text-success-primary: var(--primary);
   --openui-text-white: var(--foreground);
 }
+
+/* A touch toolbar preview must keep the terminal's full viewport width.
+   Insets protect the dialog chrome and bottom home indicator once. */
+.toolbar-settings-header { padding-top: var(--safe-top-inset, 0px); }
+.toolbar-settings-preview { padding-bottom: var(--safe-bottom-inset, 0px); }

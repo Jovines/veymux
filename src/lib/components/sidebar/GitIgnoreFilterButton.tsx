@@ -4,6 +4,7 @@ import { Filter, X } from 'lucide-react';
 import { LoadingSpinner } from '../ui/Loading';
 import { useSidebarStore } from '../../stores/useSidebarStore';
 import { useI18n } from '../../i18n';
+import { restoreFocusIfUnclaimed } from '../../utils/focusOwnership';
 import { GitIgnoreExceptionPicker } from './GitIgnoreExceptionPicker';
 
 interface Props {
@@ -63,7 +64,7 @@ export function GitIgnoreFilterButton({ rootPath, disabled, pressed, saving, onT
   useEffect(() => {
     if (!open) return;
     dialogRef.current?.focus();
-    return () => buttonRef.current?.focus();
+    return () => restoreFocusIfUnclaimed(buttonRef.current, dialogRef.current);
   }, [open]);
 
   const toggleLabel = pressed ? t('rightSidebar.showGitIgnoredFiles') : t('rightSidebar.hideGitIgnoredFiles');

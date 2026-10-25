@@ -5,18 +5,20 @@ export const SIDEBAR_SCROLL_POSITION_KEY = 'termdock-left-sidebar-scroll-positio
 
 export function useSidebarScrollPosition(
   listRef: RefObject<HTMLElement>,
-  visible: boolean,
+  _visible: boolean,
   hasSessions: boolean,
 ): void {
   const [savedTop] = useState(() => readCache(SIDEBAR_SCROLL_POSITION_KEY,
     (value): value is number => typeof value === 'number' && Number.isFinite(value) && value >= 0));
   const restoredList = useRef<HTMLElement | null>(null);
 
-  // Run before active-row visibility checks. An empty loading list must not
-  // clamp the saved position to zero or replace it before sessions arrive.
+  // Restore as soon as layout exists, including an offscreen mobile drawer:
+  // a swipe exposes it before its deferred open state commits. A display:none
+  // desktop panel still waits for measurable layout. Empty loading lists must
+  // not clamp the saved position to zero before sessions arrive.
   useLayoutEffect(() => {
     const list = listRef.current;
-    if (!visible || !hasSessions || !list || list.clientHeight === 0 || restoredList.current === list) return;
+    if (!hasSessions || !list || list.clientHeight === 0 || restoredList.current === list) return;
     if (savedTop !== null) list.scrollTop = savedTop;
     restoredList.current = list;
   });

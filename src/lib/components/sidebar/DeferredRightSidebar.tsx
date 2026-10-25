@@ -1,10 +1,11 @@
 import { ChangesLoadingSkeleton } from './ChangesLoadingSkeleton';
 import { GitLoadingSkeleton } from './GitLoadingSkeleton';
 import { lazy, Suspense, useEffect, useRef, type ComponentProps } from 'react';
-import { X, Search, PencilLine, MoreHorizontal, GitBranch, GitCompare, Folder, Monitor, Network } from 'lucide-react';
+import { Search, PencilLine, MoreHorizontal, GitBranch, GitCompare, Folder, Monitor, Network } from 'lucide-react';
 import { useSidebarStore } from '../../stores/useSidebarStore';
 import { scheduleInteractionIdle } from '../../utils/interactionIdle';
 import { Sidebar } from './Sidebar';
+import { SidebarVisibilityButton } from './SidebarVisibilityButton';
 import { useI18n } from '../../i18n';
 
 const loadSidebar = () => import('./RightSidebar').then((module) => ({ default: module.RightSidebar }));
@@ -24,7 +25,7 @@ export function DeferredRightSidebar(props: Props) {
   const rightTab = useSidebarStore((s) => s.rightTab);
   const setRightTab = useSidebarStore((s) => s.setRightTab);
   const rootName = rootPath?.replace(/\/+$/, '').split('/').pop() || t('rightSidebar.workspace');
-  if (props.isOpen || props.pinned) opened.current = true;
+  if (props.isOpen) opened.current = true;
   const shell = (
     <Sidebar side="right" isOpen={props.isOpen} drawerWidthPx={props.drawerWidthPx}
       onClose={props.onClose} onOpen={props.onOpen} pinned={props.pinned}>
@@ -43,10 +44,8 @@ export function DeferredRightSidebar(props: Props) {
                 </span>
               ))}
             </div>
-            <button type="button" onClick={props.onClose} aria-label={t('common.close')}
-              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-2 text-muted-foreground transition hover:bg-surface-elevated hover:text-foreground active:scale-95">
-              <X size={14} />
-            </button>
+            <SidebarVisibilityButton side="right" expanded onClick={props.onClose}
+              className="h-8 w-8 active:scale-95" />
           </div>
           <div className="mt-2 grid grid-cols-5 gap-0.5 rounded-md bg-surface-2 p-0.5">
             {([

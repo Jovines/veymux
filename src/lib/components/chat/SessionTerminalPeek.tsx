@@ -1,22 +1,26 @@
 import { createContext, useCallback, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal, flushSync } from 'react-dom';
-import { Maximize2, TerminalSquare, X } from 'lucide-react';
+import { SquareArrowOutUpRight, TerminalSquare, X } from 'lucide-react';
 import { useSessionCapabilities } from '../../federation/ShareAccessContext';
-import { focusKeyboardInput } from '../../hooks/nativeKeyboardLayout';
+import { restoreFocusIfUnclaimed } from '../../utils/focusOwnership';
+import { usesTouchTerminalLayout } from '../../utils/touchTerminalLayout';
+import { useTerminalPeekIdleClose } from './useTerminalPeekIdleClose';
 
 interface PeekContext {
   open: boolean; id: string;
   show: (anchor: HTMLElement) => void;
+  toggle: (anchor: HTMLElement, autoClose?: boolean) => void;
   leave: (related: EventTarget | null) => void;
   expand: () => void;
 }
 export const TerminalPeekContext = createContext<PeekContext | null>(null);
 
 /** An interactive popover, rather than a tooltip or a second terminal client. */
-export function TerminalPeekTrigger({ children, className, hoverDelay = 0, label = '查看会话终端' }: { children: ReactNode; className: string; hoverDelay?: number; label?: string }) {
+export function TerminalPeekTrigger({ children, className, hoverDelay = 200, label = '查看会话终端' }: { children: ReactNode; className: string; hoverDelay?: number; label?: string }) {
   const peek = useContext(TerminalPeekContext);
   const latestPeek = useRef(peek); latestPeek.current = peek;
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pointerType = useRef('');
   const cancelHover = useCallback(() => { if (hoverTimer.current !== null) { clearTimeout(hoverTimer.current); hoverTimer.current = null; } }, []);
   useEffect(() => cancelHover, [cancelHover]);
   const available = !!peek;
@@ -24,42 +28,106 @@ export function TerminalPeekTrigger({ children, className, hoverDelay = 0, label
   if (!peek) return <div className={className}>{children}</div>;
   return <button type="button" data-terminal-peek-trigger data-terminal-peek-delay={hoverDelay || undefined} aria-label={label} aria-haspopup="dialog" aria-expanded={peek.open} aria-controls={peek.open ? peek.id : undefined}
     className={`${className} text-left transition-colors hover:border-primary/40 hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}
-    onPointerDown={event => { cancelHover(); event.preventDefault(); }}
+    onPointerDown={event => { pointerType.current = event.pointerType; cancelHover(); event.preventDefault(); }}
     onPointerEnter={event => {
       if (event.pointerType !== 'mouse' || !window.matchMedia('(hover: hover) and (pointer: fine)').matches) return;
       cancelHover(); const source = event.currentTarget;
       if (!hoverDelay) peek.show(source);
       else hoverTimer.current = setTimeout(() => { hoverTimer.current = null; if (source.isConnected) latestPeek.current?.show(source); }, hoverDelay);
     }}
-    onPointerLeave={event => { cancelHover(); peek.leave(event.relatedTarget); }}
-    onClick={event => { cancelHover(); if (window.matchMedia('(hover: hover) and (pointer: fine)').matches) peek.show(event.currentTarget); else peek.expand(); }}>{children}</button>;
+    onPointerLeave={event => { cancelHover(); if (event.pointerType === 'mouse') peek.leave(event.relatedTarget); }}
+    onClick={event => {
+      cancelHover();
+      // A hover may have opened the mouse preview just before the click. Touch
+      // and keyboard activation instead behave as a disclosure toggle.
+      const hoverMouse = event.detail > 0 && pointerType.current === 'mouse' && window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+      if (hoverMouse) peek.show(event.currentTarget); else peek.toggle(event.currentTarget, pointerType.current === 'touch' || pointerType.current === 'pen' || !event.detail && usesTouchTerminalLayout());
+    }}>{children}</button>;
 }
 
-export function terminalPeekPosition(anchor: DOMRect, width: number, height: number) {
+type PeekBounds = { left: number; top: number; width: number; height: number };
+type PeekSize = { width: number; height: number };
+type PeekOrigin = { left: number; top: number; paddingTop: number; paddingBottom: number };
+const sizeKey = 'termdock:terminal-peek-size';
+function readPeekSize(): PeekSize | null {
+  try {
+    const size = JSON.parse(localStorage.getItem(sizeKey) || 'null');
+    return size && Number.isFinite(size.width) && Number.isFinite(size.height)
+      && size.width >= 320 && size.height >= 200 ? { width: Math.min(2400, size.width), height: Math.min(1600, size.height) } : null;
+  } catch { return null; }
+}
+
+export function terminalPeekPosition(anchor: DOMRect, width: number, height: number, bounds: PeekBounds = { left: 0, top: 0, width, height }, preferred: PeekSize | null = null) {
   const margin = 12, gap = 8;
-  const above = anchor.top - margin, below = height - anchor.bottom - margin;
+  const left = Math.max(0, bounds.left) + margin, top = Math.max(0, bounds.top) + margin;
+  const right = Math.min(width, bounds.left + bounds.width) - margin;
+  const bottom = Math.min(height, bounds.top + bounds.height) - margin;
+  const above = Math.max(0, anchor.top - top), below = Math.max(0, bottom - anchor.bottom);
   const placement = above >= below ? 'above' : 'below';
-  const panelHeight = Math.max(0, Math.min(560, (placement === 'above' ? above : below) - gap));
-  const panelWidth = Math.max(0, Math.min(960, width - margin * 2));
+  const panelHeight = Math.max(0, Math.min(preferred?.height ?? Math.min(640, Math.max(0, bottom - top) * .8), (placement === 'above' ? above : below) - gap));
+  const panelWidth = Math.max(0, Math.min(preferred?.width ?? 1120, right - left));
+  const totalHeight = panelHeight + gap;
   return {
-    left: Math.max(margin, Math.min(anchor.left, width - panelWidth - margin)),
-    top: placement === 'above' ? anchor.top - panelHeight - gap : anchor.bottom,
-    width: panelWidth, height: panelHeight + gap,
+    left: Math.max(left, Math.min(anchor.left, right - panelWidth)),
+    top: Math.max(top, Math.min(placement === 'above' ? anchor.top - totalHeight : anchor.bottom, bottom - totalHeight)),
+    width: panelWidth, height: totalHeight,
     paddingTop: placement === 'below' ? gap : 0,
     paddingBottom: placement === 'above' ? gap : 0,
   };
+}
+
+function readPeekBounds(probe: HTMLElement): PeekBounds {
+  // Portals bypass #root's padding. Resolve the same shared CSS as the other
+  // previews, including env(), max(), native title bars and PWA fallbacks.
+  if (!probe.isConnected) document.body.append(probe);
+  const style = getComputedStyle(probe), viewport = window.visualViewport;
+  const inset = (value: string) => Math.max(0, Number.parseFloat(value) || 0);
+  // Intersect the visual viewport with layout-viewport safe edges. Adding the
+  // insets to visualViewport offsets would count them twice during page pan.
+  const left = Math.max(viewport?.offsetLeft ?? 0, inset(style.paddingLeft));
+  const top = Math.max(viewport?.offsetTop ?? 0, inset(style.paddingTop));
+  const right = Math.min(innerWidth - inset(style.paddingRight), (viewport?.offsetLeft ?? 0) + (viewport?.width ?? innerWidth));
+  const bottom = Math.min(innerHeight - inset(style.paddingBottom), (viewport?.offsetTop ?? 0) + (viewport?.height ?? innerHeight));
+  return { left, top, width: Math.max(0, right - left), height: Math.max(0, bottom - top) };
+}
+function positionForAnchor(anchor: HTMLElement, preferred: PeekSize | null, origin: PeekOrigin | null, bounds: PeekBounds) {
+  // The trigger anchors the preview; the whole safe visible window owns its budget.
+  const anchored = terminalPeekPosition(anchor.getBoundingClientRect(), innerWidth, innerHeight, bounds, preferred);
+  if (!origin || !preferred) return anchored;
+  const left = bounds.left + 12, top = bounds.top + 12;
+  const right = Math.min(innerWidth, bounds.left + bounds.width) - 12;
+  const bottom = Math.min(innerHeight, bounds.top + bounds.height) - 12;
+  const width = Math.max(0, Math.min(preferred.width, right - left));
+  const height = Math.max(0, Math.min(preferred.height + origin.paddingTop + origin.paddingBottom, bottom - top));
+  return { ...origin, width, height, left: Math.max(left, Math.min(origin.left, right - width)), top: Math.max(top, Math.min(origin.top, bottom - height)) };
+}
+function resizeSize(position: PeekOrigin, width: number, height: number, bounds: PeekBounds): PeekSize {
+  const right = bounds.left + bounds.width - 12;
+  const bottom = bounds.top + bounds.height - 12;
+  return { width: Math.max(0, Math.min(Math.max(320, width), right - position.left)), height: Math.max(0, Math.min(Math.max(200, height), bottom - position.top - position.paddingTop - position.paddingBottom)) };
 }
 
 export function useSessionTerminalPeek({ enabled, name, expand }: { enabled: boolean; name: string; expand: () => void }) {
   const capabilities = useSessionCapabilities();
   const available = enabled && capabilities.has('session.view');
   const id = useId();
+  const [safeAreaProbe] = useState(() => {
+    const node = document.createElement('div'); node.className = 'preview-safe-area';
+    node.setAttribute('aria-hidden', 'true');
+    node.style.cssText = 'position:fixed;top:0;left:0;width:0;height:0;visibility:hidden;pointer-events:none';
+    return node;
+  });
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const [engaged, setEngaged] = useState(false);
+  const [touchOpened, setTouchOpened] = useState(false);
   const [position, setPosition] = useState<ReturnType<typeof terminalPeekPosition> | null>(null);
+  const [preferredSize, setPreferredSize] = useState(readPeekSize);
+  const resizing = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
+  const sizeDraft = useRef<PeekSize | null>(null);
+  const resizeOrigin = useRef<PeekOrigin | null>(null);
   // Portal into one stable host. Moving this host preserves the full terminal
   // component, its controller, connection, input node and toolbar state.
-  const [host] = useState(() => { const node = document.createElement('div'); node.className = 'h-full min-h-0 w-full'; node.dataset.sessionTerminalHost = 'true'; return node; });
+  const [host] = useState(() => { const node = document.createElement('div'); node.className = 'h-full min-h-0 w-full [&[data-peek=true]_[data-mobile-keyboard]]:transition-none'; node.dataset.sessionTerminalHost = 'true'; return node; });
   const normalSlot = useRef<HTMLDivElement | null>(null), panel = useRef<HTMLDivElement | null>(null);
   const previousFocus = useRef<HTMLElement | null>(null);
   const open = available && !!anchor;
@@ -69,47 +137,65 @@ export function useSessionTerminalPeek({ enabled, name, expand }: { enabled: boo
     const restoreTarget = restore && focused instanceof Node && host.contains(focused) ? previousFocus.current : null;
     setAnchor(null); setEngaged(false);
     if (restoreTarget?.isConnected) requestAnimationFrame(() => {
-      if (restoreTarget.isConnected && (document.activeElement === document.body || host.contains(document.activeElement))) focusKeyboardInput(restoreTarget);
+      restoreFocusIfUnclaimed(restoreTarget, host);
     });
   }, [host]);
+  const idleSeconds = useTerminalPeekIdleClose(panel, open && touchOpened, close);
   const show = useCallback((source: HTMLElement) => {
     if (!available) return;
+    const size = readPeekSize() ?? preferredSize;
     if (!openRef.current) {
+      setTouchOpened(false);
+      resizeOrigin.current = null;
+      setPreferredSize(size);
       previousFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
       setEngaged(false);
     }
-    setPosition(terminalPeekPosition(source.getBoundingClientRect(), window.innerWidth, window.innerHeight));
+    setPosition(positionForAnchor(source, size, resizeOrigin.current, readPeekBounds(safeAreaProbe)));
     setAnchor(source);
-  }, [available]);
+  }, [available, preferredSize, safeAreaProbe]);
+  const toggle = useCallback((source: HTMLElement, autoClose = false) => {
+    if (openRef.current && anchor === source) close(); else { show(source); setTouchOpened(autoClose); }
+  }, [anchor, close, show]);
   const inside = useCallback((target: EventTarget | null) => target instanceof Node && (!!anchor?.contains(target) || !!panel.current?.contains(target)), [anchor]);
-  const leave = useCallback((target: EventTarget | null) => { if (!inside(target)) close(); }, [inside, close]);
+  const leave = useCallback((target: EventTarget | null) => { if (!resizing.current && !inside(target)) close(); }, [inside, close]);
   const attachNormal = useCallback((node: HTMLDivElement | null) => { normalSlot.current = node; if (node && !openRef.current) node.append(host); }, [host]);
   const attachPeek = useCallback((node: HTMLDivElement | null) => {
+    // The preview must measure its final toolbar height on its first frame.
+    host.dataset.peek = String(!!node);
     if (node) node.append(host); else normalSlot.current?.append(host);
   }, [host]);
   const expandTerminal = () => { close(false); expand(); };
   useEffect(() => { if (!available) close(false); }, [available, close]);
-  useLayoutEffect(() => () => host.remove(), [host]);
+  useLayoutEffect(() => () => { host.remove(); safeAreaProbe.remove(); }, [host, safeAreaProbe]);
   useLayoutEffect(() => {
     if (!open || !anchor) return;
     const positionAtAnchor = () => {
       if (!anchor.isConnected) return;
       const rect = anchor.getBoundingClientRect();
       if (rect.bottom <= 0 || rect.top >= window.innerHeight || rect.right <= 0 || rect.left >= window.innerWidth) { close(); return; }
-      const next = terminalPeekPosition(rect, window.innerWidth, window.innerHeight);
+      const next = positionForAnchor(anchor, preferredSize, resizeOrigin.current, readPeekBounds(safeAreaProbe));
       setPosition(current => current && Object.keys(next).every(key => current[key as keyof typeof next] === next[key as keyof typeof next]) ? current : next);
     };
+    positionAtAnchor();
+    const safeAreaChanges = new MutationObserver(positionAtAnchor);
+    safeAreaChanges.observe(document.documentElement, { attributes: true });
     const observer = new ResizeObserver(positionAtAnchor);
     observer.observe(anchor); if (anchor.parentElement) observer.observe(anchor.parentElement);
+    const workspace = anchor.closest('[data-session-workspace]'); if (workspace) observer.observe(workspace);
     window.addEventListener('resize', positionAtAnchor);
+    window.visualViewport?.addEventListener('resize', positionAtAnchor);
+    window.visualViewport?.addEventListener('scroll', positionAtAnchor);
     document.addEventListener('scroll', positionAtAnchor, true);
-    return () => { observer.disconnect(); window.removeEventListener('resize', positionAtAnchor); document.removeEventListener('scroll', positionAtAnchor, true); };
-  }, [open, anchor, close]);
+    return () => { observer.disconnect(); safeAreaChanges.disconnect(); window.removeEventListener('resize', positionAtAnchor); window.visualViewport?.removeEventListener('resize', positionAtAnchor); window.visualViewport?.removeEventListener('scroll', positionAtAnchor); document.removeEventListener('scroll', positionAtAnchor, true); };
+  }, [open, anchor, close, preferredSize, safeAreaProbe]);
   useEffect(() => {
     if (!open) return;
-    const move = (event: PointerEvent) => { if (event.pointerType === 'mouse' && !inside(event.target)) close(); };
-    const outside = (event: PointerEvent) => { if (!inside(event.target)) close(); };
-    const windowLeave = (event: PointerEvent) => { if (!event.relatedTarget) close(); };
+    const move = (event: PointerEvent) => { if (!resizing.current && event.pointerType === 'mouse' && !inside(event.target)) close(); };
+    const outside = (event: PointerEvent) => { if (!resizing.current && !inside(event.target)) close(); };
+    // Touch release emits pointerout/leave with no related target; only a
+    // mouse leaving the window should dismiss an open preview.
+    const windowLeave = (event: PointerEvent) => { if (!resizing.current && event.pointerType === 'mouse' && !event.relatedTarget) close(); };
     const blur = () => close();
     document.addEventListener('pointermove', move, true); document.addEventListener('pointerdown', outside, true); document.addEventListener('pointerout', windowLeave);
     window.addEventListener('blur', blur);
@@ -130,16 +216,44 @@ export function useSessionTerminalPeek({ enabled, name, expand }: { enabled: boo
     host, attachNormal,
     open,
     interactive: open && engaged && capabilities.has('session.input'),
-    context: available ? { open, id, show, leave, expand: expandTerminal } : null,
+    context: available ? { open, id, show, toggle, leave, expand: expandTerminal } : null,
     popover: open && position ? createPortal(<div ref={panel} style={position} data-terminal-peek id={id} role="dialog" aria-label="会话终端预览" aria-modal="false"
-      className="fixed z-menu-panel box-border" onPointerLeave={event => leave(event.relatedTarget)}>
-      <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-[var(--chrome-bg)] text-foreground shadow-2xl">
-        <header className="flex h-10 shrink-0 items-center gap-2 border-b border-border/60 px-3 text-xs text-muted-foreground"><TerminalSquare size={15} /><span className="min-w-0 flex-1 truncate">{name}</span>
-          <button type="button" aria-label="在完整会话中打开终端" title="在完整会话中打开终端" className="inline-flex h-8 w-8 items-center justify-center rounded-lg hover:bg-surface-2" onClick={expandTerminal}><Maximize2 size={14} /></button>
-          <button type="button" aria-label="关闭终端预览" className="inline-flex h-8 w-8 items-center justify-center rounded-lg hover:bg-surface-2" onClick={() => close()}><X size={15} /></button>
+      className="fixed z-menu-panel box-border" onPointerLeave={event => { if (event.pointerType === 'mouse') leave(event.relatedTarget); }}>
+      <section className="relative z-10 flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-[var(--chrome-bg)] text-foreground shadow-2xl">
+        <header className="terminal-peek-header flex h-9 shrink-0 items-center gap-2 border-b border-border/60 pl-3 pr-1.5 text-[11px] text-muted-foreground"><TerminalSquare size={13} /><span className="min-w-0 flex-1 truncate" title={name}>{name}</span>
+          {idleSeconds !== null && <span data-terminal-peek-countdown={idleSeconds} title="操作后保持展开，可手动收起" className="inline-flex h-6 shrink-0 items-center rounded-md border border-[rgb(var(--warning-rgb)/0.4)] bg-[rgb(var(--warning-rgb)/0.15)] px-1.5 text-[11px] font-medium tabular-nums text-[var(--warning)]">{idleSeconds} 秒后收起</span>}
+          <div className="flex shrink-0 items-center gap-0.5">
+            <button type="button" aria-label="在完整会话中打开终端" title="在完整会话中打开终端" className="terminal-peek-action inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-surface-2 hover:text-foreground" onClick={expandTerminal}><SquareArrowOutUpRight size={14} /></button>
+            <button type="button" aria-label="关闭终端预览" title="关闭预览" className="terminal-peek-action inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-surface-2 hover:text-foreground" onClick={() => close()}><X size={14} /></button>
+          </div>
         </header>
         <div ref={attachPeek} className="min-h-0 flex-1" />
       </section>
+      <button type="button" aria-label="调整终端预览大小" title="拖动调整大小，方向键微调" style={{ bottom: position.paddingBottom + 1 }} className="absolute right-0.5 z-20 flex h-5 w-5 touch-none cursor-nwse-resize items-end justify-end p-1 text-muted-foreground/50 hover:text-foreground focus-visible:text-foreground"
+        onPointerDown={event => {
+          event.preventDefault(); event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId);
+          resizeOrigin.current = { left: position.left, top: position.top, paddingTop: position.paddingTop, paddingBottom: position.paddingBottom };
+          resizing.current = { x: event.clientX, y: event.clientY, width: position.width, height: position.height - 8 };
+          sizeDraft.current = null;
+        }}
+        onPointerMove={event => {
+          const start = resizing.current; if (!start) return;
+          const next = resizeSize(resizeOrigin.current!, start.width + event.clientX - start.x, start.height + event.clientY - start.y, readPeekBounds(safeAreaProbe));
+          sizeDraft.current = next; setPreferredSize(next);
+        }}
+        onPointerUp={event => {
+          if (!resizing.current) return;
+          resizing.current = null; event.currentTarget.releasePointerCapture(event.pointerId);
+          try { if (sizeDraft.current) localStorage.setItem(sizeKey, JSON.stringify(sizeDraft.current)); } catch { /* Keep this window's preference. */ }
+        }}
+        onPointerCancel={() => { resizing.current = null; }}
+        onKeyDown={event => {
+          if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
+          event.preventDefault(); event.stopPropagation();
+          resizeOrigin.current = { left: position.left, top: position.top, paddingTop: position.paddingTop, paddingBottom: position.paddingBottom };
+          const next = resizeSize(resizeOrigin.current, position.width + (event.key === 'ArrowRight' ? 24 : event.key === 'ArrowLeft' ? -24 : 0), position.height - 8 + (event.key === 'ArrowDown' ? 24 : event.key === 'ArrowUp' ? -24 : 0), readPeekBounds(safeAreaProbe));
+          setPreferredSize(next); try { localStorage.setItem(sizeKey, JSON.stringify(next)); } catch { /* In-memory preference. */ }
+        }}><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" aria-hidden="true"><path d="m3 13 10-10m-5 10 5-5m-1 5 1-1" /></svg></button>
     </div>, document.body) : null,
   };
 }

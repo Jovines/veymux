@@ -1,0 +1,12 @@
+.session-tab-scroll[data-overflow-start] {
+  mask-image: linear-gradient(to right, transparent, var(--foreground) 8px);
+}
+.session-tab-scroll[data-overflow-end] {
+  mask-image: linear-gradient(to left, transparent, var(--foreground) 8px);
+}
+.session-tab-scroll[data-overflow-start][data-overflow-end] {
+  mask-image: linear-gradient(to right, transparent, var(--foreground) 8px, var(--foreground) calc(100% - 8px), transparent);
+}
+@media (max-width: 767px) {
+  .session-tab-scroll [data-session-tab-id] { max-width: min(46vw, 12rem, calc(var(--session-tab-width, 100vw) - 16px)); }
+}

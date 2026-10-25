@@ -2,6 +2,10 @@ export interface TmuxRecoveryCandidate {
   sessionId: string;
   tmuxSessionName: string;
   resumable: boolean;
+  /** Fresh foreground observation; undefined means unknown. */
+  agentRunning?: boolean;
+  /** A TD terminal wrapper ended unexpectedly before this fresh scan. */
+  runtimeLost?: boolean;
 }
 
 export interface TmuxRecoveryIncident {
@@ -10,6 +14,17 @@ export interface TmuxRecoveryIncident {
   previousServerPid: number | null;
   currentServerPid: number | null;
   affectedSessionIds: string[];
+}
+
+/** A shared server loss can reconnect known conversations once. Individual
+ * exits and unknown scans stay manual; a failed attempt is never auto-retried. */
+export function shouldAutomaticallyRecoverTmuxIncident(
+  incident: TmuxRecoveryIncident | null,
+  operationIncidentIds: readonly string[],
+): incident is TmuxRecoveryIncident {
+  return Boolean(incident && incident.previousServerPid !== null
+    && incident.previousServerPid !== incident.currentServerPid
+    && !operationIncidentIds.includes(incident.id));
 }
 
 export function normalizeTmuxRecoveryIncident(input: unknown): TmuxRecoveryIncident | null {
@@ -49,8 +64,11 @@ export function detectTmuxRecoveryIncident(input: {
     && !input.dismissedSessionIds?.has(candidate.sessionId)
     && !input.restoredSessionIds?.has(candidate.sessionId)
     && !intentionallyDeleting.has(candidate.tmuxSessionName));
+  const generationChanged = input.previousServerPid !== null && input.currentServerPid !== null
+    && input.previousServerPid !== input.currentServerPid;
   const missing = recoverable.filter((candidate) =>
-    !input.liveSessionNames.has(candidate.tmuxSessionName));
+    !input.liveSessionNames.has(candidate.tmuxSessionName)
+    || (generationChanged || candidate.runtimeLost === true) && candidate.agentRunning === false);
   const existingIncident = input.existingIncident;
   if (existingIncident) {
     const eligibleIds = new Set(recoverable.map(candidate => candidate.sessionId));

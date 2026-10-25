@@ -2,6 +2,7 @@ import { plainCollaborationSnapshot } from './collaborationText.js';
 import type { CollaborationPaneBinding } from './collaborationRouting.js';
 import { normalizePromptForPaste, waitForPromptSubmit } from './promptDelivery.js';
 import { serializeTerminalInput, type TerminalInputGuard, type PromptWriteProgress } from './terminalInput.js';
+import { probeTerminalEcho } from './terminalEchoProbe.js';
 
 /** Terminal-level keys a caller may inject into a member pane. Kept
  * enumerated (never freeform): driving another session's keyboard is strong
@@ -36,10 +37,14 @@ export function detectApprovalDialog(content: string): boolean {
 async function assertSamePane(
   run: (args: string[]) => Promise<string>,
   pane: CollaborationPaneBinding,
+  requireInput = false,
 ): Promise<void> {
   const identity = (await run(['display-message', '-p', '-t', pane.paneId,
-    '#{pid}:#{session_id}:#{pane_id}:#{pane_pid}'])).trim();
-  if (identity !== `${pane.serverPid}:${pane.sessionId}:${pane.paneId}:${pane.panePid}`) throw new Error('TMUX_PANE_CHANGED');
+    `#{pid}:#{session_id}:#{pane_id}:#{pane_pid}${requireInput ? ':#{pane_dead}:#{pane_input_off}' : ''}`])).trim();
+  const expected = `${pane.serverPid}:${pane.sessionId}:${pane.paneId}:${pane.panePid}`;
+  if (!requireInput) { if (identity !== expected) throw new Error('TMUX_PANE_CHANGED'); return; }
+  if (!identity.startsWith(`${expected}:`)) throw new Error('TMUX_PANE_CHANGED');
+  if (identity !== `${expected}:0:0`) throw new Error('TERMINAL_INPUT_UNAVAILABLE');
 }
 
 /** Unique-per-process buffer name so concurrent deliveries to different panes
@@ -57,12 +62,14 @@ export function writeCollaborationTmuxPane(
   stdin: (args: string[], input: string) => Promise<string>,
   assertCurrent?: TerminalInputGuard,
   progress?: PromptWriteProgress,
+  validateTarget?: () => Promise<void>,
+  verifyEcho = false,
 ): Promise<void> {
   progress?.('queue_wait');
   return serializeTerminalInput(paneInputKey(pane), () => {
     progress?.('queue_acquired');
     assertCurrent?.('queue_acquired');
-    return writeTmuxPrompt(run, pane, prompt, stdin, assertCurrent, progress);
+    return writeTmuxPrompt(run, pane, prompt, stdin, assertCurrent, progress, validateTarget, verifyEcho);
   });
 }
 
@@ -74,8 +81,11 @@ async function writeTmuxPrompt(
   stdin: (args: string[], input: string) => Promise<string>,
   assertCurrent?: TerminalInputGuard,
   progress?: PromptWriteProgress,
+  validateTarget?: () => Promise<void>,
+  verifyEcho = false,
 ): Promise<void> {
-  await assertSamePane(run, pane);
+  await assertSamePane(run, pane, true);
+  await validateTarget?.();
   assertCurrent?.('before_paste');
   // A fixed pane target is independent of the current window, keyboard focus
   // and browser presence. Delivery goes through a named tmux buffer rather
@@ -95,8 +105,21 @@ async function writeTmuxPrompt(
   // every tmux version.
   const buffer = `termdock-collab-${process.pid}-${bufferSequence++}`;
   try {
-    // Paste once, then send one unbracketed CR after 50ms. No screen parsing,
-    // Agent-specific recovery, consumption confirmation or additional Enter.
+    if (verifyEcho) await probeTerminalEcho({
+      read: async () => {
+        await assertSamePane(run, pane, true);
+        await validateTarget?.();
+        return captureTmuxPaneText(run, pane);
+      },
+      write: async header => {
+        progress?.('paste_attempted');
+        await stdin(['load-buffer', '-b', buffer, '-', ';', 'paste-buffer', '-p', '-r', '-d', '-b', buffer, '-t', pane.paneId], header);
+      }, assertCurrent,
+    });
+    if (verifyEcho) { await assertSamePane(run, pane, true); await validateTarget?.(); }
+    assertCurrent?.('before_paste');
+    // Paste the body once, then send one unbracketed CR after 50ms. The echo
+    // check only observes the header; it never infers Agent consumption.
     progress?.('paste_attempted');
     await stdin([
       // The body arrives on stdin, not argv: it is user content, and in a
@@ -109,7 +132,8 @@ async function writeTmuxPrompt(
     ], normalizePromptForPaste(prompt));
     progress?.('paste_written');
     await waitForPromptSubmit();
-    await assertSamePane(run, pane);
+    await assertSamePane(run, pane, true);
+    await validateTarget?.();
     assertCurrent?.('before_submit');
     progress?.('submit_attempted');
     await run([

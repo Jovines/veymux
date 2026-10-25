@@ -1,72 +1,109 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import {
-  Plus as RiAddLine,
-  RefreshCw as RiRefreshLine,
-  Trash2 as RiDeleteBinLine,
-  ArrowUp as RiArrowUpLine,
-  ArrowDown as RiArrowDownLine,
-  X as RiCloseLine,
-  Minus as RiSubtractLine,
+  Trash2,
+  Undo2,
+  Copy,
+  TerminalSquare,
+  Keyboard,
+  Settings2,
+  Smartphone,
+  Monitor,
+  Check,
+  Loader2,
+  Wand2,
+  Hand,
+  X,
+  ChevronRight,
 } from 'lucide-react';
+import { X as RiCloseLine, Plus as RiAddLine, Minus as RiSubtractLine } from 'lucide-react';
 import {
-  getToolbarActionLabel,
+  createDefaultToolbarPresets,
+  getToolbarPresetDisplayName,
   isRegexProgramPattern,
   normalizeProgramMatchEntry,
   sanitizeRowLayout,
-  splitButtonsIntoRows,
+  sanitizeToolbarPresets,
+  decodeToolbarSequence,
+  getToolbarRuntimeActions,
+  type ToolbarPresetMode,
   tryCompileProgramRegex,
   type MobileToolbarAction,
   type ToolbarPresetDefinition,
 } from '../terminal/mobileKeyboardPresets';
-import { PRESET_MODE_BUTTON_SIZE_PX, PresetModeButton } from '../terminal/PresetModeButton';
+import { MobileKeyboard } from '../terminal/MobileKeyboard';
+import { editableToolbarActions } from '../../terminal/toolbarCustomization';
 import { useI18n } from '../../i18n';
+import { usesTouchTerminalLayout } from '../../utils/touchTerminalLayout';
+import { useKeyboardLayer } from '../../hooks/useKeyboardLayer';
 import { Switch } from '../ui/Switch';
-import { ToolbarKeyComboPicker } from './ToolbarKeyComboPicker';
-import { escapeToolbarSequence } from '../../terminal/toolbarKeyCombo';
+import { ToolbarActionEditor } from './ToolbarActionEditor';
+import { ToolbarButtonCanvas, ToolbarArrangement } from './ToolbarButtonCanvas';
 
-interface ToolbarPresetSettingsProps {
+export type ToolbarSaveState = 'loading' | 'saved' | 'saving' | 'error' | 'load-error' | 'conflict';
+export interface ToolbarPresetSettingsProps {
   presets: ToolbarPresetDefinition[];
   selectedPresetId: string;
   onSelectPreset: (presetId: string) => void;
-  onUpdatePreset: (presetId: string, updater: (preset: ToolbarPresetDefinition) => ToolbarPresetDefinition) => void;
-  onAddPreset: () => void;
-  onRemovePreset: (presetId: string) => void;
-  onResetDefaults: () => void;
+  onChange: (presets: ToolbarPresetDefinition[]) => void;
+  saveState?: ToolbarSaveState;
+  onRetry?: () => void;
+  onReload?: () => void;
+  previewTarget?: HTMLElement | null;
+  previewMode?: ToolbarPresetMode;
+  onUsePreset?: () => void;
 }
 
-interface SequenceTemplate {
-  label: string;
-  sequence: string;
-  hint?: string;
-}
-
-const SEQUENCE_TEMPLATES: SequenceTemplate[] = [
-  { label: 'Esc', sequence: '\\u001b' },
-  { label: 'Tab', sequence: '\\t' },
-  { label: 'Enter', sequence: '\\r' },
-  { label: 'S-Tab', sequence: '\\u001b[Z' },
-  { label: 'C-c', sequence: '\\u0003' },
-  { label: 'C-d', sequence: '\\u0004' },
-  { label: 'C-l', sequence: '\\u000c' },
-  { label: 'C-r', sequence: '\\u0012' },
-  { label: 'C-z', sequence: '\\u001a' },
-  { label: 'C-w', sequence: '\\u0017' },
-  { label: 'Up', sequence: '\\u001b[A' },
-  { label: 'Down', sequence: '\\u001b[B' },
-  { label: 'Left', sequence: '\\u001b[D' },
-  { label: 'Right', sequence: '\\u001b[C' },
-  { label: 'PgUp', sequence: '\\u001b[5~' },
-  { label: 'PgDn', sequence: '\\u001b[6~' },
-];
-
-const MIN_COLUMNS = 2;
-const MAX_COLUMNS = 20;
-
-function PreviewButton({ label }: { label: string }) {
-  return (
-    <div className="h-7 rounded-full bg-surface-2 px-3 text-[11px] leading-7 text-center text-muted-foreground truncate">
-      {label}
-    </div>
+function ConfirmToolbarChange({
+  title,
+  hint,
+  onConfirm,
+  onCancel,
+}: {
+  title: string;
+  hint: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const { t } = useI18n();
+  const panel = React.useRef<HTMLDivElement>(null);
+  useKeyboardLayer(panel, true, onCancel);
+  return createPortal(
+    <div
+      className="fixed inset-0 z-modal-editor flex items-center justify-center bg-[var(--app-backdrop)] preview-safe-area [--preview-safe-area-gap:0.75rem]"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onCancel();
+      }}
+    >
+      <div
+        ref={panel}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        tabIndex={-1}
+        className="w-full max-w-sm space-y-4 rounded-2xl border border-border bg-surface p-5 shadow-xl"
+      >
+        <h3 className="font-medium">{title}</h3>
+        <p className="text-sm text-muted-foreground">{hint}</p>
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            className="min-h-11 rounded-xl bg-surface-2 px-4 text-sm"
+            onClick={onCancel}
+          >
+            {t('common.cancel')}
+          </button>
+          <button
+            type="button"
+            className="min-h-11 rounded-xl bg-destructive px-4 text-sm text-primary-foreground"
+            onClick={onConfirm}
+          >
+            {t('toolbarPresets.confirmChange')}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -156,7 +193,13 @@ function ChipInput({
                     ? 'bg-accent/15 font-mono text-accent'
                     : 'bg-surface-elevated text-foreground'
               }`}
-              title={isRegex ? (invalid ? t('settings.invalidRegex') : 'Regex match') : 'Substring match (case-insensitive)'}
+              title={
+                isRegex
+                  ? invalid
+                    ? t('settings.invalidRegex')
+                    : 'Regex match'
+                  : 'Substring match (case-insensitive)'
+              }
             >
               {isRegex && <span className="text-[10px] opacity-70">re</span>}
               {token}
@@ -215,17 +258,19 @@ function Stepper({
         type="button"
         onClick={() => onChange(Math.max(min, value - 1))}
         disabled={value <= min}
-        className="h-7 w-7 rounded-full bg-surface-2 text-muted-foreground transition hover:bg-surface-elevated disabled:opacity-40 inline-flex items-center justify-center"
+        className="h-11 w-11 rounded-full bg-surface-2 text-muted-foreground transition hover:bg-surface-elevated disabled:opacity-40 inline-flex items-center justify-center"
         aria-label={t('common.decrease')}
       >
         <RiSubtractLine size={14} />
       </button>
-      <span className="w-6 text-center text-sm font-medium tabular-nums text-foreground">{value}</span>
+      <span className="w-6 text-center text-sm font-medium tabular-nums text-foreground">
+        {value}
+      </span>
       <button
         type="button"
         onClick={() => onChange(Math.min(max, value + 1))}
         disabled={value >= max}
-        className="h-7 w-7 rounded-full bg-surface-2 text-muted-foreground transition hover:bg-surface-elevated disabled:opacity-40 inline-flex items-center justify-center"
+        className="h-11 w-11 rounded-full bg-surface-2 text-muted-foreground transition hover:bg-surface-elevated disabled:opacity-40 inline-flex items-center justify-center"
         aria-label={t('common.increase')}
       >
         <RiAddLine size={14} />
@@ -234,544 +279,640 @@ function Stepper({
   );
 }
 
+function PresetIcon({ id }: { id: string }) {
+  return ['codex', 'claude', 'opencode', 'kimi'].includes(id) ? (
+    <span
+      aria-hidden="true"
+      className="h-5 w-5 shrink-0 bg-current"
+      style={{
+        WebkitMask: `url(/icons/agents/${id}.svg) center / contain no-repeat`,
+        mask: `url(/icons/agents/${id}.svg) center / contain no-repeat`,
+      }}
+    />
+  ) : id === 'default' ? (
+    <TerminalSquare size={18} />
+  ) : (
+    <Keyboard size={18} />
+  );
+}
+
 export const ToolbarPresetSettings: React.FC<ToolbarPresetSettingsProps> = ({
   presets,
   selectedPresetId,
   onSelectPreset,
-  onUpdatePreset,
-  onAddPreset,
-  onRemovePreset,
-  onResetDefaults,
+  onChange,
+  saveState = 'saved',
+  onRetry,
+  onReload,
+  previewTarget,
+  previewMode = 'auto',
+  onUsePreset,
 }) => {
   const { t } = useI18n();
-  const selectedPreset = presets.find((preset) => preset.id === selectedPresetId) ?? presets[0] ?? null;
-  const [editingActionId, setEditingActionId] = React.useState<string | null>(null);
-
-  if (!selectedPreset) {
-    return null;
-  }
-
-  const hasCustomActions = selectedPreset.actions.length > 0;
-  const previewItems: Array<{ id: string; label: string; kind?: 'preset' }> = [
-    { id: 'preview-auto', label: selectedPreset.label, kind: 'preset' },
-    ...(selectedPreset.includeAlt ? [{ id: 'preview-alt', label: 'Alt' }] : []),
-    ...(hasCustomActions
-      ? selectedPreset.actions.map((action, index) => ({ id: action.id, label: getToolbarActionLabel(action, index) }))
-      : ['Enter', 'Home', 'End', 'Ctrl-C', 'Ctrl-D'].map((label) => ({ id: label, label }))),
-  ];
-  const previewRows = splitButtonsIntoRows(previewItems, selectedPreset.rowLayout);
-
-  const moveAction = (actionId: string, direction: -1 | 1) => {
-    onUpdatePreset(selectedPreset.id, (preset) => {
-      const sourceIndex = preset.actions.findIndex((action) => action.id === actionId);
-      if (sourceIndex === -1) return preset;
-      const targetIndex = sourceIndex + direction;
-      if (targetIndex < 0 || targetIndex >= preset.actions.length) return preset;
-      const nextActions = [...preset.actions];
-      [nextActions[sourceIndex], nextActions[targetIndex]] = [nextActions[targetIndex], nextActions[sourceIndex]];
-      return { ...preset, actions: nextActions };
-    });
+  const nav = React.useRef<HTMLDivElement>(null);
+  const optionsId = React.useId();
+  const [previewDevice, setPreviewDevice] = React.useState<'mobile' | 'desktop'>(() =>
+    usesTouchTerminalLayout() || window.innerWidth <= 768 ? 'mobile' : 'desktop',
+  );
+  const [settingsOpen, setSettingsOpen] = React.useState(false);
+  const [highlightedId, setHighlightedId] = React.useState<string | null>(null);
+  const [editor, setEditor] = React.useState<{
+    presetId: string;
+    action?: MobileToolbarAction;
+  } | null>(null);
+  const [confirm, setConfirm] = React.useState<'delete' | 'reset' | 'reload' | null>(null);
+  const [undo, setUndo] = React.useState<{
+    before: ToolbarPresetDefinition[];
+    after: string;
+    selectedId: string;
+    message: string;
+  } | null>(null);
+  const [editorError, setEditorError] = React.useState('');
+  const selected = presets.find((preset) => preset.id === selectedPresetId) ?? presets[0];
+  React.useLayoutEffect(() => {
+    const strip = nav.current;
+    const active = strip?.querySelector<HTMLElement>('[aria-pressed="true"]');
+    if (!strip || !active || strip.scrollWidth <= strip.clientWidth) return;
+    strip.scrollLeft +=
+      active.getBoundingClientRect().left -
+      strip.getBoundingClientRect().left -
+      (strip.clientWidth - active.clientWidth) / 2;
+  }, [selected?.id, presets.length]);
+  const blocked = saveState === 'loading' || saveState === 'load-error' || saveState === 'conflict';
+  if (!selected) return null;
+  const displayName = (preset: ToolbarPresetDefinition) =>
+    getToolbarPresetDisplayName(preset, t('toolbarPresets.baseName'));
+  const actions = editableToolbarActions(selected, previewDevice === 'desktop');
+  const commit = (next: ToolbarPresetDefinition[], message = t('toolbarPresets.changed')) => {
+    const clean = sanitizeToolbarPresets(next);
+    if (JSON.stringify(clean) === JSON.stringify(presets)) return;
+    setUndo({ before: presets, after: JSON.stringify(clean), selectedId: selected.id, message });
+    setEditorError('');
+    onChange(clean);
   };
-
-  const totalCapacity = selectedPreset.rowLayout.reduce((sum, c) => sum + c, 0);
-  const reservedSlots = 1 + (selectedPreset.includeAlt ? 1 : 0);
-
-  return (
-    <div className="space-y-4">
-      {/* Sticky Preview at the top */}
-      <div className="sticky top-[-1rem] sm:top-[-1.5rem] z-10 -mx-4 -mt-4 sm:-mx-6 sm:-mt-6 border-b border-border/15 bg-surface/95 backdrop-blur px-4 py-3 sm:px-6">
-        <div className="mb-2 flex items-center justify-between">
-          <span className="ui-kicker">{t('toolbarPresets.preview')}</span>
-          <span className="text-[10px] text-muted-foreground">
-            {selectedPreset.actions.length} button{selectedPreset.actions.length === 1 ? '' : 's'} · {totalCapacity} slot{totalCapacity === 1 ? '' : 's'}
-          </span>
-        </div>
-        <div className="space-y-1 rounded-2xl bg-surface-2/60 p-2">
-          {previewRows.map((row, rowIndex) => {
-            const hasPresetSlot = row.items[0]?.kind === 'preset';
-            const baseCols = Math.max(2, row.columns);
-            const gridTemplateColumns = hasPresetSlot
-              ? `${PRESET_MODE_BUTTON_SIZE_PX}px repeat(${Math.max(1, baseCols - 1)}, minmax(0, 1fr))`
-              : `repeat(${baseCols}, minmax(0, 1fr))`;
-            return (
-              <div
-                key={`preview-row-${rowIndex}`}
-                className="grid gap-1"
-                style={{ gridTemplateColumns }}
-              >
-                {row.items.map((item) =>
-                  item.kind === 'preset' ? (
-                    <PresetModeButton
-                      key={item.id}
-                      mode="auto"
-                      presetLabel={item.label}
-                      title={`Auto preset · ${item.label}`}
-                      disabled
-                    />
-                  ) : (
-                    <PreviewButton key={item.id} label={item.label} />
-                  ),
-                )}
-              </div>
+  const update = (updater: (preset: ToolbarPresetDefinition) => ToolbarPresetDefinition) =>
+    commit(presets.map((preset) => (preset.id === selected.id ? updater(preset) : preset)));
+  const editActions = (next: MobileToolbarAction[]) =>
+    update((preset) => ({ ...preset, actions: next }));
+  const canUndo = undo && undo.after === JSON.stringify(presets);
+  const openEditor = (action?: MobileToolbarAction) => {
+    setEditorError('');
+    setEditor({ presetId: selected.id, action });
+    setHighlightedId(action?.id ?? null);
+  };
+  const copyPreset = () => {
+    const copy = {
+      ...selected,
+      id: `preset-${crypto.randomUUID()}`,
+      label: t('toolbarPresets.copyName', { name: displayName(selected) }),
+      programs: [],
+      actions: actions.map((action) => ({ ...action, id: crypto.randomUUID() })),
+    };
+    commit([...presets, copy]);
+    onSelectPreset(copy.id);
+    setSettingsOpen(false);
+  };
+  const statusKey =
+    saveState === 'error'
+      ? 'toolbarPresets.saveFailed'
+      : saveState === 'load-error'
+        ? 'toolbarPresets.loadFailed'
+        : saveState === 'conflict'
+          ? 'toolbarPresets.conflict'
+          : saveState === 'loading'
+            ? 'toolbarPresets.loading'
+            : saveState === 'saving'
+              ? 'toolbarPresets.saving'
+              : 'toolbarPresets.saved';
+  const runtimeActions = getToolbarRuntimeActions(selected);
+  const preview = (
+    <div
+      data-toolbar-preview
+      aria-label={t('toolbarPresets.previewFor', { name: displayName(selected) })}
+      className="bg-[var(--chrome-bg)]"
+    >
+      <div className="flex items-center gap-2 border-t border-border/30 px-4 py-2 text-[11px] text-muted-foreground">
+        {previewDevice === 'mobile' ? <Smartphone size={12} /> : <Monitor size={12} />}
+        <span>{t('toolbarPresets.previewFor', { name: displayName(selected) })}</span>
+      </div>
+      <MobileKeyboard
+        key={previewDevice}
+        visible
+        defaultShowExtended
+        presentation={previewDevice === 'mobile' ? 'mobile' : 'desktop-actions'}
+        activeModifier={null}
+        lockedModifier={null}
+        disabled={blocked}
+        presetLabel={displayName(selected)}
+        presetModeLabel={t('toolbarPresets.previewFor', { name: displayName(selected) })}
+        presetMode={previewMode}
+        presetOptions={[]}
+        includeAlt={selected.includeAlt}
+        presetRowLayout={selected.rowLayout}
+        extraActions={runtimeActions}
+        onKeyPress={() => {}}
+        onTextPress={() => {}}
+        onPastePress={() => {}}
+        onFilePress={() => {}}
+        onModifierToggle={() => {}}
+        onPresetSelect={() => {}}
+        previewActiveAction={actions.find((action) => action.id === highlightedId)}
+        onPreviewAction={(action) => {
+          if (blocked) return;
+          const target =
+            actions.find((item) => item.id === action.id) ??
+            actions.find(
+              (item) =>
+                decodeToolbarSequence(item.sequence) === decodeToolbarSequence(action.sequence),
             );
-          })}
+          if (target) openEditor(target);
+        }}
+      />
+    </div>
+  );
+  const slotCount =
+    1 +
+    (previewDevice === 'mobile' && selected.includeAlt ? 1 : 0) +
+    (runtimeActions.length || (previewDevice === 'desktop' ? 5 : 3));
+  return (
+    <div
+      data-toolbar-settings
+      className="grid min-w-0 gap-5 lg:grid-cols-[12rem_minmax(0,1fr)] lg:gap-8"
+    >
+      <aside className="min-w-0 lg:sticky lg:top-0 lg:self-start">
+        <div className="mb-2 hidden items-center gap-2 px-3 text-xs text-muted-foreground lg:flex">
+          <Keyboard size={14} />
+          {t('toolbarPresets.presets')}
         </div>
-        {selectedPreset.actions.length > totalCapacity - reservedSlots && (
-          <p className="mt-1.5 text-[10px] text-muted-foreground">
-            {t('toolbarPresets.overCapacityHint')}
-          </p>
-        )}
-      </div>
-
-      {/* Preset selector */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <span className="ui-kicker">{t('toolbarPresets.presets')}</span>
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={onAddPreset}
-              className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-3 py-2 text-xs font-medium hover:bg-surface-elevated transition"
-            >
-              <RiAddLine size={14} />
-              {t('toolbarPresets.new')}
-            </button>
-            <button
-              type="button"
-              onClick={onResetDefaults}
-              className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-3 py-2 text-xs font-medium hover:bg-surface-elevated transition"
-            >
-              <RiRefreshLine size={14} />
-              {t('toolbarPresets.reset')}
-            </button>
+        <div className="flex min-w-0 items-center gap-1 lg:block">
+          <div
+            ref={nav}
+            role="group"
+            aria-label={t('toolbarPresets.chooseToolbar')}
+            className="flex min-w-0 flex-1 gap-1 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0"
+          >
+            {presets.map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                aria-pressed={selected.id === preset.id}
+                onClick={() => {
+                  onSelectPreset(preset.id);
+                  setSettingsOpen(false);
+                  setHighlightedId(null);
+                }}
+                className={`inline-flex min-h-11 shrink-0 items-center gap-2.5 whitespace-nowrap rounded-xl border px-3 text-sm transition-colors lg:w-full lg:text-left ${selected.id === preset.id ? 'border-primary bg-surface-2 text-primary' : 'border-transparent text-muted-foreground hover:bg-surface-2 hover:text-foreground'}`}
+              >
+                <PresetIcon id={preset.id} />
+                <span className="max-w-36 truncate">{displayName(preset)}</span>
+                <span className="ml-auto hidden lg:block">
+                  {selected.id === preset.id && <ChevronRight size={14} />}
+                </span>
+              </button>
+            ))}
           </div>
+          <button
+            type="button"
+            disabled={blocked}
+            aria-label={t('toolbarPresets.newToolbar')}
+            title={t('toolbarPresets.newToolbar')}
+            onClick={copyPreset}
+            className="flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl px-3 text-muted-foreground hover:bg-surface-2 lg:mt-3 lg:w-full lg:justify-start"
+          >
+            <Copy size={15} />
+            <span className="hidden text-xs lg:inline">{t('toolbarPresets.newToolbar')}</span>
+          </button>
         </div>
-        <div className="-mx-1 flex flex-wrap gap-1.5 px-1">
-          {presets.map((preset) => (
-            <button
-              key={preset.id}
-              type="button"
-              onClick={() => onSelectPreset(preset.id)}
-              className={`rounded-full px-3 py-2 text-xs font-medium transition ${
-                preset.id === selectedPreset.id
-                  ? 'bg-primary/20 text-primary ring-1 ring-primary/30'
-                  : 'bg-surface-2 text-muted-foreground hover:bg-surface-elevated'
-              }`}
+      </aside>
+      <div className="min-w-0 space-y-4">
+        <div className="flex min-h-11 flex-wrap items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-3">
+            <h3 className="truncate text-lg font-medium">{displayName(selected)}</h3>
+            <span
+              className="inline-flex shrink-0 items-center gap-1 rounded-md bg-surface-2 px-2 py-1 text-[10px] text-muted-foreground"
+              title={selected.programs.join(' · ')}
             >
-              {preset.label}
-              {preset.actions.length > 0 && (
-                <span className="ml-1.5 text-[10px] text-muted-foreground">{preset.actions.length}</span>
+              {selected.id === 'default' || selected.programs.length ? (
+                <Wand2 size={11} />
+              ) : (
+                <Hand size={11} />
               )}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Preset config */}
-      <div className="space-y-4 rounded-2xl bg-surface p-4 ring-1 ring-border/10">
-        {/* Label */}
-        <div className="space-y-1.5">
-          <span className="ui-kicker">{t('toolbarPresets.label')}</span>
-          <div className="flex items-center gap-2">
-            <input
-              type="text"
-              value={selectedPreset.label}
-              onChange={(event) =>
-                onUpdatePreset(selectedPreset.id, (preset) => ({ ...preset, label: event.target.value }))
-              }
-              className="flex-1 rounded-full bg-surface-2 px-4 py-2.5 text-sm placeholder:text-muted/60 outline-none ring-1 ring-transparent focus:ring-accent/40"
-              placeholder={t('toolbarPresets.presetLabelPlaceholder')}
-              autoCapitalize="off"
-              autoCorrect="off"
-            />
-            {selectedPreset.id !== 'default' && (
+              {t(
+                selected.id === 'default' || selected.programs.length
+                  ? 'toolbarPresets.autoMatch'
+                  : 'toolbarPresets.manualShort',
+              )}
+            </span>
+          </div>
+          <div className="flex items-center gap-1">
+            <span
+              role="status"
+              aria-live="polite"
+              className={`inline-flex items-center gap-1.5 text-xs ${['error', 'load-error', 'conflict'].includes(saveState) ? 'text-destructive' : 'text-muted-foreground'}`}
+              title={canUndo ? undo.message : undefined}
+            >
+              {saveState === 'saving' || saveState === 'loading' ? (
+                <Loader2 size={13} className="animate-spin" />
+              ) : saveState === 'saved' ? (
+                <Check size={13} />
+              ) : null}
+              {t(statusKey)}
+            </span>
+            {saveState === 'error' && onRetry && (
               <button
                 type="button"
-                onClick={() => onRemovePreset(selectedPreset.id)}
-                className="shrink-0 rounded-full bg-surface-2 px-3 py-2.5 text-destructive hover:bg-destructive/15"
-                aria-label={t('toolbarPresets.deletePreset', { name: selectedPreset.label })}
+                className="min-h-11 px-2 text-xs text-primary"
+                onClick={onRetry}
               >
-                <RiDeleteBinLine size={14} />
+                {t('common.retry')}
+              </button>
+            )}
+            {(saveState === 'load-error' || saveState === 'conflict') && onReload && (
+              <button
+                type="button"
+                className="min-h-11 px-2 text-xs text-primary"
+                onClick={() => (saveState === 'conflict' ? setConfirm('reload') : onReload())}
+              >
+                {t('toolbarPresets.reload')}
+              </button>
+            )}
+            {canUndo && (
+              <button
+                type="button"
+                disabled={blocked}
+                aria-label={t('toolbarPresets.undo')}
+                title={t('toolbarPresets.undo')}
+                className="flex h-11 w-11 items-center justify-center rounded-lg text-primary hover:bg-primary/10"
+                onClick={() => {
+                  onChange(undo!.before);
+                  onSelectPreset(undo!.selectedId);
+                  setUndo(null);
+                }}
+              >
+                <Undo2 size={16} />
+              </button>
+            )}
+            {onUsePreset && (
+              <button
+                type="button"
+                disabled={blocked}
+                className="min-h-11 rounded-lg bg-primary/15 px-3 text-xs text-primary"
+                onClick={onUsePreset}
+              >
+                {t('toolbarPresets.useInTerminal')}
               </button>
             )}
           </div>
         </div>
-
-        {/* Programs */}
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between">
-            <span className="ui-kicker">{t('toolbarPresets.matchPrograms')}</span>
-            <span className="text-[10px] text-muted-foreground">{t('toolbarPresets.typeEnterHint')}</span>
-          </div>
-          <ChipInput
-            value={selectedPreset.programs}
-            onChange={(next) =>
-              onUpdatePreset(selectedPreset.id, (preset) => ({ ...preset, programs: next }))
-            }
-            placeholder={t('toolbarPresets.programsPlaceholder')}
-          />
-          <p className="text-[10px] text-muted-foreground">
-            {t('toolbarPresets.programsHelp')}
-          </p>
-        </div>
-
-        {/* Include Alt */}
-        <button
-          type="button"
-          onClick={() =>
-            onUpdatePreset(selectedPreset.id, (preset) => ({ ...preset, includeAlt: !preset.includeAlt }))
-          }
-          className="flex w-full items-center justify-between rounded-2xl bg-surface-2 px-4 py-3 text-sm transition hover:bg-surface-elevated"
+        <fieldset
+          disabled={blocked}
+          className="min-w-0 rounded-2xl border border-border/30 bg-surface p-4 disabled:opacity-50 sm:p-5"
         >
-          <span>
-            <span className="block font-medium text-foreground">{t('toolbarPresets.altSlot')}</span>
-            <span className="block text-[11px] text-muted-foreground">
-              {t('toolbarPresets.altSlotHint')}
-            </span>
-          </span>
-          <Switch checked={selectedPreset.includeAlt} />
-        </button>
-
-        {/* Desktop visibility */}
-        <button
-          type="button"
-          onClick={() =>
-            onUpdatePreset(selectedPreset.id, (preset) => ({ ...preset, showOnDesktop: !preset.showOnDesktop }))
-          }
-          className="flex w-full items-center justify-between rounded-2xl bg-surface-2 px-4 py-3 text-sm transition hover:bg-surface-elevated"
-        >
-          <span>
-            <span className="block font-medium text-foreground">{t('toolbarPresets.desktopVisibility')}</span>
-            <span className="block text-[11px] text-muted-foreground">
-              {t('toolbarPresets.desktopVisibilityHint')}
-            </span>
-          </span>
-          <Switch checked={selectedPreset.showOnDesktop === true} />
-        </button>
-
-        {/* Rows */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <div>
-              <span className="ui-kicker">{t('toolbarPresets.rowLayout')}</span>
-              <p className="text-[11px] text-muted-foreground">{t('toolbarPresets.rowLayoutHint')}</p>
-            </div>
-            <button
-              type="button"
-              onClick={() =>
-                onUpdatePreset(selectedPreset.id, (preset) => ({
-                  ...preset,
-                  rowLayout: [...sanitizeRowLayout(preset.rowLayout), 3],
-                }))
-              }
-              className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-3 py-1.5 text-xs font-medium hover:bg-surface-elevated"
-            >
-              <RiAddLine size={12} />
-              {t('toolbarPresets.addRow')}
-            </button>
-          </div>
-          <div className="space-y-2">
-            {selectedPreset.rowLayout.map((columns, rowIndex) => (
-              <div key={`row-${rowIndex}`} className="flex items-center gap-3 rounded-2xl bg-surface-2 px-3 py-2">
-                <span className="w-12 shrink-0 text-xs text-muted-foreground">{t('toolbarPresets.rowN', { n: rowIndex + 1 })}</span>
-                <div className="flex-1" />
-                <Stepper
-                  value={columns}
-                  min={MIN_COLUMNS}
-                  max={MAX_COLUMNS}
-                  onChange={(next) =>
-                    onUpdatePreset(selectedPreset.id, (preset) => ({
-                      ...preset,
-                      rowLayout: preset.rowLayout.map((value, index) => (index === rowIndex ? next : value)),
-                    }))
-                  }
-                />
-                {selectedPreset.rowLayout.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      onUpdatePreset(selectedPreset.id, (preset) => ({
-                        ...preset,
-                        rowLayout: preset.rowLayout.filter((_, index) => index !== rowIndex),
-                      }))
-                    }
-                    className="rounded-full bg-surface px-2.5 py-1 text-[11px] text-muted-foreground hover:bg-destructive/15 hover:text-destructive"
-                    aria-label={t('toolbarPresets.removeRow', { n: rowIndex + 1 })}
-                  >
-                    {t('toolbarPresets.del')}
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Buttons */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <div>
-              <span className="ui-kicker">{t('toolbarPresets.buttons')}</span>
-              <p className="text-[11px] text-muted-foreground">{t('toolbarPresets.buttonsHint')}</p>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                const newId = `${selectedPreset.id}-action-${Date.now()}`;
-                onUpdatePreset(selectedPreset.id, (preset) => ({
-                  ...preset,
-                  actions: [
-                    ...preset.actions,
-                    {
-                      id: newId,
-                      label: `Key ${preset.actions.length + 1}`,
-                      sequence: '',
-                    },
-                  ],
-                }));
-                setEditingActionId(newId);
-              }}
-              className="inline-flex items-center gap-1 rounded-full bg-primary/15 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/25"
-            >
-              <RiAddLine size={12} />
-              {t('toolbarPresets.addButton')}
-            </button>
-          </div>
-
-          {selectedPreset.actions.length === 0 && (
-            <div className="rounded-2xl bg-surface-2/60 px-4 py-6 text-center text-[11px] text-muted-foreground">
-              {t('toolbarPresets.noCustomButtons')}
-            </div>
-          )}
-
-          {selectedPreset.actions.map((action, index) => {
-            const isEditing = editingActionId === action.id;
-            return (
-              <div
-                key={action.id}
-                className={`rounded-2xl bg-surface-2 transition ${
-                  isEditing ? 'ring-1 ring-accent/40' : ''
-                }`}
+          <div className="mb-4 flex items-center justify-between gap-2">
+            <h4 className="text-xs font-medium text-muted-foreground">
+              {t('toolbarPresets.buttons')}
+            </h4>
+            <div className="flex items-center gap-1">
+              {(['mobile', 'desktop'] as const).map((device) => (
+                <button
+                  key={device}
+                  type="button"
+                  aria-pressed={previewDevice === device}
+                  aria-label={t(
+                    device === 'mobile'
+                      ? 'toolbarPresets.previewMobile'
+                      : 'toolbarPresets.previewDesktop',
+                  )}
+                  title={t(
+                    device === 'mobile'
+                      ? 'toolbarPresets.previewMobile'
+                      : 'toolbarPresets.previewDesktop',
+                  )}
+                  className={`flex h-11 w-11 items-center justify-center rounded-lg ${previewDevice === device ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-surface-2'}`}
+                  onClick={() => {
+                    setPreviewDevice(device);
+                    setHighlightedId(null);
+                  }}
+                >
+                  {device === 'mobile' ? <Smartphone size={17} /> : <Monitor size={17} />}
+                </button>
+              ))}
+              <span className="mx-1 h-5 border-l border-border/40" />
+              <button
+                type="button"
+                aria-label={t('toolbarPresets.toolbarOptions')}
+                title={t('toolbarPresets.toolbarOptions')}
+                aria-expanded={settingsOpen}
+                aria-controls={optionsId}
+                onClick={() => setSettingsOpen((current) => !current)}
+                className={`flex h-11 w-11 items-center justify-center rounded-lg ${settingsOpen ? 'bg-surface-2 text-primary' : 'text-muted-foreground hover:bg-surface-2'}`}
               >
-                <div className="flex items-center gap-2 px-3 py-2">
-                  <div className="flex flex-col gap-0.5">
-                    <button
-                      type="button"
-                      onClick={() => moveAction(action.id, -1)}
-                      disabled={index === 0}
-                      className="h-6 w-6 rounded-full bg-surface text-muted-foreground hover:bg-surface-elevated disabled:opacity-30 inline-flex items-center justify-center"
-                      aria-label={t('toolbarPresets.moveUp')}
-                    >
-                      <RiArrowUpLine size={12} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => moveAction(action.id, 1)}
-                      disabled={index === selectedPreset.actions.length - 1}
-                      className="h-6 w-6 rounded-full bg-surface text-muted-foreground hover:bg-surface-elevated disabled:opacity-30 inline-flex items-center justify-center"
-                      aria-label={t('toolbarPresets.moveDown')}
-                    >
-                      <RiArrowDownLine size={12} />
-                    </button>
-                  </div>
+                <Settings2 size={17} />
+              </button>
+            </div>
+          </div>
+          <ToolbarButtonCanvas
+            actions={actions}
+            disabled={blocked}
+            highlightedId={highlightedId}
+            onHighlight={setHighlightedId}
+            onEdit={openEditor}
+            onAdd={() => openEditor()}
+            onReorder={editActions}
+          />
+          <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border/30 pt-3">
+            <span className="text-xs text-muted-foreground">{t('toolbarPresets.arrangement')}</span>
+            <ToolbarArrangement
+              value={selected.rowLayout}
+              count={slotCount}
+              onChange={(rowLayout) => update((preset) => ({ ...preset, rowLayout }))}
+            />
+          </div>
+          {previewDevice === 'desktop' && selected.id !== 'default' && !selected.showOnDesktop && (
+            <button
+              type="button"
+              className="mt-2 min-h-11 text-xs text-primary"
+              onClick={() => update((preset) => ({ ...preset, showOnDesktop: true }))}
+            >
+              {t('toolbarPresets.enableDesktop')}
+            </button>
+          )}
+        </fieldset>
+        <fieldset disabled={blocked} className="min-w-0 disabled:opacity-50">
+          <section
+            id={optionsId}
+            hidden={!settingsOpen}
+            className="rounded-2xl border border-border/30 bg-surface p-4"
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h4 className="text-sm font-medium">{t('toolbarPresets.toolbarOptions')}</h4>
+              <button
+                type="button"
+                className="flex h-11 w-11 items-center justify-center rounded-xl text-muted-foreground hover:bg-surface-2"
+                aria-label={t('common.close')}
+                onClick={() => setSettingsOpen(false)}
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="space-y-4 px-3 pb-4">
+              <label className="block space-y-1.5 text-sm">
+                <span>{t('toolbarPresets.presetLabelPlaceholder')}</span>
+                <input
+                  key={`${selected.id}:${selected.label}`}
+                  className="min-h-11 w-full rounded-xl bg-surface-2 px-3 outline-none focus:ring-1 focus:ring-primary"
+                  defaultValue={selected.label}
+                  onBlur={(event) => {
+                    const label = event.target.value.trim();
+                    if (label) update((preset) => ({ ...preset, label }));
+                    else event.target.value = selected.label;
+                  }}
+                />
+              </label>
+              {selected.id !== 'default' && (
+                <div className="space-y-2">
+                  <div className="text-sm">{t('toolbarPresets.programNames')}</div>
+                  <ChipInput
+                    key={selected.id}
+                    value={selected.programs}
+                    onChange={(programs) => update((preset) => ({ ...preset, programs }))}
+                    placeholder={t('toolbarPresets.programPlaceholder')}
+                  />
+                  <p className="text-xs text-muted-foreground">{t('toolbarPresets.programHint')}</p>
+                </div>
+              )}
+              <button
+                type="button"
+                className="flex min-h-11 w-full items-center justify-between gap-3 rounded-xl bg-surface-2 p-3 text-left text-sm"
+                aria-pressed={selected.includeAlt}
+                onClick={() => update((preset) => ({ ...preset, includeAlt: !preset.includeAlt }))}
+              >
+                <span>Alt</span>
+                <Switch checked={selected.includeAlt} />
+              </button>
+              {selected.id !== 'default' && (
+                <>
                   <button
                     type="button"
-                    onClick={() => setEditingActionId(isEditing ? null : action.id)}
-                    className="min-w-0 flex-1 text-left"
+                    className="flex min-h-11 w-full items-center justify-between gap-3 rounded-xl bg-surface-2 p-3 text-left text-sm"
+                    aria-pressed={selected.showOnDesktop === true}
+                    onClick={() =>
+                      update((preset) => ({ ...preset, showOnDesktop: !preset.showOnDesktop }))
+                    }
                   >
-                    <div className="truncate text-sm font-medium text-foreground">
-                      {getToolbarActionLabel(action, index)}
-                    </div>
-                    <div className="truncate text-[11px] text-muted-foreground">
-                      {action.sequence ? escapeToolbarSequence(action.sequence) : t('toolbarPresets.noSequence')}
-                      {action.doubleTapSequence && (
-                        <span className="ml-1 text-accent/70">· 2× {escapeToolbarSequence(action.doubleTapSequence)}</span>
+                    <span>{t('toolbarPresets.desktopVisibility')}</span>
+                    <Switch checked={selected.showOnDesktop === true} />
+                  </button>
+                </>
+              )}
+              <details>
+                <summary className="min-h-11 cursor-pointer py-3 text-sm text-muted-foreground">
+                  {t('toolbarPresets.customLayout')}
+                </summary>
+                <div className="space-y-2">
+                  {selected.rowLayout.map((columns, index) => (
+                    <div
+                      key={index}
+                      className="flex flex-wrap items-center justify-between gap-1 text-xs"
+                    >
+                      <span>{t('toolbarPresets.rowN', { n: index + 1 })}</span>
+                      <Stepper
+                        value={columns}
+                        min={2}
+                        max={20}
+                        onChange={(next) =>
+                          update((preset) => ({
+                            ...preset,
+                            rowLayout: preset.rowLayout.map((value, i) =>
+                              i === index ? next : value,
+                            ),
+                          }))
+                        }
+                      />
+                      {selected.rowLayout.length > 1 && (
+                        <button
+                          type="button"
+                          className="min-h-11 px-3 text-destructive"
+                          aria-label={t('toolbarPresets.removeRow', { n: index + 1 })}
+                          onClick={() =>
+                            update((preset) => ({
+                              ...preset,
+                              rowLayout: preset.rowLayout.filter((_, i) => i !== index),
+                            }))
+                          }
+                        >
+                          <Trash2 size={15} />
+                        </button>
                       )}
                     </div>
-                  </button>
+                  ))}
                   <button
                     type="button"
+                    className="min-h-11 px-3 text-primary"
                     onClick={() =>
-                      onUpdatePreset(selectedPreset.id, (preset) => ({
+                      update((preset) => ({
                         ...preset,
-                        actions: preset.actions.filter((item) => item.id !== action.id),
+                        rowLayout: [...sanitizeRowLayout(preset.rowLayout), 6],
                       }))
                     }
-                    className="shrink-0 rounded-full bg-surface p-2 text-muted-foreground hover:bg-destructive/15 hover:text-destructive"
-                    aria-label={t('toolbarPresets.removeAction', { name: action.label })}
                   >
-                    <RiDeleteBinLine size={14} />
+                    + {t('toolbarPresets.addRow')}
                   </button>
                 </div>
+              </details>
+            </div>
 
-                {isEditing && (
-                  <div className="space-y-3 border-t border-border/10 px-3 py-3">
-                    <div className="space-y-1.5">
-                      <span className="text-[11px] uppercase tracking-wider text-muted-foreground">{t('toolbarPresets.labelField')}</span>
-                      <input
-                        type="text"
-                        value={action.label}
-                        onChange={(event) =>
-                          onUpdatePreset(selectedPreset.id, (preset) => ({
-                            ...preset,
-                            actions: preset.actions.map((item) =>
-                              item.id === action.id ? { ...item, label: event.target.value } : item,
-                            ),
-                          }))
-                        }
-                        className="w-full rounded-full bg-surface px-4 py-2.5 text-sm outline-none ring-1 ring-transparent focus:ring-accent/40"
-                        placeholder={t('toolbarPresets.labelPlaceholder')}
-                        autoCapitalize="off"
-                        autoCorrect="off"
-                      />
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <span className="text-[11px] uppercase tracking-wider text-muted-foreground">{t('toolbarPresets.sequence')}</span>
-                      <input
-                        type="text"
-                        value={escapeToolbarSequence(action.sequence)}
-                        aria-label={t('toolbarPresets.sequence')}
-                        onChange={(event) =>
-                          onUpdatePreset(selectedPreset.id, (preset) => ({
-                            ...preset,
-                            actions: preset.actions.map((item) =>
-                              item.id === action.id ? { ...item, sequence: event.target.value } : item,
-                            ),
-                          }))
-                        }
-                        className="w-full rounded-full bg-surface px-4 py-2.5 font-mono text-sm outline-none ring-1 ring-transparent focus:ring-accent/40"
-                        placeholder={t('toolbarPresets.sequencePlaceholder')}
-                        autoCapitalize="off"
-                        autoCorrect="off"
-                        spellCheck={false}
-                      />
-                      <div className="flex flex-wrap gap-1.5 pt-1">
-                        {SEQUENCE_TEMPLATES.map((template) => (
-                          <button
-                            key={template.label}
-                            type="button"
-                            onClick={() =>
-                              onUpdatePreset(selectedPreset.id, (preset) => ({
-                                ...preset,
-                                actions: preset.actions.map((item) =>
-                                  item.id === action.id ? { ...item, sequence: template.sequence } : item,
-                                ),
-                              }))
-                            }
-                            className="rounded-full bg-surface px-2.5 py-1 text-[11px] font-medium text-muted-foreground hover:bg-surface-elevated hover:text-foreground"
-                          >
-                            {template.label}
-                          </button>
-                        ))}
-                      </div>
-                      <ToolbarKeyComboPicker onInsert={(sequence, label) =>
-                        onUpdatePreset(selectedPreset.id, preset => ({
-                          ...preset,
-                          actions: preset.actions.map(item => item.id === action.id ? {
-                            ...item,
-                            label: !item.sequence && (!item.label.trim() || /^Key \d+$/.test(item.label)) ? label : item.label,
-                            sequence: escapeToolbarSequence(item.sequence) + sequence,
-                          } : item),
-                        }))
-                      } />
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] uppercase tracking-wider text-muted-foreground">{t('toolbarPresets.doubleTap')}</span>
-                        {!action.doubleTapSequence && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              onUpdatePreset(selectedPreset.id, (preset) => ({
-                                ...preset,
-                                actions: preset.actions.map((item) =>
-                                  item.id === action.id ? { ...item, doubleTapSequence: '' } : item,
-                                ),
-                              }))
-                            }
-                            className="text-[10px] text-accent hover:text-accent/80"
-                          >
-                            {t('toolbarPresets.doubleTapAdd')}
-                          </button>
-                        )}
-                      </div>
-                      {action.doubleTapSequence !== undefined && (
-                        <>
-                          <input
-                            type="text"
-                            value={escapeToolbarSequence(action.doubleTapSequence)}
-                            aria-label={t('toolbarPresets.doubleTap')}
-                            onChange={(event) =>
-                              onUpdatePreset(selectedPreset.id, (preset) => ({
-                                ...preset,
-                                actions: preset.actions.map((item) =>
-                                  item.id === action.id ? { ...item, doubleTapSequence: event.target.value } : item,
-                                ),
-                              }))
-                            }
-                            className="w-full rounded-full bg-surface px-4 py-2.5 font-mono text-sm outline-none ring-1 ring-transparent focus:ring-accent/40"
-                            placeholder={t('toolbarPresets.doubleTapPlaceholder')}
-                            autoCapitalize="off"
-                            autoCorrect="off"
-                            spellCheck={false}
-                          />
-                          <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                            {SEQUENCE_TEMPLATES.map((template) => (
-                              <button
-                                key={template.label}
-                                type="button"
-                                onClick={() =>
-                                  onUpdatePreset(selectedPreset.id, (preset) => ({
-                                    ...preset,
-                                    actions: preset.actions.map((item) =>
-                                      item.id === action.id
-                                        ? { ...item, doubleTapSequence: (item.doubleTapSequence ?? '') + template.sequence }
-                                        : item,
-                                    ),
-                                  }))
-                                }
-                                className="rounded-full bg-surface px-2.5 py-1 text-[11px] font-medium text-muted-foreground hover:bg-surface-elevated hover:text-foreground"
-                              >
-                                {template.label}
-                              </button>
-                            ))}
-                            <button
-                              type="button"
-                              onClick={() =>
-                                onUpdatePreset(selectedPreset.id, (preset) => ({
-                                  ...preset,
-                                  actions: preset.actions.map((item) => {
-                                    if (item.id !== action.id) return item;
-                                    const { doubleTapSequence, ...rest } = item;
-                                    return rest as MobileToolbarAction;
-                                  }),
-                                }))
-                              }
-                              className="rounded-full bg-destructive/10 px-2.5 py-1 text-[11px] font-medium text-destructive/70 hover:bg-destructive/20 hover:text-destructive"
-                            >
-                              {t('toolbarPresets.remove')}
-                            </button>
-                          </div>
-                          <ToolbarKeyComboPicker onInsert={sequence =>
-                            onUpdatePreset(selectedPreset.id, preset => ({
-                              ...preset,
-                              actions: preset.actions.map(item => item.id === action.id ? {
-                                ...item,
-                                doubleTapSequence: escapeToolbarSequence(item.doubleTapSequence ?? '') + sequence,
-                              } : item),
-                            }))
-                          } />
-                        </>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+            <div className="flex flex-wrap gap-2">
+              {createDefaultToolbarPresets().some((preset) => preset.id === selected.id) && (
+                <button
+                  type="button"
+                  className="min-h-11 rounded-xl bg-surface-2 px-3 text-sm"
+                  onClick={() =>
+                    update((preset) => {
+                      const defaults = createDefaultToolbarPresets().find(
+                        (item) => item.id === preset.id,
+                      )!;
+                      return {
+                        ...preset,
+                        actions: defaults.actions,
+                        rowLayout: defaults.rowLayout,
+                        includeAlt: defaults.includeAlt,
+                      };
+                    })
+                  }
+                >
+                  {t('toolbarPresets.restoreToolbar')}
+                </button>
+              )}
+              {selected.id !== 'default' && (
+                <button
+                  type="button"
+                  className="min-h-11 rounded-xl px-3 text-sm text-destructive"
+                  onClick={() => setConfirm('delete')}
+                >
+                  {t('toolbarPresets.deletePreset', { name: displayName(selected) })}
+                </button>
+              )}
+              <button
+                type="button"
+                className="min-h-11 px-3 text-xs text-muted-foreground"
+                onClick={() => setConfirm('reset')}
+              >
+                {t('toolbarPresets.restoreAll')}
+              </button>
+            </div>
+          </section>
+        </fieldset>
       </div>
+      {previewTarget === undefined ? (
+        <div className="col-span-full">{preview}</div>
+      ) : previewTarget ? (
+        createPortal(preview, previewTarget)
+      ) : null}
+      {editor && (
+        <ToolbarActionEditor
+          key={`${editor.presetId}:${editor.action?.id ?? 'new'}`}
+          action={editor.action}
+          existingActions={actions}
+          error={editorError}
+          onRemove={
+            editor.action && actions.length > 1
+              ? () => {
+                  const target = presets.find((preset) => preset.id === editor.presetId);
+                  const current =
+                    target && editableToolbarActions(target, previewDevice === 'desktop');
+                  if (
+                    !target ||
+                    !current ||
+                    JSON.stringify(current.find((item) => item.id === editor.action!.id)) !==
+                      JSON.stringify(editor.action)
+                  ) {
+                    setEditorError(t('toolbarPresets.staleAction'));
+                    return;
+                  }
+                  commit(
+                    presets.map((preset) =>
+                      preset.id === target.id
+                        ? {
+                            ...preset,
+                            actions: current.filter((item) => item.id !== editor.action!.id),
+                          }
+                        : preset,
+                    ),
+                    t('toolbarPresets.removed'),
+                  );
+                  setEditor(null);
+                }
+              : undefined
+          }
+          commandTemplate={actions.find((action) => action.sequence.startsWith('/||'))?.sequence}
+          onCancel={() => setEditor(null)}
+          onSave={(action) => {
+            if (blocked) {
+              setEditorError(t('toolbarPresets.staleAction'));
+              return;
+            }
+            const target = presets.find((preset) => preset.id === editor.presetId);
+            const current = target && editableToolbarActions(target, previewDevice === 'desktop');
+            if (
+              !target ||
+              !current ||
+              (editor.action &&
+                JSON.stringify(current.find((item) => item.id === editor.action!.id)) !==
+                  JSON.stringify(editor.action))
+            ) {
+              setEditorError(t('toolbarPresets.staleAction'));
+              return;
+            }
+            commit(
+              presets.map((preset) =>
+                preset.id === target.id
+                  ? {
+                      ...preset,
+                      actions: editor.action
+                        ? current.map((item) => (item.id === action.id ? action : item))
+                        : [...current, action],
+                    }
+                  : preset,
+              ),
+            );
+            setEditor(null);
+          }}
+        />
+      )}
+      {confirm && (
+        <ConfirmToolbarChange
+          title={t(
+            confirm === 'delete'
+              ? 'toolbarPresets.deleteTitle'
+              : confirm === 'reload'
+                ? 'toolbarPresets.reloadTitle'
+                : 'toolbarPresets.restoreTitle',
+          )}
+          hint={t(
+            confirm === 'delete'
+              ? 'toolbarPresets.deleteHint'
+              : confirm === 'reload'
+                ? 'toolbarPresets.reloadHint'
+                : 'toolbarPresets.restoreHint',
+          )}
+          onCancel={() => setConfirm(null)}
+          onConfirm={() => {
+            if (confirm === 'reload') {
+              onReload?.();
+              setConfirm(null);
+              return;
+            }
+            commit(
+              confirm === 'reset'
+                ? createDefaultToolbarPresets()
+                : presets.filter((preset) => preset.id !== selected.id),
+            );
+            onSelectPreset('default');
+            setConfirm(null);
+          }}
+        />
+      )}
     </div>
   );
 };

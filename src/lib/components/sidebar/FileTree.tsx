@@ -515,7 +515,8 @@ const FileTreeItem = memo(function FileTreeItem({
         onDragStart={event => {
           if (!onPathReference || directoriesOnly || (event.target as Element).closest('button')) { event.preventDefault(); return; }
           event.dataTransfer.effectAllowed = 'copy';
-          writeFileReferenceDrag(event.dataTransfer, getReferenceText?.(node.path) || buildReferenceInputText(node.path, null));
+          const text = getReferenceText?.(node.path) || buildReferenceInputText(node.path, null);
+          writeFileReferenceDrag(event.dataTransfer, text, { kind: node.type === 'directory' ? 'directory' : 'file', path: node.path, text });
         }}
         data-sort-mode={sortMode}
         role="button"

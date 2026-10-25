@@ -12,6 +12,7 @@ import {
   type SessionInventoryClientSession,
 } from '../terminal';
 import { subscribeClientState } from '../utils/clientStateSync';
+import { useTerminalStore } from '../stores/useTerminalStore';
 import { pickSessionAfterClose } from '../utils/sessionSelection';
 import { removeSessionFontSize } from '../terminal/sessionFontSize';
 import { useSessionDirectoryStore } from '../stores/useSessionDirectory';
@@ -95,7 +96,7 @@ interface UseSessionPersistenceReturn {
   inventory: SessionInventory | null;
   activeSessionId: string | null;
   isLoading: boolean;
-  openSession: (options: OpenSessionInventoryOptions, activation?: { shouldActivate?: () => boolean }) => Promise<OpenSessionInventoryResult & { discarded: boolean }>;
+  openSession: (options: OpenSessionInventoryOptions, activation?: { shouldActivate?: () => boolean; beforeApply?: (result: OpenSessionInventoryResult) => Promise<void> }) => Promise<OpenSessionInventoryResult & { discarded: boolean }>;
   removeSession: (sessionId: string, preferredActiveSessionId?: string | null) => Promise<void>;
   updateSessionActivity: (sessionId: string) => void;
   setActiveSession: (sessionId: string | null) => void;
@@ -344,13 +345,16 @@ export function useSessionPersistence(): UseSessionPersistenceReturn {
 
   const openSession = useCallback(async (
     options: OpenSessionInventoryOptions,
-    activation?: { shouldActivate?: () => boolean },
+    activation?: { shouldActivate?: () => boolean; beforeApply?: (result: OpenSessionInventoryResult) => Promise<void> },
   ): Promise<OpenSessionInventoryResult & { discarded: boolean }> => {
     const mutationRevision = ++localMutationRevisionRef.current;
     const selectionRevision = selectionRevisionRef.current;
     const snapshotRevision = sessionSnapshotRevisionRef.current;
     const backendBaseRevision = backendFactRevisionRef.current;
     const result = await openSessionInventoryEntry(options);
+    // The creator can seed presentation before inventory mounts or selects
+    // the new workspace. Keep mutation/selection generations captured above.
+    if (!removedSessionIdsRef.current.has(result.session.sessionId)) await activation?.beforeApply?.(result);
     const previouslyConfirmed = backendFactsRef.current.get(result.session.sessionId);
     const responseFactsSuperseded = previouslyConfirmed !== undefined && (
       previouslyConfirmed.updatedAt > result.inventory.updatedAt
@@ -584,6 +588,10 @@ export function useSessionPersistence(): UseSessionPersistenceReturn {
   // 服务器推送的 session inventory 同步：通过 control WebSocket 实时接收。
   useEffect(() => {
     const unsubscribe = subscribeClientState((snapshot) => {
+      if (snapshot.type === 'chat-attention') {
+        for (const item of snapshot.sessions) if (typeof item?.sessionId === 'string') useTerminalStore.getState().setSessionChatIndex(item.sessionId, item.index);
+        return;
+      }
       if (snapshot.type !== 'client-state') return;
       if (isLoadingRef.current) return;
       const snapshotSeq = typeof snapshot.seq === 'number' ? snapshot.seq : null;

@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 import { useRef, useState } from 'react';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, it } from 'vitest';
-import { isKeyboardLayerOpen, useKeyboardLayer, useKeyboardLayerOpen } from './useKeyboardLayer';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { getActiveKeyboardLayer, isKeyboardLayerOpen, useKeyboardLayer, useKeyboardLayerOpen } from './useKeyboardLayer';
 
-afterEach(cleanup);
+beforeEach(() => { vi.spyOn(document, 'hasFocus').mockReturnValue(true); });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 function Layer({ children, onClose }: { children?: React.ReactNode; onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -67,6 +68,22 @@ describe('keyboard layers', () => {
     expect(isKeyboardLayerOpen()).toBe(true);
   });
 
+  it('restores focus when the hook stays mounted after its conditional dialog is removed', async () => {
+    function Conditional() {
+      const [open, setOpen] = useState(false);
+      const ref = useRef<HTMLDivElement>(null);
+      useKeyboardLayer(ref, open, () => setOpen(false));
+      return <><button onClick={() => setOpen(true)}>Open conditional</button>
+        {open && <div ref={ref} role="dialog"><input aria-label="Conditional editor" /></div>}</>;
+    }
+    const user = userEvent.setup(); render(<Conditional />);
+    const trigger = screen.getByRole('button'); await user.click(trigger);
+    expect(document.activeElement).toBe(screen.getByRole('textbox'));
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
   it('skips controls hidden by an ancestor and disabled fieldsets when wrapping Tab', async () => {
     const user = userEvent.setup();
     render(<Layer onClose={() => undefined}><div style={{ display: 'none' }}><button>Invisible</button></div>
@@ -85,5 +102,40 @@ describe('keyboard layers', () => {
     control.addEventListener('keydown', (event) => event.preventDefault());
     fireEvent.keyDown(control, { key: 'Escape' });
     expect(isKeyboardLayerOpen()).toBe(true);
+  });
+
+  it('does not trap focus or Escape in a retained hidden workspace', () => {
+    const closed = { calls: 0 };
+    function Retained({ hidden }: { hidden: boolean }) {
+      return <><input aria-label="Foreground editor" /><div hidden={hidden}><Layer onClose={() => { closed.calls++; }} /></div></>;
+    }
+    const view = render(<Retained hidden={false} />);
+    view.rerender(<Retained hidden />);
+    const editor = screen.getByRole('textbox'); editor.focus();
+    expect(document.activeElement).toBe(editor);
+    expect(isKeyboardLayerOpen()).toBe(false);
+    fireEvent.keyDown(editor, { key: 'Escape' });
+    expect(closed.calls).toBe(0);
+  });
+
+  it('leaves focus chosen by a newer action alone when a layer closes', async () => {
+    const view = render(<><input aria-label="Previous" /><input aria-label="New owner" /></>);
+    screen.getByLabelText('Previous').focus();
+    view.rerender(<><input aria-label="Previous" /><input aria-label="New owner" /><Layer onClose={() => undefined} /></>);
+    view.rerender(<><input aria-label="Previous" /><input aria-label="New owner" /></>);
+    const next = screen.getByLabelText('New owner'); next.focus();
+    await act(async () => { await Promise.resolve(); });
+    expect(document.activeElement).toBe(next);
+  });
+
+  it('yields to the desktop bridge confirmation above a React layer', () => {
+    render(<Layer onClose={() => undefined} />);
+    const native = document.createElement('section'); native.dataset.desktopConfirmation = 'true';
+    const cancel = document.createElement('button'); native.append(cancel); document.body.append(native);
+    try {
+      cancel.focus();
+      expect(document.activeElement).toBe(cancel);
+      expect(getActiveKeyboardLayer()?.element).toBe(native);
+    } finally { native.remove(); }
   });
 });

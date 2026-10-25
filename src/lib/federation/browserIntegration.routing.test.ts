@@ -932,3 +932,11 @@ it.each(['TARGET_PASSWORD_REQUIRED', 'TARGET_SECURITY_UPGRADE_REQUIRED'] as cons
   expect(mocks.connect.mock.calls.every(([args]) => args.targetPeerId === 'B' && !args.socketFactory)).toBe(true);
   expect(nativeFetch).not.toHaveBeenCalled();
 });
+
+it('persists accepted sharing presentation before a first-connection scope reload', async () => {
+  mocks.boot = 'unpaired';
+  const integration = await import('./browserIntegration');
+  void integration.connectDevice({ url: 'https://b.example', targetPeerId: 'B', pairingCode: 'invitation', viewMode: 'terminal', viewLayout: 'split' });
+  await vi.waitFor(() => expect(reload).toHaveBeenCalledOnce());
+  expect(mocks.save).toHaveBeenLastCalledWith(expect.objectContaining({ targetPeerId: 'B', viewMode: 'terminal', viewLayout: 'split' }));
+});

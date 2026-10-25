@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
-import { useSessionCapabilities } from '../../federation/ShareAccessContext';
+import { useSessionCapabilities, useShareAccess } from '../../federation/ShareAccessContext';
+import { resolveTerminalPath } from '../../terminal/pathLinks';
 import { chatAttachmentKind, type ChatAttachment } from './chatComposerContent';
 
 const Lightbox = lazy(() => import('../markdown/MarkdownPreview').then(module => ({ default: module.MarkdownImageLightbox })));
@@ -7,17 +8,25 @@ const Lightbox = lazy(() => import('../markdown/MarkdownPreview').then(module =>
 /** The existing lightbox fetches private images through the page transport. */
 export function useChatImagePreview(files: ChatAttachment[]) {
   const allowed = useSessionCapabilities().has('resource.files');
+  const access = useShareAccess();
+  const canRead = useCallback((file: ChatAttachment) => {
+    const path = resolveTerminalPath(file.path, null);
+    return allowed && !!path && (access === undefined || access.directories?.some(grant => {
+      const root = grant.path.replace(/\/+$/, '') || '/';
+      return root === '/' || path === root || path.startsWith(`${root}/`);
+    }) === true);
+  }, [allowed, access]);
   const [selected, setSelected] = useState<string | null>(null);
-  const images = useMemo(() => files.filter(file => chatAttachmentKind(file) === '图片').map(file => ({
+  const images = useMemo(() => files.filter(file => canRead(file) && chatAttachmentKind(file) === '图片').map(file => ({
     kind: 'image' as const,
     src: `/api/terminal/fs/blob?${new URLSearchParams({ path: file.path })}`,
     alt: file.name,
     title: file.name,
-  })), [files]);
+  })), [files, canRead]);
   const index = images.findIndex(image => image.src === selected);
   const open = useCallback((file: ChatAttachment) => {
-    if (allowed && chatAttachmentKind(file) === '图片') setSelected(`/api/terminal/fs/blob?${new URLSearchParams({ path: file.path })}`);
-  }, [allowed]);
+    if (canRead(file) && chatAttachmentKind(file) === '图片') setSelected(`/api/terminal/fs/blob?${new URLSearchParams({ path: file.path })}`);
+  }, [canRead]);
   const close = useCallback(() => setSelected(null), []);
   const change = (next: number) => setSelected(images[next]?.src ?? null);
   useEffect(() => {

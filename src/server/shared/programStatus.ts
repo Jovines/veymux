@@ -7,6 +7,8 @@ export interface TerminalProgressReport {
   app?: string;
   message?: string;
   kind?: 'permission' | 'question' | 'auth';
+  /** Local attention acknowledgement, not an Agent/user read receipt. */
+  reviewed?: boolean;
 }
 type ProgramState = 'idle' | 'working' | 'blocked' | 'done' | 'error' | 'clear';
 interface ProgramRecord {
@@ -17,6 +19,7 @@ interface ProgramRecord {
   title?: string;
   progress?: number;
   kind?: TerminalProgressReport['kind'];
+  reviewed?: boolean;
 }
 export const PROGRAM_STATUS_REPLY = '\x1b]7501;?:states=idle,working,done,blocked,error:kinds=permission,question,auth\x1b\\';
 const STATES = new Set(['idle', 'working', 'blocked', 'done', 'error', 'clear']);
@@ -76,7 +79,7 @@ export class ProgramStatusTracker {
   private legacy: TerminalProgressReport | null = null;
   private current: TerminalProgressReport | null = null;
 
-  feed(data: string): { changed: boolean; query: boolean; progress: TerminalProgressReport | null; endedApps: string[] } {
+  feed(data: string, namespace?: string): { changed: boolean; query: boolean; progress: TerminalProgressReport | null; endedApps: string[] } {
     const previouslyActive = this.activeApps();
     const explicitEnd = new Set<string>();
     const buffer = this.remaining + data;
@@ -90,17 +93,21 @@ export class ProgramStatusTracker {
       if (match[1] === '7501') {
         if (match[2] === '?') { query = true; continue; }
         const record = parseProgramStatus(match[2]); if (!record) continue;
+        if (namespace) record.id = record.id ? `${namespace}/${record.id}` : namespace;
         this.native = true;
         if (record.app && ['idle', 'done', 'error', 'clear'].includes(record.state)) explicitEnd.add(record.app);
         if (record.state === 'clear') {
           for (const id of this.records.keys()) if (!record.id || id === record.id || id.startsWith(`${record.id}/`)) this.records.delete(id);
         } else {
+          const previous = this.records.get(record.id);
+          if (record.state === 'done' && previous?.state === 'done' && previous.reviewed
+            && previous.app === record.app && previous.msg === record.msg && previous.title === record.title) record.reviewed = true;
           this.records.delete(record.id); this.records.set(record.id, record);
           if (this.records.size > 256) this.records.delete(this.records.keys().next().value!);
         }
       } else if (match[1] === '133' && /^(?:A|P)(?:;|$)/.test(match[2])) {
         this.legacy = null;
-        this.dropActive();
+        this.dropActive(namespace);
       } else if (match[1] === '9' && !this.native) {
         const progress = parseLegacyProgress(match[2]);
         if (progress) this.legacy = progress.state === 'remove' ? null : progress;
@@ -130,8 +137,14 @@ export class ProgramStatusTracker {
     this.dropActive(); this.legacy = null; return this.update();
   }
 
-  private dropActive(): void {
-    for (const [id, record] of this.records) if (['working', 'blocked', 'idle'].includes(record.state)) this.records.delete(id);
+  acknowledgeCompletion(): { changed: boolean; progress: TerminalProgressReport | null } {
+    for (const record of this.records.values()) if (record.state === 'done') record.reviewed = true;
+    return this.update();
+  }
+
+  private dropActive(namespace?: string): void {
+    for (const [id, record] of this.records) if (['working', 'blocked', 'idle'].includes(record.state)
+      && (!namespace || id === namespace || id.startsWith(`${namespace}/`))) this.records.delete(id);
   }
 
   private update(): { changed: boolean; progress: TerminalProgressReport | null } {
@@ -141,7 +154,8 @@ export class ProgramStatusTracker {
     if (selected) {
       const app = this.appFor(selected);
       progress = { source: 'osc7501', state: selected.state === 'working' ? selected.progress === undefined ? 'indeterminate' : 'set' : selected.state as 'blocked' | 'done' | 'error',
-        progress: selected.progress ?? null, app, message: selected.msg ?? selected.title, kind: selected.kind };
+        progress: selected.progress ?? null, app, message: selected.msg ?? selected.title, kind: selected.kind,
+        ...(selected.reviewed ? { reviewed: true } : {}) };
     }
     const changed = JSON.stringify(progress) !== JSON.stringify(this.current);
     this.current = progress; return { changed, progress };

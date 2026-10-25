@@ -1,6 +1,6 @@
 import { useId, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, FolderOpen, Play, X } from 'lucide-react';
+import { Bot, CalendarClock, Check, ChevronDown, Clock, FolderOpen, ListTodo, Monitor, MousePointer2, Play, Send, X } from 'lucide-react';
 import { useKeyboardLayer } from '../../hooks/useKeyboardLayer';
 import type { AgentLauncherInfo } from '../../terminal/api';
 import type { TodoCollector, TodoItem, TodoLaunchConfig } from '../../todos/api';
@@ -9,6 +9,8 @@ import { useTodoDraft } from '../../todos/workspace';
 import { directoryName } from '../../todos/preferences';
 import { DirectoryPickerDialog } from '../sidebar/DirectoryPickerDialog';
 import { AgentCommandPicker } from '../AgentCommandPicker';
+import { AgentChoices } from '../settings/AgentChoices';
+import { ConfigurationChoices } from '../settings/ConfigurationChoices';
 import { getAgentLaunchCommand } from '../../terminal/launchCommands';
 
 export const todoButton = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-3 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40';
@@ -23,7 +25,7 @@ export function TodoDialog({ title, busy, error, onClose, children, compact = fa
   return createPortal(<>
     <button className="fixed inset-0 z-drawer-backdrop bg-[var(--app-backdrop)] backdrop-blur-sm" aria-label="关闭待办面板" disabled={busy} onClick={onClose} />
     <section ref={ref} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-busy={busy} tabIndex={-1}
-      className={compact ? 'fixed bottom-[max(0.75rem,env(safe-area-inset-bottom,0px))] left-3 right-3 z-drawer-panel flex max-h-[calc(100svh-2rem)] min-w-0 flex-col overflow-hidden rounded-2xl border border-border/30 bg-surface text-foreground shadow-xl sm:bottom-auto sm:left-1/2 sm:right-auto sm:top-1/2 sm:w-[28rem] sm:max-w-[90vw] sm:-translate-x-1/2 sm:-translate-y-1/2' : 'fixed inset-y-0 right-0 z-drawer-panel flex w-full min-w-0 flex-col border-l border-border/30 bg-surface pt-[env(safe-area-inset-top,0px)] text-foreground shadow-xl sm:w-[32rem] sm:max-w-[90vw]'}>
+      className={compact ? 'fixed bottom-[max(0.75rem,env(safe-area-inset-bottom,0px))] left-3 right-3 z-drawer-panel flex max-h-[calc(100svh-2rem)] min-w-0 flex-col overflow-hidden rounded-2xl border border-border/30 bg-surface font-sans text-foreground shadow-xl sm:bottom-auto sm:left-1/2 sm:right-auto sm:top-1/2 sm:w-[28rem] sm:max-w-[90vw] sm:-translate-x-1/2 sm:-translate-y-1/2' : 'fixed inset-y-0 right-0 z-drawer-panel flex w-full min-w-0 flex-col border-l border-border/30 bg-surface pt-[env(safe-area-inset-top,0px)] font-sans text-foreground shadow-xl sm:w-[32rem] sm:max-w-[90vw]'}>
       <header className="flex min-h-16 shrink-0 items-center gap-3 border-b border-border/20 px-5"><h2 id={titleId} className="flex-1 text-base font-semibold">{title}</h2><button type="button" className={todoGhost} aria-label="关闭" disabled={busy} onClick={onClose}><X size={18} /></button></header>
       {error && <p role="alert" className="shrink-0 border-b border-[color-mix(in_srgb,var(--destructive)_20%,transparent)] bg-[color-mix(in_srgb,var(--destructive)_10%,transparent)] px-5 py-3 text-sm leading-6 text-destructive">{error}</p>}
       <div className="flex min-h-0 flex-1 flex-col">{children}</div>
@@ -38,9 +40,8 @@ export function TodoEditor({ workspace, todo, busy, onSave, onCancel }: { worksp
   return <form className="flex min-h-0 flex-1 flex-col" onSubmit={e => { e.preventDefault(); submit(!todo); }}>
     <FormBody><label className={label}>要做什么<input autoFocus required maxLength={200} className={input} value={draft.title} onChange={e => setDraft({ ...draft, title: e.target.value })} placeholder="一句话描述这件事" /></label>
       <label className={label}>背景和处理要求<textarea className={`${input} min-h-44 resize-y`} maxLength={40000} value={draft.description} onChange={e => setDraft({ ...draft, description: e.target.value })} placeholder="为什么要做、参考资料、希望得到什么结果…" /></label>
-      {!todo && <p className="text-xs leading-6 text-muted-foreground">可以先存进清单，也可以选一个会话交出去。</p>}
     </FormBody>
-<FormFooter><button type="button" className={todoGhost} disabled={busy} onClick={onCancel}>取消</button>{!todo && <button type="button" className={todoSecondary} disabled={busy || !draft.title.trim()} onClick={() => submit(false)}>仅保存</button>}<button className={todoPrimary} disabled={busy || !draft.title.trim()}>{busy ? '正在保存…' : todo ? '保存修改' : '保存并交给会话'}</button></FormFooter>
+<FormFooter><button type="button" className={todoGhost} disabled={busy} onClick={onCancel}>取消</button>{!todo && <button type="button" className={todoSecondary} disabled={busy || !draft.title.trim()} onClick={() => submit(false)}><ListTodo size={16} />存入清单</button>}<button className={todoPrimary} disabled={busy || !draft.title.trim()}>{!todo && <Send size={16} />}{busy ? '正在保存…' : todo ? '保存修改' : '保存并交给会话'}</button></FormFooter>
   </form>;
 }
 export function resolveTodoConfig(config: TodoLaunchConfig, agents: AgentLauncherInfo[], preferred?: string | null, cwd?: string): TodoLaunchConfig {
@@ -48,11 +49,11 @@ export function resolveTodoConfig(config: TodoLaunchConfig, agents: AgentLaunche
   return { ...config, agentSlug: config.agentSlug || agent?.slug || '', command: config.command || (agent ? getAgentLaunchCommand(agent.slug, agent.command) : ''), cwd: config.cwd || cwd || '' };
 }
 function ConfigFields({ config, agents, loading, service, directories, currentCwd, onChange, collect = false }: { config: TodoLaunchConfig; agents: AgentLauncherInfo[]; loading: boolean; service: string; directories: string[]; currentCwd: string; onChange: (value: TodoLaunchConfig) => void; collect?: boolean }) {
-  const [picker, setPicker] = useState(false), agentId = useId(), cwdId = useId();
+  const [picker, setPicker] = useState(false), cwdId = useId();
   return <>
-    <p className="text-xs text-muted-foreground">运行于 {service}</p>
-    <div className={label}><label htmlFor={agentId}>Agent</label><select id={agentId} className={input} required disabled={loading} value={config.agentSlug} onChange={e => { const agent = agents.find(a => a.slug === e.target.value); onChange({ ...config, agentSlug: e.target.value, command: agent ? getAgentLaunchCommand(agent.slug, agent.command) : '' }); }}><option value="" disabled={agents.length > 0}>{loading ? '正在加载 Agent…' : '选择 Agent'}</option>{agents.map(a => <option key={a.slug} value={a.slug}>{a.displayName}</option>)}{config.agentSlug && !agents.some(a => a.slug === config.agentSlug) && <option value={config.agentSlug}>{config.agentSlug}（当前不可用）</option>}</select></div>
-    {agents.find(a => a.slug === config.agentSlug) && <AgentCommandPicker key={config.agentSlug} agent={agents.find(a => a.slug === config.agentSlug)!} value={config.command} onChange={command => onChange({ ...config, command })} />}
+    <div className="flex items-center gap-2 text-xs text-muted-foreground"><Monitor size={14} />{service}</div>
+    <AgentChoices agents={agents} value={config.agentSlug} loading={loading} onChange={slug => { const agent = agents.find(a => a.slug === slug); onChange({ ...config, agentSlug: slug, command: agent ? getAgentLaunchCommand(agent.slug, agent.command) : '' }); }} />
+    {agents.find(a => a.slug === config.agentSlug) && <details className="rounded-lg border border-border/20 px-3"><summary className="flex min-h-11 cursor-pointer items-center gap-2 py-3 text-xs text-muted-foreground [&::-webkit-details-marker]:hidden"><span className="shrink-0">启动命令</span><code className="min-w-0 flex-1 truncate text-foreground" title={config.command}>{config.command}</code><ChevronDown size={14} className="shrink-0" /></summary><div className="pb-3"><AgentCommandPicker key={config.agentSlug} agent={agents.find(a => a.slug === config.agentSlug)!} value={config.command} onChange={command => onChange({ ...config, command })} /></div></details>}
     {!loading && agents.length === 0 && <p className="text-sm text-destructive">未找到可启动的 Agent，请检查该服务的 Agent 配置。</p>}
     <div className={label}><label htmlFor={cwdId}>工作目录</label><div className="flex gap-2"><input id={cwdId} className={input} value={config.cwd} autoCapitalize="none" autoCorrect="off" spellCheck={false} onChange={e => onChange({ ...config, cwd: e.target.value })} placeholder="选择这件事所在的项目或目录" /><button type="button" className={todoSecondary} aria-label="选择工作目录" onClick={() => setPicker(true)}><FolderOpen size={17} /></button></div>
       {!!directories.length && <div className="flex gap-1.5 overflow-x-auto pb-1" aria-label="快捷选择工作目录">{directories.map(directory => {
@@ -97,7 +98,11 @@ export function CollectorEditor({ workspace, collector, config, agents, loading,
       <CollectorWebhookFields collectorId={collector?.id} webhook={draft.webhook ?? { enabled: false, secret: '' }} onChange={webhook => setDraft({ ...draft, webhook })} />
       <CollectorSessionFields session={draft.session ?? { mode: 'new', targetSessionId: null, beforePrompt: '', idleMinutes: 10 }} sessions={sessions} onChange={session => setDraft({ ...draft, session })} />
       <details className="rounded-lg border border-border/20 px-3 text-sm text-muted-foreground"><summary className="cursor-pointer py-3">定时与启用 · {draft.schedule === 'manual' ? '手动运行' : draft.schedule === 'interval' ? `每 ${draft.minutes} 分钟` : `每天 ${draft.daily}`}</summary><div className="space-y-4 pb-3">
-        <label className={label}>运行频率<select className={input} value={draft.schedule} onChange={e => setDraft({ ...draft, schedule: e.target.value as typeof draft.schedule })}><option value="manual">手动运行</option><option value="interval">按间隔运行</option><option value="daily">每天定时</option></select></label>
+        <ConfigurationChoices label="运行频率" value={draft.schedule} onChange={schedule => setDraft({ ...draft, schedule })} options={[
+          { value: 'manual', label: '手动', icon: <MousePointer2 size={18} /> },
+          { value: 'interval', label: '按间隔', icon: <Clock size={18} /> },
+          { value: 'daily', label: '每天', icon: <CalendarClock size={18} /> },
+        ]} />
         {draft.schedule === 'interval' && <label className={label}>间隔（分钟）<input className={input} required type="number" min={1} max={43200} step={1} value={draft.minutes} onChange={e => setDraft({ ...draft, minutes: Number(e.target.value) })} /></label>}
         {draft.schedule === 'daily' && <label className={label}>时间（服务所在时区）<input className={input} required type="time" value={draft.daily} onChange={e => setDraft({ ...draft, daily: e.target.value })} /></label>}
         <label className="flex items-center gap-3 text-sm"><input type="checkbox" checked={draft.enabled} onChange={e => setDraft({ ...draft, enabled: e.target.checked })} />启用此方向，参与全部收集和定时运行</label>
@@ -108,9 +113,13 @@ export function CollectorEditor({ workspace, collector, config, agents, loading,
 }
 function CollectorProcessingFields({ processing, config, agents, sessions, onChange }: { processing: NonNullable<TodoCollector['processing']>; config: TodoLaunchConfig; agents: AgentLauncherInfo[]; sessions: ReturnType<typeof useSessionDirectory>; onChange: (value: NonNullable<TodoCollector['processing']>) => void }) {
   const launch = processing.config ?? { ...config, prompt: '' }, agent = agents.find(a => a.slug === launch.agentSlug);
-  return <details className="rounded-lg border border-border/20 px-3 text-sm text-muted-foreground"><summary className="cursor-pointer py-3">收集后 · {processing.mode === 'manual' ? '仅入清单，手动交接或按来源领取' : processing.mode === 'new' ? '自动新建 Agent 处理' : '自动发送到现有 Agent'}</summary><div className="space-y-4 pb-3">
-    <label className={label}>待办处理方式<select className={input} value={processing.mode} onChange={e => onChange({ ...processing, mode: e.target.value as typeof processing.mode, sessionId: null })}><option value="manual">仅入清单</option><option value="new">自动新建 Agent 处理</option><option value="existing">自动发送到现有 Agent</option></select></label>
-    {processing.mode === 'manual' ? <p className="text-xs leading-6">可以手动交给会话，也可以让现有 Agent 通过 CLI 按来源领取。</p> : <>
+  return <section className="space-y-4 border-t border-border/20 pt-4">
+    <ConfigurationChoices label="收集后" value={processing.mode} onChange={mode => onChange({ ...processing, mode, sessionId: null })} options={[
+      { value: 'manual', label: '存入清单', icon: <ListTodo size={18} /> },
+      { value: 'new', label: '自动新建 Agent', icon: <Bot size={18} /> },
+      { value: 'existing', label: '自动交给会话', icon: <Send size={18} /> },
+    ]} />
+    {processing.mode !== 'manual' && <>
       {processing.mode === 'existing' ? <label className={label}>自动处理会话<select required className={input} value={processing.sessionId ?? ''} onChange={e => onChange({ ...processing, sessionId: e.target.value || null })}><option value="">选择接收待办的 Agent</option>{sessions.filter(s => s.agent).map(s => <option key={s.sessionId} value={s.sessionId}>{s.displayName}{s.displaySubtitle ? ` · ${s.displaySubtitle}` : ''}</option>)}{processing.sessionId && !sessions.some(s => s.sessionId === processing.sessionId) && <option value={processing.sessionId}>原会话已关闭，请重新选择</option>}</select></label> : <>
         <label className={label}>处理 Agent<select required className={input} value={launch.agentSlug} onChange={e => { const a = agents.find(a => a.slug === e.target.value); onChange({ ...processing, config: { ...launch, agentSlug: e.target.value, command: a ? getAgentLaunchCommand(a.slug, a.command) : '' } }); }}>{agents.map(a => <option key={a.slug} value={a.slug}>{a.displayName}</option>)}</select></label>
         {agent && <AgentCommandPicker key={agent.slug} agent={agent} value={launch.command} onChange={command => onChange({ ...processing, config: { ...launch, command } })} />}
@@ -119,7 +128,7 @@ function CollectorProcessingFields({ processing, config, agents, sessions, onCha
       <label className={label}>自动处理要求（可选）<textarea className={`${input} min-h-24`} maxLength={4000} value={processing.note} onChange={e => onChange({ ...processing, note: e.target.value })} placeholder="例如：先调查并给出方案，暂不修改文件" /></label>
       <p className="text-xs leading-6">保存后，此来源新注入的待办会直接交给 Agent{processing.mode === 'new' ? '，每条待办创建一个会话' : ''}；已有待办保持原状。</p>
     </>}
-  </div></details>;
+  </section>;
 }
 function CollectorWebhookFields({ collectorId, webhook, onChange }: { collectorId?: string; webhook: NonNullable<TodoCollector['webhook']>; onChange: (value: NonNullable<TodoCollector['webhook']>) => void }) {
   const [copied, setCopied] = useState(false);

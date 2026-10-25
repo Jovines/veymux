@@ -4,7 +4,7 @@ import { LoadingSpinner as RiLoaderCircle } from './ui/Loading';
  * Agent / 会话状态相关的展示原语，统一收敛在这里。
  *
  * 设计约定（hook 驱动的四态状态机）：
- *   - working → 绿色 spinner（回合进行中）
+ *   - working → 保留品牌头像 + 绿色呼吸灯（回合进行中）
  *   - waiting → 黄色问号跳动（等你授权/回答——最需要关注的时刻）
  *   - done    → 绿色对勾（回合完成，结果待读）
  *   - idle    → agent 品牌头像（无状态点），无身份时回落 shell/tmux 图标
@@ -30,7 +30,7 @@ import { useTerminalStore } from '../stores/useTerminalStore';
 import { useSidebarStore } from '../stores/useSidebarStore';
 import { useViewportKeyboardState } from '../hooks/useViewportKeyboardState';
 import { useAgentIconSource } from '../hooks/useAgentIconSource';
-import { getNextAttentionSessionId, shouldShowTuiLoading } from '../utils/agentAttention';
+import { getNextAttentionSessionId, shouldShowTuiLoading, sessionNeedsReview } from '../utils/agentAttention';
 import {
   MOBILE_ATTENTION_EDGE_GAP_PX,
   MOBILE_ATTENTION_SIZE_PX,
@@ -119,6 +119,7 @@ function getMobileAttentionViewport(
   isDesktopLayout: boolean,
   containerElement: HTMLElement | null,
   occlusionInsets: FloatingSessionOcclusionInsets = {},
+  bottomClearance?: number,
 ): MobileAttentionViewport {
   if (typeof window === 'undefined') return { width: 390, height: 664 };
   const visualViewport = window.visualViewport;
@@ -145,7 +146,7 @@ function getMobileAttentionViewport(
       readSafeInset('--safe-left-inset'),
       (hasContainerBounds ? Math.max(0, bounds!.left) : 0) + Math.max(0, occlusionInsets.left ?? 0),
     ),
-    bottomClearance: isDesktopLayout ? MOBILE_ATTENTION_EDGE_GAP_PX : 72,
+    bottomClearance: bottomClearance ?? (isDesktopLayout ? MOBILE_ATTENTION_EDGE_GAP_PX : 72),
   };
 }
 
@@ -170,6 +171,7 @@ function jumpToSession(sessionId: string): void {
 
 /** 给 tab 图标 / dot 共享的轻量 session 状态 */
 export interface AgentVisualState {
+  chatAttention?: import('../../server/shared/sessionChatAttention').SessionChatAttention;
   tuiProgress?: TuiProgressReport | null;
   inCopyMode?: boolean;
   agentStatus: AgentStatus | null;
@@ -271,7 +273,7 @@ export function AgentBrandAvatar({
 }
 
 /**
- * 顶部 tab 上的图标。working/waiting/done 渲染状态图标；
+ * 顶部 tab 上的图标。working 保留品牌头像和呼吸灯，waiting/done 渲染状态图标；
  * idle（或无状态但有身份）渲染品牌头像；都没有回落 shell/tmux 默认图标。
  */
 export function AgentTabIcon({
@@ -283,16 +285,30 @@ export function AgentTabIcon({
   state?: AgentVisualState;
   size?: number;
 }): React.ReactElement {
+  const { t } = useI18n();
+  const needsReview = sessionNeedsReview(state);
+  const messageAttention = !!state?.chatAttention?.unreadIds.length || state?.chatAttention?.mode && !!state.chatAttention.index;
+  const reviewTitle = messageAttention ? t('agent.chatUnread', { count: state!.chatAttention!.unreadIds.length }) : state?.agentMessage ?? undefined;
   const baseIcon = state?.agent
     ? <AgentBrandAvatar agent={state.agent} size={size + 1} />
     : sessionMode === 'tmux'
       ? <RiLayoutGridLine size={size} className="shrink-0" />
       : <RiTerminalLine size={size} className="shrink-0" />;
 
+  const runningIcon = (title?: string) => (
+    <span className="relative inline-flex shrink-0 items-center justify-center" title={title}>
+      {baseIcon}
+      <span aria-hidden="true" className="absolute -right-0.5 -top-0.5 h-1 w-1 rounded-full bg-[var(--success)] motion-safe:animate-pulse" />
+    </span>
+  );
+  if (state?.agentStatus === 'working') {
+    return runningIcon(state.agentMessage ?? state.agent?.displayName ?? t('agent.aiRunning'));
+  }
+
   // A completed turn's unread bell is a product-level attention signal and
   // intentionally wins over plugin presentation. Other custom states render
   // entirely from the manifest-provided metadata.
-  if (state?.agentStatusDetail && state.agentIndicator && !(state.agentStatus === 'done' && state.agentNeedsReview)) {
+  if (state?.agentStatusDetail && state.agentIndicator && !(state.agentStatus === 'done' && (needsReview || messageAttention))) {
     return (
       <span title={state.agentMessage ?? state.agentStatusDetail.label} aria-label={state.agentStatusDetail.label}>
         <DynamicStatusIcon indicator={state.agentIndicator} tone={state.agentStatusDetail.tone} size={size} />
@@ -300,13 +316,6 @@ export function AgentTabIcon({
     );
   }
 
-  if (state?.agentStatus === 'working') {
-    return (
-      <span title={state.agentMessage ?? state.agent?.displayName}>
-        <RiLoaderCircle size={size} className="shrink-0 animate-spin" style={{ color: AGENT_COLOR_RUNNING }} />
-      </span>
-    );
-  }
   if (state?.agentStatus === 'waiting') {
     return (
       <span title={state.agentMessage ?? undefined}>
@@ -316,33 +325,31 @@ export function AgentTabIcon({
   }
   // done + needsReview 与其他未读统一成黄色铃铛。完成态的绿色勾容易被
   // 理解成“已经处理”，而这里真正要表达的是“还有一条结果没看”。
-  if (state?.agentStatus === 'done' && state.agentNeedsReview) {
+  if (state?.agentStatus === 'done' && needsReview) {
     return (
-      <span title={state.agentMessage ?? undefined}>
+      <span title={reviewTitle} aria-label={reviewTitle}>
         <RiBellDot size={size + 1} className="shrink-0 animate-pulse" style={{ color: AGENT_COLOR_ATTENTION }} />
       </span>
     );
   }
 
   // 没有活跃状态但有未读，继续使用同一个铃铛语义，便于横扫多个 tab。
-  if (state?.agentNeedsReview) {
+  if (needsReview) {
     return (
-      <span title={state.agentMessage ?? undefined}>
+      <span title={reviewTitle} aria-label={reviewTitle}>
         <RiBellDot size={size + 1} className="shrink-0 animate-pulse" style={{ color: AGENT_COLOR_ATTENTION }} />
       </span>
     );
   }
 
   if (shouldShowTuiLoading(state)) {
-    return <span title={state?.tuiProgress?.message ?? state?.tuiProgress?.app}>
-      <RiLoaderCircle size={size} className="shrink-0 animate-spin" style={{ color: AGENT_COLOR_RUNNING }} />
-    </span>;
+    return runningIcon(state?.tuiProgress?.message ?? state?.tuiProgress?.app);
   }
   if (state?.tuiProgress?.source === 'osc7501') {
     const progress = state.tuiProgress;
     const title = progress.message ?? progress.app;
     if (progress.state === 'blocked') return <span title={title}><RiCircleHelp size={size} style={{ color: AGENT_COLOR_ATTENTION }} /></span>;
-    if (progress.state === 'done') return <span title={title}><RiBellDot size={size} style={{ color: AGENT_COLOR_ATTENTION }} /></span>;
+    if (progress.state === 'done' && !progress.reviewed && !messageAttention) return <span title={title}><RiBellDot size={size} style={{ color: AGENT_COLOR_ATTENTION }} /></span>;
     if (progress.state === 'error') return <span title={title}><CircleAlert size={size} style={{ color: 'var(--destructive)' }} /></span>;
   }
 
@@ -366,14 +373,21 @@ export function AgentSessionDot({
   needsReview,
   inCopyMode,
   progress,
+  outputActive,
+  chatAttention,
 }: {
   status: AgentStatus | null;
   detail?: AgentStatusDetail | null;
   needsReview?: boolean;
   inCopyMode?: boolean;
   progress?: TuiProgressReport | null;
+  outputActive?: boolean;
+  chatAttention?: import('../../server/shared/sessionChatAttention').SessionChatAttention;
 }): React.ReactElement | null {
   const { t } = useI18n();
+  needsReview = sessionNeedsReview({ agentNeedsReview: needsReview, chatAttention });
+  const messageAttention = !!chatAttention?.unreadIds.length || chatAttention?.mode && !!chatAttention.index;
+  if (messageAttention && needsReview) return <span className="absolute right-0.5 top-0.5 h-2.5 w-2.5 rounded-full bg-[var(--warning)] ring-2 ring-surface animate-pulse" title={t('agent.chatUnread', { count: chatAttention!.unreadIds.length })} />;
   if (detail && !needsReview) {
     return (
       <span
@@ -399,7 +413,7 @@ export function AgentSessionDot({
       />
     );
   }
-  if (progress?.source === 'osc7501' && ['blocked', 'done', 'error'].includes(progress.state)) {
+  if (progress?.source === 'osc7501' && ['blocked', 'done', 'error'].includes(progress.state) && !(progress.state === 'done' && (progress.reviewed || messageAttention))) {
     return <span className="absolute right-0.5 top-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-surface"
       style={{ backgroundColor: progress.state === 'error' ? 'var(--destructive)' : 'var(--warning)' }}
       title={progress.message ?? progress.app} />;
@@ -412,6 +426,10 @@ export function AgentSessionDot({
       />
     );
   }
+  const nativeLoading = shouldShowTuiLoading({ agentStatus: status, agentNeedsReview: needsReview, tuiProgress: progress });
+  // Raw output is a chat activity fallback. A terminal printing logs does
+  // not establish Agent work; terminal mode keeps explicit status signals.
+  if ((chatAttention?.mode && outputActive) || nativeLoading) return <span data-terminal-output-activity className="absolute right-0.5 top-0.5 h-2.5 w-2.5 rounded-full bg-[var(--success)] ring-2 ring-surface motion-safe:animate-pulse" title={nativeLoading ? progress?.message ?? t('agent.aiRunning') : t('agent.recentActivity')} />;
   return null;
 }
 
@@ -620,8 +638,9 @@ export function AgentFloatingSessionButtons({
   const sidebarLeftOpen = useSidebarStore((state) => state.leftOpen);
   const sidebarRightOpen = useSidebarStore((state) => state.rightOpen);
   const { isOpen: keyboardOpen } = useViewportKeyboardState({ enabled: !isDesktopLayout });
+  const chatMode = useTerminalStore(state => !!activeSessionId && !!state.sessions.get(activeSessionId)?.chatAttention?.mode);
   const floatingChromeVisible = isDesktopLayout
-    || (!sidebarLeftOpen && !sidebarRightOpen && !keyboardOpen);
+    || (!sidebarLeftOpen && !sidebarRightOpen && (!keyboardOpen || chatMode));
   const serviceAttention = useServiceAttention(reviewCount);
   const [attentionOpen, setAttentionOpen] = React.useState(false);
   React.useEffect(() => {
@@ -635,21 +654,24 @@ export function AgentFloatingSessionButtons({
   const runningVisible = runningButtonEnabled
     && runningSessions.length > 0
     && canJumpToRunningSession
-    && floatingChromeVisible;
+    && floatingChromeVisible && (isDesktopLayout || !keyboardOpen);
   const occlusionTop = Math.max(0, occlusionInsets?.top ?? 0);
   const occlusionRight = Math.max(0, occlusionInsets?.right ?? 0);
   const occlusionBottom = Math.max(0, occlusionInsets?.bottom ?? 0);
   const occlusionLeft = Math.max(0, occlusionInsets?.left ?? 0);
-  const getFloatingViewport = React.useCallback(() => getMobileAttentionViewport(
-    isDesktopLayout,
-    containerElement,
-    {
-      top: occlusionTop,
-      right: occlusionRight,
-      bottom: occlusionBottom,
-      left: occlusionLeft,
-    },
-  ), [containerElement, isDesktopLayout, occlusionBottom, occlusionLeft, occlusionRight, occlusionTop]);
+  // The chat's actual scroll box excludes its composer and follows the shared
+  // keyboard layout. Reuse that measured box rather than guessing an inset.
+  const getChatViewport = React.useCallback(() => !isDesktopLayout && chatMode && activeSessionId
+    ? containerElement?.querySelector<HTMLDivElement>(`[data-session-workspace="${CSS.escape(activeSessionId)}"] .session-chat-scroll`) ?? null
+    : null, [activeSessionId, chatMode, containerElement, isDesktopLayout]);
+  const getFloatingViewport = React.useCallback(() => {
+    const chatViewport = getChatViewport();
+    const dock = chatViewport?.closest('[data-session-chat]')?.querySelector('[data-chat-terminal-dock]')?.getBoundingClientRect();
+    const overlap = chatViewport && dock?.height ? Math.max(0, chatViewport.getBoundingClientRect().bottom - dock.top) : 0;
+    return getMobileAttentionViewport(isDesktopLayout, chatViewport ?? containerElement, {
+      top: occlusionTop, right: occlusionRight, bottom: occlusionBottom + overlap, left: occlusionLeft,
+    }, chatViewport ? MOBILE_ATTENTION_EDGE_GAP_PX : undefined);
+  }, [containerElement, getChatViewport, isDesktopLayout, occlusionBottom, occlusionLeft, occlusionRight, occlusionTop]);
   const preferencesRef = React.useRef<Record<FloatingSessionButtonKind, MobileAttentionPreference>>({
     attention: readFloatingButtonPreference(
       MOBILE_ATTENTION_POSITION_KEY,
@@ -733,13 +755,21 @@ export function AgentFloatingSessionButtons({
       ? null
       : new ResizeObserver(syncPositions);
     if (containerElement) resizeObserver?.observe(containerElement);
+    const chatViewport = getChatViewport();
+    if (chatViewport) { resizeObserver?.observe(chatViewport); const dock = chatViewport.closest('[data-session-chat]')?.querySelector('[data-chat-terminal-dock]'); if (dock) resizeObserver?.observe(dock); }
+    // A lazily mounted chat may not have its scroll box on the first commit.
+    const mutation: MutationObserver | null = !chatViewport && chatMode && containerElement ? new MutationObserver(() => {
+      const mounted = getChatViewport();
+      if (mounted) { resizeObserver?.observe(mounted); const dock = mounted.closest('[data-session-chat]')?.querySelector('[data-chat-terminal-dock]'); if (dock) resizeObserver?.observe(dock); syncPositions(); mutation?.disconnect(); }
+    }) : null;
+    if (mutation && containerElement) mutation.observe(containerElement, { childList: true, subtree: true });
     return () => {
       window.removeEventListener('resize', syncPositions);
       window.removeEventListener('orientationchange', syncPositions);
       window.visualViewport?.removeEventListener('resize', syncPositions);
-      resizeObserver?.disconnect();
+      resizeObserver?.disconnect(); mutation?.disconnect();
     };
-  }, [containerElement, resolvePositions]);
+  }, [chatMode, containerElement, getChatViewport, resolvePositions]);
 
   const isOtherButtonVisible = React.useCallback((kind: FloatingSessionButtonKind): boolean => (
     kind === 'attention' ? runningVisible : attentionVisible

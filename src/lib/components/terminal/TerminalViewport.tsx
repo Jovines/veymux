@@ -1,4 +1,6 @@
 import { focusKeyboardInput } from '../../hooks/nativeKeyboardLayout';
+import { isKeyboardLayerOpen } from '../../hooks/useKeyboardLayer';
+import { canRestoreFocus, isFocusTargetAvailable } from '../../utils/focusOwnership';
 import { clipboardEventContent, readClipboardContent } from '../../terminal/clipboardContent';
 import { TerminalFileDropStatus } from './TerminalFileDropStatus';
 import {writeTerminalClipboardText as writeClipboardText, copyTmuxTerminalSelection} from '../../terminal/clipboardText';
@@ -90,6 +92,7 @@ import {
 } from './joystickRepeat';
 import { createTerminalPathLinkProvider } from '../../terminal/pathLinks';
 import { createBrowserTerminal, TerminalGeometry, type TerminalGeometryPhase } from '../../terminal/geometry';
+import { isTerminalResponse } from '../../terminal/terminalResponse';
 import { clampSessionFontSize, getSessionFontSize, setSessionFontSize } from '../../terminal/sessionFontSize';
 import { createFontZoomGesture } from '../../terminal/fontZoomGesture';
 import { estimateTerminalCellHeight } from '../../terminal/initialDimensions';
@@ -296,6 +299,7 @@ export type TerminalController = {
 };
 
 export type TerminalViewportInputOptions = {
+  terminalResponse?: boolean;
   skipModifierTransform?: boolean;
   targeted?: boolean;
   consumeModifier?: boolean;
@@ -310,6 +314,8 @@ export interface TerminalViewportProps {
   /** Backend-session generation captured by async clipboard uploads. */
   getPasteOwnerKey?: () => string;
   isLayoutVisible?: boolean;
+  /** Foreground pane selection; every navigation route converges here. */
+  isActive?: boolean;
   chunks: TerminalChunk[];
   onInput: (data: string, options?: TerminalViewportInputOptions) => void | Promise<boolean>;
   onResize: (cols: number, rows: number, seq: number) => void;
@@ -658,6 +664,7 @@ const TerminalViewportInner = React.forwardRef<TerminalController, TerminalViewp
       backendSessionId,
       getPasteOwnerKey,
       isLayoutVisible = true,
+      isActive = true,
       chunks,
       onInput,
       onResize,
@@ -681,6 +688,7 @@ const TerminalViewportInner = React.forwardRef<TerminalController, TerminalViewp
       nativeInputHost = null,
       mobileLongPressMode = 'arrows',
       autoFocus = true,
+      inputActive = true,
       cursorVisible = true,
       suppressSmoothScroll = false,
     },
@@ -878,12 +886,16 @@ const TerminalViewportInner = React.forwardRef<TerminalController, TerminalViewp
     rendererModeRef.current = terminalSettings.rendererMode;
     const autoFocusRef = React.useRef(autoFocus);
     autoFocusRef.current = autoFocus;
+    const inputActiveRef = React.useRef(inputActive);
+    inputActiveRef.current = inputActive;
     const cursorVisibleRef = React.useRef(cursorVisible);
     cursorVisibleRef.current = cursorVisible;
     const enableTouchScrollRef = React.useRef(enableTouchScroll);
     enableTouchScrollRef.current = enableTouchScroll;
     const isLayoutVisibleRef = React.useRef(isLayoutVisible);
     isLayoutVisibleRef.current = isLayoutVisible;
+    const canFocusInput = React.useCallback(() => inputActiveRef.current && isLayoutVisibleRef.current
+      && !document.hidden && isWorkspaceActive() && !isKeyboardLayerOpen() && isFocusTargetAvailable(hiddenInputRef.current), []);
     const hasTmuxScroll = !!onTmuxScroll;
     const terminalConvertEol = getTerminalConvertEol(hasTmuxScroll);
     const {
@@ -1518,11 +1530,11 @@ const TerminalViewportInner = React.forwardRef<TerminalController, TerminalViewp
         .join(' ');
       sendTerminalSeq(`${escapedPaths} `);
       try {
-        focusKeyboardInput(hiddenInputRef.current);
+        if (canFocusInput()) focusKeyboardInput(hiddenInputRef.current);
       } catch {
         // The terminal still receives the paths if focus restoration is denied.
       }
-    }), [sendTerminalSeq, sessionKey]);
+    }), [canFocusInput, sendTerminalSeq, sessionKey]);
 
     const copyBackendRef=React.useRef(backendSessionId);copyBackendRef.current=backendSessionId;
     const pasteIdentityRef = React.useRef({ sessionKey, sessionId, getPasteOwnerKey });
@@ -1865,7 +1877,7 @@ const TerminalViewportInner = React.forwardRef<TerminalController, TerminalViewp
 
     const focusHiddenInput = React.useCallback((_clientX?: number, _clientY?: number) => {
       const input = hiddenInputRef.current;
-      if (!input) {
+      if (!input || !canFocusInput()) {
         return;
       }
 
@@ -1893,7 +1905,7 @@ const TerminalViewportInner = React.forwardRef<TerminalController, TerminalViewp
           input.focus();
         }
       } catch { /* ignored */ }
-    }, [isViewportKeyboardLikelyOpen, nowMs]);
+    }, [canFocusInput, isViewportKeyboardLikelyOpen, nowMs]);
 
     const markInputBlurGuard = React.useCallback((durationMs: number) => {
       keepInputFocusUntilRef.current = nowMs() + durationMs;
@@ -3030,6 +3042,7 @@ const TerminalViewportInner = React.forwardRef<TerminalController, TerminalViewp
         if (!report) return;
         if (report.changed) remainderPxRef.current = 0;
         debugTerminal('fit', report);
+        return report;
       } catch {
         resizePresentationRef.current?.cancel();
         // A failed measurement is retried on the next layout event.
@@ -3176,6 +3189,9 @@ const TerminalViewportInner = React.forwardRef<TerminalController, TerminalViewp
     // resize, future fits, reconnects and cursor recovery must stay passive
     // until the user interacts with this terminal again.
     const ownsResizeRef = React.useRef(true);
+    // An actual reveal/selection may reclaim geometry once it can be measured.
+    // Passive fits and reconnects never manufacture this intent.
+    const pendingGeometryActivationRef = React.useRef(false);
     const resizeAckTimerRef = React.useRef<number | null>(null);
     const pendingScreenSyncGenerationRef = React.useRef<number | null>(null);
     const lastAppliedScreenSyncGenerationRef = React.useRef(-1);
@@ -3249,7 +3265,7 @@ const TerminalViewportInner = React.forwardRef<TerminalController, TerminalViewp
 
     const pushResizeToServer = React.useCallback(
       (cols: number, rows: number) => {
-        if (!ownsResizeRef.current) return;
+        if (!ownsResizeRef.current || !isLayoutVisibleRef.current || !geometryRef.current?.dimensions) return;
         if (!sessionReadyRef.current) {
           // WS 还没收到 connected 事件：不能推 resize 给服务端。
           // 之前 (没有这个 gate) 会用旧的 terminalIdRef 直接 POST，
@@ -3337,7 +3353,7 @@ const TerminalViewportInner = React.forwardRef<TerminalController, TerminalViewp
     const ensureSizeMatches = React.useCallback(
       (reason: string) => {
         const terminal = terminalRef.current;
-        if (!terminal || !terminal.cols || !terminal.rows) return;
+        if (!terminal || !isLayoutVisibleRef.current || !geometryRef.current?.dimensions) return;
         if (!sessionReadyRef.current) return;
         // 仅在前台可见的客户端主动推：后台标签 / 锁屏的手机绝不能跟在线端
         // 互相拉扯。
@@ -3436,14 +3452,20 @@ const TerminalViewportInner = React.forwardRef<TerminalController, TerminalViewp
 
         // 2) fit() —— 这一步会触发 xterm 的 onResize
         const before = { cols: terminal.cols, rows: terminal.rows };
-        fitTerminal(`refresh:${reason}`, options.geometryPhase);
+        const measured = fitTerminal(`refresh:${reason}`, options.geometryPhase);
+        if (!measured) return;
+        const activating = pendingGeometryActivationRef.current && !document.hidden && isWorkspaceActive();
+        if (activating) {
+          pendingGeometryActivationRef.current = false;
+          ownsResizeRef.current = true;
+        }
         const after = { cols: terminal.cols, rows: terminal.rows };
         // A retained renderer can have lost its backing surface while hidden,
         // even when the grid is unchanged. Paint only after fitting real DOM.
         if (redrawAfterFit) refreshTextureAtlasNow(`refresh:${reason}`);
 
         // 3) Resize push
-        if (!options.skipResizePush) {
+        if ((activating || !options.skipResizePush) && geometryRef.current?.dimensions) {
           // The attached PTY must use this xterm's actual grid. A tmux pane
           // layout is a server observation, possibly older than a keyboard
           // resize; feeding it back can leave the PTY at 40 rows and xterm at 16.
@@ -3451,7 +3473,7 @@ const TerminalViewportInner = React.forwardRef<TerminalController, TerminalViewp
             before,
             after,
             lastServerSize: resizeSyncStateRef.current.confirmed,
-            reconcileServerSize: options.reconcileServerSize,
+            reconcileServerSize: activating || options.reconcileServerSize,
           })) {
             scheduleResizePush(after.cols, after.rows);
           }
@@ -3545,24 +3567,29 @@ const TerminalViewportInner = React.forwardRef<TerminalController, TerminalViewp
     );
 
     const wasLayoutVisibleRef = React.useRef(isLayoutVisible);
+    const wasGeometryActiveRef = React.useRef(isActive);
     React.useLayoutEffect(() => {
       const revealed = isLayoutVisible && !wasLayoutVisibleRef.current;
+      const activated = isActive && !wasGeometryActiveRef.current;
       wasLayoutVisibleRef.current = isLayoutVisible;
+      wasGeometryActiveRef.current = isActive;
       if (!isLayoutVisible) {
+        pendingGeometryActivationRef.current = false;
         clearResizePushTimer();
         resizePresentationRef.current?.cancel();
-      } else if (revealed) {
+      } else if (revealed || activated) {
+        pendingGeometryActivationRef.current = true;
         // A retained viewport can still have its hidden-time estimated grid.
         // Measure synchronously before its first visible paint, not in the
         // refresh scheduler's next frame.
         runRefreshSequence('layout-visible', {
           geometryPhase: 'reveal',
-          forceRedraw: true,
+          forceRedraw: revealed,
           reconcileServerSize: true,
           skipScrollToBottom: true,
         });
       }
-    }, [isLayoutVisible, runRefreshSequence, clearResizePushTimer]);
+    }, [isActive, isLayoutVisible, runRefreshSequence, clearResizePushTimer]);
 
     const flushPendingRefresh = React.useCallback(
       (reason: RefreshReason) => {
@@ -3999,22 +4026,35 @@ const TerminalViewportInner = React.forwardRef<TerminalController, TerminalViewp
           }
 
           requestRefresh('mount', { skipResizePush: true, skipScrollToBottom: true });
-          if (autoFocusRef.current) {
-            // 桌面：焦点必须落在覆盖层 textarea，绝不能给 xterm 自身 textarea。
-            // 一旦 xterm.textarea 拿到焦点，IME（尤其搜狗英文联想）会把候选词
-            // 直接 set 进 xterm.textarea.value，xterm 通过 input 事件读取再
-            // 调 onData 发给 PTY，完全绕开我们的 diff-sync 路径。
-            if (!enableTouchScroll) {
-              focusKeyboardInput(hiddenInputRef.current);
-            } else {
-              terminal.focus();
-            }
-          }
+          // The session-reset effect owns initial focus after the input has
+          // mounted. Do not also focus from this asynchronous renderer setup.
 
           // 初始化锚点位置（即便 0,0 也得是当前 cell 真实尺寸）
           if (!enableTouchScroll) {
             updateImeAnchorRef.current();
           }
+
+          // Cursor parsing and painting can both fire for one output batch.
+          // Keep DOM layout reads off those synchronous paths, and never
+          // position a candidate window for an unfocused/background input.
+          // Focus and compositionstart still measure synchronously below.
+          let imeAnchorFrame: number | null = null;
+          const needsImeAnchor = () => !enableTouchScroll
+            && !document.hidden
+            && isLayoutVisibleRef.current
+            && inputActiveRef.current
+            && document.activeElement === hiddenInputRef.current
+            && !imeFrozenAnchorRef.current;
+          const scheduleImeAnchor = () => {
+            if (imeAnchorFrame !== null || !needsImeAnchor()) return;
+            imeAnchorFrame = requestAnimationFrame(() => {
+              imeAnchorFrame = null;
+              if (needsImeAnchor()) updateImeAnchorRef.current();
+            });
+          };
+          localDisposables.push({ dispose: () => {
+            if (imeAnchorFrame !== null) cancelAnimationFrame(imeAnchorFrame);
+          } });
 
           // 桌面端：让覆盖层 textarea 始终拥有焦点，xterm 自身的 textarea 不再
           // 接收键盘输入。这样三方中文输入法（搜狗/微信）的 composition 不会
@@ -4028,9 +4068,7 @@ const TerminalViewportInner = React.forwardRef<TerminalController, TerminalViewp
             });
             // xterm has already repainted a buffer switch before onRender.
             // Requesting a full refresh here paints the same screen twice.
-            if (!enableTouchScroll) {
-              updateImeAnchorRef.current();
-            }
+            scheduleImeAnchor();
           }));
 
           if (!enableTouchScroll) {
@@ -4054,8 +4092,8 @@ const TerminalViewportInner = React.forwardRef<TerminalController, TerminalViewp
 
             // IME 候选窗锚点跟随光标
             try {
-              localDisposables.push(terminal.onCursorMove(() => updateImeAnchorRef.current()));
-              localDisposables.push(terminal.onResize(() => updateImeAnchorRef.current()));
+              localDisposables.push(terminal.onCursorMove(scheduleImeAnchor));
+              localDisposables.push(terminal.onResize(scheduleImeAnchor));
             } catch { /* ignored */ }
           }
 
@@ -4069,7 +4107,7 @@ const TerminalViewportInner = React.forwardRef<TerminalController, TerminalViewp
               const replayToken = replayParseTokenRef.current;
               if (replayToken !== null && replayToken.depth > 0) { return; }
               // Reports are already encoded: sticky Alt must not add an ESC.
-              inputHandlerRef.current(data, { skipModifierTransform: true });
+              inputHandlerRef.current(data, { skipModifierTransform: true, terminalResponse: isTerminalResponse(data) });
             })
           );
 
@@ -4308,14 +4346,8 @@ const TerminalViewportInner = React.forwardRef<TerminalController, TerminalViewp
       // （sessionKey 变化时 resize confirmation 已被 useEffect 重置，
       //   所以这里推 resize 走 first-fit immediate 路径）
       requestRefresh('session-reset', { skipScrollToBottom: true });
-      if (autoFocusRef.current) {
-        const touchEnabled = enableTouchScrollRef.current;
-        if (!touchEnabled) {
-          focusKeyboardInput(hiddenInputRef.current);
-        } else {
-          terminal.focus();
-        }
-      }
+      const input = hiddenInputRef.current;
+      if (autoFocusRef.current && canFocusInput() && canRestoreFocus(input) && document.activeElement !== input) focusKeyboardInput(input);
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [sessionKey, terminalReadyVersion, requestRefresh, resetWriteState]);
 
@@ -4449,6 +4481,7 @@ const TerminalViewportInner = React.forwardRef<TerminalController, TerminalViewp
       (): TerminalController => ({
         serializeSnapshot: () => terminalRef.current ? serializeAddonRef.current?.serialize({ scrollback: 100 }) ?? null : null,
         focus: () => {
+          if (!canFocusInput()) return;
           const touchEnabled = enableTouchScrollRef.current;
           if (touchEnabled) {
             focusHiddenInput();
@@ -4611,6 +4644,7 @@ const TerminalViewportInner = React.forwardRef<TerminalController, TerminalViewp
         enableTouchScroll,
         cancelImeComposition,
         focusHiddenInput,
+        canFocusInput,
         resetWriteState,
         readClipboardIntoTerminal,
         sendTerminalSeq,
@@ -4653,6 +4687,7 @@ const TerminalViewportInner = React.forwardRef<TerminalController, TerminalViewp
         onTouchCancelCapture={() => extendBlurGuard(INPUT_BLUR_GUARD_RELEASE_MS)}
         onMouseDownCapture={(event) => {
           if (enableTouchScroll) return;
+          if (!canFocusInput()) return;
           const target = event.target;
           // Leave overlay buttons/editors to their own focus behavior. Capture
           // also runs before xterm's forced selection can stop propagation;

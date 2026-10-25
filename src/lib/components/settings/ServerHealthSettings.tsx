@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ShieldAlert as RiShieldAlertLine, ShieldCheck as RiShieldCheckLine } from 'lucide-react';
+import { ShieldAlert as RiShieldAlertLine, ShieldCheck as RiShieldCheckLine, ChevronRight as RiChevronRightLine } from 'lucide-react';
 import { useI18n, type TranslationKey } from '../../i18n';
 import { enableServerSupervision, type ServerHealthState } from '../../terminal/api';
 
@@ -108,64 +108,95 @@ export function ServerHealthSettings({ state, onDismiss }: ServerHealthSettingsP
     : '';
 
   return (
-    <section className="mt-3 overflow-hidden rounded-xl bg-surface-2" aria-labelledby="server-health-title">
-      <div id="server-health-title" className="px-3 pt-3 text-[12px] font-semibold text-foreground">
-        {t('settings.serverHealthTitle')}
-      </div>
-      <div className="flex items-start justify-between gap-3 px-3 py-3">
-        <div className="flex min-w-0 items-start gap-2.5">
-          <span className={`mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${problem ? 'bg-destructive/15 text-destructive' : 'bg-primary/15 text-primary'}`}>
-            {problem ? <RiShieldAlertLine size={15} /> : <RiShieldCheckLine size={15} />}
+    <section className="overflow-hidden rounded-xl bg-surface-2" aria-labelledby="server-health-title">
+      <details className="group/health" open={problem || enabling || enableError || undefined}>
+        <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-[12px] transition hover:bg-surface-elevated [&::-webkit-details-marker]:hidden">
+          <span id="server-health-title" className="flex min-w-0 items-center gap-2 font-medium text-foreground">
+            {problem ? (
+              <RiShieldAlertLine size={14} className="shrink-0 text-destructive" />
+            ) : (
+              <RiShieldCheckLine size={14} className="shrink-0 text-primary" />
+            )}
+            {t('settings.serverHealthTitle')}
           </span>
-          <div className="min-w-0">
-            <div className="text-[12px] font-medium text-foreground">{supervisionText}</div>
-            <div className="mt-0.5 text-[10px] leading-relaxed text-muted-foreground">
-              {incident ? `${t(historical ? 'settings.serverHealthHistory' : 'settings.serverHealthLastIncident')}: ${eventLabel}${causeLabel ? ` · ${causeLabel}` : ''}` : t('settings.serverHealthClean')}
-            </div>
-            {incident && historical && (
-              <div className="mt-1 text-[11px] text-primary">{t('settings.serverHealthRunningNow')}</div>
-            )}
-            {incident && (
-              <div className="mt-1 text-[10px] tabular-nums text-muted-foreground/75">{timing}</div>
-            )}
-            {incident?.detail && (
-              <div className="mt-1 break-words text-[10px] text-muted-foreground/75">{incident.detail}</div>
-            )}
-            {incident?.oomSuspect && (
-              <div className="mt-1 text-[10px] text-[color:var(--warning)]">{t('settings.serverHealthOomNote')}</div>
-            )}
-            {state.supervisor && state.supervisor.restarts > 0 && !gaveUp && (
-              <div className="mt-1 text-[10px] tabular-nums text-muted-foreground/75">
-                {t('settings.serverHealthRestarted', { count: state.supervisor.restarts })}
+          <span className="flex shrink-0 items-center gap-1.5 text-[10px] text-muted-foreground">
+            <span className={problem ? 'text-destructive' : undefined}>
+              {t(
+                problem
+                  ? 'settings.serverHealthNeedsAttention'
+                  : state.supervised
+                    ? 'settings.serverHealthRecoveryOn'
+                    : 'settings.serverHealthRecoveryOff',
+              )}
+            </span>
+            <RiChevronRightLine size={14} className="transition-transform group-open/health:rotate-90" />
+          </span>
+        </summary>
+        <div className="flex items-start justify-between gap-3 px-3 py-2">
+          <div className="flex min-w-0 items-start gap-2.5">
+            <span
+              className={`mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${problem ? 'bg-destructive/15 text-destructive' : 'bg-primary/15 text-primary'}`}
+            >
+              {problem ? <RiShieldAlertLine size={15} /> : <RiShieldCheckLine size={15} />}
+            </span>
+            <div className="min-w-0">
+              <div className="text-[12px] font-medium text-foreground">{supervisionText}</div>
+              <div className="mt-0.5 text-[10px] leading-relaxed text-muted-foreground">
+                {incident
+                  ? `${t(historical ? 'settings.serverHealthHistory' : 'settings.serverHealthLastIncident')}: ${eventLabel}${causeLabel ? ` · ${causeLabel}` : ''}`
+                  : t('settings.serverHealthClean')}
               </div>
-            )}
+              {incident && historical && <div className="mt-1 text-[11px] text-primary">{t('settings.serverHealthRunningNow')}</div>}
+              {incident && <div className="mt-1 text-[10px] tabular-nums text-muted-foreground/75">{timing}</div>}
+              {incident?.detail && <div className="mt-1 break-words text-[10px] text-muted-foreground/75">{incident.detail}</div>}
+              {incident?.oomSuspect && (
+                <div className="mt-1 text-[10px] text-[color:var(--warning)]">{t('settings.serverHealthOomNote')}</div>
+              )}
+              {state.supervisor && state.supervisor.restarts > 0 && !gaveUp && (
+                <div className="mt-1 text-[10px] tabular-nums text-muted-foreground/75">
+                  {t('settings.serverHealthRestarted', { count: state.supervisor.restarts })}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-        {state.attention && (
-          <button
-            type="button"
-            onClick={onDismiss}
-            className="shrink-0 rounded-full bg-surface px-3 py-1.5 text-[11px] font-medium text-foreground transition hover:bg-surface-elevated"
-          >
-            {t('settings.serverHealthDismiss')}
-          </button>
-        )}
-      </div>
-      {!state.supervised && (
-        <div className="border-t border-border px-3 py-3">
-          <p className="text-[11px] leading-relaxed text-muted-foreground">
-            {state.canEnableSupervision ? t('settings.serverHealthEnableHint') : t('settings.serverHealthEnableUnavailable')}
-          </p>
-          {state.canEnableSupervision && (
-            <button type="button" onClick={enable} disabled={enabling}
-              className="mt-2 min-h-11 rounded-lg bg-primary px-3 text-[12px] font-medium text-primary-foreground disabled:opacity-60">
-              {enabling ? t('settings.serverHealthEnabling') : t('settings.serverHealthEnable')}
+          {state.attention && (
+            <button
+              type="button"
+              onClick={onDismiss}
+              className="min-h-11 shrink-0 rounded-full bg-surface px-3 py-1.5 text-[11px] font-medium text-foreground transition hover:bg-surface-elevated"
+            >
+              {t('settings.serverHealthDismiss')}
             </button>
           )}
-          {enabling && <p role="status" className="mt-2 text-[11px] text-muted-foreground">{t('settings.serverHealthEnablePending')}</p>}
-          {enableError && <p role="alert" className="mt-2 text-[11px] text-destructive">{t('settings.serverHealthEnableError')}</p>}
         </div>
-      )}
+        {!state.supervised && (
+          <div className="border-t border-border/15 px-3 py-2">
+            <p className="text-[11px] leading-relaxed text-muted-foreground">
+              {state.canEnableSupervision ? t('settings.serverHealthEnableHint') : t('settings.serverHealthEnableUnavailable')}
+            </p>
+            {state.canEnableSupervision && (
+              <button
+                type="button"
+                onClick={enable}
+                disabled={enabling}
+                className="mt-2 min-h-11 rounded-lg bg-primary px-3 text-[12px] font-medium text-primary-foreground disabled:opacity-60"
+              >
+                {enabling ? t('settings.serverHealthEnabling') : t('settings.serverHealthEnable')}
+              </button>
+            )}
+            {enabling && (
+              <p role="status" className="mt-2 text-[11px] text-muted-foreground">
+                {t('settings.serverHealthEnablePending')}
+              </p>
+            )}
+            {enableError && (
+              <p role="alert" className="mt-2 text-[11px] text-destructive">
+                {t('settings.serverHealthEnableError')}
+              </p>
+            )}
+          </div>
+        )}
+      </details>
     </section>
   );
 }

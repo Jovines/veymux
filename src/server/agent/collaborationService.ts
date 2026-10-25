@@ -2,7 +2,8 @@ import { createHash, randomBytes } from 'node:crypto';
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { Packet } from '../federation/packets.js';
-import type { CollaborationGroup, CollaborationStore } from './collaborationStore.js';
+import type { CollaborationGroup, CollaborationMessage, CollaborationStore } from './collaborationStore.js';
+import { directLocalId, directRemoteAddress } from './collaborationDirectProtocol.js';
 import { CollaborationError } from './collaborationProtocol.js';
 import { COLLAB_NAME_FORBIDDEN } from './collaborationPrompt.js';
 import { validateLaunchProfiles } from './collaborationLaunchProfiles.js';
@@ -32,9 +33,12 @@ function mapGroup(group: CollaborationGroup, map: (id: string) => string): Colla
 export class CollaborationService {
   private document: Document = { version: 1, peers: [], offers: [] };
   private clients = new Map<string, Promise<CollaborationRpc>>();
-  private observations = new Map<string, { sessions: Session[]; checkedAt: number; error?: string }>();
+  private observations = new Map<string, { sessions: Session[]; checkedAt: number; error?: string; directContacts?: boolean }>();
   private inFlight?: Promise<void>;
+  private directFlights = new Map<string, Promise<void>>();
+  private unsubscribe?: () => void;
   private timer?: ReturnType<typeof setInterval>;
+  private directTimer?: ReturnType<typeof setInterval>;
   private stopped = false;
   constructor(private options: { file: string; store: CollaborationStore; transport: CollaborationPeerTransport;
     node: () => Omit<CollaborationNode, 'origin'>; sessions: () => Session[];
@@ -43,6 +47,7 @@ export class CollaborationService {
     /** Live capability of a device: the stable local session ids it may write
      * to right now. Scoped peers derive their whole surface from this. */
     deviceScope?: (deviceSubject: string) => string[];
+    deliver?: (sessionId: string) => void;
     tasks?: { receive: (peer: CollaborationNode, packet: Packet) => Record<string, unknown> | Promise<Record<string, unknown>>;
       heads: (groupIds: string[]) => unknown[]; sync: (peer: CollaborationNode, heads: unknown[]) => Promise<void> };
     connect: (node: CollaborationNode) => Promise<CollaborationRpc> }) {
@@ -81,6 +86,118 @@ export class CollaborationService {
     this.persist();
   }
   descriptor() { return { ...this.options.node(), ...(this.document.origin ? { origin: this.document.origin } : {}) }; }
+  /** Only fully paired directory peers may route opaque encrypted traffic to
+   * another fully paired peer. A shared-session registration never qualifies. */
+  canRoute(subject: string, target: string): boolean {
+    return subject !== target && [subject, target].every(id => this.document.peers.some(peer => peer.serviceId === id) && this.effectiveScope(id) === undefined);
+  }
+  routeNodes(): CollaborationNode[] { return this.document.peers.filter(peer => this.effectiveScope(peer.serviceId) === undefined); }
+
+  resolveDirectContact(id: string): string | null {
+    const target = directRemoteAddress(id);
+    if (!target || !this.document.origin || target.origin === this.document.origin) return null;
+    const peer = this.document.peers.find(peer => peer.origin === target.origin);
+    if (!peer || this.effectiveScope(peer.serviceId) !== undefined) return null;
+    const observed = this.observations.get(peer.serviceId);
+    if (!observed?.sessions.some(session => session.sessionId === target.id)) return null;
+    if (observed.directContacts !== true) throw new CollaborationError('DIRECT_CONTACTS_UPGRADE_REQUIRED', '远端服务尚不支持组外直接联系，请升级远端 Termdock', 409);
+    return id;
+  }
+
+  /** Only the recipient of an authenticated direct message calls this. Its
+   * sender is replyable before a newly opened reverse channel refreshes the
+   * directory; the owning service still checks the live target on delivery. */
+  resolveDirectReply(id: string): string | null {
+    const target = directRemoteAddress(id);
+    const peer = target && this.document.peers.find(peer => peer.origin === target.origin);
+    return peer && this.effectiveScope(peer.serviceId) === undefined ? id : null;
+  }
+
+  private receiveDirect(peer: CollaborationNode, packet: Packet) {
+    if (!this.options.deliver || this.effectiveScope(peer.serviceId) !== undefined) throw new Error('SESSION_SCOPE_DENIED');
+    if (!packet.message) {
+      const target = typeof packet.targetSessionId === 'string' ? directRemoteAddress(packet.targetSessionId) : null;
+      if (!target || target.origin !== this.node().origin || !directLocalId(packet.fromSessionId)
+        || typeof packet.messageId !== 'string' || !/^[a-zA-Z0-9_-]{4,128}$/.test(packet.messageId)) throw new Error('INVALID_DIRECT_MESSAGE');
+      if (!this.options.sessions().some(session => session.sessionId === target.id)) throw new Error('SESSION_NOT_FOUND');
+      const stored = this.options.store.getMessage(packet.messageId);
+      if (!stored?.direct || stored.fromSessionId !== remoteSession(peer.origin, packet.fromSessionId) || stored.toSessionId !== target.id) {
+        return { directContacts: 1, missing: packet.messageId };
+      }
+      if (packet.shellConfirmed === true && !stored.shellConfirmed) this.options.store.confirmShell(stored.id);
+      return this.directReceipt(stored.id);
+    }
+    const input = packet.message as CollaborationMessage;
+    const target = input && directRemoteAddress(input.toSessionId);
+    if (!target || target.origin !== this.node().origin || !directLocalId(input.fromSessionId)) throw new Error('INVALID_DIRECT_MESSAGE');
+    if (!this.options.sessions().some(session => session.sessionId === target.id)) throw new Error('SESSION_NOT_FOUND');
+    const map = (id: string) => directLocalId(id) ? remoteSession(peer.origin, id)
+      : directRemoteAddress(id)?.origin === this.node().origin ? directRemoteAddress(id)!.id : id;
+    const message = this.options.store.receiveDirect({ ...input, fromSessionId: map(input.fromSessionId), toSessionId: target.id,
+      directSourceName: typeof packet.sourceName === 'string' ? packet.sourceName : undefined,
+      ...(input.fanOutIds ? { fanOutIds: Array.isArray(input.fanOutIds) ? input.fanOutIds.map(map) : input.fanOutIds } : {}) });
+    return this.directReceipt(message.id);
+  }
+
+  private directReceipt(id: string) {
+    const message = this.options.store.getMessage(id)!;
+    if (message.status === 'pending') this.options.deliver!(message.toSessionId);
+    const current = this.options.store.getMessage(id)!;
+    return { directContacts: 1, received: current.id, receipt: { id: current.id, status: current.status,
+      deliveredAt: current.deliveredAt, failureReason: current.failureReason ?? null,
+      last_error: this.options.store.diagnostic(id)?.last_error ?? null } };
+  }
+
+  /** The store owns the durable queue; service RPC only exchanges the selected
+   * message and its terminal-write receipt, with no group or screen context. */
+  flushDirect(): Promise<void> {
+    if (this.stopped || !this.document.origin) return Promise.resolve();
+    const queued = this.options.store.pendingRemoteDirect();
+    const origins = [...new Set(queued.map(message => directRemoteAddress(message.toSessionId)!.origin))];
+    return Promise.all(origins.map(origin => {
+      const running = this.directFlights.get(origin);
+      if (running) return running;
+      const operation = Promise.resolve().then(async () => {
+        const peer = this.document.peers.find(peer => peer.origin === origin);
+        for (const message of queued.filter(message => directRemoteAddress(message.toSessionId)!.origin === origin).slice(0, 20)) {
+          if (this.stopped) return;
+          const store = this.options.store, previous = store.diagnostic(message.id);
+          if (!peer || this.effectiveScope(peer.serviceId) !== undefined) { store.fail(message.id, 'SESSION_SCOPE_DENIED'); continue; }
+          if (!this.options.sessions().some(session => session.sessionId === message.fromSessionId)) { store.fail(message.id, 'SESSION_NOT_FOUND'); continue; }
+          if (message.expiresAt != null && message.expiresAt <= Date.now()) { store.inbox(message.toSessionId, { pendingOnly: true, limit: 1 }); continue; }
+          if ((previous?.next_retry_at ?? 0) > Date.now()) continue;
+          const attempts = (previous?.attempt_count ?? 0) + 1;
+          try {
+            const client = await this.client(peer);
+            const body = { type: 'collaboration-service', action: 'direct-message', message,
+              sourceName: this.options.sessions().find(session => session.sessionId === message.fromSessionId)?.name };
+            let result = previous?.remote_received_at ? await client.request({ type: 'collaboration-service', action: 'direct-message',
+              messageId: message.id, fromSessionId: message.fromSessionId, targetSessionId: message.toSessionId, shellConfirmed: message.shellConfirmed === true })
+              : await client.request(body);
+            if (result.directContacts === 1 && result.missing === message.id) result = await client.request(body);
+            if (!this.document.peers.some(node => node.serviceId === peer.serviceId) || this.effectiveScope(peer.serviceId) !== undefined) throw new Error('SESSION_SCOPE_DENIED');
+            const receipt = result.receipt as Parameters<CollaborationStore['mergeDirectReceipt']>[1] & { id?: string; last_error?: string | null };
+            if (result.directContacts !== 1 || result.received !== message.id || !receipt || receipt.id !== message.id) throw new Error('INVALID_DIRECT_RECEIPT');
+            store.mergeDirectReceipt(message.id, receipt);
+            store.recordTransport(message.id, { relay_online: true, peer_reachable: true, attempt_count: attempts,
+              remote_received_at: previous?.remote_received_at ?? Date.now(), checked_at: Date.now(),
+              next_retry_at: receipt.status === 'pending' ? Date.now() + 500 : null,
+              last_error: typeof receipt.last_error === 'string' ? receipt.last_error.slice(0, 300) : null });
+          } catch (error) {
+            const reason = error instanceof Error ? error.message.slice(0, 300) : 'PEER_UNREACHABLE';
+            const permanent = /^(SESSION_SCOPE_DENIED|SESSION_NOT_FOUND|MESSAGE_ID_CONFLICT|INVALID_DIRECT_MESSAGE|COLLABORATION_PAIRING_REQUIRED|COLLABORATION_OPERATION_UNSUPPORTED|UNKNOWN_PACKET)$/.test(reason);
+            const code = ['COLLABORATION_OPERATION_UNSUPPORTED', 'UNKNOWN_PACKET'].includes(reason) ? 'DIRECT_CONTACTS_UPGRADE_REQUIRED' : reason;
+            if (permanent) store.fail(message.id, code);
+            store.recordTransport(message.id, { relay_online: true, peer_reachable: false, attempt_count: attempts,
+              remote_received_at: previous?.remote_received_at, checked_at: Date.now(), last_error: code,
+              next_retry_at: permanent ? null : Date.now() + Math.min(10_000, 500 * 2 ** Math.min(attempts - 1, 5)) });
+          }
+        }
+      }).finally(() => { if (this.directFlights.get(origin) === operation) this.directFlights.delete(origin); });
+      this.directFlights.set(origin, operation);
+      return operation;
+    })).then(() => {});
+  }
   taskMember(sessionId: string): TaskMember {
     const parsed = address(sessionId);
     if (!parsed) return { serviceId: this.options.node().serviceId, sessionId };
@@ -142,6 +259,7 @@ export class CollaborationService {
       scoped: Object.fromEntries(Object.entries(previous.scoped ?? {}).filter(([id]) => id !== serviceId)),
       removedPeers: [...(previous.removedPeers ?? []).filter(item => item.serviceId !== serviceId), { ...peer, ...(scope ? { scope } : {}) }].slice(-768) };
     try { this.persist(); } catch (error) { this.document = previous; throw error; }
+    this.options.store.revokeDirectPeer(peer.origin);
     const client = this.clients.get(serviceId);
     this.clients.delete(serviceId); this.observations.delete(serviceId);
     if (client) void client.then(rpc => rpc.close()).catch(() => {});
@@ -215,6 +333,7 @@ export class CollaborationService {
     if (!peer) throw new Error('COLLABORATION_PAIRING_REQUIRED');
     if (packet.action === 'duplex') return { ok: true };
     if (packet.action === 'directory') return this.snapshot(peer);
+    if (packet.action === 'direct-message') return this.receiveDirect(peer, packet);
     if (packet.action === 'tasks' && this.options.tasks) {
       try { return Promise.resolve(this.options.tasks.receive(peer, packet)).catch(error => ({ taskError: {
         code: error instanceof CollaborationError ? error.code : 'TASK_ERROR', message: error instanceof Error ? error.message : String(error),
@@ -240,7 +359,7 @@ export class CollaborationService {
       .filter(group => group.federated && (group.sessionIds.some(id => address(id)?.origin === peer.origin) || this.document.replicas?.[group.id]?.includes(peer.origin)))
       .filter(group => scope === undefined || group.sessionIds.every(id => address(id) ? true : scope.includes(id)))
       .map(group => mapGroup(group, id => address(id) ? id : remoteSession(origin, id)));
-    return { sessions: scope === undefined ? sessions : sessions.filter(session => scope.includes(session.sessionId)),
+    return { directContacts: scope === undefined && Boolean(this.options.deliver), sessions: scope === undefined ? sessions : sessions.filter(session => scope.includes(session.sessionId)),
       groups, taskHeads: this.options.tasks?.heads(groups.map(g => g.id)) ?? [], nodes: scope === undefined ? this.nodes() : [this.node(), peer] };
   }
   private merge(canonical: CollaborationGroup, nodes: CollaborationNode[], source?: CollaborationNode) {
@@ -282,8 +401,13 @@ export class CollaborationService {
     const saved = this.options.store.getGroup(incoming.id);
     if (saved && !saved.deleted && saved.updatedAt === incoming.updatedAt) this.options.transport.configure(saved.id, self.origin, nodes);
   }
-  start() { this.timer = setInterval(() => { void this.refresh(); }, 2000); this.timer.unref(); void this.refresh(); }
-  close() { this.stopped = true; clearInterval(this.timer); for (const rpc of this.clients.values()) void rpc.then(client => client.close()).catch(() => {}); this.clients.clear(); }
+  start() {
+    const wake = () => { void this.flushDirect().catch(() => {}); };
+    this.unsubscribe = this.options.store.subscribe(wake);
+    this.timer = setInterval(() => { void this.refresh(); }, 2000); this.timer.unref();
+    this.directTimer = setInterval(wake, 500); this.directTimer.unref(); void this.refresh(); wake();
+  }
+  close() { this.stopped = true; this.unsubscribe?.(); clearInterval(this.timer); clearInterval(this.directTimer); for (const rpc of this.clients.values()) void rpc.then(client => client.close()).catch(() => {}); this.clients.clear(); }
   private async client(peer: CollaborationNode) { const reverse = this.options.reverse?.(peer.serviceId); if (reverse && !reverse.closed) return reverse; let pending = this.clients.get(peer.serviceId); if (pending && (await pending).closed) { this.clients.delete(peer.serviceId); pending = undefined; }
     if (!pending) { pending = this.options.connect(peer); this.clients.set(peer.serviceId, pending); }
     try { return await pending; } catch (error) { this.clients.delete(peer.serviceId); throw error; }
@@ -294,7 +418,7 @@ export class CollaborationService {
         if (!this.document.peers.some(item => item.serviceId === peer.serviceId)) return;
         if (!Array.isArray(data.sessions) || data.sessions.length > 5000 || !Array.isArray(data.groups)) throw new Error('INVALID_DIRECTORY');
         const sessions = data.sessions.filter((s: Session) => s && typeof s.sessionId === 'string' && !s.sessionId.startsWith('remote:')) as Session[];
-        this.observations.set(peer.serviceId, { sessions, checkedAt: Date.now() });
+        this.observations.set(peer.serviceId, { sessions, checkedAt: Date.now(), directContacts: data.directContacts === true });
         for (const group of data.groups as CollaborationGroup[]) this.merge(group, data.nodes as CollaborationNode[], peer);
         if (Array.isArray(data.taskHeads)) await this.options.tasks?.sync(peer, data.taskHeads);
         for (const group of this.options.store.federationSnapshot().groups.filter(g => g.federated && (g.sessionIds.some(id => address(id)?.origin === peer.origin) || this.document.replicas?.[g.id]?.includes(peer.origin)))) {
@@ -307,7 +431,7 @@ export class CollaborationService {
           this.merge(canonical, nodes);
           await client.request({ type: 'collaboration-service', action: 'group', group: canonical, nodes });
         }
-      } catch (error) { if (this.document.peers.some(item => item.serviceId === peer.serviceId)) this.observations.set(peer.serviceId, { sessions: this.observations.get(peer.serviceId)?.sessions ?? [], checkedAt: Date.now(), error: error instanceof Error ? error.message.slice(0, 240) : 'PEER_UNAVAILABLE' }); }
+      } catch (error) { if (this.document.peers.some(item => item.serviceId === peer.serviceId)) this.observations.set(peer.serviceId, { ...this.observations.get(peer.serviceId), sessions: this.observations.get(peer.serviceId)?.sessions ?? [], checkedAt: Date.now(), error: error instanceof Error ? error.message.slice(0, 240) : 'PEER_UNAVAILABLE' }); }
     })).then(() => {}).finally(() => { this.inFlight = undefined; });
   }
   directory() {
@@ -317,6 +441,7 @@ export class CollaborationService {
       groups: this.groupsUsing(peer), connected: !!observed && !observed.error && Date.now() - observed.checkedAt < 15_000, error: observed?.error ?? (!observed ? 'CONNECTING' : undefined) }; });
     return { protocolVersion: 2, sessions: this.document.peers.flatMap(peer => this.document.scoped?.[peer.serviceId] ? [] : (this.observations.get(peer.serviceId)?.sessions ?? []).map(session => ({ ...session,
       sessionId: remoteSession(peer.origin, session.sessionId), backendSessionId: null, agentNativeSessionId: null, serviceOrigin: peer.origin, serviceLabel: peer.origin,
+      canDirectContact: this.observations.get(peer.serviceId)?.directContacts === true,
       serviceConnected: services.find(s => s.origin === peer.origin)!.connected, serviceCheckedAt: this.observations.get(peer.serviceId)?.checkedAt }))),
       services: [...services, ...missing.map(origin => ({ origin, label: origin, connected: false, error: '服务连接授权尚未同步；在已授权服务页面连接后会自动完成'  }))],
       removedServices: this.document.removedPeers?.map(peer => ({ serviceId: peer.serviceId, origin: peer.origin, label: peer.origin, connected: false })) ?? [] };

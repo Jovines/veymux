@@ -54,3 +54,14 @@ describe('encrypted tunnel access policy', () => {
     expect(isBusinessApiPath('CONNECT', '/api/terminal/s1')).toBe(false);
   });
 });
+
+it('permits only the session-bound selection read while retaining owner authority for other tmux actions', () => {
+  expect(terminalMessageAction('tmux', 'copy-selection')).toBe('session.view');
+  for (const action of ['split-pane', 'switch-session', 'select-pane', 'copy-mode', 'future-action', null, {}, undefined]) expect(terminalMessageAction('tmux', action)).toBe('service.configure');
+});
+
+it('allows UI viewing acknowledgement only within the authenticated session view grant', () => {
+  expect(resolveAccessRequest('POST', '/api/terminal/one/chat/viewed')).toEqual({ action: 'session.view', sessionId: 'one' });
+  expect(resolveAccessRequest('POST', '/api/terminal/settings/chat/viewed')).toBeNull();
+  expect(resolveAccessRequest('POST', '/api/terminal/one/chat/unknown')).toBeNull();
+});

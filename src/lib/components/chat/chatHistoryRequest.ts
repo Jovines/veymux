@@ -2,9 +2,10 @@ import { currentSecureClient, savedConnection } from '../../federation/browserIn
 import { readChatSnapshot } from './chatSnapshot';
 import type { ChatMessage } from './chatMessages';
 export const CHAT_HISTORY_PAGE_SIZE = 30;
-export interface ChatHistoryQuery { before?: string; after?: string; requestId?: string }
-export interface ChatHistoryPage { hasOlder: boolean; hasNewer: boolean; mode: 'latest' | 'before' | 'after' }
+export interface ChatHistoryQuery { before?: string; after?: string; around?: string; requestId?: string }
+export interface ChatHistoryPage { hasOlder: boolean; hasNewer: boolean; mode: 'latest' | 'before' | 'after' | 'around' }
 export interface ChatHistoryPayload {
+  chatIndex?: import('../../../server/shared/sessionChatAttention').SessionChatIndex;
   replyPending?: boolean; confirmedRequestId?: string;
   updates?: ChatMessage[]; page?: ChatHistoryPage;
   messages?: ChatMessage[]; revision?: string; unchanged?: boolean;
@@ -24,7 +25,7 @@ function start(id: string, revision?: string, warming = false, query: ChatHistor
   if (existing && (existing.client !== currentSecureClient() || !existing.consumed && existing.queryKey !== queryKey)) existing.controller.abort();
   const controller = new AbortController();
   const entry: Request = { queryKey, client: currentSecureClient(), controller, warm: false, consumed: false, promise: undefined! };
-  const params = new URLSearchParams({ limit: String(CHAT_HISTORY_PAGE_SIZE), ...query, ...(revision ? { revision } : {}) });
+  const params = new URLSearchParams({ limit: String(CHAT_HISTORY_PAGE_SIZE), replyContext: '1', ...query, ...(revision ? { revision } : {}) });
   const url = `/api/terminal/${encodeURIComponent(id)}/chat?${params}`;
   entry.promise = (async () => {
     const response = await fetch(url, { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]) });

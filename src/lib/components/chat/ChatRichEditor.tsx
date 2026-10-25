@@ -132,7 +132,7 @@ export function ChatRichEditor({ input, value, files, mentions, placeholder, rea
     const desired = chatInlineParts(value, files, mentions);
     const hasExpectedChips = desired.filter(part => part.file || part.member).every(part => {
       const chip = [...node.querySelectorAll<HTMLElement>('[data-chat-inline-token]')].find(chip => chip.dataset.chatInlineToken === part.token);
-      return chip && !!chip.dataset.chatMediaPreview === !!(part.file && chatAttachmentKind(part.file) !== '文件' && onPreview);
+      return chip && !!chip.dataset.chatMediaPreview === !!(part.file && onPreview);
     });
     if (readChatEditor(node).text === value && hasExpectedChips) return;
     node.replaceChildren();
@@ -144,9 +144,9 @@ export function ChatRichEditor({ input, value, files, mentions, placeholder, rea
         chip.dataset.chatInlineKind = part.file ? 'attachment' : 'mention'; chip.setAttribute('role', 'group');
         chip.setAttribute('aria-label', part.file ? `附件 ${label}` : `提及 ${label}`);
         chip.className = chatInlineTokenClass;
-        const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); icon.setAttribute('aria-hidden', 'true'); icon.setAttribute('viewBox', '0 0 24 24'); icon.setAttribute('width', '13'); icon.setAttribute('height', '13'); icon.setAttribute('class', 'shrink-0'); icon.innerHTML = kind === '图片' ? '<rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/>' : kind === '视频' ? '<path d="m22 8-6 4 6 4V8Z"/><rect width="14" height="12" x="2" y="6" rx="2"/>' : '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v6h6M8 13h8M8 17h8"/>'; icon.setAttribute('fill', 'none'); icon.setAttribute('stroke', 'currentColor'); icon.setAttribute('stroke-width', '2'); icon.setAttribute('stroke-linecap', 'round'); icon.setAttribute('stroke-linejoin', 'round'); chip.append(icon);
+        const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); icon.setAttribute('aria-hidden', 'true'); icon.setAttribute('viewBox', '0 0 24 24'); icon.setAttribute('width', '13'); icon.setAttribute('height', '13'); icon.setAttribute('class', 'shrink-0'); icon.innerHTML = part.file?.context?.kind === 'directory' ? '<path d="M3 7V5a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/>' : part.file?.context?.kind === 'code' ? '<path d="m8 8-4 4 4 4m8-8 4 4-4 4m-3-11-2 22"/>' : kind === '图片' ? '<rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/>' : kind === '视频' ? '<path d="m22 8-6 4 6 4V8Z"/><rect width="14" height="12" x="2" y="6" rx="2"/>' : '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v6h6M8 13h8M8 17h8"/>'; icon.setAttribute('fill', 'none'); icon.setAttribute('stroke', 'currentColor'); icon.setAttribute('stroke-width', '2'); icon.setAttribute('stroke-linecap', 'round'); icon.setAttribute('stroke-linejoin', 'round'); chip.append(icon);
         const title = document.createElement('span'); title.className = chatInlineTokenTitleClass; title.textContent = chatInlineTitle(part); title.title = label; chip.append(title);
-        if ((kind === '图片' || kind === '视频') && onPreview) {
+        if (part.file && onPreview) {
           chip.dataset.chatMediaPreview = 'true';
           const open = document.createElement('button'); open.type = 'button';
           open.setAttribute('aria-label', `预览${kind} ${part.file!.name}`); open.title = label;
@@ -166,7 +166,10 @@ export function ChatRichEditor({ input, value, files, mentions, placeholder, rea
       }
     }
     if (value.endsWith('\n')) { const placeholder = document.createElement('br'); placeholder.dataset.chatPlaceholder = 'true'; node.append(placeholder); }
-    if (lastSelection.current !== null && document.activeElement === node) { setChatEditorCaret(node, lastSelection.current); lastSelection.current = null; }
+    // An empty editor already has its natural insertion point. Restoring a
+    // Range after send may reopen the OS keyboard while focus never changed.
+    if (!value) lastSelection.current = null;
+    else if (lastSelection.current !== null && document.activeElement === node) { setChatEditorCaret(node, lastSelection.current); lastSelection.current = null; }
   }, [input, value, files, mentions, readOnly, onTokenRemove, onPreview]);
   return <><div ref={input} role="textbox" aria-multiline="true" aria-label={label} aria-readonly={readOnly || undefined} aria-hidden={masked || undefined} tabIndex={readOnly ? 0 : undefined}
     contentEditable={!readOnly} suppressContentEditableWarning spellCheck="true" data-placeholder={placeholder}

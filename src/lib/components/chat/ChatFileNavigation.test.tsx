@@ -20,6 +20,7 @@ beforeEach(() => {
   useSessionDirectoryStore.setState({ records: [{ sessionId: 'chat', name: 'chat', cwd: '/repo', lastActivity: 1 }] });
   vi.stubGlobal('fetch', vi.fn(async () => Response.json({})));
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+  vi.stubGlobal('matchMedia', vi.fn((media: string) => ({ matches: false, media, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
   Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: vi.fn() });
   vi.mocked(readFileContent).mockImplementation(async path => ({ path, content: path.endsWith('guide.md') ? '# 指南\n\n[下一份](./next.md)' : '# 下一份文档', size: 50, modified: '', binary: false }));
 });
@@ -43,7 +44,7 @@ it('opens relative Markdown links in a modal, keeps further navigation there, an
   expect(readFileContent).toHaveBeenCalledWith('/repo/docs/guide.md', expect.any(AbortSignal), 'view_file', expect.any(String));
   fireEvent.click(within(dialog).getByRole('link', { name: '下一份' }));
   expect(await within(dialog).findByRole('heading', { name: '下一份文档' })).toBeTruthy();
-  expect(within(dialog).getAllByTitle('/repo/docs/next.md')).toHaveLength(2);
+  expect(within(dialog).getByTitle('/repo/docs/next.md')).toBeTruthy();
   expect(useSidebarStore.getState()).toMatchObject({ rightOpen: false, selectedFilePath: 'keep.md', rootPath: '/different-workspace' });
   fireEvent.keyDown(document, { key: 'Escape' });
   expect(screen.queryByRole('dialog')).toBeNull();

@@ -27,7 +27,7 @@ vi.mock('../terminal/api', async (importOriginal) => ({
 }));
 import {
   clampPinnedRightSidebarWidth,
-  readLeftPinnedPreference,
+  readDesktopSidebarOpen,
   readRightSidebarLayoutPreference,
   readRightSidebarWidth,
   readRightSidebarWidthForContext,
@@ -429,7 +429,7 @@ describe('useSidebarStore session-scoped right sidebar state', () => {
   });
 });
 
-describe('useSidebarStore left sidebar pin preference', () => {
+describe('useSidebarStore desktop sidebar visibility', () => {
   beforeEach(() => {
     window.localStorage.clear();
     resetSidebarStore();
@@ -440,22 +440,22 @@ describe('useSidebarStore left sidebar pin preference', () => {
     resetSidebarStore();
   });
 
-  it('pins the desktop session navigator on first use', () => {
-    expect(readLeftPinnedPreference()).toBe(true);
+  it('opens the desktop session navigator on first use', () => {
+    expect(readDesktopSidebarOpen('left')).toBe(true);
   });
 
-  it('preserves an explicit unpin choice', () => {
-    useSidebarStore.getState().setLeftPinned(false);
+  it('preserves an explicit collapsed choice', () => {
+    useSidebarStore.getState().setDesktopSidebarOpen('left', false);
 
-    expect(window.localStorage.getItem('termdock-left-sidebar-pinned')).toBe('0');
-    expect(readLeftPinnedPreference()).toBe(false);
+    expect(window.localStorage.getItem('termdock:desktop-sidebar-open:v1:left')).toBe('0');
+    expect(readDesktopSidebarOpen('left')).toBe(false);
   });
 
-  it('preserves an explicit pin choice', () => {
-    useSidebarStore.getState().setLeftPinned(true);
+  it('preserves an explicit expanded choice', () => {
+    useSidebarStore.getState().setDesktopSidebarOpen('left', true);
 
-    expect(window.localStorage.getItem('termdock-left-sidebar-pinned')).toBe('1');
-    expect(readLeftPinnedPreference()).toBe(true);
+    expect(window.localStorage.getItem('termdock:desktop-sidebar-open:v1:left')).toBe('1');
+    expect(readDesktopSidebarOpen('left')).toBe(true);
   });
 });
 

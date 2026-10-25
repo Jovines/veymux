@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { SessionWorkspace } from './SessionWorkspace';
 import { SessionViewActions } from './SessionViewActions';
 import { ShareAccessContext } from '../../federation/ShareAccessContext';
-vi.mock('./SessionChatView', () => ({ SessionChatView: () => <div>Chat view</div> }));
-beforeEach(() => { vi.stubGlobal('fetch', vi.fn(async (_url, init?: RequestInit) => Response.json({ mode: init?.body ? JSON.parse(String(init.body)).mode : null, updatedAt: 1 }))); });
+vi.mock('./SessionChatView', () => ({ SessionChatView: ({ active, visible }: { active: boolean; visible: boolean }) => <div data-chat-active={active} data-chat-visible={visible}>Chat view</div> }));
+beforeEach(() => { vi.stubGlobal('fetch', vi.fn(async (_url, init?: RequestInit) => Response.json({ mode: init?.body ? JSON.parse(String(init.body)).mode : null, updatedAt: 1, chatEligibility: { allowed: true, program: 'codex' } }))); });
 afterEach(() => { cleanup(); localStorage.clear(); vi.unstubAllGlobals(); });
 it('keeps mode actions in the existing session menu and retains the terminal when switching', async () => {
   const done = vi.fn();
@@ -17,6 +17,15 @@ it('keeps mode actions in the existing session menu and retains the terminal whe
   expect(terminal.getAttribute('data-visible')).toBe('false');
   fireEvent.click(screen.getByRole('button', { name: '终端' }));
   expect(screen.getByRole('textbox')).toBe(terminal); expect((terminal as HTMLTextAreaElement).value).toBe('keep terminal'); expect(done).toHaveBeenCalledTimes(2);
+});
+
+it('restores the server view mode and loads a visible pane without giving it input focus', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json({ mode: 'chat', updatedAt: 1 })));
+  const view = render(<SessionWorkspace sessionId="visible-unfocused-mode" name="Other pane" active={false} visible>{() => <textarea aria-label="retained terminal" />}</SessionWorkspace>);
+  await screen.findByText('Chat view');
+  await waitFor(() => expect(view.container.querySelector('[data-chat-visible="true"]')).toBeTruthy());
+  expect(view.container.querySelector('[data-chat-active="false"]')).toBeTruthy();
+  expect(document.activeElement).not.toBe(screen.getByRole('textbox', { hidden: true }));
 });
 
 it('switches either way directly in the navigation and blurs the previous input without recreating the terminal', async () => {

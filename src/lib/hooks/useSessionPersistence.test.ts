@@ -75,6 +75,23 @@ describe('useSessionPersistence deletion races', () => {
     vi.clearAllMocks();
   });
 
+  it('prepares the new presentation before publishing inventory or selecting its workspace', async () => {
+    terminalMocks.getSessionInventory.mockResolvedValue(staleInventory);
+    terminalMocks.openSessionInventoryEntry.mockResolvedValue(createdResult('presented-new'));
+    const gate = deferred<void>(), order: string[] = [];
+    const { result } = renderHook(() => useSessionPersistence());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    let opened!: ReturnType<typeof result.current.openSession>;
+    act(() => { opened = result.current.openSession({}, { beforeApply: async value => {
+      expect(value.session.sessionId).toBe('presented-new'); order.push('preparing'); await gate.promise; order.push('prepared');
+    } }); });
+    await waitFor(() => expect(order).toEqual(['preparing']));
+    expect(result.current.sessions.some(session => session.sessionId === 'presented-new')).toBe(false);
+    await act(async () => { gate.resolve(); await opened; });
+    expect(order).toEqual(['preparing', 'prepared']);
+    expect(result.current.sessions.some(session => session.sessionId === 'presented-new')).toBe(true);
+  });
+
   it('carries collection provenance through the existing inventory, cache and shared directory', async () => {
     terminalMocks.getSessionInventory.mockResolvedValue({ ...staleInventory, updatedAt: 2,
       clientSessions: [{ ...staleInventory.clientSessions[0], collectionRunId: 'collection-run', name: '任意自定义名称' }] });
@@ -534,4 +551,25 @@ describe('confirmed inventory ordering', () => {
   act(()=>listener({type:'client-state',seq:6,clientState:{sessions:[],updatedAt:3},inventory:{...staleInventory,clientSessions:[],updatedAt:3}}));
   expect(result.current.sessions[0].name).toBe('Renamed');
  });
+});
+
+it('applies message attention to an unmounted session through control updates without changing its inventory', async () => {
+  const { useTerminalStore } = await import('../stores/useTerminalStore');
+  const { sessionNeedsReview } = await import('../utils/agentAttention');
+  useTerminalStore.getState().clearAllTerminalSessions(); localStorage.clear();
+  terminalMocks.getSessionInventory.mockResolvedValue(staleInventory);
+  clientStateMocks.subscribeClientState.mockImplementation(() => () => undefined);
+  const view = renderHook(() => useSessionPersistence());
+  await waitFor(() => expect(view.result.current.isLoading).toBe(false));
+  const listener = clientStateMocks.subscribeClientState.mock.calls.at(-1)![0] as (event: unknown) => void;
+  const before = view.result.current.sessions.map(session => session.sessionId), calls = terminalMocks.getSessionInventory.mock.calls.length;
+  const index = { conversationId: 'chat', messageIds: ['reply'], viewedMessageIds: [] as string[] };
+  act(() => listener({ type: 'chat-attention', sessions: [{ sessionId: cachedSession.sessionId, index }] }));
+  const pending = useTerminalStore.getState().sessions.get(cachedSession.sessionId)!;
+  expect(sessionNeedsReview(pending)).toBe(true); expect(pending.isConnecting).toBe(false);
+  expect(view.result.current.sessions.map(session => session.sessionId)).toEqual(before);
+  act(() => listener({ type: 'chat-attention', sessions: [{ sessionId: cachedSession.sessionId, index: { ...index, viewedMessageIds: ['reply'] } }] }));
+  expect(sessionNeedsReview(useTerminalStore.getState().sessions.get(cachedSession.sessionId))).toBe(false);
+  expect(terminalMocks.getSessionInventory).toHaveBeenCalledTimes(calls);
+  view.unmount(); useTerminalStore.getState().clearAllTerminalSessions();
 });

@@ -23,7 +23,7 @@ function recorder(overrides: Record<string, string> = {}) {
   const bodies: string[] = [];
   const run = vi.fn(async (args: string[]) => {
     calls.push(args);
-    if (args[0] === 'display-message' && args.at(-1)!.includes('pid')) return IDENTITY;
+    if (args[0] === 'display-message' && args.at(-1)!.includes('pid')) return IDENTITY + (args.at(-1)!.includes('pane_dead') ? ':0:0' : '');
     return overrides[args[0]!] ?? '';
   });
   const stdin = vi.fn(async (args: string[], input: string) => {
@@ -51,6 +51,34 @@ describe('approval dialog screen detection', () => {
 
 describe('buffer-channel delivery', () => {
   afterEach(() => vi.useRealTimers());
+
+  it('checks echo before the body, never submits a failed probe, and cleans its buffer', async () => {
+    vi.useFakeTimers();
+    const { run, stdin, calls, bodies } = recorder({ 'capture-pane': 'no echo' });
+    const result = expect(writeCollaborationTmuxPane(run, PANE, 'PRIVATE BODY', stdin, undefined, undefined, undefined, true)).rejects.toThrow('TERMINAL_INPUT_ECHO_UNCONFIRMED');
+    await vi.advanceTimersByTimeAsync(1500); await result;
+    expect(bodies).toHaveLength(1); expect(bodies[0]).toMatch(/^\[td\.[a-f0-9]{12}\] $/);
+    expect(calls.some(args => args[0] === 'set-buffer')).toBe(false);
+    expect(calls.at(-1)![0]).toBe('delete-buffer');
+  });
+
+  it.each(['1:0', '0:1', ':'])('refuses unavailable or unknown input state %s before any bytes', async flags => {
+    const { stdin } = recorder();
+    const run = vi.fn(async () => `${IDENTITY}:${flags}`);
+    await expect(writeCollaborationTmuxPane(run, PANE, 'body', stdin)).rejects.toThrow('TERMINAL_INPUT_UNAVAILABLE');
+    expect(stdin).not.toHaveBeenCalled();
+  });
+
+  it('rechecks a recovered process inside the input queue before paste and before Enter', async () => {
+    const { run, stdin, calls } = recorder();
+    const validate = vi.fn(async () => { if (validate.mock.calls.length === 2) throw new Error('process changed'); });
+    await expect(writeCollaborationTmuxPane(run, PANE, 'body', stdin, undefined, undefined, validate)).rejects.toThrow('process changed');
+    expect(validate).toHaveBeenCalledTimes(2); expect(stdin).toHaveBeenCalledOnce();
+    expect(calls.some(args => args[0] === 'set-buffer')).toBe(false);
+    const beforePaste = vi.fn(async () => { throw new Error('different conversation'); });
+    await expect(writeCollaborationTmuxPane(run, PANE, 'must not paste', stdin, undefined, undefined, beforePaste)).rejects.toThrow('different conversation');
+    expect(stdin).toHaveBeenCalledOnce();
+  });
 
   it('sends exactly one CR only after the 50ms paste interval', async () => {
     vi.useFakeTimers();
@@ -207,7 +235,7 @@ describe('named keys vs pane modes', () => {
     const { run, calls } = recorder();
     run.mockImplementation(async (args: string[]) => {
       calls.push(args);
-      if (args[0] === 'display-message' && args.at(-1)!.includes('pid')) return IDENTITY;
+      if (args[0] === 'display-message' && args.at(-1)!.includes('pid')) return IDENTITY + (args.at(-1)!.includes('pane_dead') ? ':0:0' : '');
       if (args[0] === 'display-message') return '1';
       return '';
     });

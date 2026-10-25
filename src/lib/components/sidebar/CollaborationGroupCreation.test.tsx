@@ -11,6 +11,6 @@ it('creates a project without sessions, keeps optional reuse collapsed and enter
  render(<I18nProvider><CollaborationTab active notice={null} docked={false} inputKeySuffix="" selectedGroupId="new" setSelectedGroupId={vi.fn()} floatingVisible floating={false} sessionsState="error" groups={[]} sessions={[]} agents={[]} activeSessionId={null} initialGroupId={null} onOpenSession={vi.fn()} onOpenTaskSession={vi.fn()} onEnterGroup={onEnter} defaultSessionMode="tmux" busy={null} setBusy={vi.fn()} setError={vi.fn()} setNotice={vi.fn()} onDraftChange={vi.fn()} refresh={vi.fn().mockResolvedValue(undefined)}/></I18nProvider>);
  const button=screen.getByRole('button',{name:'创建协作组'});expect((button as HTMLButtonElement).disabled).toBe(true);
  fireEvent.change(screen.getByRole('textbox',{name:'协作组名称'}),{target:{value:'改进移动体验'}});expect((button as HTMLButtonElement).disabled).toBe(false);
- expect(screen.getByText(/^复用已有会话（选填）/).closest('details')?.open).toBe(false);
+ expect(screen.getByText(/^添加现有会话/).closest('details')?.open).toBe(false);
  fireEvent.click(button);await waitFor(()=>expect(save).toHaveBeenCalledWith({name:'改进移动体验',sessionIds:[]}));await waitFor(()=>expect(onEnter).toHaveBeenCalledWith('project'));
 });

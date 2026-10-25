@@ -1,3 +1,5 @@
+import type { PersistedAgentResumeInfo } from './resumePersistence.js';
+import type { AgentLaunchAttempt } from './agentLaunchAttempt.js';
 import type { AgentLaunchCheck } from './agentLaunchCheck.js';
 import { TerminalInputTargetChangedError } from './terminalInput.js';
 import type { NativeProcessIdentityConfig } from './nativeProcessIdentity.js';
@@ -6,6 +8,8 @@ export interface SessionLaunchState {
   backendSessionId: string | null;
   agentLaunchGeneration?: string | null;
   agentLaunchCheck?: AgentLaunchCheck | null;
+  agentLaunchAttempt?: AgentLaunchAttempt | null;
+  agentResume?: PersistedAgentResumeInfo | null;
   agentNativeIdentity?: NativeProcessIdentityConfig | null;
 }
 
@@ -14,6 +18,7 @@ export interface LaunchStateChange {
   expectedCheckId: string | null;
   generation: string | null;
   check: AgentLaunchCheck | null;
+  attempt?: AgentLaunchAttempt | null;
   nativeIdentity?: NativeProcessIdentityConfig | null;
 }
 
@@ -23,8 +28,12 @@ export function mergeSessionLaunchState<T extends SessionLaunchState>(
   candidate: T, current: T | undefined, change?: LaunchStateChange,
 ): T {
   if (!change) return current ? { ...candidate,
+    agentResume: current.agentResume && ((candidate.agentLaunchGeneration ?? null) !== (current.agentLaunchGeneration ?? null)
+      || current.agentLaunchCheck?.nativeSessionId === current.agentResume.sessionId && candidate.agentResume?.sessionId !== current.agentResume.sessionId)
+      ? current.agentResume : candidate.agentResume,
     agentLaunchGeneration: current.agentLaunchGeneration ?? null,
     agentLaunchCheck: current.agentLaunchCheck ?? null,
+    agentLaunchAttempt: current.agentLaunchAttempt ?? null,
     agentNativeIdentity: current.agentNativeIdentity ?? null,
   } : candidate;
   if (!current || (current.agentLaunchGeneration ?? null) !== change.expectedGeneration
@@ -37,6 +46,7 @@ export function mergeSessionLaunchState<T extends SessionLaunchState>(
     });
   }
   return { ...candidate, agentLaunchGeneration: change.generation, agentLaunchCheck: change.check,
+    agentLaunchAttempt: change.attempt === undefined ? current.agentLaunchAttempt ?? null : change.attempt,
     agentNativeIdentity: change.nativeIdentity === undefined ? current.agentNativeIdentity ?? null : change.nativeIdentity };
 }
 

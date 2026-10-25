@@ -26,7 +26,7 @@ export function ConnectionQualitySettings({ backendSessionId }: { backendSession
     : `${rtt} ms · ${rtt < 150 ? (zh ? '流畅' : 'Low latency') : rtt < 300 ? (zh ? '有延迟' : 'Moderate latency') : (zh ? '高延迟' : 'High latency')}`;
   const ms = (value: number | null | undefined) => value == null ? '—' : `${Math.round(value)} ms`;
   return (
-    <div className="mt-3 rounded-xl bg-surface-2 px-3 text-muted-foreground">
+    <div className="rounded-xl bg-surface-2 px-3 text-muted-foreground">
       <button type="button" aria-expanded={expanded} onClick={() => setExpanded(value => !value)}
         className="flex min-h-11 w-full items-center gap-2 py-2 text-[12px] tabular-nums hover:text-foreground"
         aria-label={`${zh ? '连接质量' : 'Connection quality'}${expanded ? `: ${label}` : ''}`}>

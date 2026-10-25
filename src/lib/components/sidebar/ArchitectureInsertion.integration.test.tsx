@@ -68,6 +68,7 @@ vi.mock('../../terminal/api', async original => ({ ...await original<any>(),
 }));
 const sidebarInitial = useSidebarStore.getState();
 beforeEach(() => {
+  vi.spyOn(document, 'hasFocus').mockReturnValue(true);
   env.send.mockReset().mockResolvedValue(undefined); env.sequence.mockReset(); env.streams.clear(); env.inputs.clear(); env.controller = true; env.map = null; env.content = 'first\nsecond'; env.upload.mockReset().mockResolvedValue({ files: [{ path: '/tmp/shot.png' }] }); env.captureError.mockReset();
   useAndroidRecordingDelivery.setState({ pending: [] });
   sessionStorage.clear(); localStorage.clear();

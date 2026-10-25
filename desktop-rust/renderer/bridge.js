@@ -353,17 +353,26 @@
       title.className='text-sm font-semibold';title.textContent=options.title;message.className='my-4 whitespace-pre-wrap text-sm';message.textContent=options.message;actions.className='flex justify-end gap-2';
       for(const button of [cancel,accept]){button.type='button';button.className='min-h-11 rounded-lg px-4 text-sm focus-visible:ring-2 focus-visible:ring-primary';}
       cancel.classList.add('bg-surface-2');cancel.textContent=options.cancelLabel;accept.classList.add('bg-primary','text-primary-foreground');accept.textContent=options.confirmLabel;actions.append(cancel,accept);panel.append(title,message,actions);
-      let unsubscribe;const finish=approved=>{
-        if(confirmation!==finish)return;confirmation=undefined;unsubscribe?.();document.removeEventListener('keydown',key,true);for(const name of ['pagehide','termdock:secure-state','auth:unauthorized'])window.removeEventListener(name,expired);backdrop.remove();panel.remove();if(!closing&&previous?.isConnected)previous.focus?.({preventScroll:true});resolve(approved);
+      const available=node=>{
+        if(!node?.isConnected||node.closest('[hidden],[inert],[aria-hidden="true"]'))return false;
+        for(let parent=node;parent;parent=parent.parentElement){const style=parent.ownerDocument.defaultView?.getComputedStyle(parent);if(style?.display==='none'||style?.visibility==='hidden')return false;}
+        return true;
       };
-      const expired=()=>finish(false),key=event=>{
+      let unsubscribe;const finish=(approved,restore=true)=>{
+        if(confirmation!==finish)return;
+        const ownsFocus=panel.contains(document.activeElement)||document.activeElement===backdrop,windowFocused=document.hasFocus();
+        confirmation=undefined;unsubscribe?.();document.removeEventListener('keydown',key,true);for(const name of ['pagehide','termdock:secure-state','auth:unauthorized'])window.removeEventListener(name,expired);backdrop.remove();panel.remove();
+        if(restore&&ownsFocus&&windowFocused&&!document.hidden&&!closing&&available(previous))previous.focus?.({preventScroll:true});resolve(approved);
+      };
+      const expired=()=>finish(false,false),key=event=>{
+        if(event.isComposing||event.keyCode===229)return;
         if(event.key==='Escape'){event.preventDefault();event.stopImmediatePropagation();finish(false);}
         if(event.key==='Tab'){const outside=!panel.contains(document.activeElement);if(event.shiftKey&&(document.activeElement===cancel||outside)){event.preventDefault();accept.focus();}else if(!event.shiftKey&&(document.activeElement===accept||outside)){event.preventDefault();cancel.focus();}}
       };
       confirmation=finish;cancel.onclick=()=>finish(false);backdrop.onclick=()=>finish(false);accept.onclick=()=>finish(true);document.addEventListener('keydown',key,true);for(const name of ['pagehide','termdock:secure-state','auth:unauthorized'])window.addEventListener(name,expired);
       document.body.append(backdrop,panel);
       // The ordinary overlay observer/receipt controls first paint and focus.
-      queueMicrotask(()=>{if(confirmation!==finish)return;const life=window.termdockPreviewLifecycle;let focused=false;if(life)unsubscribe=life.subscribe(value=>{if(value.overlayReady&&confirmation===finish&&!focused){focused=true;cancel.focus({preventScroll:true});}});else cancel.focus({preventScroll:true});});
+      queueMicrotask(()=>{if(confirmation!==finish)return;const life=window.termdockPreviewLifecycle;let focused=false;const focus=()=>{if(confirmation!==finish||focused||!document.hasFocus()||document.hidden||!available(cancel))return;const active=document.activeElement;if(panel.contains(active)){focused=true;return;}if(active!==previous&&active!==document.body)return;focused=true;cancel.focus({preventScroll:true});};if(life)unsubscribe=life.subscribe(value=>{if(value.overlayReady)focus();});else focus();});
     });
   };
   let feedback;
@@ -627,7 +636,8 @@
       const centerRailBlank = target === centerRail && centerRail?.isConnected && railBox
         && [railBox.left,railBox.right,railBox.top,railBox.bottom,event.clientX,event.clientY].every(Number.isFinite)
         && event.clientX >= railBox.left && event.clientX < railBox.right && event.clientY >= railBox.top && event.clientY < railBox.bottom;
-      const centerBlank = !!centerShell && (target === centerShell || target === centerWorkspace || centerRailBlank || (target.parentElement === centerWorkspace && ['HEADER','SECTION'].includes(target.tagName)));
+      const centerStage = centerWorkspace?.querySelector(':scope > #local > .local-stage');
+      const centerBlank = !!centerShell && (target === centerShell || target === centerWorkspace || target === centerStage || centerRailBlank || (target.parentElement === centerWorkspace && ['HEADER','SECTION'].includes(target.tagName)));
       const loginRoot = !boot.local && (() => {
         const password = document.querySelector('input[type="password"][autocomplete="current-password"]');
         const root = password?.closest('#root > div');

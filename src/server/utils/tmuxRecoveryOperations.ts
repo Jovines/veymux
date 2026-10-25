@@ -292,12 +292,13 @@ export class TmuxRecoveryOperationStore {
     return this.get(id);
   }
 
-  async dismissPausedOperations(): Promise<void> {
-    if (this.all().some(operation => !canDismissTmuxRecoveryOperation(operation))) {
+  async dismissPausedOperations(incidentId?: string): Promise<void> {
+    const operations = this.state.operations.filter(operation => !incidentId || operation.incidentId === incidentId);
+    if (operations.some(operation => !canDismissTmuxRecoveryOperation(summarizeRecoveryOperation(operation)))) {
       throw new TmuxRecoveryOperationError('RECOVERY_OPERATION_ACTIVE', 'Pause recovery and wait for running items to finish before dismissing the incident.');
     }
-    for (const operation of this.state.operations) {
-      if (!terminalState(operation.state)) operation.dismissedAt = Date.now();
+    for (const operation of operations) {
+      operation.dismissedAt = Date.now();
     }
     await this.persist();
     this.emit();

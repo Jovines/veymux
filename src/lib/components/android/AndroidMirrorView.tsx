@@ -1255,7 +1255,8 @@ export function AndroidMirrorView({ sessionId, dockOnly = false, onInsertPrompt,
           <button
             type="button"
             onClick={(event) => void takeScreenshot(event.currentTarget)}
-            disabled={!onInsertFile || captureBusy}
+            disabled={!onInsertFile}
+            aria-busy={captureBusy}
             className={`${iconButtonClass} text-muted-foreground`}
             title={onInsertFile ? t('android.screenshot') : t('android.captureUnavailable')}
             aria-label={t('android.screenshot')}

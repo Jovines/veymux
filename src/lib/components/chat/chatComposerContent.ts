@@ -1,10 +1,11 @@
-export interface ChatAttachment { path: string; name: string; type?: string; size?: number; reference?: string }
+import { isContextReference, type ContextReference } from '../../terminal/contextReference';
+export interface ChatAttachment { path: string; name: string; type?: string; size?: number; reference?: string; context?: ContextReference }
 export interface ChatInsertionPoint { value: string; start: number; end: number }
 export interface ChatMention { sessionId: string; groupId: string; groupName: string; name: string; subtitle?: string }
 export interface ChatComposerContent { text: string; attachments: ChatAttachment[]; mentions: ChatMention[] }
 const marker = '```termdock-context\n';
-export const mentionToken = (member: ChatMention) => `@「${member.name} · ${member.groupName}」`;
-export const attachmentToken = (file: ChatAttachment) => file.reference ? `【${file.reference}】` : '';
+export const mentionToken = (member: ChatMention) => `@「${member.name}${member.groupName ? ` · ${member.groupName}` : ''}」`;
+export const attachmentToken = (file: ChatAttachment) => file.reference ? `【${file.reference}${file.context?.id ? `@${file.context.id}` : ''}】` : '';
 export function activeChatMentions(text: string, mentions: ChatMention[]): ChatMention[] {
   return mentions.filter(member => text.includes(mentionToken(member)));
 }
@@ -12,7 +13,9 @@ export function activeChatMentions(text: string, mentions: ChatMention[]): ChatM
 export function composeChatDraft(text: string, attachments: ChatAttachment[], mentions: ChatMention[]): string {
   const active = activeChatMentions(text, mentions);
   const body = text.trim();
-  return body + (attachments.length || active.length ? `${body ? '\n\n' : ''}${marker}${JSON.stringify({ attachments, mentions: active })}\n\`\`\`` : '');
+  // A user may be discussing this envelope format. Wrap literal markers once
+  // so their own code remains message text rather than becoming metadata.
+  return body + (attachments.length || active.length || body.includes(marker) ? `${body ? '\n\n' : ''}${marker}${JSON.stringify({ attachments, mentions: active })}\n\`\`\`` : '');
 }
 export function parseChatDraft(content: string): ChatComposerContent {
   const plain = { text: content, attachments: [], mentions: [] };
@@ -21,17 +24,21 @@ export function parseChatDraft(content: string): ChatComposerContent {
   try {
     const value = JSON.parse(content.slice(at + marker.length, -4));
     if (!Array.isArray(value.attachments) || !Array.isArray(value.mentions)
-      || !value.attachments.every((a: ChatAttachment) => a && typeof a.path === 'string' && typeof a.name === 'string' && (a.type === undefined || typeof a.type === 'string') && (a.size === undefined || typeof a.size === 'number') && (a.reference === undefined || typeof a.reference === 'string'))
+      || !value.attachments.every((a: ChatAttachment) => a && typeof a.path === 'string' && typeof a.name === 'string' && (a.type === undefined || typeof a.type === 'string') && (a.size === undefined || typeof a.size === 'number') && (a.reference === undefined || typeof a.reference === 'string') && (a.context === undefined || isContextReference(a.context) && a.context.path === a.path))
       || !value.mentions.every((m: ChatMention) => m && ['sessionId', 'groupId', 'groupName', 'name'].every(key => typeof m[key as keyof ChatMention] === 'string') && (m.subtitle === undefined || typeof m.subtitle === 'string'))) return plain;
     return { text: content.slice(0, at ? at - 2 : 0), attachments: value.attachments, mentions: value.mentions };
   } catch { return plain; }
 }
-export function chatAttachmentKind(file: ChatAttachment): '图片' | '视频' | '文件' {
+export function chatAttachmentKind(file: ChatAttachment): '图片' | '视频' | '文件' | '目录' | '代码' {
+  if (file.context?.kind === 'directory') return '目录';
+  if (file.context?.kind === 'code') return '代码';
   if (file.type?.startsWith('image/') || /\.(png|jpe?g|gif|webp|heic|avif|svg)$/i.test(file.name)) return '图片';
   if (file.type?.startsWith('video/') || /\.(mp4|mov|webm|m4v|mkv)$/i.test(file.name)) return '视频';
   return '文件';
 }
 export function chatDraftSummary(content: string): string {
   const draft = parseChatDraft(content);
-  return [draft.text, ...draft.attachments.map(file => `${file.reference || chatAttachmentKind(file)}：${file.name}`)].filter(Boolean).join('\n');
+  let text = draft.text;
+  for (const file of draft.attachments) if (file.context) text = text.split(attachmentToken(file)).join(file.name);
+  return [text, ...draft.attachments.map(file => file.context?.text || `${file.reference || chatAttachmentKind(file)}：${file.name}`)].filter(Boolean).join('\n');
 }

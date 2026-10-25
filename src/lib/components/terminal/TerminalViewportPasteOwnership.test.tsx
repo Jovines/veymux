@@ -96,6 +96,30 @@ describe('TerminalViewport async paste ownership', () => {
     vi.unstubAllGlobals();
   });
 
+  it('does not take focus from an editor when asynchronous terminal initialization completes', async () => {
+    const editor = document.createElement('input'); document.body.append(editor); editor.focus();
+    try {
+      render(<TerminalViewport sessionKey="late-init" sessionId="late-init" chunks={[]} onInput={vi.fn()} onResize={vi.fn()}
+        terminalSettings={{ rendererMode: 'dom' } as never} theme={{} as never} autoFocus />);
+      await waitFor(() => expect(screen.getByRole('textbox', { name: 'terminal.input' })).toBeTruthy());
+      expect(document.activeElement).toBe(editor);
+    } finally { editor.remove(); }
+  });
+
+  it('honors suspended input and hidden layout when focus is requested through the controller', async () => {
+    const ref = createRef<TerminalController>();
+    const props = { sessionKey: 'focus-owner', sessionId: 'focus-owner', chunks: [], onInput: vi.fn(), onResize: vi.fn(),
+      terminalSettings: { rendererMode: 'dom' } as never, theme: {} as never, autoFocus: false };
+    const view = render(<TerminalViewport {...props} ref={ref} inputActive={false} />);
+    await waitFor(() => expect(screen.getByRole('textbox')).toBeTruthy());
+    const input = screen.getByRole('textbox');
+    act(() => ref.current!.focus()); expect(document.activeElement).not.toBe(input);
+    view.rerender(<TerminalViewport {...props} ref={ref} inputActive isLayoutVisible={false} />);
+    act(() => ref.current!.focus()); expect(document.activeElement).not.toBe(input);
+    view.rerender(<TerminalViewport {...props} ref={ref} inputActive />);
+    act(() => ref.current!.focus()); expect(document.activeElement).toBe(input);
+  });
+
   it('keeps font size on open/refocus and tiny scrolls, and limits deliberate zoom across xterm rebuilds', async () => {
     const focused = vi.spyOn(document, 'hasFocus').mockReturnValue(true);
     const clock = vi.spyOn(performance, 'now').mockReturnValue(1000);
@@ -195,9 +219,10 @@ describe('TerminalViewport async paste ownership', () => {
   it('waits for interaction after a remote resize and cancels superseded retries', async () => {
     const ref = createRef<TerminalController>();
     const onResize = vi.fn();
-    render(<TerminalViewport ref={ref} sessionKey="resize-ownership" sessionId="resize-ownership" chunks={[]} onInput={vi.fn()}
+    const view = render(<TerminalViewport ref={ref} sessionKey="resize-ownership" sessionId="resize-ownership" chunks={[]} onInput={vi.fn()}
       onResize={onResize} terminalSettings={{ rendererMode: 'dom' } as never} theme={{} as never} autoFocus={false} />);
     await waitFor(() => expect(terminalModel.instance?._core.coreService.isCursorInitialized).toBe(true));
+    vi.spyOn(view.container.querySelector('.terminal-viewport-container')!, 'getBoundingClientRect').mockReturnValue({ width: 1000, height: 600 } as DOMRect);
     vi.useFakeTimers();
     act(() => {
       ref.current!.setSessionReady(true);
@@ -297,12 +322,64 @@ describe('TerminalViewport async paste ownership', () => {
     expect(onResize).toHaveBeenLastCalledWith(140, 36, expect.any(Number));
   });
 
+  it('reconciles the measured grid once when an already mounted session becomes active after a remote resize', async () => {
+    const ref = createRef<TerminalController>(), onResize = vi.fn();
+    const props = { sessionKey: 'activation-resize', sessionId: 'activation-resize', chunks: [], onInput: vi.fn(), onResize,
+      terminalSettings: { rendererMode: 'dom' } as never, theme: {} as never, autoFocus: false };
+    const view = render(<TerminalViewport {...props} ref={ref} isActive={false} />);
+    await waitFor(() => expect(terminalModel.instance?._core.coreService.isCursorInitialized).toBe(true));
+    vi.spyOn(view.container.querySelector('.terminal-viewport-container')!, 'getBoundingClientRect')
+      .mockReturnValue({ width: 1000, height: 600 } as DOMRect);
+    vi.useFakeTimers();
+    act(() => {
+      ref.current!.setSessionReady(true, { cols: 50, rows: 20 });
+      ref.current!.notifyServerSize(50, 20, 'ws-resize:phone');
+      terminalModel.dimensions = { cols: 120, rows: 32 };
+      ref.current!.requestRefresh('resize');
+      vi.advanceTimersByTime(1000);
+    });
+    expect(onResize).not.toHaveBeenCalled();
+    view.rerender(<TerminalViewport {...props} ref={ref} isActive />);
+    act(() => vi.advanceTimersByTime(200));
+    expect(onResize).toHaveBeenCalledExactlyOnceWith(120, 32, expect.any(Number));
+    act(() => ref.current!.acknowledgeResize({ seq: onResize.mock.calls[0][2], ok: true, cols: 120, rows: 32 }));
+    view.rerender(<TerminalViewport {...props} ref={ref} isActive />);
+    act(() => vi.advanceTimersByTime(3000));
+    expect(onResize).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps activation pending through an unmeasurable layout and reconciles once without repeating an unchanged grid', async () => {
+    const ref = createRef<TerminalController>(), onResize = vi.fn();
+    const props = { sessionKey: 'activation-pending', sessionId: 'activation-pending', chunks: [], onInput: vi.fn(), onResize,
+      terminalSettings: { rendererMode: 'dom' } as never, theme: {} as never, autoFocus: false };
+    const view = render(<TerminalViewport {...props} ref={ref} isActive={false} isLayoutVisible={false} />);
+    await waitFor(() => expect(terminalModel.instance?._core.coreService.isCursorInitialized).toBe(true));
+    const rect = vi.spyOn(view.container.querySelector('.terminal-viewport-container')!, 'getBoundingClientRect')
+      .mockReturnValue({ width: 0, height: 0 } as DOMRect);
+    vi.useFakeTimers();
+    act(() => { ref.current!.setSessionReady(true, { cols: 50, rows: 20 }); ref.current!.notifyServerSize(50, 20, 'ws-resize:phone'); });
+    view.rerender(<TerminalViewport {...props} ref={ref} isActive isLayoutVisible />);
+    act(() => vi.advanceTimersByTime(200));
+    expect(onResize).not.toHaveBeenCalled();
+    rect.mockReturnValue({ width: 1000, height: 600 } as DOMRect);
+    act(() => { ref.current!.requestRefresh('focus', { skipResizePush: true }); vi.advanceTimersByTime(200); });
+    expect(onResize).toHaveBeenCalledExactlyOnceWith(80, 24, expect.any(Number));
+    act(() => ref.current!.acknowledgeResize({ seq: onResize.mock.calls[0][2], ok: true, cols: 80, rows: 24 }));
+    view.rerender(<TerminalViewport {...props} ref={ref} isActive={false} isLayoutVisible={false} />);
+    view.rerender(<TerminalViewport {...props} ref={ref} isActive isLayoutVisible />);
+    act(() => vi.advanceTimersByTime(3000));
+    expect(onResize).toHaveBeenCalledTimes(1);
+  });
+
   it('lets explicit toolbar input take over after a remote resize', async () => {
     const ref = createRef<TerminalController>();
     const onResize = vi.fn(), onInput = vi.fn();
-    render(<TerminalViewport ref={ref} sessionKey="toolbar-resize" sessionId="toolbar-resize" chunks={[]} onInput={onInput}
+    const view = render(<TerminalViewport ref={ref} sessionKey="toolbar-resize" sessionId="toolbar-resize" chunks={[]} onInput={onInput}
       onResize={onResize} terminalSettings={{ rendererMode: 'dom' } as never} theme={{} as never} autoFocus={false} />);
     await waitFor(() => expect(terminalModel.instance?._core.coreService.isCursorInitialized).toBe(true));
+    vi.spyOn(view.container.querySelector('.terminal-viewport-container')!, 'getBoundingClientRect').mockReturnValue({ width: 1000, height: 600 } as DOMRect);
+    act(() => ref.current!.requestRefresh('resize', { skipResizePush: true }));
+    await waitFor(() => expect(ref.current!.getDimensions()).toEqual({ cols: 80, rows: 24 }));
     act(() => {
       ref.current!.setSessionReady(true);
       ref.current!.notifyServerSize(50, 20, 'ws-resize:phone');
@@ -428,9 +505,9 @@ describe('TerminalViewport async paste ownership', () => {
   it('forwards generated mouse and terminal replies without toolbar modifier transformation', async () => {
     const onInput = vi.fn(); mount(onInput);
     await waitFor(() => expect(terminalModel.instance?.dataHandler).toBeTypeOf('function'));
-    for (const sequence of ['\x1b[<35;48;29M', '\x1b[<0;48;29M', '\x1b[<0;48;29m', '\x1b[1;1R']) {
+    for (const [sequence, terminalResponse] of [['\x1b[<35;48;29M', false], ['\x1b[<0;48;29M', false], ['\x1b[<0;48;29m', false], ['\x1b[1;1R', true]] as const) {
       act(() => terminalModel.instance.dataHandler(sequence));
-      expect(onInput).toHaveBeenLastCalledWith(sequence, { skipModifierTransform: true });
+      expect(onInput).toHaveBeenLastCalledWith(sequence, { skipModifierTransform: true, terminalResponse });
     }
   });
   it('macOS Edit Copy events use the xterm selection rather than the hidden input value',async()=>{

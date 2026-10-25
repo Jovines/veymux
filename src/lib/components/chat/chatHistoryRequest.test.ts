@@ -13,7 +13,7 @@ it('starts history before the renderer is ready and reuses even an already-compl
   expect(fetch).toHaveBeenCalledOnce(); release();
   await readChatHistory('warm', new AbortController().signal, 'one');
   expect(fetch).toHaveBeenCalledTimes(2);
-  expect(fetch.mock.calls[1][0]).toBe('/api/terminal/warm/chat?limit=30&revision=one');
+  expect(fetch.mock.calls[1][0]).toBe('/api/terminal/warm/chat?limit=30&replyContext=1&revision=one');
 });
 it('does not launch a second warm request after a mounted view already requested history', async () => {
   const fetch = vi.fn(async () => Response.json({ messages: [] })); vi.stubGlobal('fetch', fetch);

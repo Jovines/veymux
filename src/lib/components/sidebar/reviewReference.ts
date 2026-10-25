@@ -1,4 +1,7 @@
+import type { ContextReference } from '../../terminal/contextReference';
+
 export interface ReferenceEvidence {
+  reference?: ContextReference;
   snapshot?: Promise<Blob | null>;
 }
 

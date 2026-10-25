@@ -1,6 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { Archive, ChevronRight, LayoutGrid, MessageCircle, MoreHorizontal, Pencil, RefreshCw, Trash2, X } from 'lucide-react';
+import { Archive, ChevronRight, LayoutGrid, MessageCircle, MoreHorizontal, Pencil, RefreshCw, Share2, Trash2, X } from 'lucide-react';
+import { openSessionShare } from '../../federation/accessEvents';
 import { useKeyboardLayer } from '../../hooks/useKeyboardLayer';
 import { interruptActiveDrag } from '../../hooks/useDragInterruptionSensor';
 import { useSuperLongPress } from '../../hooks/useSuperLongPress';
@@ -87,6 +88,7 @@ export function CollaborationGroupActions({ group, collapsed, onOpen, onMessages
       }}>
       <button role="menuitem" tabIndex={-1} className={action} onClick={() => select(onOpen)}><LayoutGrid size={15} />打开看板</button>
       <button role="menuitem" tabIndex={-1} disabled={!onMessages} className={`${action} disabled:opacity-40`} onClick={() => select(() => onMessages?.())}><MessageCircle size={15} />成员与消息</button>
+      {!group.federated && group.sessionIds.length > 0 && <button role="menuitem" tabIndex={-1} className={action} onClick={() => select(() => openSessionShare({ inviteSessionIds: group.sessionIds, viewMode: 'terminal' }))}><Share2 size={15} />分享组内会话</button>}
       <button role="menuitem" tabIndex={-1} className={action} onClick={() => select(onToggleCollapsed)}><ChevronRight size={15} className={collapsed ? '' : 'rotate-90'} />{collapsed ? '展开成员会话' : '收起成员会话'}</button>
       <button role="menuitem" tabIndex={-1} className={action} onClick={() => select(() => edit('rename'))}><Pencil size={15} />重命名协作组</button>
       {!group.federated && <button role="menuitem" tabIndex={-1} className={action} onClick={() => select(() => edit(group.archivedAt === undefined ? 'archive' : 'unarchive'))}><Archive size={15} />{group.archivedAt === undefined ? '归档协作组' : '恢复显示'}</button>}

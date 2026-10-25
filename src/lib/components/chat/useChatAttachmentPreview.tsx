@@ -3,11 +3,12 @@ import { useShareAccess } from '../../federation/ShareAccessContext';
 import { resolveTerminalPath } from '../../terminal/pathLinks';
 import { useChatImagePreview } from './useChatImagePreview';
 import { chatAttachmentKind, type ChatAttachment } from './chatComposerContent';
+import { useChatFileNavigation } from './ChatFileNavigation';
 const Video = lazy(() => import('./ChatVideoPreviewDialog').then(module => ({ default: module.ChatVideoPreviewDialog })));
 
 /** Both media types use the existing page-owned encrypted resource readers. */
 export function useChatAttachmentPreview(files: ChatAttachment[]) {
-  const image = useChatImagePreview(files), access = useShareAccess();
+  const image = useChatImagePreview(files), access = useShareAccess(), navigation = useChatFileNavigation();
   const [video, setVideo] = useState<ChatAttachment | null>(null);
   const close = useCallback(() => setVideo(null), []);
   const open = useCallback((file: ChatAttachment) => {
@@ -19,8 +20,9 @@ export function useChatAttachmentPreview(files: ChatAttachment[]) {
         return path === root || path.startsWith(`${root}/`);
       })) return;
       setVideo({ ...file, path });
-    } else image.onPreview(file);
-  }, [image.onPreview, access]);
+    } else if (chatAttachmentKind(file) === '图片') image.onPreview(file);
+    else navigation?.openReference(file);
+  }, [image.onPreview, access, navigation]);
   return {
     preview: <>{image.preview}{image.onPreview && video && <Suspense fallback={null}><Video file={video} close={close} /></Suspense>}</>,
     onPreview: image.onPreview ? open : undefined,

@@ -16,6 +16,7 @@ export function chatUIAdapter(): Plugin {
       optimizeDeps: { exclude: ['@openuidev/react-ui'] },
     }),
     resolveId(source, importer) {
+      if (importer?.includes('/@openuidev/react-ui/dist/genui-lib/Charts/') && /\/components\/Charts(?:\/index)?(?:\.js)?$/.test(source)) return fileURLToPath(new URL('../src/lib/components/chat/ChatUIChartsBridge.tsx', import.meta.url));
       if (importer?.includes('/@openuidev/react-ui/dist/') && !importer.includes('/components/Table/') && (importer.includes('/dist/components/') || source.includes('/components/Table')) && /(?:^|\/)Table(?:\/index)?(?:\.js)?$/.test(source)) return fileURLToPath(new URL('../src/lib/components/chat/ChatUITableBridge.tsx', import.meta.url));
       if (importer?.includes('/@openuidev/react-ui/dist/') && !importer.includes('/components/Select/') && (importer.includes('/dist/components/') || source.includes('/components/Select')) && /(?:^|\/)Select(?:\/index)?(?:\.js)?$/.test(source)) return fileURLToPath(new URL('../src/lib/components/chat/ChatUISelectBridge.tsx', import.meta.url));
       if (source.endsWith('/lucide/lucideDynamicImports.mjs') && importer?.includes('@openuidev/react-ui')) return fileURLToPath(new URL('../node_modules/lucide-react/dynamicIconImports.mjs', import.meta.url));

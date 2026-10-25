@@ -1,6 +1,7 @@
 import type { LoadedPlugin } from './plugins.js';
 import type { AgentStatusDefinition } from './session.js';
 import type { NativeProcessIdentityConfig } from './nativeProcessIdentity.js';
+import { chatProgramName, chatProgramNameFromArgv, validChatProgramName } from '../shared/chatProgramPolicy.js';
 
 /**
  * Third-party CLI coding-agent registry + detection.
@@ -71,6 +72,18 @@ const AGENTS: AgentInfo[] = [
 
 const BY_ALIAS = new Map<string, AgentInfo>();
 const BY_SLUG = new Map<string, AgentInfo>();
+const CHAT_PROGRAM_AGENTS = new Map<string, AgentInfo>();
+/** Explicit custom programs participate in the normal identity/delivery pipeline. */
+export function setChatProgramNames(names: readonly string[]): void {
+  CHAT_PROGRAM_AGENTS.clear();
+  for (const name of names) {
+    const program = name.trim().toLowerCase();
+    if (validChatProgramName(program)) CHAT_PROGRAM_AGENTS.set(program, {
+      slug: `custom-program-${program}`, displayName: program, aliases: [program],
+      accentColor: 'var(--muted-foreground)', icon: null,
+    });
+  }
+}
 for (const info of AGENTS) {
   BY_SLUG.set(info.slug, info);
   for (const alias of info.aliases) BY_ALIAS.set(alias, info);
@@ -78,11 +91,12 @@ for (const info of AGENTS) {
 
 export function agentBySlug(slug: string | null | undefined): AgentInfo | null {
   if (!slug) return null;
-  return BY_SLUG.get(slug.trim().toLowerCase()) ?? null;
+  const normalized = slug.trim().toLowerCase();
+  return BY_SLUG.get(normalized) ?? [...CHAT_PROGRAM_AGENTS.values()].find(agent => agent.slug === normalized) ?? null;
 }
 
 export function listAgents(): AgentInfo[] {
-  return [...BY_SLUG.values()];
+  return [...BY_SLUG.values(), ...[...CHAT_PROGRAM_AGENTS.values()].filter(agent => !BY_ALIAS.has(agent.aliases[0]))];
 }
 
 function matchToken(token: string): AgentInfo | null {
@@ -158,7 +172,7 @@ export function detectAgentFromArgv(
       }
     }
   }
-  return null;
+  return CHAT_PROGRAM_AGENTS.get(chatProgramNameFromArgv(argv) || '') ?? null;
 }
 
 /**
@@ -174,7 +188,7 @@ export function detectAgentFromCommand(
     .split(/\s+/)
     .map((t) => t.replace(/^["']+|["']+$/g, ''))
     .filter((t) => t.length > 0);
-  return detectAgentFromArgv(argv, customRules);
+  return detectAgentFromArgv(argv, customRules) ?? CHAT_PROGRAM_AGENTS.get(chatProgramName(command) || '') ?? null;
 }
 
 // ---------------------------------------------------------------------------

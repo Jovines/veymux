@@ -57,3 +57,34 @@ describe('native program reports', () => {
     expect(tracker.feed(osc('state=working:progress=20'))).toMatchObject({ progress: { state: 'set', progress: 20 } });
   });
 });
+
+it('keeps independent pane reports and clears only the pane that became idle or returned to its shell', () => {
+  const tracker = new ProgramStatusTracker();
+  tracker.feed('\x1b]7501;state=working:app=codex\x1b\\', 'pane1');
+  tracker.feed('\x1b]7501;state=working:app=other\x1b\\', 'pane2');
+  expect(tracker.activeApps()).toEqual(['codex', 'other']);
+  tracker.feed('\x1b]7501;state=idle:app=other\x1b\\', 'pane2');
+  expect(tracker.activeApps()).toEqual(['codex']);
+  tracker.feed('\x1b]133;A\x07', 'pane1');
+  expect(tracker.activeApps()).toEqual([]);
+});
+
+it('acknowledges native completion across replay, but a new turn needs attention again', () => {
+  const tracker = new ProgramStatusTracker();
+  const status = (state: string) => tracker.feed(`\x1b]7501;state=${state}:app=codex\x1b\\`);
+  expect(status('done').progress?.reviewed).not.toBe(true);
+  expect(tracker.acknowledgeCompletion()).toMatchObject({ changed: true, progress: { state: 'done', reviewed: true } });
+  expect(tracker.acknowledgeCompletion().changed).toBe(false);
+  expect(status('done')).toMatchObject({ changed: false, progress: { reviewed: true } });
+  expect(tracker.feed('ordinary output').progress?.reviewed).toBe(true);
+  expect(status('working').progress).toMatchObject({ state: 'indeterminate' });
+  expect(status('done').progress?.reviewed).not.toBe(true);
+});
+
+it('does not acknowledge questions or working states as completed', () => {
+  for (const state of ['blocked', 'working', 'error']) {
+    const tracker = new ProgramStatusTracker();
+    tracker.feed(`\x1b]7501;state=${state}:app=other-agent\x1b\\`);
+    expect(tracker.acknowledgeCompletion().changed).toBe(false);
+  }
+});

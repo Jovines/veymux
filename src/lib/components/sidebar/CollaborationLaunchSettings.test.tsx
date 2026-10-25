@@ -58,8 +58,8 @@ it('keeps save confirmation visible after the directory refresh and can switch b
   await screen.findByRole('status');
   view.rerender(<Setup group={saved!} />);
   await waitFor(() => expect(screen.getByRole('status').textContent).toContain('启动方案已保存'));
-  fireEvent.change(screen.getByRole('combobox', { name: '编辑方案' }), { target: { value: 'deep' } });
+  fireEvent.click(screen.getByRole('button', { name: /^深度实现$/ }));
   expect(screen.getByRole('textbox', { name: '使用备注' })).toHaveProperty('value', '复杂实现使用。');
-  fireEvent.change(screen.getByRole('combobox', { name: '编辑方案' }), { target: { value: 'fast' } });
+  fireEvent.click(screen.getByRole('button', { name: /^快速排查$/ }));
   expect(screen.getByRole('textbox', { name: '使用备注' })).toHaveProperty('value', '保存后的备注');
 });

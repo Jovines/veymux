@@ -1,25 +1,66 @@
 import { useLayoutEffect, useRef, useSyncExternalStore, type RefObject } from 'react';
+import { isWorkspaceActive, WORKSPACE_VISIBILITY_EVENT } from '../services/workspaceHost';
+import { isFocusTargetAvailable, restoreFocusIfUnclaimed } from '../utils/focusOwnership';
 
 interface KeyboardLayer { element: HTMLElement }
 const layers: KeyboardLayer[] = [];
 const listeners = new Set<() => void>();
 const notify = () => listeners.forEach((listener) => listener());
+const bridgeLayers = new WeakMap<HTMLElement, KeyboardLayer>();
+let observer: MutationObserver | undefined;
+function observeLayers() {
+  if (!observer) return;
+  observer.disconnect();
+  // Bridge confirmations mount directly in body. Observe only layer ancestors
+  // for visibility, rather than every terminal output/text mutation.
+  observer.observe(document.body, { childList: true });
+  const observed = new Set<HTMLElement>();
+  for (const layer of layers) for (let node: HTMLElement | null = layer.element; node; node = node.parentElement) {
+    if (observed.has(node)) break;
+    observed.add(node);
+    observer.observe(node, { childList: node === document.body, attributes: true, attributeFilter: ['hidden', 'inert', 'aria-hidden', 'style', 'class'] });
+  }
+}
+function subscribe(listener: () => void) {
+  listeners.add(listener);
+  if (listeners.size === 1) {
+    observer = new MutationObserver(notify); observeLayers();
+    window.addEventListener(WORKSPACE_VISIBILITY_EVENT, notify);
+    document.addEventListener('visibilitychange', notify);
+  }
+  return () => {
+    listeners.delete(listener);
+    if (!listeners.size) {
+      observer?.disconnect(); observer = undefined;
+      window.removeEventListener(WORKSPACE_VISIBILITY_EVENT, notify);
+      document.removeEventListener('visibilitychange', notify);
+    }
+  };
+}
 
-export const isKeyboardLayerOpen = () => layers.length > 0;
-export const getActiveKeyboardLayer = () => layers[layers.length - 1] ?? null;
+function activeKeyboardLayer(departing?: KeyboardLayer): KeyboardLayer | null {
+  if (typeof document === 'undefined' || document.hidden || !isWorkspaceActive()) return null;
+  const confirmation = document.querySelector<HTMLElement>('[data-desktop-confirmation="true"]');
+  if (isFocusTargetAvailable(confirmation)) {
+    let layer = bridgeLayers.get(confirmation);
+    if (!layer) { layer = { element: confirmation }; bridgeLayers.set(confirmation, layer); }
+    return layer;
+  }
+  return [...layers].reverse().find(layer => layer === departing || isFocusTargetAvailable(layer.element)) ?? null;
+}
+export const getActiveKeyboardLayer = (): KeyboardLayer | null => activeKeyboardLayer();
+export const isKeyboardLayerOpen = () => getActiveKeyboardLayer() !== null;
 
 /** Explicit input actions may belong only to the current, visible keyboard owner. */
 export function isKeyboardLayerSource(source: HTMLElement): boolean {
+  if (!isWorkspaceActive() || !isFocusTargetAvailable(source)) return false;
   const top = getActiveKeyboardLayer();
   const layerRoots = top ? roots(top.element) : [document.body];
   return source.isConnected && !source.closest('[hidden], [inert], [aria-hidden="true"]')
     && (!top || layerRoots.some(root => root.contains(source))) && visibleInLayer(source, layerRoots);
 }
 export function useKeyboardLayerOpen(): boolean {
-  return useSyncExternalStore((listener) => {
-    listeners.add(listener);
-    return () => { listeners.delete(listener); };
-  }, isKeyboardLayerOpen, () => false);
+  return useSyncExternalStore(subscribe, isKeyboardLayerOpen, () => false);
 }
 
 function roots(element: HTMLElement): HTMLElement[] {
@@ -40,7 +81,7 @@ function visibleInLayer(control: HTMLElement, layerRoots: HTMLElement[]): boolea
 function controls(element: HTMLElement): HTMLElement[] {
   const layerRoots = roots(element);
   return layerRoots.flatMap((root) => Array.from(root.querySelectorAll<HTMLElement>(
-    'button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), a[href], summary, [tabindex]',
+    'button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), a[href], summary, iframe, [tabindex]',
   ))).filter((control) => {
     const closedDetails = control.closest('details:not([open])');
     const summary = closedDetails?.querySelector('summary');
@@ -65,13 +106,14 @@ export function useKeyboardLayer(ref: RefObject<HTMLElement>, open: boolean, onE
     // A containing layer belongs beneath its already registered descendants.
     const descendant = layers.findIndex(candidate => element.contains(candidate.element));
     if (descendant < 0) layers.push(layer); else layers.splice(descendant, 0, layer);
+    observeLayers();
     notify();
-    const isTop = () => layers[layers.length - 1] === layer;
+    const isTop = () => getActiveKeyboardLayer() === layer;
     const contains = (target: EventTarget | null) => target instanceof Node && roots(element).some((root) => root.contains(target));
     const focusFirst = () => (controls(element)[0] ?? element).focus({ preventScroll: true });
-    if (isTop()) focusFirst();
+    if (isTop() && !contains(document.activeElement)) focusFirst();
     const keepFocus = (event: FocusEvent) => {
-      if (isTop() && !contains(event.target)) focusFirst();
+      if (document.hasFocus() && isTop() && !contains(event.target)) focusFirst();
     };
     const trapTab = (event: KeyboardEvent) => {
       if (!isTop() || event.key !== 'Tab' || event.defaultPrevented) return;
@@ -94,20 +136,25 @@ export function useKeyboardLayer(ref: RefObject<HTMLElement>, open: boolean, onE
     document.addEventListener('keydown', trapTab, true);
     document.addEventListener('keydown', closeOnEscape);
     return () => {
-      const wasTop = isTop();
+      // A conditional element in the hook's own component may already have
+      // been removed during React's mutation phase. Keep its stack position
+      // for cleanup; a visible bridge/child layer still has priority.
+      const wasTop = activeKeyboardLayer(element.isConnected ? undefined : layer) === layer;
       layers.splice(layers.indexOf(layer), 1);
+      observeLayers();
       notify();
       document.removeEventListener('focusin', keepFocus, true);
       document.removeEventListener('keydown', trapTab, true);
       document.removeEventListener('keydown', closeOnEscape);
       if (wasTop) {
-        const remainingTop = layers[layers.length - 1];
+        const remainingTop = getActiveKeyboardLayer();
         // React can remove the original trigger after layout cleanup. Restore
         // after that commit so recreated launch buttons can receive focus.
         queueMicrotask(() => {
-          if (layers[layers.length - 1] !== remainingTop) return;
+          if (getActiveKeyboardLayer() !== remainingTop || !isWorkspaceActive()) return;
           const target = previous?.isConnected && previous !== document.body ? previous : restoreRef.current?.();
-          target?.focus({ preventScroll: true });
+          if (target && remainingTop && !roots(remainingTop.element).some(root => root.contains(target))) return;
+          restoreFocusIfUnclaimed(target, element);
         });
       }
     };

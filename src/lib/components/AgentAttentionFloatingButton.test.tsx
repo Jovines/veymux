@@ -3,6 +3,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { AgentFloatingSessionButtons } from './AgentIndicators';
+import { useTerminalStore } from '../stores/useTerminalStore';
+const keyboard = vi.hoisted(() => ({ open: false }));
+vi.mock('../hooks/useViewportKeyboardState', () => ({ useViewportKeyboardState: () => ({ isOpen: keyboard.open }) }));
 import { useSidebarStore } from '../stores/useSidebarStore';
 import {
   MOBILE_ATTENTION_EDGE_GAP_PX,
@@ -45,12 +48,15 @@ function createTerminalArea({
 
 beforeEach(() => {
   vi.useRealTimers();
+  keyboard.open = false;
   window.localStorage.clear();
   useSidebarStore.setState({ leftOpen: false, rightOpen: false });
 });
 
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
+  useTerminalStore.getState().clearAllTerminalSessions();
   vi.useRealTimers();
   useSidebarStore.setState({ leftOpen: false, rightOpen: false });
 });
@@ -343,4 +349,26 @@ describe('AgentFloatingSessionButtons', () => {
     expect(Number.parseFloat(button.style.left)).toBe(bounds.left + MOBILE_ATTENTION_EDGE_GAP_PX);
     act(() => vi.runOnlyPendingTimers());
   });
+});
+
+it('keeps unread chat navigation above the composer with the keyboard open and preserves terminal keyboard hiding', () => {
+  keyboard.open = true;
+  localStorage.setItem('termdock:mobile-attention-position:v1', JSON.stringify({ side: 'right', yRatio: 1 }));
+  vi.stubGlobal('CSS', { escape: (value: string) => value });
+  useTerminalStore.getState().setTerminalSession('chat-active', { sessionId: 'backend-chat', cols: 80, rows: 24 });
+  useTerminalStore.getState().setSessionChatMode('chat-active', true);
+  const area = createTerminalArea();
+  area.innerHTML = '<div data-session-workspace="chat-active"><section data-session-chat><div class="session-chat-scroll"></div><div data-chat-terminal-dock></div></section></div>';
+  const scroll = area.querySelector<HTMLElement>('.session-chat-scroll')!;
+  scroll.getBoundingClientRect = () => ({ left: 0, top: 80, right: 390, bottom: 300, width: 390, height: 220 } as DOMRect);
+  area.querySelector<HTMLElement>('[data-chat-terminal-dock]')!.getBoundingClientRect = () => ({ left: 0, top: 260, right: 390, bottom: 304, width: 390, height: 44 } as DOMRect);
+  const view = render(<AgentFloatingSessionButtons reviewCount={1} runningSessions={[]} activeSessionId="chat-active" runningButtonEnabled={false} isDesktopLayout={false} containerElement={area} />);
+  const button = screen.getByRole('button', { name: 'Jump to next session needing attention: 1' });
+  expect(Number.parseFloat(button.style.top)).toBeGreaterThanOrEqual(80);
+  expect(Number.parseFloat(button.style.top) + MOBILE_ATTENTION_SIZE_PX).toBeLessThanOrEqual(260);
+  act(() => useTerminalStore.getState().setSessionChatMode('chat-active', false));
+  expect(screen.queryByRole('button', { name: 'Jump to next session needing attention: 1' })).toBeNull();
+  act(() => useTerminalStore.getState().setSessionChatMode('chat-active', true));
+  view.rerender(<AgentFloatingSessionButtons reviewCount={1} runningSessions={[]} activeSessionId="chat-active" runningButtonEnabled={false} attentionButtonEnabled={false} isDesktopLayout={false} containerElement={area} />);
+  expect(screen.queryByRole('button', { name: 'Jump to next session needing attention: 1' })).toBeNull();
 });

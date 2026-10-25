@@ -433,6 +433,10 @@ it('describes varied answer formats to chat agents without announcing the render
   const prompt = render([message({ kind: 'ask', integrationOrigin: { integrationId: 'webchat-user', source: 'session-chat' } })]);
   expect(prompt).toContain('可使用 Markdown、卡片、表格、图表、交互表单、图片、文件预览和链接');
   expect(prompt).toContain('自行选择合适的表达方式');
+  expect(prompt).toContain('有明确选项时优先用交互组件，保留自由输入，勿重复提问');
+  const guidance = prompt.match(/此消息来自用户的普通对话界面。[^\n]+结构化回复用 --file 和 --metadata 提交。/)?.[0];
+  expect(guidance).toBeTruthy();
+  expect(Buffer.byteLength(guidance!)).toBeLessThanOrEqual(600);
   expect(prompt).not.toContain('方案比较用表格'); expect(prompt).not.toContain('简短说明直接回复 Markdown');
   expect(prompt).toContain('td collab ui --text'); expect(prompt).not.toContain('支持 OpenUI');
 });

@@ -27,6 +27,8 @@ interface SidebarProps {
   drawerWidthPx: number;
   onClose: () => void;
   onOpen?: () => void;
+  /** Prepare scroll/layout before a gesture exposes the still-closed panel. */
+  onBeforeOpen?: () => void;
   children: React.ReactNode;
   /**
    * @deprecated Both desktop and mobile now render in overlay mode to keep the
@@ -104,7 +106,7 @@ function dbg(...args: unknown[]): void {
  *  - `prefers-reduced-motion` replaces the slide with a gentle cross-fade.
  */
 export const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(function Sidebar(
-  { side, isOpen, drawerWidthPx, onClose, onOpen, children, pinned = false },
+  { side, isOpen, drawerWidthPx, onClose, onOpen, onBeforeOpen, children, pinned = false },
   forwardedRef,
 ) {
   const { t } = useI18n();
@@ -166,6 +168,8 @@ export const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(function Side
   onCloseRef.current = onClose;
   const onOpenRef = useRef(onOpen);
   onOpenRef.current = onOpen;
+  const onBeforeOpenRef = useRef(onBeforeOpen);
+  onBeforeOpenRef.current = onBeforeOpen;
 
   const setPanelRef = useCallback((node: HTMLElement | null) => {
     panelRef.current = node;
@@ -620,6 +624,7 @@ export const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(function Side
         edgeDragActiveRef.current = true;
         dragHistoryRef.current = [];
         grabLivePosition();
+        onBeforeOpenRef.current?.();
         dragStartXRef.current = currentXRef.current;
       }
       if (!active) {

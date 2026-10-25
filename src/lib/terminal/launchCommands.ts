@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { chatProgramName } from '../../server/shared/chatProgramPolicy';
 
 const KEY = 'termdock:agent-command-presets:v1';
 export const LEGACY_COMMANDS_KEY = 'termdock:new-session-commands:v1';
@@ -41,6 +42,17 @@ export function getAgentLaunchCommand(slug: string, defaultCommand: string): str
 }
 export function hasAgentCommandSelection(slug: string): boolean {
   return Object.prototype.hasOwnProperty.call(readAll(), slug) || Object.prototype.hasOwnProperty.call(readLegacyLaunchCommands(), slug);
+}
+/** Explicit per-Agent presets count as configured Agent launchers; shell presets do not. */
+export function isConfiguredAgentCommand(command: string): boolean {
+  const exact = command.trim();
+  return Object.values(readAll()).some(value => value.presets.some(preset => preset.command.trim() === exact))
+    || Object.entries(readLegacyLaunchCommands()).some(([key, value]) => !key.startsWith('__') && value.trim() === exact);
+}
+export function isConfiguredAgentProgram(program: string): boolean {
+  const commands = [...Object.values(readAll()).flatMap(value => value.presets.map(preset => preset.command)),
+    ...Object.entries(readLegacyLaunchCommands()).filter(([key]) => !key.startsWith('__')).map(([, value]) => value)];
+  return commands.some(command => chatProgramName(command) === program);
 }
 function write(slug: string, state: AgentCommands, defaultCommand: string) {
   // Keep the legacy per-Agent override current without disturbing standalone shell commands.

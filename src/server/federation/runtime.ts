@@ -3,6 +3,7 @@ import { SessionSharingPresence } from './sessionSharing.js';
 import { collaborationSessionDisplayName } from '../utils/sessionDisplayName.js';
 import { mergeShareResources } from '../shared/shareResources.js';
 import { canonicalShareDirectories, computerResource, resourceHttpAllowed } from './resourceAccess.js';
+import { attachmentReadRoot, sessionAttachmentRoot } from './sessionAttachmentAccess.js';
 import { CollaborationRpc, type CollaborationNode } from '../agent/collaborationPeerTransport.js';
 import { PasswordBootstrapServer } from './passwordBootstrap.js';
 import { DeviceProfiles } from './deviceProfiles.js';
@@ -69,6 +70,8 @@ class LogicalSocket extends EventEmitter {
 }
 interface HttpOperation { head: Packet; body: AsyncQueue<Uint8Array>; size: number; abort: AbortController; state: 'uploading' | 'running'; updatedAt: number; uploadSlot: boolean; responseWindow: TransferWindow }
 export interface FederationRuntimeOptions {
+  sessionAttachmentDirectory?: string;
+  restoreSharedSession?: (sessionId: string) => Promise<boolean>;
   webTransport?: () => WebTransportDescriptor | undefined;
   collaborationConnected?: (subjectId: string, rpc: CollaborationRpc) => () => void;
   collaborationDescriptor?: () => Record<string, unknown>;
@@ -185,11 +188,14 @@ export async function createFederationRuntime(app: express.Express, directory: s
       channel = new PacketChannel(secured.duplex); channels.add(channel);
       const send = (packet: Packet) => channel!.send(packet);
       const check = (action: string, sessionId?: string) => { if (!allowed(subjectId, action, sessionId)) throw new Error('AUTHORIZATION_DENIED'); };
+      const attachmentRoot = (head: Packet) => attachmentReadRoot(options.sessionAttachmentDirectory,
+        context.relayed && !relayPasswordConfigured() ? [] : store.listEffective({ subjectId, serviceId }),
+        id => options.resolveSessionId?.(id) || id, String(head.method), String(head.path));
       const httpAllowed = (head: Packet) => {
         if (context.relayed) requireRelayPassword();
         if (typeof head.method !== 'string' || typeof head.path !== 'string' || !isBusinessApiPath(head.method, head.path)) throw new Error('API_NOT_ALLOWED');
         const policy = resolveAccessRequest(head.method, head.path);
-        if (!full(subjectId) && !resourceHttpAllowed(resources(subjectId), head.method, head.path)) { if (!policy) throw new Error('API_NOT_ALLOWED'); check(policy.action, policy.sessionId); }
+        if (!full(subjectId) && !resourceHttpAllowed(resources(subjectId), head.method, head.path) && !attachmentRoot(head)) { if (!policy) throw new Error('API_NOT_ALLOWED'); check(policy.action, policy.sessionId); }
       };
       async function runHttp(id: string, operation: HttpOperation) {
         const scopeStamp = JSON.stringify([full(subjectId), resources(subjectId)]);
@@ -200,8 +206,10 @@ export async function createFederationRuntime(app: express.Express, directory: s
         };
         try {
           httpAllowed(operation.head);
+          const attachment = attachmentRoot(operation.head);
+          const requestResources = mergeShareResources([resources(subjectId), attachment ? { directories: [{ path: attachment, access: 'read' }] } : undefined]);
           const headers = new Headers({ 'x-termdock-inner': internalToken, 'x-termdock-device': subjectId,
-            'x-termdock-full-service': full(subjectId) ? '1' : '0', 'x-termdock-resources': JSON.stringify(resources(subjectId)) });
+            'x-termdock-full-service': full(subjectId) ? '1' : '0', 'x-termdock-resources': JSON.stringify(requestResources) });
           const supplied = operation.head.headers;
           if (supplied && typeof supplied === 'object') for (const [name, value] of Object.entries(supplied)) {
             if (['content-type', 'accept', 'range', 'if-none-match', 'if-modified-since'].includes(name.toLowerCase()) && typeof value === 'string') headers.set(name, value);
@@ -332,7 +340,15 @@ export async function createFederationRuntime(app: express.Express, directory: s
             const grants = store.listEffective({ subjectId, serviceId });
             send({ type: 'result', id: packet.id, subjectId, serviceId, fullService: full(subjectId), grants, httpWindow: MAX_TRANSFER_WINDOW, binaryChunks: true, relayAuthorizationErrors: true, relaySelfTargetGuard: true, webTransport: options.webTransport?.() });
           } else if (packet.type === 'session-list') {
-            const inventory = await sessionInventory();
+            let inventory = await sessionInventory();
+            if (options.restoreSharedSession && !full(subjectId)) {
+              let restored = false;
+              for (const session of inventory) {
+                if (session.backendSessionId || typeof session.sessionId !== 'string' || !allowed(subjectId, 'session.view', session.sessionId)) continue;
+                restored = await options.restoreSharedSession(session.sessionId).catch(() => false) || restored;
+              }
+              if (restored) inventory = await sessionInventory();
+            }
             const displayGrants = store.listEffective({ subjectId, serviceId }).filter(grant => grant.actions.includes('session.view')).reverse().sort((a, b) => b.createdAt - a.createdAt);
             const seen = new Set<string>();
             const items = inventory.flatMap(session => {
@@ -343,6 +359,7 @@ export async function createFederationRuntime(app: express.Express, directory: s
               const displayGrant = displayGrants.find(grant => grant.scope.kind === 'service' || grant.scope.sessionIds.some(matches));
               const appearance = Object.entries(displayGrant?.sessionAppearance || {}).find(([id]) => matches(id))?.[1];
               return [{ sessionId, ...(typeof session.sessionId === 'string' ? { sourceSessionId: session.sessionId } : {}),
+                ...(options.sessionAttachmentDirectory ? { attachmentRoot: sessionAttachmentRoot(options.sessionAttachmentDirectory, typeof session.sessionId === 'string' ? session.sessionId : options.resolveSessionId?.(sessionId) || sessionId) } : {}),
                 name: appearance?.name || collaborationSessionDisplayName({ ...session, name: typeof session.name === 'string' ? session.name : sessionId } as Parameters<typeof collaborationSessionDisplayName>[0]), ...(appearance?.icon ? { icon: appearance.icon } : {}), live: session.live === true,
                 canWrite: allowed(subjectId, 'session.input', sessionId), canResize: allowed(subjectId, 'session.resize', sessionId) }];
             });
@@ -523,7 +540,7 @@ export async function createFederationRuntime(app: express.Express, directory: s
               if (!['control', 'ack', 'ping', 'bitrate'].includes(data?.type)) throw new Error('ACTION_NOT_ALLOWED');
             }
             else if (item.sessionId) {
-              const action = terminalMessageAction(data.type); if (!action) throw new Error('ACTION_NOT_ALLOWED');
+              const action = terminalMessageAction(data.type, data.action); if (!action) throw new Error('ACTION_NOT_ALLOWED');
               check(action, action.startsWith('session.') ? item.sessionId : undefined);
               // Combining a tmux control action with input retains the control
               // permission of the older two-message protocol.

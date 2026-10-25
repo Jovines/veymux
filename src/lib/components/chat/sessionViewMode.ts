@@ -11,6 +11,26 @@ function apply(key: string, mode: SessionViewMode) {
   state.setState(value => ({ modes: { ...value.modes, [key]: mode } }));
   try { localStorage.setItem(key, mode); } catch { /* Retain the server-backed in-memory value. */ }
 }
+const scope = () => savedConnection()?.targetPeerId || location.origin;
+const modeKey = (sessionId: string) => `termdock:session-view:${scope()}:${sessionId}`;
+export function readSessionViewMode(sessionId: string): SessionViewMode {
+  const key = modeKey(sessionId), stored = state.getState().modes[key];
+  if (stored) return stored;
+  try { const cached = localStorage.getItem(key); if (valid(cached)) return cached; } catch { /* Optional cache. */ }
+  return 'terminal';
+}
+/** Seed before rendering the new workspace, using the same serialized persistence as switches. */
+export function initializeSessionViewMode(sessionId: string, mode: SessionViewMode): void {
+  const target = scope(), key = modeKey(sessionId);
+  apply(key, mode);
+  let entry = entries.get(key);
+  if (!entry) {
+    entry = { key, url: `/api/terminal/${encodeURIComponent(sessionId)}/view-mode`, refs: 0, epoch: 0, writing: false, reading: false,
+      current: () => scope() === target && !currentSecureClient()?.closed };
+    entries.set(key, entry);
+  }
+  void write(entry, mode);
+}
 async function write(entry: Entry, mode: SessionViewMode) {
   entry.queued = mode; entry.epoch++;
   if (entry.writing) return;

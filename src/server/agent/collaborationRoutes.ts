@@ -4,6 +4,7 @@ import { assertPeerRegistrationAuthority } from './collaborationPeerTransport.js
 import { Router, type Request, type Response } from 'express';
 import { CollaborationStore, type CollaborationGroup, type CollaborationMessageKind } from './collaborationStore.js';
 import { COLLAB_LIMITS, CollaborationError, MIN_ID_PREFIX_LENGTH, ambiguousIdMessage, extrasFromBody } from './collaborationProtocol.js';
+import { hasEncryptedServiceAccess, isEncryptedRequest } from '../federation/requestContext.js';
 
 /** Member names arrive agent-authored over a CLI; control characters would
  * corrupt terminal shells, tmux options and persisted records. Fold them to
@@ -28,6 +29,10 @@ export interface DeliveryOutcome {
 type Dependencies = {
   store: CollaborationStore;
   resolveSession: (input: Record<string, unknown>) => string | null;
+  /** Exact identities from the local inventory or authenticated peer directory. */
+  resolveContact?: (id: string, req: Request) => string | null;
+  resolveReplyContact?: (id: string, req: Request) => string | null;
+  remoteContacts?: boolean;
   deliver: (id: string) => DeliveryOutcome | Promise<DeliveryOutcome>;
   rebind?: (id: string, pane: string | null) => Promise<unknown>;
   diagnoseRoute?: (id: string) => Promise<unknown>;
@@ -38,10 +43,13 @@ type Dependencies = {
    * group-scoped). Callers must already share a group with the target. */
   renameSession?: (sessionId: string, name: string) => Promise<{ ok: boolean; code?: string; error?: string }>;
 };
-export function collaborationRoutes({ store, resolveSession, deliver, rebind, diagnoseRoute, resolveNames, renameSession }: Dependencies): Router {
+export function collaborationRoutes({ store, resolveSession, resolveContact, resolveReplyContact, remoteContacts = false, deliver, rebind, diagnoseRoute, resolveNames, renameSession }: Dependencies): Router {
   const router = Router();
   const run = (handler: (req: Request, res: Response, sessionId: string) => void | Promise<void>) => async (req: Request, res: Response) => {
     try {
+      if (isEncryptedRequest(req) && !hasEncryptedServiceAccess(req)) {
+        throw new CollaborationError('SESSION_SCOPE_DENIED', 'Shared Sessions do not grant collaboration access', 403);
+      }
       const sessionId = resolveSession((req.method === 'GET' ? req.query : req.body) ?? {});
       if (!sessionId) throw new CollaborationError('SESSION_NOT_FOUND', 'Run inside a Termdock managed session', 404);
       await handler(req, res, sessionId);
@@ -165,6 +173,7 @@ export function collaborationRoutes({ store, resolveSession, deliver, rebind, di
     }
   };
   router.get('/capabilities', run((_req, res) => { res.json({ protocol_version: 2, server_version: getTermdockVersion(), limits: COLLAB_LIMITS,
+    direct_contacts: { local: Boolean(resolveContact), remote: remoteContacts, shared: false, recipient_snapshot: false },
     relay_authorization_errors: true, relay_authorization_errors_min_version: '1.4.351',
     relay_self_target_guard: true, relay_self_target_guard_min_version: '1.4.351',
     route_diagnostics: !!diagnoseRoute, route_identity_recovery: !!diagnoseRoute, route_identity_recovery_min_version: '1.4.321',
@@ -194,6 +203,7 @@ export function collaborationRoutes({ store, resolveSession, deliver, rebind, di
       : [];
     const targets = requestedTargets.length > 0 ? requestedTargets : (target ? [target] : []);
     if (!targets.length) throw new CollaborationError('NO_TARGET', 'send requires a targetSessionId (or toSessionIds for a fan-out)', 400);
+    if (targets.includes(sessionId)) throw new CollaborationError('SESSION_SCOPE_DENIED', 'Cannot contact the sending Session itself', 403);
     // `--group` may be the short id; an unresolvable one must stay a
     // GROUP_NOT_FOUND below instead of silently falling back to the only
     // shared group, which would send to a set the sender did not name.
@@ -205,12 +215,17 @@ export function collaborationRoutes({ store, resolveSession, deliver, rebind, di
     }
     const groups = store.groupsForSession(sessionId)
       .filter((group) => targets.every((candidate) => group.sessionIds.includes(candidate)) && (!requestedGroupId || group.id === requestedGroupId));
-    if (!groups.length) throw new CollaborationError('GROUP_NOT_FOUND', 'Sender and recipients must share the specified group');
+    if (!groups.length && requestedGroupId) throw new CollaborationError('GROUP_NOT_FOUND', 'Sender and recipients must share the specified group');
+    if (!groups.length && !resolveContact) throw new CollaborationError('GROUP_NOT_FOUND', 'Direct contacts are unavailable on this service');
     if (groups.length > 1 && !req.body.group_id) throw new CollaborationError('AMBIGUOUS_GROUP', 'Multiple shared groups; specify --group');
     if (req.body.task) throw new CollaborationError('DISPATCH_CARRIES_TASK', 'Dispatch carries no task state; recipients report task status through replies', 400);
-    const messages = store.send({ ...extrasFromBody(req.body), groupId: groups[0].id, fromSessionId: sessionId, toSessionIds: targets,
+    if (!groups.length && targets.some(id => resolveContact?.(id, req) !== id)) {
+      throw new CollaborationError('SESSION_SCOPE_DENIED', 'Direct contacts require an accessible managed Session', 403);
+    }
+    const input = { ...extrasFromBody(req.body), fromSessionId: sessionId, toSessionIds: targets,
       kind: (req.body.kind ?? 'message') as CollaborationMessageKind, content: typeof req.body.message === 'string' ? req.body.message : '',
-      threadId: typeof req.body.thread_id === 'string' ? req.body.thread_id : undefined });
+      threadId: typeof req.body.thread_id === 'string' ? req.body.thread_id : undefined };
+    const messages = groups.length ? store.send({ ...input, groupId: groups[0].id }) : store.sendDirect(input);
     // Wake and await every local recipient edge in parallel; relayed or
     // federated ids answer immediately with the message queued, so fan-out
     // never stalls on a peer.
@@ -243,9 +258,13 @@ export function collaborationRoutes({ store, resolveSession, deliver, rebind, di
       }
       throw new CollaborationError('NO_REPLY_TARGET', '该消息没有成员回复目标；任务请使用 td collab task report 或 task comment');
     }
-    const messages = store.send({ ...extrasFromBody(req.body), groupId: original.groupId, fromSessionId: sessionId,
-      toSessionIds: [original.fromSessionId], kind: 'reply', content: typeof req.body.content === 'string' ? req.body.content : '',
-      replyTo: original.id, threadId: original.threadId });
+    if (original.direct && (resolveReplyContact ?? resolveContact)?.(original.fromSessionId, req) !== original.fromSessionId) {
+      throw new CollaborationError('SESSION_SCOPE_DENIED', 'Direct reply target is no longer accessible', 403);
+    }
+    const input = { ...extrasFromBody(req.body), fromSessionId: sessionId,
+      toSessionIds: [original.fromSessionId], kind: 'reply' as const, content: typeof req.body.content === 'string' ? req.body.content : '',
+      replyTo: original.id, threadId: original.threadId };
+    const messages = original.direct ? store.sendDirect(input) : store.send({ ...input, groupId: original.groupId });
     await awaitDelivery(messages[0]!.id, (await deliver(original.fromSessionId)) ?? null);
     sent(res, messages.map((message) => message.id));
   }));
@@ -261,6 +280,12 @@ export function collaborationRoutes({ store, resolveSession, deliver, rebind, di
     const outcome = await deliver(message.toSessionId);
     await awaitDelivery(message.id, outcome);
     sent(res, [message.id]);
+  }));
+  router.post('/message/:id/resolve-delivery', run(async (req, res, sessionId) => {
+    const message = ownMessage(String(req.params.id), sessionId);
+    store.resolveUnconfirmedDelivery(message.id, sessionId, req.body.action, req.body.attempt);
+    await deliver(sessionId);
+    res.json({ ok: true, ...store.receipt(message.id) });
   }));
   // Old clients receive an explicit error instead of a fabricated read receipt.
   router.post('/message/:id/read', run((req, _res, sessionId) => {

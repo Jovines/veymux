@@ -6,6 +6,7 @@ import { syncInitialViewportCssVars, useViewportHeight } from '../../hooks/useVi
 import { SessionChatView } from './SessionChatView';
 import { readChatEditor } from './ChatRichEditor';
 import { clearChatSnapshots } from './chatSnapshot';
+import { beginSessionChatStartup, finishSessionChatStartup } from './sessionChatStartup';
 
 // This suite retains coverage for the legacy height-based layout (Android).
 // Native iOS focus/pan behavior is exercised separately in nativeChatViewport.
@@ -95,6 +96,20 @@ it('keeps the desktop editor in normal flow', async () => {
   expect(document.querySelector('.session-chat-composer')!.getBoundingClientRect().bottom).toBe(900);
 });
 
+it('keeps the new-session terminal entry attached on desktop after startup completes', async () => {
+  await page.viewport(1280, 900);
+  beginSessionChatStartup('terminal-chat-layout', { slug: 'codex', displayName: 'Codex' });
+  try {
+    await mountChat();
+    await page.getByRole('textbox').fill('说明当前结果\n继续下一步'); await frame();
+    const dock = document.querySelector('[data-chat-terminal-dock]')!.getBoundingClientRect();
+    const form = document.querySelector('[data-chat-composer]')!.getBoundingClientRect();
+    expect(form.top - dock.bottom).toBe(6);
+    expect(dock.top).toBeGreaterThanOrEqual(document.querySelector('.session-chat-scroll')!.getBoundingClientRect().bottom);
+    expect(document.querySelector('[data-chat-launch-status]')).toBeNull();
+  } finally { finishSessionChatStartup('terminal-chat-layout'); }
+});
+
 it('retains the original layout base through native pan and subsequent keyboard sessions', async () => {
   vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue('iPhone');
   const viewport = Object.assign(new EventTarget(), { height: 844, width: 390, offsetTop: 0, scale: 1 });
@@ -122,6 +137,11 @@ it('grows the composer in normal flow without moving the empty-state anchor or r
   await mountChat();
   const input = document.querySelector('[role="textbox"]') as HTMLElement, welcome = document.querySelector('.session-chat-welcome')!;
   const list = document.querySelector('.session-chat-scroll')!, composer = document.querySelector('.session-chat-composer')!;
+  const expectCentered = () => {
+    const box = welcome.getBoundingClientRect(), area = list.getBoundingClientRect();
+    expect(Math.abs(box.top + box.height / 2 - area.top - area.height / 2)).toBeLessThan(1);
+  };
+  expectCentered();
   await page.getByRole('textbox').click();
   viewport.height = 470; viewport.dispatchEvent(new Event('resize')); await frame();
   const top = welcome.getBoundingClientRect().top;
@@ -141,6 +161,8 @@ it('grows the composer in normal flow without moving the empty-state anchor or r
   expect(oldStyles.some(style => /height:\s*auto/.test(style))).toBe(false);
   await page.getByRole('textbox').fill('第一行\n'); await frame();
   expect(input.getBoundingClientRect().height).toBe(72);
+  input.blur(); viewport.height = 844; viewport.dispatchEvent(new Event('resize')); await frame();
+  expectCentered();
 });
 
 it('keeps an older reading position while the composer grows and shrinks', async () => {

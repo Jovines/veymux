@@ -16,8 +16,8 @@ const document: ArchitectureDocument = {
   ], edges: [] }],
 };
 const props = () => ({ rootPath: '/project', active: true, onInsertPrompt: vi.fn().mockResolvedValue(true), onOpenFile: vi.fn() });
-beforeEach(() => { sessionStorage.clear(); read.mockReset(); list.mockReset(); list.mockResolvedValue([]); });
-afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); });
+beforeEach(() => { sessionStorage.clear(); read.mockReset(); list.mockReset(); list.mockResolvedValue([]); vi.spyOn(globalThis.document, 'hasFocus').mockReturnValue(true); });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 describe('native architecture browsing', () => {
   it('opens the only saved scoped map on a fresh client and honors a later explicit overview selection', async () => {
     const analysis = { ...DEFAULT_ANALYSIS, kind: 'feature' as const, target: 'Upload' };

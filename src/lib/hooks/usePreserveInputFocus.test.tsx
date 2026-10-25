@@ -3,7 +3,7 @@ import { cleanup, renderHook } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { usePreserveInputFocus } from './usePreserveInputFocus';
 
-afterEach(() => { cleanup(); vi.restoreAllMocks(); document.body.replaceChildren(); });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); window.getSelection()?.removeAllRanges(); document.body.replaceChildren(); });
 function setup(enabled = true) {
   const surface = document.createElement('div'), text = document.createElement('span'), input = document.createElement('textarea');
   surface.setAttribute('role', 'button'); surface.append(text); document.body.append(surface, input);
@@ -33,6 +33,15 @@ it('prevents only compatibility focus transfer without changing the active input
   expect(focus).not.toHaveBeenCalled(); expect(blur).not.toHaveBeenCalled();
   expect(input.value).toBe('原有中文草稿');
   expect([input.selectionStart, input.selectionEnd]).toEqual([2, 4]);
+});
+
+it('does not cancel a native text selection while the editor is focused', () => {
+  const { text, down, mouse, focus, blur } = setup();
+  text.textContent = '需要引用的正文'; down();
+  const range = document.createRange(); range.selectNodeContents(text); window.getSelection()!.removeAllRanges(); window.getSelection()!.addRange(range);
+  expect(mouse(undefined, true).defaultPrevented).toBe(false);
+  expect(window.getSelection()!.toString()).toBe('需要引用的正文');
+  expect(focus).not.toHaveBeenCalled(); expect(blur).not.toHaveBeenCalled();
 });
 
 it.each(['button', 'a', 'input', 'textarea', 'select', 'label'])('leaves intentional %s controls alone', tag => {

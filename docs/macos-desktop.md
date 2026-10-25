@@ -7,6 +7,14 @@ The connection center can also assist with a missing CLI or Node.js installation
 
 ## Service behavior
 
+- The connection center separates **这台 Mac**, **其他电脑**, **桌面偏好**, and
+  **使用指南**. The local page shows the current preparation step and its next
+  action; connection addresses and diagnostic output stay behind a disclosure.
+  Opening the Node.js download page explains how to resume after installation.
+- The optional guide covers opening a terminal, starting an already configured
+  AI assistant, and connecting another computer. It can be revisited from the
+  sidebar. Switching pages preserves remote connection drafts; incoming
+  workspace connection reviews reveal the remote page automatically.
 - An existing local service is reused. Otherwise Desktop locates Node.js 22+
   and the standalone `termdock` CLI, including common Homebrew and version-manager
   installations, and starts the CLI in its normal supervised daemon mode.
@@ -27,6 +35,17 @@ The connection center can also assist with a missing CLI or Node.js installation
   replaces an existing service process.
 - The app bundles static frontend resources for entry-service connections;
   Node.js, server dependencies, CLI launchers, and terminal tools are not bundled.
+
+### Connection center UX verification
+
+The 2026-10-25 UX pass exercised eight setup states at 1280×820, 760×520, and
+390×844 in Chromium, plus guide navigation, preserved connection drafts,
+cancellation, preference saving, connection failure, and queued certificate
+reviews. Native setup and connection results were simulated; this does not
+verify actual Node.js installation, native window behavior, or a fresh macOS
+account. Those paths still require acceptance in the signed Mac application.
+Regression coverage lives in `tests/desktopConnectionCenter.test.ts` and
+`src/components/services/ConnectionCenterServices.test.tsx`.
 
 ## Upgrading from a desktop-managed service
 

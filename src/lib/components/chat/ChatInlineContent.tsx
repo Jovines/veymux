@@ -1,10 +1,12 @@
-import { FileText, Image, Video } from 'lucide-react';
+import { FileCode, FileText, Folder, Image, Video } from 'lucide-react';
 import { attachmentToken, chatAttachmentKind, mentionToken, type ChatAttachment, type ChatMention } from './chatComposerContent';
 
-export const chatInlineTokenClass = 'mx-0.5 inline-flex min-h-8 max-w-full translate-y-[-1px] items-center gap-1 rounded-lg border border-border/60 bg-surface-2 px-2 py-0.5 align-baseline text-sm text-primary';
+import { contextReferenceLabel } from '../../terminal/contextReference';
+
+export const chatInlineTokenClass = 'mx-0.5 inline-flex min-h-8 max-w-full items-center gap-1 rounded-lg border border-border/60 bg-surface-2 px-2 py-0.5 align-middle text-sm text-primary';
 export const chatInlineTokenTitleClass = 'max-w-[12rem] truncate';
-export const chatInlineTitle = (part: ChatInlinePart) => part.file && chatAttachmentKind(part.file) !== '文件' ? part.file.reference || chatAttachmentKind(part.file) : chatInlineLabel(part);
-export const chatInlineLabel = (part: ChatInlinePart) => part.file ? `${part.file.reference} · ${part.file.name}` : `@${part.member!.name}`;
+export const chatInlineTitle = (part: ChatInlinePart) => part.file?.context ? contextReferenceLabel(part.file.context) : part.file && chatAttachmentKind(part.file) !== '文件' ? part.file.reference || chatAttachmentKind(part.file) : chatInlineLabel(part);
+export const chatInlineLabel = (part: ChatInlinePart) => part.file?.context ? contextReferenceLabel(part.file.context) : part.file ? `${part.file.reference} · ${part.file.name}` : `@${part.member!.name}`;
 
 export interface ChatInlinePart { text: string; token?: string; file?: ChatAttachment; member?: ChatMention }
 export function chatInlineParts(text: string, files: ChatAttachment[], members: ChatMention[]): ChatInlinePart[] {
@@ -26,14 +28,15 @@ export function chatInlineParts(text: string, files: ChatAttachment[], members: 
 }
 
 /** Use the editor's inline ordering and chip geometry in sent and pending messages. */
-export function ChatInlineContent({ text, files, mentions, onPreview }: { text: string; files: ChatAttachment[]; mentions: ChatMention[]; onPreview?: (file: ChatAttachment) => void }) {
+export function ChatInlineContent({ text, files, mentions, onPreview, mirror = false }: { text: string; files: ChatAttachment[]; mentions: ChatMention[]; onPreview?: (file: ChatAttachment) => void; mirror?: boolean }) {
   return <>{chatInlineParts(text, files, mentions).map((part, index) => {
     if (!part.file && !part.member) return part.text;
     const label = chatInlineLabel(part), kind = part.file ? chatAttachmentKind(part.file) : undefined;
-    const Icon = kind === '图片' ? Image : kind === '视频' ? Video : FileText;
+    const Icon = part.file?.context?.kind === 'code' ? FileCode : part.file?.context?.kind === 'directory' ? Folder : kind === '图片' ? Image : kind === '视频' ? Video : FileText;
     const body = <><Icon size={13} aria-hidden="true" className="shrink-0" /><span className={chatInlineTokenTitleClass}>{chatInlineTitle(part)}</span></>;
-    return <span key={index} role="group" aria-label={`${part.file ? '附件' : '提及'} ${label}`} data-chat-inline-token={part.token} data-chat-inline-kind={part.file ? 'attachment' : 'mention'} className={chatInlineTokenClass} title={label}>
-      {(kind === '图片' || kind === '视频') && onPreview ? <button type="button" aria-label={`预览${kind} ${part.file!.name}`} title={label} className="inline-flex min-w-0 items-center gap-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onPointerDown={event => event.preventDefault()} onClick={() => onPreview(part.file!)}>{body}</button> : body}
+    return <span key={index} role={mirror ? undefined : 'group'} aria-label={mirror ? undefined : `${part.file ? '附件' : '提及'} ${label}`} data-chat-inline-token={mirror ? undefined : part.token} data-chat-inline-kind={mirror ? undefined : part.file ? 'attachment' : 'mention'} className={chatInlineTokenClass} title={label}>
+      {part.file && onPreview && !mirror ? <button type="button" aria-label={`预览${kind} ${part.file!.name}`} title={label} className="inline-flex min-w-0 items-center gap-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onPointerDown={event => event.preventDefault()} onClick={() => onPreview(part.file!)}>{body}</button> : body}
+      {mirror && <span aria-hidden="true" className="h-6 w-6 shrink-0" />}
     </span>;
   })}</>;
 }

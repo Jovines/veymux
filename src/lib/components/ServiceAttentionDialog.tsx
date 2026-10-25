@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
 import { BellDot, ChevronRight, X } from 'lucide-react';
 import { useI18n } from '../i18n';
+import { restoreFocusIfUnclaimed } from '../utils/focusOwnership';
 import { getWorkspaceHost, workspaceKey, type ServiceWorkspace, type WorkspaceSnapshot } from '../services/workspaceHost';
 
 const empty: WorkspaceSnapshot = { activeKey: 'root', items: [] };
@@ -55,7 +56,7 @@ export function ServiceAttentionDialog({ groups, currentKey, onClose }: {
     document.addEventListener('keydown', keydown, true);
     return () => {
       document.removeEventListener('keydown', keydown, true);
-      if (restoreFocus.current && previous?.isConnected && !previous.closest('[inert]')) previous.focus({ preventScroll: true });
+      if (restoreFocus.current) restoreFocusIfUnclaimed(previous, dialog.current);
     };
   }, []);
 

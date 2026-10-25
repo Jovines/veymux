@@ -1,3 +1,4 @@
+import { sessionNeedsReview } from './lib/utils/agentAttention';
 import { useAppFeedback } from './lib/components/ui/AppFeedback';
 import { observeDragLifetime } from './lib/gesture/dragLifetime';
 import { DragDropContext } from './lib/components/DragDropContext';
@@ -8,6 +9,7 @@ import { sessionCreationErrorKey, type NewSessionCreationResult, type NewSession
 import { interruptActiveDrag } from './lib/hooks/useDragInterruptionSensor';
 import { SessionCollaborationActions } from './lib/components/sidebar/SessionCollaborationActions';
 import { isKeyboardLayerOpen, useKeyboardLayer } from './lib/hooks/useKeyboardLayer';
+import { hasUnclaimedFocus } from './lib/utils/focusOwnership';
 import { CollaborationWorkspaceFrame } from './lib/components/CollaborationWorkspaceFrame';
 import { useCollaborationNavigation } from './lib/stores/useCollaborationNavigation';
 import { TodoNavigationButton } from './lib/components/todos/TodoNavigationButton';
@@ -16,7 +18,7 @@ import { MobileSetupGuide } from './lib/components/settings/MobileSetupGuide';
 import { useSessionOrderStore } from './lib/stores/useSessionOrderStore';
 import { ViewportDiagnostics } from './lib/components/terminal/ViewportDiagnostics';
 import { savedConnection, currentSecureClient, SECURE_STATE_EVENT } from './lib/federation/browserIntegration';
-import { consumeWorkspaceSession, getWorkspaceHost, reportWorkspace, activateServiceWorkspace } from './lib/services/workspaceHost';
+import { consumeWorkspaceSession, getWorkspaceHost, reportWorkspace, activateServiceWorkspace, isWorkspaceActive } from './lib/services/workspaceHost';
 import React, { useEffect, useCallback, useState, useRef } from 'react';
 // test comment
 import { MultiTerminalView, type TerminalSessionInfo } from './lib/components/MultiTerminalView';
@@ -24,15 +26,14 @@ import { SessionViewActions } from './lib/components/chat/SessionViewActions';
 import { TODO_GUIDANCE } from './lib/todos/guidance';
 import { insertSessionDraft } from './lib/terminal/insertSessionDraft';
 import { SessionModeSwitch } from './lib/components/chat/SessionModeSwitch';
+import { SessionTabStrip } from './lib/components/SessionTabStrip';
+import { SessionCurrentTitle } from './lib/components/SessionCurrentTitle';
 import { Switch } from './lib/components/ui/Switch';
 import {
   Plus as RiAddLine,
   X as RiCloseLine,
-  PanelLeft as RiPanelLeftLine,
-  PanelRight as RiPanelRightLine,
   LayoutGrid as RiLayoutGridLine,
   RefreshCw as RiRefreshLine,
-  Terminal as RiTerminalLine,
   PenLine as RiPencilLine,
   Keyboard as RiKeyboardLine,
   SlidersHorizontal as RiEqualizerLine,
@@ -70,6 +71,10 @@ import { getCwdLeafName, getSessionDisplayLines, buildFolderGroups, deriveGroupe
 import type { TerminalRendererMode } from './lib/terminal/renderer';
 import { getTmuxStatus, killTmuxSession, listTmuxSessions, getToolbarPresetsDoc, replaceToolbarPresetsDoc, logout, getSettings, updateSettings, replaceProgramRules, resetProgramRules, getProgramDetection, replaceProgramDetection, resetProgramDetection, resumeAgentSession, checkTermdockUpdate, confirmTermdockUpdateRestart, getServerHealth, dismissServerHealthIncident } from './lib/terminal/api';
 import { useTermdockUpdateState } from './lib/terminal/useTermdockUpdateState';
+import { useServiceUpdatePlan, updateConnectedServices } from './lib/terminal/useServiceUpdatePlan';
+import { captureServiceUpdatePlan, type ServiceUpdatePlan } from './lib/terminal/serviceUpdatePlan';
+import { inspectServiceUpdates } from './lib/terminal/inspectServiceUpdates';
+import { summarizeServiceUpdates } from './lib/terminal/serviceUpdateOverview';
 import type { ProgramLabelRule, ProgramDetectionConfig, LocalAccessState, TermdockUpdateState, ServerHealthState } from './lib/terminal/api';
 import { readCache, writeCache, shallowJsonEqual } from './lib/utils/localStorageCache';
 import { syncThemeColorMeta } from './lib/utils/themeColorMeta';
@@ -105,21 +110,27 @@ import { clientLog } from './lib/utils/clientLog';
 import { shouldClearSessionFilePreview } from './lib/utils/rightSidebarSessionState';
 import { useI18n } from './lib/i18n';
 import { LeftSidebar } from './lib/components/sidebar/LeftSidebar';
+import { SidebarVisibilityButton } from './lib/components/sidebar/SidebarVisibilityButton';
+import { DESKTOP_SIDEBAR_QUERY, clampDesktopLeftSidebarWidth } from './lib/utils/sidebarLayout';
 import { beginSidebarResize } from './lib/components/sidebar/sidebarResize';
 import { DeferredRightSidebar as RightSidebar } from './lib/components/sidebar/DeferredRightSidebar';
 import { AndroidMirrorDock } from './lib/components/android/AndroidMirrorView';
 import { QuotaView } from './lib/components/sidebar/QuotaView';
+import { CodexQuotaBadge } from './lib/components/sidebar/CodexQuotaBadge';
 import { AgentTabIcon, AgentCountBadge, AgentCompactStatusOverlay, AgentFloatingSessionButtons } from './lib/components/AgentIndicators';
 import { shouldShowTuiLoading } from './lib/utils/agentAttention';
-import { ToolbarPresetSettings } from './lib/components/settings/ToolbarPresetSettings';
+import { type ToolbarSaveState } from './lib/components/settings/ToolbarPresetSettings';
+import { ToolbarSettingsDialog } from './lib/components/settings/ToolbarSettingsDialog';
+import { createToolbarPresetWriter } from './lib/terminal/toolbarPresetWriter';
 import AgentHooksSettings from './lib/components/settings/AgentHooksSettings';
 import { TermdockUpdateSettings } from './lib/components/settings/TermdockUpdateSettings';
 import { ConnectionQualitySettings } from './lib/components/settings/ConnectionQualitySettings';
 import { ServerHealthSettings } from './lib/components/settings/ServerHealthSettings';
 import { NewSessionShortcut } from './lib/components/NewSessionShortcut';
 import { WorkspaceRetentionSettings } from './lib/components/settings/WorkspaceRetentionSettings';
+import { SettingsSections } from './lib/components/settings/SettingsSections';
 import { useServiceWorkspaceActivity } from './lib/components/ServiceSwitcher';
-import { BUILTIN_TOOLBAR_PRESETS_VERSION, createDefaultToolbarPresets, materializeToolbarPresets, sanitizeToolbarPresets, type ToolbarPresetDefinition } from './lib/components/terminal/mobileKeyboardPresets';
+import { BUILTIN_TOOLBAR_PRESETS_VERSION, createDefaultToolbarPresets, materializeToolbarPresets, sanitizeToolbarPresets, type ToolbarConfigurationTarget, type ToolbarPresetDefinition } from './lib/components/terminal/mobileKeyboardPresets';
 import type { TermdockColorTheme } from './lib/terminal/theme';
 import { getTermdockDesktopBridge, type DesktopAppUpdateState, type DesktopNativeSnapshot } from './lib/desktop/nativeBridge';
 import { StartupScreen } from './lib/components/StartupScreen';
@@ -392,6 +403,7 @@ type TabTerminalSessionState = Pick<
   | 'inCopyMode'
   | 'isConnecting'
   | 'agentStatus'
+  | 'terminalOutputActive'
   | 'agentIndicator'
   | 'agentStatusDetail'
   | 'agent'
@@ -400,6 +412,7 @@ type TabTerminalSessionState = Pick<
   | 'agentResumeRecovered'
   | 'terminalSessionId'
   | 'agentNeedsReview'
+  | 'chatAttention'
   | 'gitStatus'
   | 'shellTitle'
   | 'promptState'
@@ -418,6 +431,7 @@ function pickTabTerminalSessions(
       inCopyMode: state.inCopyMode,
       isConnecting: state.isConnecting,
       agentStatus: state.agentStatus,
+      terminalOutputActive: state.terminalOutputActive,
       agentIndicator: state.agentIndicator,
       agentStatusDetail: state.agentStatusDetail,
       agent: state.agent,
@@ -426,6 +440,7 @@ function pickTabTerminalSessions(
       agentResumeRecovered: state.agentResumeRecovered,
       terminalSessionId: state.terminalSessionId,
       agentNeedsReview: state.agentNeedsReview,
+      chatAttention: state.chatAttention,
       gitStatus: state.gitStatus,
       shellTitle: state.shellTitle,
       promptState: state.promptState,
@@ -451,6 +466,7 @@ function areTabTerminalSessionsEqual(
       currentState.inCopyMode !== nextState.inCopyMode ||
       currentState.isConnecting !== nextState.isConnecting ||
       currentState.agentStatus !== nextState.agentStatus ||
+      currentState.terminalOutputActive !== nextState.terminalOutputActive ||
       currentState.agentIndicator !== nextState.agentIndicator ||
       currentState.agentStatusDetail !== nextState.agentStatusDetail ||
       currentState.agent !== nextState.agent ||
@@ -459,6 +475,7 @@ function areTabTerminalSessionsEqual(
       currentState.agentResumeRecovered !== nextState.agentResumeRecovered ||
       currentState.terminalSessionId !== nextState.terminalSessionId ||
       currentState.agentNeedsReview !== nextState.agentNeedsReview ||
+      currentState.chatAttention !== nextState.chatAttention ||
       currentState.gitStatus !== nextState.gitStatus ||
       currentState.shellTitle !== nextState.shellTitle ||
       currentState.promptState !== nextState.promptState ||
@@ -467,7 +484,8 @@ function areTabTerminalSessionsEqual(
       currentState.tuiProgress?.source !== nextState.tuiProgress?.source ||
       currentState.tuiProgress?.app !== nextState.tuiProgress?.app ||
       currentState.tuiProgress?.message !== nextState.tuiProgress?.message ||
-      currentState.tuiProgress?.kind !== nextState.tuiProgress?.kind
+      currentState.tuiProgress?.kind !== nextState.tuiProgress?.kind ||
+      currentState.tuiProgress?.reviewed !== nextState.tuiProgress?.reviewed
     ) {
       return false;
     }
@@ -557,14 +575,17 @@ function App() {
   const [localAccessCopied, setLocalAccessCopied] = React.useState<string | null>(null);
   const { state: termdockUpdateState, apply: setTermdockUpdateState, refresh: refreshTermdockUpdateState } = useTermdockUpdateState();
   const [updateActionPending, setUpdateActionPending] = React.useState(false);
+  const [updateActionError, setUpdateActionError] = useState<string | null>(null);
+  const serviceUpdateContext = useServiceUpdatePlan(locale === 'zh', termdockUpdateState, Boolean(updateActionError));
+  const [serviceUpdateProgress, setServiceUpdateProgress] = useState<string | null>(null);
   const updateActionLock = useRef({ busy: false });
   const updatePageEpoch = useRef(0);
+  const updateLifetimeEpoch = useRef(0);
   const updateLatestVersion = useRef(termdockUpdateState?.latestVersion);
   updateLatestVersion.current = termdockUpdateState?.latestVersion;
-  const [updateActionError, setUpdateActionError] = useState<string | null>(null);
   useAppFeedback(updateActionError ? { message: updateActionError } : null);
   useEffect(() => {
-    const invalidate = () => { updatePageEpoch.current++; };
+    const invalidate = (event?: Event) => { updatePageEpoch.current++; if (event?.type !== SECURE_STATE_EVENT) updateLifetimeEpoch.current++; };
     for (const event of ['pagehide', 'auth:unauthorized', SECURE_STATE_EVENT]) window.addEventListener(event, invalidate);
     return () => { invalidate(); for (const event of ['pagehide', 'auth:unauthorized', SECURE_STATE_EVENT]) window.removeEventListener(event, invalidate); };
   }, []);
@@ -769,23 +790,54 @@ function App() {
   }, []);
 
   const handleConfirmUpdateRestart = useCallback(async () => {
-    const latestVersion = termdockUpdateState?.latestVersion;
+    const pendingVersion = termdockUpdateState?.latestVersion;
+    // A previous attempt may already have updated the target, while its relay
+    // still needs updating. Keep the same action available for that recovery.
+    const latestVersion = serviceUpdateContext?.available
+      ? serviceUpdateContext.version
+      : !serviceUpdateContext ? pendingVersion : undefined;
     if (!latestVersion || updateActionPending) return;
     const epoch = updatePageEpoch.current, target = savedConnection(), client = currentSecureClient();
-    const current = () => epoch === updatePageEpoch.current && target === savedConnection()
-      && client === currentSecureClient() && !client?.closed && updateLatestVersion.current === latestVersion;
+    const lifetime = updateLifetimeEpoch.current;
+    let plan: ServiceUpdatePlan | undefined;
+    let executingTogether = false;
+    const current = () => executingTogether
+      ? lifetime === updateLifetimeEpoch.current && target?.targetPeerId === savedConnection()?.targetPeerId && isWorkspaceActive()
+      : epoch === updatePageEpoch.current && target === savedConnection()
+        && client === currentSecureClient() && !client?.closed && updateLatestVersion.current === pendingVersion;
     const pageConfirmation = desktopBridge?.confirmationUI === 'page-v1' && typeof desktopBridge.confirm === 'function';
     setUpdateActionError(null);
+    setServiceUpdateProgress(null);
     await runServiceUpdateConfirmation(updateActionLock.current, {
-      current, submit: guard => confirmTermdockUpdateRestart(guard, latestVersion), apply: setTermdockUpdateState, pending: setUpdateActionPending,
+      current, submit: guard => {
+        if (plan && plan.nodes.length > 1) {
+          if (!guard()) throw new Error(locale === 'zh' ? '连接已变化，请重新确认。' : 'Connection changed. Please confirm again.');
+          executingTogether = true;
+          return updateConnectedServices(plan, latestVersion, current, setServiceUpdateProgress, locale === 'zh');
+        }
+        return confirmTermdockUpdateRestart(guard, latestVersion);
+      }, apply: setTermdockUpdateState, pending: setUpdateActionPending,
       expiredMessage: locale === 'zh' ? '连接已变化，请重新确认。' : 'Connection changed. Please confirm again.',
-      confirm: () => pageConfirmation ? desktopBridge.confirm!({ title: t('sidebar.updateRestart'),
-        message: t('sidebar.updateRestartConfirm', { version: latestVersion }), confirmLabel: t('sidebar.updateRestart'), cancelLabel: t('common.cancel') })
-        : window.confirm(t('sidebar.updateRestartConfirm', { version: latestVersion })),
-      failure: message => { if (pageConfirmation) setUpdateActionError(message); else window.alert(message); },
+      confirm: async () => {
+        plan = await captureServiceUpdatePlan();
+        let together: ReturnType<typeof summarizeServiceUpdates> | undefined;
+        if (plan.nodes.length > 1) {
+          setServiceUpdateProgress(locale === 'zh' ? '正在确认更新范围…' : 'Confirming which services need updating…');
+          const snapshots = await inspectServiceUpdates(plan, { signal: AbortSignal.timeout(20_000), check: false, includeTarget: true, chinese: locale === 'zh', changed() {} });
+          together = summarizeServiceUpdates(plan, snapshots, locale === 'zh', Boolean(updateActionError));
+          if (!current()) throw new Error(locale === 'zh' ? '连接已变化，请重新确认。' : 'Connection changed. Please confirm again.');
+          if (!together.available) throw new Error(together.notice);
+          if (together.version !== latestVersion) throw new Error(locale === 'zh' ? '更新版本已变化，请重新检查后确认。' : 'The update version changed. Check again before confirming.');
+          setServiceUpdateProgress(null);
+        }
+        const label = together?.actionLabel || t('sidebar.updateRestart');
+        const message = together ? `${t('sidebar.updateAvailable', { version: latestVersion })}\n\n${together.confirmation}` : t('sidebar.updateRestartConfirm', { version: latestVersion });
+        return pageConfirmation ? desktopBridge.confirm!({ title: label, message, confirmLabel: label, cancelLabel: t('common.cancel') }) : window.confirm(message);
+      },
+      failure: message => { setServiceUpdateProgress(null); setUpdateActionError(message); if (!pageConfirmation) window.alert(message); },
     });
     if (current()) void refreshTermdockUpdateState();
-  }, [termdockUpdateState?.latestVersion, t, updateActionPending, desktopBridge, locale, setTermdockUpdateState, refreshTermdockUpdateState]);
+  }, [termdockUpdateState?.latestVersion, termdockUpdateState?.currentVersion, serviceUpdateContext, t, updateActionPending, updateActionError, desktopBridge, locale, setTermdockUpdateState, refreshTermdockUpdateState]);
 
   const handleRetryUpdate = useCallback(async () => {
     if (updateActionPending) return;
@@ -793,14 +845,17 @@ function App() {
     const current = () => epoch === updatePageEpoch.current && target === savedConnection();
     setUpdateActionPending(true);
     try {
-      await checkTermdockUpdate();
+      if (serviceUpdateContext) {
+        const next = await serviceUpdateContext.check();
+        if (next && current()) setTermdockUpdateState(next);
+      } else await checkTermdockUpdate();
       if (current()) void refreshTermdockUpdateState();
     } catch (error) {
       if (current()) showPageFeedback(error instanceof Error ? error.message : String(error));
     } finally {
       setUpdateActionPending(false);
     }
-  }, [updateActionPending, refreshTermdockUpdateState]);
+  }, [updateActionPending, serviceUpdateContext, setTermdockUpdateState, refreshTermdockUpdateState]);
 
   const handleCheckDesktopUpdate = useCallback(async () => {
     if (!desktopBridge?.checkDesktopUpdate || desktopUpdatePending) return;
@@ -846,11 +901,11 @@ function App() {
   // 之前，先不做这一层。设置 / 工具栏 / agent rules 这种简单 KV 缓存继续保留。
 
   // Sidebar state — only subscribe to the booleans we render, not the whole store.
-  const sidebarLeftOpen = useSidebarStore((s) => s.leftOpen);
-  const sidebarRightOpen = useSidebarStore((s) => s.rightOpen);
-  const sidebarLeftPinned = useSidebarStore((s) => s.leftPinned);
-  const sidebarLeftWidth = useSidebarStore((s) => s.leftSidebarWidth);
-  const sidebarRightPinned = useSidebarStore((s) => s.rightPinned);
+  const sidebarLeftDrawerOpen = useSidebarStore((s) => s.leftOpen);
+  const sidebarRightDrawerOpen = useSidebarStore((s) => s.rightOpen);
+  const sidebarLeftPinned = useSidebarStore((s) => s.desktopLeftOpen);
+  const storedSidebarLeftWidth = useSidebarStore((s) => s.leftSidebarWidth);
+  const sidebarRightPinned = useSidebarStore((s) => s.desktopRightOpen);
   const sidebarRightWidth = useSidebarStore((s) => s.rightSidebarWidth);
   const sidebarRootPath = useSidebarStore((s) => s.rootPath);
   const sidebarContextKey = useSidebarStore((s) => s.contextKey);
@@ -860,11 +915,14 @@ function App() {
   const collapsedGroups = useSidebarStore((s) => s.collapsedGroups);
   const toggleGroupCollapsed = useSidebarStore((s) => s.toggleGroupCollapsed);
   const [isDesktopViewport, setIsDesktopViewport] = useState(() => (
-    typeof window === 'undefined' ? true : window.matchMedia('(min-width: 1024px)').matches
+    typeof window === 'undefined' ? true : window.matchMedia(DESKTOP_SIDEBAR_QUERY).matches
   ));
   const [viewportWidth, setViewportWidth] = useState(() => (
     typeof window === 'undefined' ? 1024 : window.innerWidth
   ));
+  const sidebarLeftOpen = isDesktopViewport ? sidebarLeftPinned : sidebarLeftDrawerOpen;
+  const sidebarRightOpen = isDesktopViewport ? sidebarRightPinned : sidebarRightDrawerOpen;
+  const sidebarLeftWidth = clampDesktopLeftSidebarWidth(storedSidebarLeftWidth, viewportWidth, sidebarRightPinned);
   // Landscape orientation. A phone in landscape (typically 667-896px wide)
   // has plenty of room for a wide workbench-style drawer, even though
   // its *short* side is < 1024px so the regular desktop check returns
@@ -960,8 +1018,6 @@ function App() {
   // 移动端重命名卡片每次打开只自动聚焦一次——父组件会随终端输出频繁重渲染，
   // 回调 ref 不设防的话会反复 focus/select，把用户正在输入的内容全选掉。
   const renameSheetFocusedRef = React.useRef(false);
-  const activeSessionTabRef = React.useRef<HTMLDivElement | null>(null);
-  const hasPositionedInitialActiveTabRef = React.useRef(false);
   const tabMenuPanelRef = useRef<HTMLDivElement>(null);
   const closeTabMenu = useCallback(() => {
     setTabMenuSessionId(null);
@@ -1013,10 +1069,13 @@ function App() {
     typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('_notifTrace'),
   );
 
+  const sidebarViewportModeRef = useRef(isDesktopViewport);
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const media = window.matchMedia('(min-width: 1024px)');
+    const media = window.matchMedia(DESKTOP_SIDEBAR_QUERY);
     const updateViewportMode = () => {
+      if (sidebarViewportModeRef.current !== media.matches) useSidebarStore.getState().closeAll();
+      sidebarViewportModeRef.current = media.matches;
       setIsDesktopViewport(media.matches);
       setViewportWidth(window.innerWidth);
     };
@@ -1203,6 +1262,7 @@ function App() {
     const hasDesktopPointer = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
     if (!isDesktopViewport || !hasDesktopPointer || navigator.maxTouchPoints > 0) return;
     window.setTimeout(() => {
+      if (activeHistoryOverlayRef.current || isKeyboardLayerOpen() || !isWorkspaceActive() || !hasUnclaimedFocus()) return;
       window.dispatchEvent(new CustomEvent('focus-active-terminal-session'));
     }, 0);
   }, [isDesktopViewport]);
@@ -1238,7 +1298,7 @@ function App() {
       return;
     }
     if (overlay === 'left-sidebar') {
-      useSidebarStore.getState().closeLeft();
+      useSidebarStore.setState({ leftOpen: false });
       return;
     }
     setMarkdownOutlineOpen(false);
@@ -1247,7 +1307,7 @@ function App() {
     setRightSidebarRepoPickerCloseSignal((value) => value + 1);
     setMarkdownImageLightboxOpen(false);
     setMarkdownImageLightboxCloseSignal((value) => value + 1);
-    useSidebarStore.getState().closeRight();
+    useSidebarStore.setState({ rightOpen: false });
   }, [setCurrentRightSidebarFilePreviewOpen]);
 
   const requestCloseHistoryOverlay = useCallback((overlay: HistoryOverlay) => {
@@ -1264,75 +1324,39 @@ function App() {
   const handleOpenLeftSidebar = useCallback(() => {
     setIsDrawerOpen(false);
     const sidebar = useSidebarStore.getState();
-    sidebar.closeRight();
     sidebar.openLeft();
   }, []);
 
   const handleOpenRightSidebar = useCallback(() => {
     setIsDrawerOpen(false);
     const sidebar = useSidebarStore.getState();
-    sidebar.closeLeft();
     sidebar.openRight();
   }, []);
 
   const handleOpenRightSearch = useCallback(() => {
     setIsDrawerOpen(false);
     const sidebar = useSidebarStore.getState();
-    sidebar.closeLeft();
     sidebar.openRight();
     sidebar.setRightTab('files');
     sidebar.openRightSearch();
   }, []);
 
   const handleToggleLeftSidebar = useCallback(() => {
-    const store = useSidebarStore.getState();
-    // If pinned, toggle unpins and closes.
-    if (store.leftPinned) {
-      store.setLeftPinned(false);
-      store.closeLeft();
-      return;
-    }
-    if (sidebarLeftOpen) {
+    if (isDesktopViewport) {
+      useSidebarStore.getState().toggleLeft();
+    } else if (sidebarLeftOpen) {
       requestCloseHistoryOverlay('left-sidebar');
-      return;
-    }
-    handleOpenLeftSidebar();
-  }, [handleOpenLeftSidebar, requestCloseHistoryOverlay, sidebarLeftOpen]);
-
-  const handleToggleLeftPinned = useCallback(() => {
-    const store = useSidebarStore.getState();
-    if (store.leftPinned) {
-      // Unpin but keep open in overlay mode
-      store.setLeftPinned(false);
-      store.openLeft();
     } else {
-      // Pin and open
-      store.setLeftPinned(true);
-      store.openLeft();
+      handleOpenLeftSidebar();
     }
-  }, []);
+  }, [isDesktopViewport, sidebarLeftOpen, requestCloseHistoryOverlay, handleOpenLeftSidebar]);
 
   const handleClosePinnedLeft = useCallback(() => {
-    const store = useSidebarStore.getState();
-    store.setLeftPinned(false);
-    store.closeLeft();
-  }, []);
-
-  const handleToggleRightPinned = useCallback(() => {
-    const store = useSidebarStore.getState();
-    if (store.rightPinned) {
-      store.setRightPinned(false);
-      store.openRight();
-    } else {
-      store.setRightPinned(true);
-      store.openRight();
-    }
+    useSidebarStore.getState().setDesktopSidebarOpen('left', false);
   }, []);
 
   const handleClosePinnedRight = useCallback(() => {
-    const store = useSidebarStore.getState();
-    store.setRightPinned(false);
-    store.closeRight();
+    useSidebarStore.getState().setDesktopSidebarOpen('right', false);
   }, []);
 
   // Live drag only adjusts the layout box. Persist/reconcile the application once on release.
@@ -1346,7 +1370,7 @@ function App() {
     const store = useSidebarStore.getState();
     stopLeftResizeRef.current = beginSidebarResize(
       pinnedLeftPanelRef.current, event.clientX, store.leftSidebarWidth,
-      width => Math.min(Math.max(width, 200), 500),
+      width => clampDesktopLeftSidebarWidth(width, window.innerWidth, useSidebarStore.getState().desktopRightOpen),
       width => useSidebarStore.getState().setLeftSidebarWidth(width),
     );
   }, []);
@@ -1365,7 +1389,7 @@ function App() {
     const userSelect = document.body.style.userSelect;
     rightResizeStartXRef.current = event.clientX;
     const initialSidebarState = useSidebarStore.getState();
-    const pinnedLeftWidth = initialSidebarState.leftPinned ? initialSidebarState.leftSidebarWidth : 0;
+    const pinnedLeftWidth = initialSidebarState.desktopLeftOpen ? clampDesktopLeftSidebarWidth(initialSidebarState.leftSidebarWidth, window.innerWidth, true) : 0;
     rightResizeStartWidthRef.current = clampPinnedRightSidebarWidth(
       initialSidebarState.rightSidebarWidth,
       window.innerWidth,
@@ -1378,7 +1402,7 @@ function App() {
         rightResizeRafRef.current = null;
         const delta = rightResizeStartXRef.current - moveEvent.clientX;
         const sidebarState = useSidebarStore.getState();
-        const currentPinnedLeftWidth = sidebarState.leftPinned ? sidebarState.leftSidebarWidth : 0;
+        const currentPinnedLeftWidth = sidebarState.desktopLeftOpen ? clampDesktopLeftSidebarWidth(sidebarState.leftSidebarWidth, window.innerWidth, true) : 0;
         sidebarState.setRightSidebarWidth(clampPinnedRightSidebarWidth(
           rightResizeStartWidthRef.current + delta,
           window.innerWidth,
@@ -1405,18 +1429,14 @@ function App() {
   }, []);
 
   const handleToggleRightSidebar = useCallback(() => {
-    const store = useSidebarStore.getState();
-    if (store.rightPinned) {
-      store.setRightPinned(false);
-      store.closeRight();
-      return;
-    }
-    if (sidebarRightOpen) {
+    if (isDesktopViewport) {
+      useSidebarStore.getState().toggleRight();
+    } else if (sidebarRightOpen) {
       requestCloseHistoryOverlay('right-sidebar');
-      return;
+    } else {
+      handleOpenRightSidebar();
     }
-    handleOpenRightSidebar();
-  }, [handleOpenRightSidebar, requestCloseHistoryOverlay, sidebarRightOpen]);
+  }, [isDesktopViewport, sidebarRightOpen, requestCloseHistoryOverlay, handleOpenRightSidebar]);
 
   const handleOpenRightSidebarFilePreview = useCallback(() => {
     if (!rightSidebarFilePreviewOpen
@@ -1870,9 +1890,9 @@ function App() {
     setNewSessionMode,
   } = useNewSessionDefaults();
   const [newSessionShortcutSettingsOpen, setNewSessionShortcutSettingsOpen] = useState(false);
-  const [newSessionShortcutConfirmMode, setNewSessionShortcutConfirmMode] = useState<'shell' | 'tmux' | null>(null);
 
   const [isToolbarPresetsOpen, setIsToolbarPresetsOpen] = React.useState(false);
+  const [toolbarConfigurationTarget, setToolbarConfigurationTarget] = React.useState<ToolbarConfigurationTarget>();
   const [isLocalAccessOpen, setIsLocalAccessOpen] = React.useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = React.useState(false);
   const [notificationTestStatus, setNotificationTestStatus] = React.useState<'idle' | 'checking' | 'delivered' | 'failed'>('idle');
@@ -1897,12 +1917,25 @@ function App() {
     }
     return createDefaultToolbarPresets();
   });
-  const [toolbarPresetsLoaded, setToolbarPresetsLoaded] = React.useState(false);
+  const [toolbarSaveState, setToolbarSaveState] = React.useState<ToolbarSaveState>('loading');
   const [selectedToolbarPresetId, setSelectedToolbarPresetId] = React.useState<string>('default');
   const toolbarPresetsBaseUpdatedAtRef = React.useRef<number | null>(
     typeof cachedToolbarPresets?.updatedAt === 'number' ? cachedToolbarPresets.updatedAt : null
   );
-  const skipNextToolbarPresetSaveRef = React.useRef(false);
+  const toolbarWriter = React.useMemo(() => createToolbarPresetWriter({
+    save: presets => replaceToolbarPresetsDoc({ version: BUILTIN_TOOLBAR_PRESETS_VERSION, presets, baseUpdatedAt: toolbarPresetsBaseUpdatedAtRef.current ?? undefined }),
+    acknowledged: (updatedAt, presets, current) => {
+      toolbarPresetsBaseUpdatedAtRef.current = updatedAt ?? null;
+      if (current) writeCache(TOOLBAR_PRESETS_CACHE_KEY, { version: BUILTIN_TOOLBAR_PRESETS_VERSION, presets, updatedAt });
+    },
+    state: setToolbarSaveState,
+  }), []);
+  const handleToolbarPresetsChange = React.useCallback((next: ToolbarPresetDefinition[]) => {
+    const presets = sanitizeToolbarPresets(next);
+    setToolbarPresets(presets);
+    writeCache(TOOLBAR_PRESETS_CACHE_KEY, { version: BUILTIN_TOOLBAR_PRESETS_VERSION, presets, updatedAt: toolbarPresetsBaseUpdatedAtRef.current ?? undefined });
+    toolbarWriter.enqueue(presets);
+  }, [toolbarWriter]);
 
   // Agent detection rules — owned by server (~/.termdock/agent-rules.json)
   // 同样缓存到 localStorage，让 agent 检测在冷启动后立即生效。
@@ -1923,17 +1956,17 @@ function App() {
     && !isAgentRulesOpen
     && !isQuotaOpen
     && !tabMenuSessionId
-    && !sidebarCloseChoiceSessionId
-    && !newSessionShortcutConfirmMode;
+    && !sidebarCloseChoiceSessionId;
   const terminalFocusAvailable = terminalReferenceAvailable && !activeHistoryOverlay;
 
   const applyToolbarPresetsDoc = React.useCallback((doc: { version?: unknown; presets?: unknown; updatedAt?: unknown }) => {
+    if (toolbarWriter.dirty()) return;
+    if (typeof doc.updatedAt === 'number' && doc.updatedAt < (toolbarPresetsBaseUpdatedAtRef.current ?? 0)) return;
     const storedVersion = typeof doc.version === 'number' ? doc.version : 0;
     const next = materializeToolbarPresets(Array.isArray(doc.presets) ? doc.presets : [], storedVersion);
     toolbarPresetsBaseUpdatedAtRef.current = typeof doc.updatedAt === 'number' ? doc.updatedAt : null;
     setToolbarPresets((current) => {
       if (shallowJsonEqual(current, next)) return current;
-      skipNextToolbarPresetSaveRef.current = true;
       return next;
     });
     writeCache(TOOLBAR_PRESETS_CACHE_KEY, {
@@ -1941,7 +1974,14 @@ function App() {
       presets: next,
       updatedAt: toolbarPresetsBaseUpdatedAtRef.current ?? undefined,
     });
-  }, []);
+    setToolbarSaveState('saved');
+  }, [toolbarWriter]);
+  const reloadToolbarPresets = React.useCallback(async () => {
+    toolbarWriter.reset();
+    setToolbarSaveState('loading');
+    try { applyToolbarPresetsDoc(await getToolbarPresetsDoc()); }
+    catch { setToolbarSaveState('load-error'); }
+  }, [toolbarWriter, applyToolbarPresetsDoc]);
 
   // 全局 ESC：按"返回键"语义，从最里层往外依次关闭浮层。
   // 顺序：通知/工具栏/AI 规则 二级 modal → tab 长按菜单 → settings drawer → 侧边栏。
@@ -2051,6 +2091,7 @@ function App() {
     return subscribeClientState((event) => {
       if (event.type !== 'config-updated') return;
       if (event.key === 'toolbar-presets') {
+        if (toolbarWriter.dirty()) return;
         void getToolbarPresetsDoc()
           .then((doc) => applyToolbarPresetsDoc(doc))
           .catch((error) => {
@@ -2062,7 +2103,7 @@ function App() {
         void refreshProgramDetectionFromServer();
       }
     });
-  }, [applyToolbarPresetsDoc, refreshProgramDetectionFromServer]);
+  }, [applyToolbarPresetsDoc, refreshProgramDetectionFromServer, toolbarWriter]);
 
   // Initial load from server: apply versioned built-in migrations and preserve
   // user presets. Version 19 only adds the missing CustomAgent shortcut.
@@ -2074,52 +2115,14 @@ function App() {
         if (cancelled) return;
         applyToolbarPresetsDoc(doc);
       } catch (error) {
+        if (!cancelled) setToolbarSaveState('load-error');
         console.warn('[toolbar-presets] Failed to load from server:', error);
-      } finally {
-        if (!cancelled) setToolbarPresetsLoaded(true);
       }
     })();
     return () => {
       cancelled = true;
     };
   }, [applyToolbarPresetsDoc]);
-
-  // Persist to the server whenever the in-memory presets change. Skip the
-  // initial render before the server load has resolved to avoid clobbering
-  // the server doc with the temporary defaults seed.
-  useEffect(() => {
-    if (!toolbarPresetsLoaded) return;
-    if (skipNextToolbarPresetSaveRef.current) {
-      skipNextToolbarPresetSaveRef.current = false;
-      return;
-    }
-    // 同步写本地缓存
-    writeCache(TOOLBAR_PRESETS_CACHE_KEY, {
-      version: BUILTIN_TOOLBAR_PRESETS_VERSION,
-      presets: toolbarPresets,
-      updatedAt: toolbarPresetsBaseUpdatedAtRef.current ?? undefined,
-    });
-    void replaceToolbarPresetsDoc({
-      version: BUILTIN_TOOLBAR_PRESETS_VERSION,
-      presets: toolbarPresets,
-      baseUpdatedAt: toolbarPresetsBaseUpdatedAtRef.current ?? undefined,
-    }).then((doc) => {
-      toolbarPresetsBaseUpdatedAtRef.current = typeof doc.updatedAt === 'number' ? doc.updatedAt : null;
-      writeCache(TOOLBAR_PRESETS_CACHE_KEY, {
-        version: BUILTIN_TOOLBAR_PRESETS_VERSION,
-        presets: toolbarPresets,
-        updatedAt: toolbarPresetsBaseUpdatedAtRef.current ?? undefined,
-      });
-    }).catch((error) => {
-      const conflictDoc = error instanceof Error && 'current' in error
-        ? (error as Error & { current?: unknown }).current
-        : null;
-      if (conflictDoc && typeof conflictDoc === 'object') {
-        applyToolbarPresetsDoc(conflictDoc as { version?: unknown; presets?: unknown; updatedAt?: unknown });
-      }
-      console.warn('[toolbar-presets] Failed to save to server:', error);
-    });
-  }, [applyToolbarPresetsDoc, toolbarPresets, toolbarPresetsLoaded]);
 
   // Load settings (prevent sleep) from server on mount
   useEffect(() => {
@@ -2243,10 +2246,6 @@ function App() {
   }, [newSessionMode, tmuxStatus.available, userSelectedNewSessionMode, setNewSessionMode]);
 
   useEffect(() => {
-    setNewSessionShortcutConfirmMode(null);
-  }, [isDrawerOpen, newSessionMode, tmuxStatus.available]);
-
-  useEffect(() => {
     const info: Record<string, any> = {};
 
     if (typeof navigator !== 'undefined') {
@@ -2316,23 +2315,17 @@ function App() {
     }),
     [arrangedSessions, terminalSessions],
   );
-  const activeSessionIndex = activeSessionId
-    ? arrangedSessions.findIndex((session) => session.id === activeSessionId)
-    : -1;
-  const activeSessionPositionLabel = arrangedSessions.length > 0 && activeSessionIndex >= 0
-    ? `${activeSessionIndex + 1}/${arrangedSessions.length}`
-    : `${arrangedSessions.length}`;
   const agentTabCounts = React.useMemo(() => {
     let review = 0;
     for (const s of sessions) {
       const ts = terminalSessions.get(s.id);
-      if (ts?.agentStatus === 'waiting' || ts?.agentNeedsReview) review += 1;
+      if (ts?.agentStatus === 'waiting' || sessionNeedsReview(ts)) review += 1;
     }
     return { running: runningSessionShortcuts.length, review };
   }, [runningSessionShortcuts.length, sessions, terminalSessions]);
   const attentionSessionShortcuts = React.useMemo(() => arrangedSessions.flatMap(session => {
     const state = terminalSessions.get(session.id);
-    if (state?.agentStatus !== 'waiting' && !state?.agentNeedsReview) return [];
+    if (!state || state.agentStatus !== 'waiting' && !sessionNeedsReview(state)) return [];
     const { primary } = getSessionDisplayLines(session, state.activeProgram, state.cwd, SHELL_NAMES, state.shellTitle, state.promptState);
     return [{ id: state.terminalSessionId ?? session.id, label: primary, waiting: state.agentStatus === 'waiting' }];
   }), [arrangedSessions, terminalSessions]);
@@ -2352,24 +2345,6 @@ function App() {
   const activeResumeAction = activeResumeSession && agentResumeAction?.sessionId === activeResumeSession.id
     ? agentResumeAction
     : null;
-  // inline 用 'nearest' 而非 'center'：激活 tab 已在可视区内时完全不滚动，
-  // 只有它溢出屏幕才滚最小距离。'center' 会在 tab 多（条溢出）时每切一次
-  // 整条横移去居中，切换频繁时视觉上就是横向抖动。
-  React.useLayoutEffect(() => {
-    if (!connectionPriorityReady) return;
-    const activeTab = activeSessionTabRef.current;
-    if (!activeTab) return;
-    const isInitialPosition = !hasPositionedInitialActiveTabRef.current;
-    activeTab.scrollIntoView({
-      inline: 'nearest',
-      block: 'nearest',
-      // 首次恢复必须在浏览器绘制前直接落到正确位置，不能让用户先看到
-      // Tab 条起点再播放一段横向滚动；之后主动切换仍保留平滑反馈。
-      behavior: isInitialPosition ? 'auto' : 'smooth',
-    });
-    hasPositionedInitialActiveTabRef.current = true;
-    if (isInitialPosition) markStartupMilestone('active-tab-positioned');
-  }, [activeSessionId, connectionPriorityReady]);
 
   useEffect(() => {
     if (editingSessionId && renameInputRef.current) {
@@ -2673,7 +2648,7 @@ function App() {
     const ids: string[] = [];
     for (const s of sessions) {
       const ts = terminalSessions.get(s.id);
-      if (ts?.agentStatus === 'waiting' || ts?.agentNeedsReview) {
+      if (ts?.agentStatus === 'waiting' || sessionNeedsReview(ts)) {
         ids.push(s.id);
       }
     }
@@ -3033,9 +3008,6 @@ function App() {
     };
   }, [isDrawerOpen]);
 
-  const highlightedNewSessionMode = newSessionShortcutConfirmMode ?? newSessionMode;
-  const shellShortcutHighlighted = highlightedNewSessionMode === 'shell';
-  const tmuxShortcutHighlighted = highlightedNewSessionMode === 'tmux' && tmuxStatus.available;
   const tmuxSessionGroups = React.useMemo(
     () => buildFolderGroups(
       tmuxSessions.map((session) => ({ ...session, id: session.name })),
@@ -3087,7 +3059,7 @@ function App() {
     const tuiProgressActive = shouldShowTuiLoading(ts);
     const accentColor = ts?.agentStatus === 'working' || tuiProgressActive
       ? 'var(--success)'
-      : (ts?.agentStatus === 'waiting' || ts?.agentNeedsReview)
+      : (ts?.agentStatus === 'waiting' || sessionNeedsReview(ts))
         ? 'var(--warning)'
         : ts?.inCopyMode
           ? 'var(--tmux)'
@@ -3130,7 +3102,7 @@ function App() {
 
     return (
       <div
-        ref={isActive ? activeSessionTabRef : null}
+        data-session-tab-id={session.id}
         onContextMenu={(e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -3166,6 +3138,7 @@ function App() {
         <button
           type="button"
           {...(dragHandleProps ?? {})}
+          aria-current={isActive ? 'page' : undefined}
           onClick={() => handleTabClick(session.id)}
           className={`inline-flex min-w-0 flex-1 items-center gap-1 overflow-hidden text-left ${
             compact ? 'px-1' : 'py-1 pl-1 pr-1.5 sm:pl-1.5 sm:pr-2'
@@ -3185,13 +3158,13 @@ function App() {
             </span>
             {tabDirLabel ? (
               <span className="flex min-w-0 flex-col justify-center leading-[0.82rem] sm:leading-[0.85rem]">
-                <span className={`whitespace-nowrap text-[11px] sm:text-[12px] ${ts?.inCopyMode ? 'text-[color:var(--tmux)]' : ''}`}>{displayName}</span>
+                <span className={`truncate text-[11px] sm:text-[12px] ${ts?.inCopyMode ? 'text-[color:var(--tmux)]' : ''}`}>{displayName}</span>
                 <span className="truncate text-[9px] text-muted-foreground/80 sm:text-[9.5px]">
                   {tabDirLabel}
                 </span>
               </span>
             ) : (
-              <span className={`whitespace-nowrap text-[11px] sm:text-[12px] ${ts?.inCopyMode ? 'text-[color:var(--tmux)]' : ''}`}>{displayName}</span>
+              <span className={`truncate text-[11px] sm:text-[12px] ${ts?.inCopyMode ? 'text-[color:var(--tmux)]' : ''}`}>{displayName}</span>
             )}
           </span>
         </button>
@@ -3249,33 +3222,33 @@ function App() {
     ? effectiveRightSidebarWidth + PINNED_SIDEBAR_SEPARATOR_WIDTH_PX
     : 0;
 
-  // Pin mode: compute active session display info and agent state for the
-  // centered top-bar title + background tint.
-  const pinnedActiveSession = showPinnedLeft
+  // Mobile and pinned desktop chrome share the current Session presentation.
+  const singleSessionHeader = showPinnedLeft || !isDesktopViewport;
+  const headerActiveSession = singleSessionHeader
     ? sessions.find((s) => s.id === activeSessionId)
     : null;
-  const pinnedActiveTs = pinnedActiveSession
-    ? terminalSessions.get(pinnedActiveSession.id)
+  const headerActiveTs = headerActiveSession
+    ? terminalSessions.get(headerActiveSession.id)
     : undefined;
-  const pinnedDisplayName = pinnedActiveSession
-    ? getSessionDisplayLines(
-        pinnedActiveSession,
-        pinnedActiveTs?.activeProgram ?? null,
-        pinnedActiveTs?.cwd ?? null,
+  const headerDisplayName = headerActiveSession
+    ? sessionLabels.get(headerActiveSession.id)?.displayName ?? getSessionDisplayLines(
+        headerActiveSession,
+        headerActiveTs?.activeProgram ?? null,
+        headerActiveTs?.cwd ?? null,
         SHELL_NAMES,
-        pinnedActiveTs?.shellTitle ?? null,
-        pinnedActiveTs?.promptState ?? null,
+        headerActiveTs?.shellTitle ?? null,
+        headerActiveTs?.promptState ?? null,
       ).primary
     : '';
   const desktopSplitWorkspace = isDesktopViewport ? activeSplitWorkspace : null;
-  const topBarAgentBg = showPinnedLeft && !desktopSplitWorkspace && pinnedActiveTs
-    ? pinnedActiveTs.agentStatus === 'working'
+  const topBarAgentBg = singleSessionHeader && !desktopSplitWorkspace && headerActiveTs
+    ? headerActiveTs.agentStatus === 'working'
       ? 'bg-gradient-to-r from-[rgb(var(--success-rgb)_/_0.08)] to-transparent'
-      : pinnedActiveTs.agentStatus === 'waiting'
+      : headerActiveTs.agentStatus === 'waiting'
         ? 'bg-gradient-to-r from-[rgb(var(--warning-rgb)_/_0.14)] to-transparent'
-        : pinnedActiveTs.agentNeedsReview
+        : sessionNeedsReview(headerActiveTs)
           ? 'bg-gradient-to-r from-[rgb(var(--warning-rgb)_/_0.08)] to-transparent'
-          : pinnedActiveTs.inCopyMode
+          : headerActiveTs.inCopyMode
             ? 'bg-gradient-to-r from-[rgb(var(--tmux-rgb)_/_0.07)] to-transparent'
             : ''
     : '';
@@ -3290,7 +3263,7 @@ function App() {
               showPinnedLeft
                 ? 'flex justify-end'
                 : 'flex justify-between'
-            } ${groupByFolder ? 'h-10 sm:h-10' : 'h-9 sm:h-10'} ${topBarAgentBg}`}
+            } ${isDesktopViewport ? 'h-10' : 'h-11'} ${topBarAgentBg}`}
             style={{
               // Older desktop shells inject position: relative for this bar.
               // Keep it floating: each terminal slide already reserves its height.
@@ -3299,58 +3272,40 @@ function App() {
               display: desktopSplitWorkspace ? 'none' : undefined,
             }}
           >
-            {!showPinnedLeft && <button
-              type="button"
-              onClick={handleToggleLeftSidebar}
-              className="relative inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-surface-2 text-muted-foreground ring-1 ring-border/10 transition hover:bg-surface-elevated hover:text-foreground sm:h-8 sm:w-8"
-              aria-label={t('tab.sessionsTitle')}
-              title={`${t('tab.sessionsTitle')} · ${t('agent.aiRunning')}: ${agentTabCounts.running} · ${t('agent.needsReview')}: ${agentTabCounts.review}`}
-            >
-              <RiPanelLeftLine size={14} />
+            {!showPinnedLeft && <SidebarVisibilityButton side="left" expanded={sidebarLeftOpen} onClick={handleToggleLeftSidebar}
+              className="relative h-8 w-8">
               <AgentCompactStatusOverlay
                 runningCount={agentTabCounts.running}
                 reviewCount={agentTabCounts.review}
                 className="sm:hidden"
               />
-            </button>}
-            {showPinnedLeft ? (
-              <div className="absolute left-1/2 flex max-w-[40%] min-w-0 -translate-x-1/2 items-center justify-center gap-1.5 overflow-hidden">
-                {pinnedActiveSession ? (
-                  <>
-                    {renderTabIcon(pinnedActiveSession.mode, pinnedActiveTs)}
-                    <span className={`truncate text-[12px] font-medium ${pinnedActiveTs?.inCopyMode ? 'text-[color:var(--tmux)]' : 'text-foreground'}`}>
-                      {pinnedDisplayName}
-                    </span>
-                    {pinnedActiveTs?.agentStatus === 'working' && (
-                      <span title={pinnedActiveTs?.agentMessage ?? undefined}>
-                        <RiLoaderCircle size={12} className="shrink-0 animate-spin text-[color:var(--success)]" />
-                      </span>
-                    )}
-                    {pinnedActiveTs?.agentStatus === 'waiting' && (
-                      <span title={pinnedActiveTs?.agentMessage ?? undefined}>
-                        <RiCircleHelp size={12} className="shrink-0 animate-bounce-y text-[color:var(--warning)]" />
-                      </span>
-                    )}
-                    {!pinnedActiveTs?.agentStatus && pinnedActiveTs?.agentNeedsReview && (
-                      <span title={pinnedActiveTs?.agentMessage ?? undefined}>
-                        <RiBellDot size={13} className="shrink-0 animate-pulse text-[color:var(--warning)]" />
-                      </span>
-                    )}
-                  </>
-                ) : (
-                  <span className="truncate px-2 text-[12px] text-muted-foreground">{t('sidebar.sessions')}</span>
-                )}
-              </div>
+            </SidebarVisibilityButton>}
+            {singleSessionHeader ? (
+              <SessionCurrentTitle
+                sessionId={headerActiveSession?.id}
+                name={headerDisplayName || t('sidebar.sessions')}
+                mobile={!isDesktopViewport} copyMode={headerActiveTs?.inCopyMode}
+                icon={headerActiveSession && renderTabIcon(headerActiveSession.mode, headerActiveTs)}
+                quota={headerActiveTs?.agent?.slug === 'codex' && <CodexQuotaBadge compact={!isDesktopViewport} onOpen={() => setIsQuotaOpen(true)} />}
+                status={headerActiveTs?.agentStatus === 'working' ? <span title={headerActiveTs.agentMessage ?? undefined}><RiLoaderCircle size={12} className="shrink-0 animate-spin text-[color:var(--success)]" /></span>
+                  : headerActiveTs?.agentStatus === 'waiting' ? <span title={headerActiveTs.agentMessage ?? undefined}><RiCircleHelp size={12} className="shrink-0 animate-bounce-y text-[color:var(--warning)]" /></span>
+                  : !headerActiveTs?.agentStatus && sessionNeedsReview(headerActiveTs) ? <span title={headerActiveTs?.agentMessage ?? undefined}><RiBellDot size={13} className="shrink-0 animate-pulse text-[color:var(--warning)]" /></span> : undefined}
+                labelProps={headerActiveSession ? {
+                  onContextMenu: event => { event.preventDefault(); openTabMenu(headerActiveSession.id, { x: event.clientX, y: event.clientY }); },
+                  ...bindTabLongPress(() => openTabMenu(headerActiveSession.id)),
+                } : undefined}
+              />
             ) : groupByFolder ? (
             <DragDropContext onDragStart={handleSessionDragStart} onDragUpdate={handleSessionDragUpdate} onDragEnd={handleGroupedDragEnd}>
             {renderMobileSessionDestroyTarget()}
             <Droppable droppableId="groups" type="group" direction="horizontal">
               {(groupsProvided) => (
-            <div
+            <SessionTabStrip
               ref={groupsProvided.innerRef}
               {...groupsProvided.droppableProps}
-              className="scrollbar-hidden flex h-full min-w-0 flex-1 items-center gap-1 overflow-x-auto overflow-y-hidden whitespace-nowrap px-0.5 py-0.5"
-              style={{ touchAction: 'pan-x' }}
+              className="px-0.5 py-0.5"
+              activeSessionId={activeSessionId} ready={connectionPriorityReady}
+              onInitialPositioned={() => markStartupMilestone('active-tab-positioned')}
             >
               {tabGroups.map((group, groupIndex) => {
                 let groupRunning = 0;
@@ -3358,7 +3313,7 @@ function App() {
                 for (const s of group.sessions) {
                   const ts = terminalSessions.get(s.id);
                   if (ts?.agentStatus === 'working') groupRunning += 1;
-                  if (ts?.agentStatus === 'waiting' || ts?.agentNeedsReview) groupReview += 1;
+                  if (ts?.agentStatus === 'waiting' || sessionNeedsReview(ts)) groupReview += 1;
                 }
                 const hasActive = group.sessions.some((s) => s.id === activeSessionId);
                 const collapsed = collapsedGroups.has(group.key);
@@ -3452,7 +3407,7 @@ function App() {
               >
                 <RiAddLine size={14} />
               </button>
-            </div>
+            </SessionTabStrip>
               )}
             </Droppable>
             </DragDropContext>
@@ -3461,11 +3416,11 @@ function App() {
             {renderMobileSessionDestroyTarget()}
             <Droppable droppableId="tabs" type="session" direction="horizontal">
               {(provided) => (
-            <div
+            <SessionTabStrip
               ref={provided.innerRef}
               {...provided.droppableProps}
-              className="scrollbar-hidden flex h-full min-w-0 flex-1 items-center gap-1 overflow-x-auto overflow-y-hidden whitespace-nowrap"
-              style={{ touchAction: 'pan-x' }}
+              activeSessionId={activeSessionId} ready={connectionPriorityReady}
+              onInitialPositioned={() => markStartupMilestone('active-tab-positioned')}
             >
               {arrangedSessions.map((session, index) => {
                 const isEditing = session.id === editingSessionId;
@@ -3514,7 +3469,7 @@ function App() {
                 <RiAddLine size={14} />
               </button>
               {provided.placeholder}
-            </div>
+            </SessionTabStrip>
               )}
             </Droppable>
             </DragDropContext>
@@ -3525,25 +3480,10 @@ function App() {
                 <AgentCountBadge count={agentTabCounts.running} tone="running" title={t('agent.aiRunning')} />
                 </span>
               )}
-              {!showPinnedLeft && sessions.length > 0 && (
-              <span
-                className="inline-flex shrink-0 items-center px-1 text-[10px] uppercase tracking-[0.16em] text-muted-foreground sm:text-[11px]"
-                title={`Session ${activeSessionIndex + 1} of ${sessions.length}`}
-              >
-                {activeSessionPositionLabel}
-              </span>
-              )}
-              {activeSessionId && <SessionModeSwitch sessionId={activeSessionId} />}
+              {activeSessionId && <SessionModeSwitch sessionId={activeSessionId} share={false} />}
               {!showPinnedLeft && <TodoNavigationButton placement="toolbar" onOpen={() => useCollaborationNavigation.getState().openTodos()} />}
-              {!showPinnedRight && <button
-                type="button"
-                onClick={handleToggleRightSidebar}
-                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-surface-2 text-muted-foreground ring-1 ring-border/10 transition hover:bg-surface-elevated hover:text-foreground sm:h-8 sm:w-8"
-                aria-label={t('tab.explorerTitle')}
-                title={t('tab.explorerTitle')}
-              >
-                <RiPanelRightLine size={14} />
-              </button>}
+              {!showPinnedRight && <SidebarVisibilityButton side="right" expanded={sidebarRightOpen} onClick={handleToggleRightSidebar}
+                className="h-8 w-8" />}
             </div>
           </div>
 
@@ -3601,6 +3541,7 @@ function App() {
                 terminalSettings={terminalSettings}
                 colorTheme={colorTheme}
                 toolbarPresets={toolbarPresets}
+                onConfigureToolbar={target => { setToolbarConfigurationTarget(target); setSelectedToolbarPresetId(target.presetId); setIsToolbarPresetsOpen(true); }}
                 showDebug={showDebug && isDesktopViewport}
                 terminalFocusAvailable={terminalFocusAvailable}
                 terminalReferenceAvailable={terminalReferenceAvailable}
@@ -3610,6 +3551,9 @@ function App() {
                 connectionPriorityReady={connectionPriorityReady}
                 desktopRightSidebarEnabled={isDesktopViewport}
                 onToggleRightSidebar={handleToggleRightSidebar}
+                onToggleLeftSidebar={handleToggleLeftSidebar}
+                leftSidebarOpen={sidebarLeftOpen}
+                rightSidebarOpen={sidebarRightOpen}
                 desktopFloatingTitle={isDesktopViewport}
                 desktopLeftSidebarPinned={showPinnedLeft}
                 desktopPinnedLeftSidebarWidth={showPinnedLeft ? sidebarLeftWidth : 0}
@@ -3678,585 +3622,7 @@ function App() {
             </div>
 
             {/* Content */}
-            <div className="min-h-0 flex-1 overflow-y-auto bg-background/25 px-3 py-3 sm:px-6 sm:py-5 md:px-8">
-              {/* Quick row: font size + renderer + toggles, all visible at-a-glance */}
-              <div className="space-y-2">
-                {/* Font size */}
-                <div className="flex items-center gap-2 rounded-xl bg-surface-2 px-2.5 py-2">
-                  <span className="text-[12px] font-medium text-foreground/90 w-14 shrink-0">{t('settings.font')}</span>
-                  <button
-                    type="button"
-                    onClick={() => updateTerminalSettings({ fontSize: Math.max(8, fontSize - 1) })}
-                    className="h-8 w-8 shrink-0 rounded-md bg-surface text-muted-foreground transition hover:bg-surface-elevated hover:text-foreground active:scale-95"
-                  >
-                    −
-                  </button>
-                  <input
-                    type="range"
-                    min="8"
-                    max="32"
-                    value={fontSize}
-                    onChange={(e) => updateTerminalSettings({ fontSize: parseInt(e.target.value, 10) })}
-                    className="min-w-0 flex-1"
-                    aria-label={t('settings.font')}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => updateTerminalSettings({ fontSize: Math.min(32, fontSize + 1) })}
-                    className="h-8 w-8 shrink-0 rounded-md bg-surface text-muted-foreground transition hover:bg-surface-elevated hover:text-foreground active:scale-95"
-                  >
-                    +
-                  </button>
-                  <span className="w-8 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground">{fontSize}px</span>
-                </div>
-
-                <WorkspaceRetentionSettings />
-
-                {/* Preferences stay saved, but only the selected browser/fallback exposes them. */}
-                <div data-terminal-renderer-controls="browser-fallback" className="space-y-1.5 rounded-xl bg-surface-2 px-2.5 py-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[12px] font-medium text-foreground/90 w-14 shrink-0">{t('settings.render')}</span>
-                    <div className="flex flex-1 items-center gap-1 rounded-md bg-surface p-0.5">
-                      {(['auto', 'webgl', 'canvas'] as TerminalRendererMode[]).map((mode) => {
-                        const selected = rendererMode === mode;
-                        return (
-                          <button
-                            key={mode}
-                            type="button"
-                            onClick={() => updateTerminalSettings({ rendererMode: mode })}
-                            className={`flex-1 rounded px-2 py-1 text-[11px] font-medium transition ${
-                              selected ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-surface-elevated'
-                            }`}
-                          >
-                            {mode === 'auto' ? t('settings.auto') : mode === 'webgl' ? t('settings.webgl') : t('settings.canvas')}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Theme */}
-                <div className="space-y-1.5 rounded-xl bg-surface-2 px-2.5 py-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[12px] font-medium text-foreground/90 w-14 shrink-0">{t('settings.theme')}</span>
-                    <div className="flex flex-1 items-center gap-1 rounded-md bg-surface p-0.5">
-                      {([
-                        ['dark', RiMoonLine, t('settings.darkTheme')],
-                        ['light', RiSunLine, t('settings.lightTheme')],
-                      ] as const).map(([theme, Icon, label]) => {
-                        const selected = colorTheme === theme;
-                        return (
-                          <button
-                            key={theme}
-                            type="button"
-                            onClick={() => setColorTheme(theme)}
-                            className={`flex flex-1 items-center justify-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition ${
-                              selected ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-surface-elevated'
-                            }`}
-                          >
-                            <Icon size={12} />
-                            <span>{label}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Default mode for the top-tab + button */}
-                <div className="flex items-center gap-2 rounded-xl bg-surface-2 px-2.5 py-2">
-                  <span className="text-[12px] font-medium text-foreground/90 w-14 shrink-0">{t('settings.newTab')}</span>
-                  <div className="flex flex-1 items-center gap-1 rounded-md bg-surface p-0.5">
-                    {(['shell', 'tmux'] as const).map((mode) => {
-                      const selected = newSessionMode === mode;
-                      const disabled = mode === 'tmux' && !tmuxStatus.available;
-                      return (
-                        <button
-                          key={mode}
-                          type="button"
-                          disabled={disabled}
-                          onClick={() => setNewSessionMode(mode, { userInitiated: true })}
-                          className={`flex-1 rounded px-2 py-1 text-[11px] font-medium transition ${
-                            selected
-                              ? 'bg-primary/20 text-primary'
-                              : disabled
-                                ? 'cursor-not-allowed text-muted-foreground/40'
-                                : 'text-muted-foreground hover:bg-surface-elevated'
-                          }`}
-                          title={disabled ? (tmuxStatus.reason || t('settings.installTmuxHint')) : undefined}
-                        >
-                          {mode === 'shell' ? t('settings.shell') : t('settings.tmux')}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <button type="button" onClick={() => setNewSessionShortcutSettingsOpen(true)} className="flex min-h-11 w-full items-center justify-between gap-3 rounded-xl bg-surface-2 px-3 py-2 text-left text-[12px] hover:bg-surface-elevated">
-                  <span className="font-medium">{locale === 'zh' ? 'Command+D 新建会话' : 'Command+D new session'}</span>
-                  <span className="shrink-0 text-primary">{locale === 'zh' ? '配置' : 'Configure'}</span>
-                </button>
-
-                {/* Toggles row */}
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowDebug(!showDebug)}
-                    className={`flex items-center justify-between rounded-xl px-3 py-2 text-[12px] transition ${
-                      showDebug ? 'bg-primary/15 text-primary' : 'bg-surface-2 text-foreground hover:bg-surface-elevated'
-                    }`}
-                  >
-                    <span className="font-medium">{t('settings.debug')}</span>
-                    <Switch checked={showDebug} size="sm" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      const newValue = !preventSleep;
-                      setPreventSleep(newValue);
-                      try {
-                        const result = await updateSettings({ preventSleep: newValue });
-                        setPreventSleep(result.preventSleep);
-                        setNetworkAvailable(result.networkAvailable);
-                        setLocalAccess(result.localAccess);
-                        writeCache(SETTINGS_CACHE_KEY, {
-                          preventSleep: result.preventSleep,
-                          networkAvailable: result.networkAvailable,
-                          localAccess: result.localAccess,
-                        });
-                      } catch {
-                        setPreventSleep(!newValue);
-                      }
-                    }}
-                    className={`flex items-center justify-between rounded-xl px-3 py-2 text-[12px] transition ${
-                      preventSleep ? 'bg-[rgb(var(--success-rgb)_/_0.15)] text-[color:var(--success)]' : 'bg-surface-2 text-foreground hover:bg-surface-elevated'
-                    }`}
-                    title={!networkAvailable && preventSleep ? t('settings.noSleepUnavailable') : undefined}
-                  >
-                    <span className="font-medium truncate">{t('settings.noSleep')}</span>
-                    <Switch checked={preventSleep} size="sm" />
-                  </button>
-                </div>
-              </div>
-
-              <div className="mt-3 space-y-2">
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={runningSessionButtonEnabled}
-                  aria-label={t('sidebar.runningSessionButton')}
-                  onClick={() => void handleRunningSessionButtonEnabledChange(!runningSessionButtonEnabled)}
-                  className="flex w-full items-center gap-2 rounded-xl bg-surface-2 px-3 py-2.5 text-left text-[13px] transition hover:bg-surface-elevated"
-                >
-                  <RiPlayLine size={14} className={runningSessionButtonEnabled ? 'shrink-0 text-[color:var(--success)]' : 'shrink-0 text-muted-foreground'} />
-                  <span className="min-w-0 flex-1">
-                    <span className="block font-medium text-foreground">{t('sidebar.runningSessionButton')}</span>
-                    <span className="mt-0.5 block text-[10px] leading-tight text-muted-foreground">{t('sidebar.runningSessionButtonHint')}</span>
-                  </span>
-                  <Switch checked={runningSessionButtonEnabled} size="sm" />
-                </button>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={attentionButtonEnabled}
-                  aria-label={t('sidebar.attentionButton')}
-                  onClick={() => void handleAttentionButtonEnabledChange(!attentionButtonEnabled)}
-                  className="flex w-full items-center gap-2 rounded-xl bg-surface-2 px-3 py-2.5 text-left text-[13px] transition hover:bg-surface-elevated"
-                >
-                  <RiBellDot size={14} className={attentionButtonEnabled ? 'shrink-0 text-[color:var(--warning)]' : 'shrink-0 text-muted-foreground'} />
-                  <span className="min-w-0 flex-1">
-                    <span className="block font-medium text-foreground">{t('sidebar.attentionButton')}</span>
-                    <span className="mt-0.5 block text-[10px] leading-tight text-muted-foreground">{t('sidebar.attentionButtonHint')}</span>
-                  </span>
-                  <Switch checked={attentionButtonEnabled} size="sm" />
-                </button>
-              </div>
-
-              {/* Notifications */}
-              <button
-                type="button"
-                onClick={() => setIsNotificationsOpen(true)}
-                className="mt-3 flex w-full items-center justify-between gap-2 rounded-xl bg-surface-2 px-3 py-2.5 text-left text-[13px] transition hover:bg-surface-elevated"
-              >
-                <span className="flex min-w-0 items-center gap-2">
-                  <RiBellLine size={14} className={pwaNotificationsEnabled ? 'shrink-0 text-primary' : 'shrink-0 text-muted-foreground'} />
-                  <span className="min-w-0">
-                    <span className="block font-medium text-foreground">{t('settings.notifications')}</span>
-                    <span className="block truncate text-[10px] text-muted-foreground">
-                      {pwaNotificationsEnabled
-                        ? (pwaAiNotificationsEnabled && pwaExitNotificationsEnabled
-                          ? t('settings.notificationsBothOnSummary')
-                          : pwaAiNotificationsEnabled
-                            ? t('settings.notificationsAiOnSummary')
-                            : pwaExitNotificationsEnabled
-                              ? t('settings.notificationsExitOnSummary')
-                              : t('settings.notificationsNoEventsSummary'))
-                        : t('settings.notificationsOffSummary')}
-                    </span>
-                  </span>
-                </span>
-                <span className="flex shrink-0 items-center gap-1.5 text-[11px] text-muted-foreground">
-                  <span>{pwaNotificationsEnabled ? t('common.on') : t('common.off')}</span>
-                  <span>›</span>
-                </span>
-              </button>
-
-              <button type="button" onClick={() => setIsLocalAccessOpen(true)} className="mt-3 flex w-full items-center justify-between gap-3 rounded-xl bg-surface-2 px-3 py-3 text-left transition hover:bg-surface-elevated">
-                <span>
-                  <span className="block text-[12px] font-medium text-foreground/90">{t('settings.localAccess')}</span>
-                  <span className="mt-0.5 block text-[10px] text-muted-foreground">{t('settings.localAccessHint')}</span>
-                </span>
-                <RiChevronRightLine size={16} className="shrink-0 text-muted-foreground" />
-              </button>
-
-              <TermdockUpdateSettings
-                state={termdockUpdateState}
-                pending={updateActionPending}
-                onCheck={() => void handleRetryUpdate()}
-                onConfirmRestart={() => void handleConfirmUpdateRestart()}
-                desktopState={desktopUpdateSupported ? desktopUpdateState : undefined}
-                desktopPending={desktopUpdatePending}
-                onCheckDesktop={desktopUpdateSupported ? () => void handleCheckDesktopUpdate() : undefined}
-                onInstallDesktop={() => void handleInstallDesktopUpdate()}
-                desktopSnapshot={desktopSnapshot}
-                desktopActions={desktopBridge ? (
-                  <>
-                    <div className="grid grid-cols-1 gap-px border-t border-border/10 bg-border/10 sm:grid-cols-2">
-                      <button
-                        type="button"
-                        onClick={() => void desktopBridge.showConnectionCenter()}
-                        className="flex items-center gap-2 bg-surface-2 px-3 py-2.5 text-left text-[11px] text-muted-foreground transition hover:bg-surface-elevated hover:text-foreground"
-                      >
-                        <RiLinkLine size={13} className="shrink-0 text-primary" />
-                        {t('settings.desktopSwitchService')}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setDesktopActionMessage(null);
-                          void desktopBridge.revealDataDirectory()
-                            .catch((error) => setDesktopActionMessage(error instanceof Error ? error.message : String(error)));
-                        }}
-                        className="flex items-center gap-2 bg-surface-2 px-3 py-2.5 text-left text-[11px] text-muted-foreground transition hover:bg-surface-elevated hover:text-foreground"
-                      >
-                        <RiFolderOpenLine size={13} className="shrink-0 text-primary" />
-                        {t('settings.desktopOpenDataDirectory')}
-                      </button>
-                    </div>
-                    {desktopActionMessage && (
-                      <div className="border-t border-border/10 px-3 py-2 text-[10px] text-muted-foreground">
-                        {desktopActionMessage}
-                      </div>
-                    )}
-                  </>
-                ) : undefined}
-              />
-
-              <ConnectionQualitySettings backendSessionId={activeSessionId ? terminalSessions.get(activeSessionId)?.terminalSessionId ?? null : null} />
-
-              <ServerHealthSettings
-                state={serverHealthState}
-                onDismiss={() => void handleDismissServerHealth()}
-              />
-
-              {/* New session shortcut */}
-              <div className="mt-3 flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setNewSessionShortcutConfirmMode(null);
-                    dispatchNewSession({ mode: 'shell' });
-                    handleCloseSettings();
-                  }}
-                  className={`flex min-w-0 items-center justify-center gap-1.5 rounded-xl text-[13px] font-semibold transition active:scale-[0.98] ${
-                    shellShortcutHighlighted
-                      ? 'flex-[2.7] bg-primary px-3 py-2.5 text-primary-foreground ring-1 ring-primary/40 shadow-md shadow-primary/25 hover:bg-primary/90'
-                      : 'flex-[0.78] bg-surface-2 px-2 py-2 text-muted-foreground hover:bg-surface-elevated hover:text-foreground'
-                  }`}
-                  title={newSessionShortcutConfirmMode === 'shell' ? t('sidebar.confirmNewShell') : t('settings.shell')}
-                >
-                  <RiAddLine size={14} className={shellShortcutHighlighted ? 'shrink-0' : 'hidden'} />
-                  <RiTerminalLine size={12} />
-                  <span className={shellShortcutHighlighted ? 'whitespace-nowrap' : 'hidden'}>
-                    {newSessionShortcutConfirmMode === 'shell' ? t('sidebar.confirmNewShell') : t('settings.shell')}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  disabled={!tmuxStatus.available}
-                  onClick={() => {
-                    if (!tmuxStatus.available) return;
-                    setNewSessionShortcutConfirmMode(null);
-                    dispatchNewSession({ mode: 'tmux' });
-                    handleCloseSettings();
-                  }}
-                  className={`flex min-w-0 items-center justify-center gap-1.5 rounded-xl text-[13px] font-semibold transition active:scale-[0.98] ${
-                    tmuxStatus.available
-                      ? tmuxShortcutHighlighted
-                        ? 'flex-[2.7] bg-primary px-3 py-2.5 text-primary-foreground ring-1 ring-primary/40 shadow-md shadow-primary/25 hover:bg-primary/90'
-                        : 'flex-[0.78] bg-surface-2 px-2 py-2 text-muted-foreground hover:bg-surface-elevated hover:text-foreground'
-                      : 'flex-1 bg-surface-2/50 text-muted-foreground/50 cursor-not-allowed'
-                  }`}
-                  title={tmuxStatus.available ? (newSessionShortcutConfirmMode === 'tmux' ? t('sidebar.confirmNewTmux') : t('settings.tmux')) : (tmuxStatus.reason || t('settings.installTmuxHint'))}
-                >
-                  <RiAddLine size={14} className={tmuxShortcutHighlighted ? 'shrink-0' : 'hidden'} />
-                  <RiLayoutGridLine size={12} />
-                  <span className={tmuxShortcutHighlighted ? 'whitespace-nowrap' : 'hidden'}>
-                    {newSessionShortcutConfirmMode === 'tmux' ? t('sidebar.confirmNewTmux') : t('settings.tmux')}
-                  </span>
-                </button>
-              </div>
-
-              {/* Tmux server (only when available or has sessions) */}
-              {(tmuxStatus.available || tmuxSessions.length > 0) && (
-                <details className="mt-3 group rounded-xl bg-surface-2 [&[open]]:bg-surface-2">
-                  <summary className="flex cursor-pointer items-center justify-between rounded-xl px-3 py-2.5 text-[13px] hover:bg-surface-elevated">
-                    <span className="flex items-center gap-2">
-                      <span className={`inline-flex h-2 w-2 rounded-full ${tmuxStatus.available ? 'bg-primary' : 'bg-destructive'}`} />
-                      <span className="font-medium">{t('settings.tmuxServer')}</span>
-                      <span className="text-[11px] text-muted-foreground">
-                        {tmuxStatus.available
-                          ? t('settings.sessions', { n: tmuxSessions.length })
-                          : t('settings.tmuxUnavailable')}
-                      </span>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={(e) => { e.preventDefault(); void refreshTmuxSessions(); }}
-                      disabled={tmuxRefreshing}
-                      className="inline-flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground transition hover:bg-surface-elevated hover:text-foreground disabled:opacity-50"
-                      aria-label={t('settings.refresh')}
-                    >
-                      <RiRefreshLine size={12} className={tmuxRefreshing ? 'animate-spin' : ''} />
-                    </button>
-                  </summary>
-                  <div className="px-2 pb-2">
-                    {!tmuxStatus.available ? (
-                      <p className="px-2 py-1.5 text-[11px] text-muted-foreground">
-                        {tmuxStatus.reason || t('settings.installTmuxHint')}
-                      </p>
-                    ) : tmuxSessions.length === 0 ? (
-                      <p className="px-2 py-1.5 text-[11px] text-muted-foreground">
-                        {t('settings.noTmuxSessions')}
-                      </p>
-                    ) : (
-                      <div className="space-y-2">
-                        {tmuxSessionGroups.map((group) => (
-                          <div key={group.key || '__ungrouped_tmux__'} className="space-y-1">
-                            <div className="flex min-w-0 items-center gap-2 px-1.5 py-1 text-[10px] text-muted-foreground">
-                              <RiFolderLine size={11} className="shrink-0 text-muted-foreground/70" />
-                              <span className="shrink-0 font-medium text-foreground/75">{group.label}</span>
-                              <span className="shrink-0 text-muted-foreground/70">{t('settings.sessions', { n: group.sessions.length })}</span>
-                              {group.key && (
-                                <span className="min-w-0 truncate text-muted-foreground/60">{group.key}</span>
-                              )}
-                            </div>
-                            {group.sessions.map((tmux) => {
-                          const boundFrontendSessionId = tmux.boundFrontendSessionId ?? null;
-                          const connected = Boolean(tmux.connected || boundFrontendSessionId);
-                          const existingSession = boundFrontendSessionId
-                            ? sessions.find((session) => session.id === boundFrontendSessionId) ?? null
-                            : null;
-                          const friendlyTitle = tmux.friendlyName?.trim() || null;
-                          const labelTitle = tmux.label && tmux.label !== tmux.name ? tmux.label : null;
-                          const title = friendlyTitle || labelTitle || tmux.name;
-                          const subtitle = friendlyTitle || labelTitle ? `tmux:${tmux.name}` : null;
-                          const termdockClientLabel = tmux.clientCount && tmux.clientCount > 0
-                            ? (locale === 'zh' ? `网页连接 ${tmux.clientCount}` : `Web clients ${tmux.clientCount}`)
-                            : null;
-                          const nativeTmuxClientLabel = tmux.attached > 0
-                            ? (locale === 'zh' ? `原生 tmux ${tmux.attached}` : `Native tmux ${tmux.attached}`)
-                            : null;
-                          const subtitleParts = [
-                            subtitle,
-                            connected ? (tmux.restorable ? t('settings.restorable') : t('settings.attached')) : null,
-                            termdockClientLabel,
-                            nativeTmuxClientLabel,
-                          ].filter((part): part is string => Boolean(part));
-                          const metaParts = [
-                            t('settings.windows', { n: tmux.windows }),
-                            tmux.createdAt ? new Date(tmux.createdAt).toLocaleDateString() : null,
-                          ].filter((part): part is string => Boolean(part));
-                          const confirming = tmuxConfirmKillName === tmux.name;
-                          const killing = tmuxKillingName === tmux.name;
-                          const attaching = tmuxAttachingName === tmux.name;
-                          return (
-                            <div
-                              key={tmux.name}
-                              className={`flex items-start gap-2 rounded-lg px-2.5 py-2 ${
-                                confirming ? 'bg-destructive/10 ring-1 ring-destructive/40' : 'bg-surface'
-                              }`}
-                            >
-                              <RiLayoutGridLine size={13} className={connected ? 'mt-0.5 shrink-0 text-primary' : 'mt-0.5 shrink-0 text-muted-foreground'} />
-                              <div className="min-w-0 flex-1 space-y-1">
-                                <div className="flex min-w-0 items-center gap-1.5">
-                                  <div className="truncate text-[12px] font-semibold text-foreground">{title}</div>
-                                  {tmux.friendlyName && (
-                                    <span className="shrink-0 rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] font-medium text-primary">
-                                      {locale === 'zh' ? '自定义' : 'custom'}
-                                    </span>
-                                  )}
-                                </div>
-                                {subtitleParts.length > 0 && (
-                                  <div className="flex min-w-0 flex-wrap gap-x-2 gap-y-0.5 text-[10px] text-muted-foreground">
-                                    {subtitleParts.map((part) => (
-                                      <span key={part} className="max-w-full truncate">{part}</span>
-                                    ))}
-                                  </div>
-                                )}
-                                {(tmux.program || tmux.cwd) && (
-                                  <div className="grid min-w-0 gap-0.5 text-[10px] text-muted-foreground">
-                                    {tmux.program && (
-                                      <div className="flex min-w-0 items-center gap-1">
-                                        <RiHashLine size={10} className="shrink-0 text-muted-foreground/70" />
-                                        <span className="truncate text-foreground/75">{tmux.program}</span>
-                                      </div>
-                                    )}
-                                    {tmux.cwd && (
-                                      <div className="flex min-w-0 items-center gap-1">
-                                        <RiFolderLine size={10} className="shrink-0 text-muted-foreground/70" />
-                                        <span className="truncate">{tmux.cwd}</span>
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
-                                <div className="flex min-w-0 flex-wrap gap-x-2 gap-y-0.5 text-[10px] text-muted-foreground/80">
-                                  {metaParts.map((part) => (
-                                    <span key={part} className="inline-flex items-center gap-1">
-                                      <RiClockLine size={10} className="shrink-0 text-muted-foreground/60" />
-                                      {part}
-                                    </span>
-                                  ))}
-                                </div>
-                              </div>
-                              {!confirming ? (
-                                <>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      if (existingSession) {
-                                        handleTabClick(existingSession.id);
-                                      } else {
-                                        setTmuxAttachingName(tmux.name);
-                                        dispatchNewSession({ mode: 'tmux', tmuxSessionName: tmux.name });
-                                      }
-                                    }}
-                                    disabled={attaching}
-                                    className={`shrink-0 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium transition disabled:opacity-50 ${
-                                      connected
-                                        ? 'bg-surface text-foreground hover:bg-surface-elevated'
-                                        : attaching
-                                          ? 'bg-primary/10 text-primary'
-                                          : 'bg-primary/15 text-primary hover:bg-primary/25'
-                                    }`}
-                                  >
-                                    {attaching ? <><RiLoaderLine size={10} className="animate-spin" />{t('settings.attaching')}</> : connected ? t('settings.attached') : t('settings.attach')}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    disabled={killing}
-                                    onClick={() => { setTmuxKillError(null); setTmuxConfirmKillName(tmux.name); }}
-                                    className="shrink-0 inline-flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground transition hover:bg-destructive/15 hover:text-destructive"
-                                    aria-label={`Kill tmux session ${tmux.name}`}
-                                  >
-                                    <RiDeleteBinLine size={12} />
-                                  </button>
-                                </>
-                              ) : (
-                                <>
-                                  <button
-                                    type="button"
-                                    disabled={killing}
-                                    onClick={() => void handleKillTmuxSession(tmux.name)}
-                                    className="shrink-0 rounded-full bg-destructive/90 px-2.5 py-1 text-[11px] font-medium text-destructive-foreground transition hover:bg-destructive disabled:opacity-50"
-                                  >
-                                    {killing ? '…' : t('settings.destroy')}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    disabled={killing}
-                                    onClick={() => { setTmuxConfirmKillName(null); setTmuxKillError(null); }}
-                                    className="shrink-0 rounded-full bg-surface-2 px-2.5 py-1 text-[11px] font-medium text-foreground transition hover:bg-surface-elevated"
-                                  >
-                                    {t('common.cancel')}
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                          );
-                            })}
-                          </div>
-                        ))}
-                        {tmuxKillError && (
-                          <p className="px-2 text-[11px] text-destructive">{tmuxKillError}</p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </details>
-              )}
-
-              {/* Toolbar presets */}
-              <button
-                type="button"
-                onClick={() => setIsToolbarPresetsOpen(true)}
-                className="mt-2 flex w-full items-center justify-between gap-2 rounded-xl bg-surface-2 px-3 py-2.5 text-left text-[13px] transition hover:bg-surface-elevated"
-              >
-                <span className="flex items-center gap-2">
-                  <RiKeyboardLine size={14} className="text-muted-foreground" />
-                  <span className="font-medium text-foreground">{t('settings.keyboardToolbar')}</span>
-                </span>
-                <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                  <span>{t('settings.sessions', { n: toolbarPresets.length })}</span>
-                  <span>›</span>
-                </span>
-              </button>
-
-              {/* Agent detection */}
-              <button
-                type="button"
-                onClick={() => setIsAgentRulesOpen(true)}
-                className="mt-2 flex w-full items-center justify-between gap-2 rounded-xl bg-surface-2 px-3 py-2.5 text-left text-[13px] transition hover:bg-surface-elevated"
-              >
-                <span className="flex items-center gap-2">
-                  <RiBotLine size={14} className="text-muted-foreground" />
-                  <span className="font-medium text-foreground">{t('settings.aiAgentDetection')}</span>
-                </span>
-                <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                  <span>hooks</span>
-                  <span>›</span>
-                </span>
-              </button>
-
-              {/* Language switcher */}
-              <div className="mt-3 flex items-center gap-2 rounded-xl bg-surface-2 px-2.5 py-2">
-                <span className="text-[12px] font-medium text-foreground/90 w-14 shrink-0">{t('settings.language')}</span>
-                <div className="flex flex-1 items-center gap-1 rounded-md bg-surface p-0.5">
-                  {([
-                    { code: 'en' as const, label: 'English' },
-                    { code: 'zh' as const, label: '中文' },
-                  ]).map((opt) => {
-                    const selected = locale === opt.code;
-                    return (
-                      <button
-                        key={opt.code}
-                        type="button"
-                        onClick={() => setLocale(opt.code)}
-                        className={`flex-1 rounded px-2 py-1 text-[11px] font-medium transition ${
-                          selected
-                            ? 'bg-primary/20 text-primary'
-                            : 'text-muted-foreground hover:bg-surface-elevated'
-                        }`}
-                      >
-                        {opt.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Sign out */}
+            <SettingsSections footer={
               <button
                 type="button"
                 onClick={async () => {
@@ -4272,7 +3638,559 @@ function App() {
                 <RiLogoutBoxRLine size={14} />
                 {t('settings.signOut')}
               </button>
-            </div>
+            }>
+              <section aria-labelledby="settings-appearance-title" className="space-y-2">
+                <h3 id="settings-appearance-title" className="px-1 text-[12px] font-semibold text-muted-foreground">{t('settings.appearanceSection')}</h3>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {/* Font size */}
+                  <div className="space-y-3 rounded-xl bg-surface-2 p-3 sm:col-span-2">
+                    <div className="flex items-center gap-2">
+                    <span className="text-[12px] font-medium text-foreground/90 w-14 shrink-0">{t('settings.font')}</span>
+                    <button
+                      type="button"
+                      aria-label={`${t('settings.font')} −`}
+                      onClick={() => updateTerminalSettings({ fontSize: Math.max(8, fontSize - 1) })}
+                      className="h-11 w-11 shrink-0 rounded-lg bg-surface text-muted-foreground transition hover:bg-surface-elevated hover:text-foreground active:scale-95"
+                    >
+                      −
+                    </button>
+                    <input
+                      type="range"
+                      min="8"
+                      max="32"
+                      value={fontSize}
+                      onChange={(e) => updateTerminalSettings({ fontSize: parseInt(e.target.value, 10) })}
+                      className="min-w-0 flex-1"
+                      aria-label={t('settings.font')}
+                    />
+                    <button
+                      type="button"
+                      aria-label={`${t('settings.font')} +`}
+                      onClick={() => updateTerminalSettings({ fontSize: Math.min(32, fontSize + 1) })}
+                      className="h-11 w-11 shrink-0 rounded-lg bg-surface text-muted-foreground transition hover:bg-surface-elevated hover:text-foreground active:scale-95"
+                    >
+                      +
+                    </button>
+                    <span className="w-8 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground">{fontSize}px</span>
+                    </div>
+                    <div aria-hidden="true" className="overflow-hidden rounded-lg bg-[var(--chrome-bg)] px-4 py-3 font-mono leading-relaxed" style={{ fontSize }}><span className="text-primary">➜</span> <span className="text-foreground">termdock</span><span className="ml-2 inline-block h-[1em] w-[0.5em] translate-y-0.5 bg-primary align-baseline" /></div>
+                  </div>
+
+                  {/* Preferences stay saved, but only the selected browser/fallback exposes them. */}
+                  <details data-terminal-renderer-controls="browser-fallback" className="rounded-xl border border-border/20 px-3 py-1 sm:col-span-2">
+                    <summary className="cursor-pointer py-3 text-xs text-muted-foreground">{t('settings.render')}<span className="ml-2 text-foreground">{rendererMode === 'auto' ? t('settings.auto') : rendererMode === 'webgl' ? t('settings.webgl') : t('settings.canvas')}</span></summary>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[12px] font-medium text-foreground/90 w-14 shrink-0">{t('settings.render')}</span>
+                      <div className="flex flex-1 items-center gap-1 rounded-md bg-surface p-0.5">
+                        {(['auto', 'webgl', 'canvas'] as TerminalRendererMode[]).map((mode) => {
+                          const selected = rendererMode === mode;
+                          return (
+                            <button
+                              key={mode}
+                              type="button"
+                              onClick={() => updateTerminalSettings({ rendererMode: mode })}
+                              className={`flex-1 rounded px-2 py-1 text-[11px] font-medium transition ${
+                                selected ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-surface-elevated'
+                              }`}
+                            >
+                              {mode === 'auto' ? t('settings.auto') : mode === 'webgl' ? t('settings.webgl') : t('settings.canvas')}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </details>
+
+                  {/* Theme */}
+                  <div className="space-y-1.5 rounded-xl bg-surface-2 px-2.5 py-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[12px] font-medium text-foreground/90 w-14 shrink-0">{t('settings.theme')}</span>
+                      <div className="flex flex-1 items-center gap-1 rounded-md bg-surface p-0.5">
+                        {([
+                          ['dark', RiMoonLine, t('settings.darkTheme')],
+                          ['light', RiSunLine, t('settings.lightTheme')],
+                        ] as const).map(([theme, Icon, label]) => {
+                          const selected = colorTheme === theme;
+                          return (
+                            <button
+                              key={theme}
+                              type="button"
+                              onClick={() => setColorTheme(theme)}
+                              className={`flex flex-1 items-center justify-center gap-1 min-h-11 rounded-lg border px-2 py-2 text-xs font-medium transition ${
+                                selected ? 'border-primary bg-surface-2 text-primary' : 'border-transparent text-muted-foreground hover:bg-surface-elevated'
+                              }`}
+                            >
+                              <Icon size={12} />
+                              <span>{label}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Default mode for the top-tab + button */}
+                  <div className="flex items-center gap-2 rounded-xl bg-surface-2 px-2.5 py-2">
+                    <span className="text-[12px] font-medium text-foreground/90 w-14 shrink-0">{t('settings.newTab')}</span>
+                    <div className="flex flex-1 items-center gap-1 rounded-md bg-surface p-0.5">
+                      {(['shell', 'tmux'] as const).map((mode) => {
+                        const selected = newSessionMode === mode;
+                        const disabled = mode === 'tmux' && !tmuxStatus.available;
+                        return (
+                          <button
+                            key={mode}
+                            type="button"
+                            disabled={disabled}
+                            onClick={() => setNewSessionMode(mode, { userInitiated: true })}
+                            className={`flex-1 min-h-11 rounded-lg border px-2 py-2 text-xs font-medium transition ${
+                              selected
+                                ? 'border-primary bg-surface-2 text-primary'
+                                : disabled
+                                  ? 'border-transparent cursor-not-allowed text-muted-foreground/40'
+                                  : 'border-transparent text-muted-foreground hover:bg-surface-elevated'
+                            }`}
+                            title={disabled ? (tmuxStatus.reason || t('settings.installTmuxHint')) : undefined}
+                          >
+                            <span className="block">{mode === 'shell' ? t('settings.shell') : t('settings.tmux')}</span><span className="mt-1 block font-mono text-[10px] font-normal text-muted-foreground">{mode === 'shell' ? 'Shell' : 'tmux'}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  {/* Language switcher */}
+                  <div className="flex items-center gap-2 rounded-xl bg-surface-2 px-2.5 py-2">
+                    <span className="text-[12px] font-medium text-foreground/90 w-14 shrink-0">{t('settings.language')}</span>
+                    <div className="flex flex-1 items-center gap-1 rounded-md bg-surface p-0.5">
+                      {([
+                        { code: 'en' as const, label: 'English' },
+                        { code: 'zh' as const, label: '中文' },
+                      ]).map((opt) => {
+                        const selected = locale === opt.code;
+                        return (
+                          <button
+                            key={opt.code}
+                            type="button"
+                            onClick={() => setLocale(opt.code)}
+                            className={`flex-1 min-h-11 rounded-lg border px-2 py-2 text-xs font-medium transition ${
+                              selected
+                                ? 'border-primary bg-surface-2 text-primary'
+                                : 'border-transparent text-muted-foreground hover:bg-surface-elevated'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                </div>
+                <WorkspaceRetentionSettings />
+              </section>
+
+              <section aria-labelledby="settings-controls-title" className="space-y-2">
+                <h3 id="settings-controls-title" className="px-1 text-[12px] font-semibold text-muted-foreground">{t('settings.controlsSection')}</h3>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <button type="button" onClick={() => setNewSessionShortcutSettingsOpen(true)} className="flex min-h-11 w-full items-center justify-between gap-3 rounded-xl bg-surface-2 px-3 py-2 text-left text-[12px] hover:bg-surface-elevated">
+                    <span className="font-medium">{locale === 'zh' ? 'Command+D 新建会话' : 'Command+D new session'}</span>
+                    <span className="shrink-0 text-primary">{locale === 'zh' ? '配置' : 'Configure'}</span>
+                  </button>
+
+                  {/* Toggles row */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowDebug(!showDebug)}
+                      role="switch"
+                      aria-checked={showDebug}
+                      className={`flex min-h-11 items-center justify-between gap-2 rounded-xl px-3 py-2 text-[12px] transition ${
+                        showDebug ? 'bg-primary/15 text-primary' : 'bg-surface-2 text-foreground hover:bg-surface-elevated'
+                      }`}
+                    >
+                      <span className="font-medium">{t('settings.debug')}</span>
+                      <Switch checked={showDebug} size="sm" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const newValue = !preventSleep;
+                        setPreventSleep(newValue);
+                        try {
+                          const result = await updateSettings({ preventSleep: newValue });
+                          setPreventSleep(result.preventSleep);
+                          setNetworkAvailable(result.networkAvailable);
+                          setLocalAccess(result.localAccess);
+                          writeCache(SETTINGS_CACHE_KEY, {
+                            preventSleep: result.preventSleep,
+                            networkAvailable: result.networkAvailable,
+                            localAccess: result.localAccess,
+                          });
+                        } catch {
+                          setPreventSleep(!newValue);
+                        }
+                      }}
+                      role="switch"
+                      aria-checked={preventSleep}
+                      className={`flex min-h-11 items-center justify-between gap-2 rounded-xl px-3 py-2 text-[12px] transition ${
+                        preventSleep ? 'bg-[rgb(var(--success-rgb)_/_0.15)] text-[color:var(--success)]' : 'bg-surface-2 text-foreground hover:bg-surface-elevated'
+                      }`}
+                      title={!networkAvailable && preventSleep ? t('settings.noSleepUnavailable') : undefined}
+                    >
+                      <span className="font-medium truncate">{t('settings.noSleep')}</span>
+                      <Switch checked={preventSleep} size="sm" />
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={runningSessionButtonEnabled}
+                    aria-label={t('sidebar.runningSessionButton')}
+                    onClick={() => void handleRunningSessionButtonEnabledChange(!runningSessionButtonEnabled)}
+                    className="flex min-h-11 w-full items-center gap-2 rounded-xl bg-surface-2 px-3 py-1.5 text-left text-[12px] transition hover:bg-surface-elevated"
+                  >
+                    <RiPlayLine size={14} className={runningSessionButtonEnabled ? 'shrink-0 text-[color:var(--success)]' : 'shrink-0 text-muted-foreground'} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-medium text-foreground">{t('sidebar.runningSessionButton')}</span>
+                      <span className="mt-0.5 block text-[10px] leading-tight text-muted-foreground">{t('sidebar.runningSessionButtonHint')}</span>
+                    </span>
+                    <Switch checked={runningSessionButtonEnabled} size="sm" />
+                  </button>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={attentionButtonEnabled}
+                    aria-label={t('sidebar.attentionButton')}
+                    onClick={() => void handleAttentionButtonEnabledChange(!attentionButtonEnabled)}
+                    className="flex min-h-11 w-full items-center gap-2 rounded-xl bg-surface-2 px-3 py-1.5 text-left text-[12px] transition hover:bg-surface-elevated"
+                  >
+                    <RiBellDot size={14} className={attentionButtonEnabled ? 'shrink-0 text-[color:var(--warning)]' : 'shrink-0 text-muted-foreground'} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-medium text-foreground">{t('sidebar.attentionButton')}</span>
+                      <span className="mt-0.5 block text-[10px] leading-tight text-muted-foreground">{t('sidebar.attentionButtonHint')}</span>
+                    </span>
+                    <Switch checked={attentionButtonEnabled} size="sm" />
+                  </button>
+                  {/* Notifications */}
+                  <button
+                    type="button"
+                    onClick={() => setIsNotificationsOpen(true)}
+                    className="flex min-h-11 w-full items-center justify-between gap-2 rounded-xl bg-surface-2 px-3 py-1.5 text-left text-[12px] transition hover:bg-surface-elevated"
+                  >
+                    <span className="flex min-w-0 items-center gap-2">
+                      <RiBellLine size={14} className={pwaNotificationsEnabled ? 'shrink-0 text-primary' : 'shrink-0 text-muted-foreground'} />
+                      <span className="min-w-0">
+                        <span className="block font-medium text-foreground">{t('settings.notifications')}</span>
+                        <span className="block truncate text-[10px] text-muted-foreground">
+                          {pwaNotificationsEnabled
+                            ? (pwaAiNotificationsEnabled && pwaExitNotificationsEnabled
+                              ? t('settings.notificationsBothOnSummary')
+                              : pwaAiNotificationsEnabled
+                                ? t('settings.notificationsAiOnSummary')
+                                : pwaExitNotificationsEnabled
+                                  ? t('settings.notificationsExitOnSummary')
+                                  : t('settings.notificationsNoEventsSummary'))
+                            : t('settings.notificationsOffSummary')}
+                        </span>
+                      </span>
+                    </span>
+                    <span className="flex shrink-0 items-center gap-1.5 text-[11px] text-muted-foreground">
+                      <span>{pwaNotificationsEnabled ? t('common.on') : t('common.off')}</span>
+                      <span>›</span>
+                    </span>
+                  </button>
+
+                  <button type="button" onClick={() => setIsLocalAccessOpen(true)} className="flex min-h-11 w-full items-center justify-between gap-3 rounded-xl bg-surface-2 px-3 py-1.5 text-left transition hover:bg-surface-elevated">
+                    <span className="min-w-0">
+                      <span className="block text-[12px] font-medium text-foreground/90">{t('settings.localAccess')}</span>
+                      <span className="mt-0.5 block text-[10px] text-muted-foreground">{t('settings.localAccessHint')}</span>
+                    </span>
+                    <RiChevronRightLine size={16} className="shrink-0 text-muted-foreground" />
+                  </button>
+                  {/* Toolbar presets */}
+                  <button
+                    type="button"
+                    onClick={() => { setToolbarConfigurationTarget(undefined); setIsToolbarPresetsOpen(true); }}
+                    className="flex min-h-11 w-full items-center justify-between gap-2 rounded-xl bg-surface-2 px-3 py-1.5 text-left text-[12px] transition hover:bg-surface-elevated"
+                  >
+                    <span className="flex min-w-0 items-center gap-2">
+                      <RiKeyboardLine size={14} className="text-muted-foreground" />
+                      <span className="min-w-0">
+                      <span className="block font-medium text-foreground">{t('settings.keyboardToolbar')}</span>
+                      <span className="block text-[10px] text-muted-foreground">{t('toolbarPresets.entryHint')}</span>
+                    </span>
+                    </span>
+                    <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                      <span>›</span>
+                    </span>
+                  </button>
+
+                  {/* Agent detection */}
+                  <button
+                    type="button"
+                    onClick={() => setIsAgentRulesOpen(true)}
+                    className="flex min-h-11 w-full items-center justify-between gap-2 rounded-xl bg-surface-2 px-3 py-1.5 text-left text-[12px] transition hover:bg-surface-elevated"
+                  >
+                    <span className="flex items-center gap-2">
+                      <RiBotLine size={14} className="text-muted-foreground" />
+                      <span className="font-medium text-foreground">{t('settings.aiAgentDetection')}</span>
+                    </span>
+                    <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                      <span>hooks</span>
+                      <span>›</span>
+                    </span>
+                  </button>
+
+                </div>
+              </section>
+
+              <section aria-labelledby="settings-service-title" className="space-y-2">
+                <h3 id="settings-service-title" className="px-1 text-[12px] font-semibold text-muted-foreground">{t('settings.serviceSection')}</h3>
+                <TermdockUpdateSettings
+                  state={termdockUpdateState}
+                  pending={updateActionPending}
+                  updateContext={serviceUpdateContext}
+                  updateProgress={serviceUpdateProgress || updateActionError}
+                  onCheck={() => void handleRetryUpdate()}
+                  onConfirmRestart={() => void handleConfirmUpdateRestart()}
+                  desktopState={desktopUpdateSupported ? desktopUpdateState : undefined}
+                  desktopPending={desktopUpdatePending}
+                  onCheckDesktop={desktopUpdateSupported ? () => void handleCheckDesktopUpdate() : undefined}
+                  onInstallDesktop={() => void handleInstallDesktopUpdate()}
+                  desktopSnapshot={desktopSnapshot}
+                  desktopActions={desktopBridge ? (
+                    <>
+                      <div className="grid grid-cols-1 gap-px border-t border-border/10 bg-border/10 sm:grid-cols-2">
+                        <button
+                          type="button"
+                          onClick={() => void desktopBridge.showConnectionCenter()}
+                          className="flex items-center gap-2 bg-surface-2 px-3 py-2.5 text-left text-[11px] text-muted-foreground transition hover:bg-surface-elevated hover:text-foreground"
+                        >
+                          <RiLinkLine size={13} className="shrink-0 text-primary" />
+                          {t('settings.desktopSwitchService')}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDesktopActionMessage(null);
+                            void desktopBridge.revealDataDirectory()
+                              .catch((error) => setDesktopActionMessage(error instanceof Error ? error.message : String(error)));
+                          }}
+                          className="flex items-center gap-2 bg-surface-2 px-3 py-2.5 text-left text-[11px] text-muted-foreground transition hover:bg-surface-elevated hover:text-foreground"
+                        >
+                          <RiFolderOpenLine size={13} className="shrink-0 text-primary" />
+                          {t('settings.desktopOpenDataDirectory')}
+                        </button>
+                      </div>
+                      {desktopActionMessage && (
+                        <div className="border-t border-border/10 px-3 py-2 text-[10px] text-muted-foreground">
+                          {desktopActionMessage}
+                        </div>
+                      )}
+                    </>
+                  ) : undefined}
+                />
+
+                <div className="grid grid-cols-1 items-start gap-2 sm:grid-cols-2">
+                  <ConnectionQualitySettings backendSessionId={activeSessionId ? terminalSessions.get(activeSessionId)?.terminalSessionId ?? null : null} />
+
+                  <ServerHealthSettings
+                    state={serverHealthState}
+                    onDismiss={() => void handleDismissServerHealth()}
+                  />
+
+                </div>
+
+                {/* Tmux server (only when available or has sessions) */}
+                {(tmuxStatus.available || tmuxSessions.length > 0) && (
+                  <details className="group rounded-xl bg-surface-2 [&[open]]:bg-surface-2">
+                    <summary className="flex min-h-11 cursor-pointer items-center justify-between rounded-xl px-3 py-1.5 text-[12px] hover:bg-surface-elevated">
+                      <span className="flex items-center gap-2">
+                        <span className={`inline-flex h-2 w-2 rounded-full ${tmuxStatus.available ? 'bg-primary' : 'bg-destructive'}`} />
+                        <span className="font-medium">{t('settings.tmuxServer')}</span>
+                        <span className="text-[11px] text-muted-foreground">
+                          {tmuxStatus.available
+                            ? t('settings.sessions', { n: tmuxSessions.length })
+                            : t('settings.tmuxUnavailable')}
+                        </span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.preventDefault(); void refreshTmuxSessions(); }}
+                        disabled={tmuxRefreshing}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground transition hover:bg-surface-elevated hover:text-foreground disabled:opacity-50"
+                        aria-label={t('settings.refresh')}
+                      >
+                        <RiRefreshLine size={12} className={tmuxRefreshing ? 'animate-spin' : ''} />
+                      </button>
+                    </summary>
+                    <div className="px-2 pb-2">
+                      {!tmuxStatus.available ? (
+                        <p className="px-2 py-1.5 text-[11px] text-muted-foreground">
+                          {tmuxStatus.reason || t('settings.installTmuxHint')}
+                        </p>
+                      ) : tmuxSessions.length === 0 ? (
+                        <p className="px-2 py-1.5 text-[11px] text-muted-foreground">
+                          {t('settings.noTmuxSessions')}
+                        </p>
+                      ) : (
+                        <div className="space-y-2">
+                          {tmuxSessionGroups.map((group) => (
+                            <div key={group.key || '__ungrouped_tmux__'} className="space-y-1">
+                              <div className="flex min-w-0 items-center gap-2 px-1.5 py-1 text-[10px] text-muted-foreground">
+                                <RiFolderLine size={11} className="shrink-0 text-muted-foreground/70" />
+                                <span className="shrink-0 font-medium text-foreground/75">{group.label}</span>
+                                <span className="shrink-0 text-muted-foreground/70">{t('settings.sessions', { n: group.sessions.length })}</span>
+                                {group.key && (
+                                  <span className="min-w-0 truncate text-muted-foreground/60">{group.key}</span>
+                                )}
+                              </div>
+                              {group.sessions.map((tmux) => {
+                            const boundFrontendSessionId = tmux.boundFrontendSessionId ?? null;
+                            const connected = Boolean(tmux.connected || boundFrontendSessionId);
+                            const existingSession = boundFrontendSessionId
+                              ? sessions.find((session) => session.id === boundFrontendSessionId) ?? null
+                              : null;
+                            const friendlyTitle = tmux.friendlyName?.trim() || null;
+                            const labelTitle = tmux.label && tmux.label !== tmux.name ? tmux.label : null;
+                            const title = friendlyTitle || labelTitle || tmux.name;
+                            const subtitle = friendlyTitle || labelTitle ? `tmux:${tmux.name}` : null;
+                            const termdockClientLabel = tmux.clientCount && tmux.clientCount > 0
+                              ? (locale === 'zh' ? `网页连接 ${tmux.clientCount}` : `Web clients ${tmux.clientCount}`)
+                              : null;
+                            const nativeTmuxClientLabel = tmux.attached > 0
+                              ? (locale === 'zh' ? `原生 tmux ${tmux.attached}` : `Native tmux ${tmux.attached}`)
+                              : null;
+                            const subtitleParts = [
+                              subtitle,
+                              connected ? (tmux.restorable ? t('settings.restorable') : t('settings.attached')) : null,
+                              termdockClientLabel,
+                              nativeTmuxClientLabel,
+                            ].filter((part): part is string => Boolean(part));
+                            const metaParts = [
+                              t('settings.windows', { n: tmux.windows }),
+                              tmux.createdAt ? new Date(tmux.createdAt).toLocaleDateString() : null,
+                            ].filter((part): part is string => Boolean(part));
+                            const confirming = tmuxConfirmKillName === tmux.name;
+                            const killing = tmuxKillingName === tmux.name;
+                            const attaching = tmuxAttachingName === tmux.name;
+                            return (
+                              <div
+                                key={tmux.name}
+                                className={`flex items-start gap-2 rounded-lg px-2.5 py-2 ${
+                                  confirming ? 'bg-destructive/10 ring-1 ring-destructive/40' : 'bg-surface'
+                                }`}
+                              >
+                                <RiLayoutGridLine size={13} className={connected ? 'mt-0.5 shrink-0 text-primary' : 'mt-0.5 shrink-0 text-muted-foreground'} />
+                                <div className="min-w-0 flex-1 space-y-1">
+                                  <div className="flex min-w-0 items-center gap-1.5">
+                                    <div className="truncate text-[12px] font-semibold text-foreground">{title}</div>
+                                    {tmux.friendlyName && (
+                                      <span className="shrink-0 rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] font-medium text-primary">
+                                        {locale === 'zh' ? '自定义' : 'custom'}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {subtitleParts.length > 0 && (
+                                    <div className="flex min-w-0 flex-wrap gap-x-2 gap-y-0.5 text-[10px] text-muted-foreground">
+                                      {subtitleParts.map((part) => (
+                                        <span key={part} className="max-w-full truncate">{part}</span>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {(tmux.program || tmux.cwd) && (
+                                    <div className="grid min-w-0 gap-0.5 text-[10px] text-muted-foreground">
+                                      {tmux.program && (
+                                        <div className="flex min-w-0 items-center gap-1">
+                                          <RiHashLine size={10} className="shrink-0 text-muted-foreground/70" />
+                                          <span className="truncate text-foreground/75">{tmux.program}</span>
+                                        </div>
+                                      )}
+                                      {tmux.cwd && (
+                                        <div className="flex min-w-0 items-center gap-1">
+                                          <RiFolderLine size={10} className="shrink-0 text-muted-foreground/70" />
+                                          <span className="truncate">{tmux.cwd}</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                  <div className="flex min-w-0 flex-wrap gap-x-2 gap-y-0.5 text-[10px] text-muted-foreground/80">
+                                    {metaParts.map((part) => (
+                                      <span key={part} className="inline-flex items-center gap-1">
+                                        <RiClockLine size={10} className="shrink-0 text-muted-foreground/60" />
+                                        {part}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                                {!confirming ? (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (existingSession) {
+                                          handleTabClick(existingSession.id);
+                                        } else {
+                                          setTmuxAttachingName(tmux.name);
+                                          dispatchNewSession({ mode: 'tmux', tmuxSessionName: tmux.name });
+                                        }
+                                      }}
+                                      disabled={attaching}
+                                      className={`shrink-0 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium transition disabled:opacity-50 ${
+                                        connected
+                                          ? 'bg-surface text-foreground hover:bg-surface-elevated'
+                                          : attaching
+                                            ? 'bg-primary/10 text-primary'
+                                            : 'bg-primary/15 text-primary hover:bg-primary/25'
+                                      }`}
+                                    >
+                                      {attaching ? <><RiLoaderLine size={10} className="animate-spin" />{t('settings.attaching')}</> : connected ? t('settings.attached') : t('settings.attach')}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      disabled={killing}
+                                      onClick={() => { setTmuxKillError(null); setTmuxConfirmKillName(tmux.name); }}
+                                      className="shrink-0 inline-flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground transition hover:bg-destructive/15 hover:text-destructive"
+                                      aria-label={`Kill tmux session ${tmux.name}`}
+                                    >
+                                      <RiDeleteBinLine size={12} />
+                                    </button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <button
+                                      type="button"
+                                      disabled={killing}
+                                      onClick={() => void handleKillTmuxSession(tmux.name)}
+                                      className="shrink-0 rounded-full bg-destructive/90 px-2.5 py-1 text-[11px] font-medium text-destructive-foreground transition hover:bg-destructive disabled:opacity-50"
+                                    >
+                                      {killing ? '…' : t('settings.destroy')}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      disabled={killing}
+                                      onClick={() => { setTmuxConfirmKillName(null); setTmuxKillError(null); }}
+                                      className="shrink-0 rounded-full bg-surface-2 px-2.5 py-1 text-[11px] font-medium text-foreground transition hover:bg-surface-elevated"
+                                    >
+                                      {t('common.cancel')}
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            );
+                              })}
+                            </div>
+                          ))}
+                          {tmuxKillError && (
+                            <p className="px-2 text-[11px] text-destructive">{tmuxKillError}</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </details>
+                )}
+
+              </section>
+            </SettingsSections>
           </div>
           </div>
         </>
@@ -5064,66 +4982,25 @@ function App() {
         </>
       )}
 
-      {isToolbarPresetsOpen && (
-        <>
-          <button
-            type="button"
-            className="fixed inset-0 z-modal-backdrop bg-[var(--app-backdrop)] backdrop-blur-sm cursor-default"
-            onClick={() => setIsToolbarPresetsOpen(false)}
-          />
-          <div className="fixed left-[max(0.75rem,env(safe-area-inset-left,0px))] right-[max(0.75rem,env(safe-area-inset-right,0px))] top-[max(1.5rem,env(safe-area-inset-top,0px))] bottom-[max(1.5rem,env(safe-area-inset-bottom,0px))] z-modal-panel mx-auto flex max-w-4xl flex-col overflow-hidden rounded-2xl bg-surface border border-border/15 shadow-[0_28px_70px_var(--app-shadow-strong),0_14px_32px_var(--app-shadow-soft)]">
-            <div className="flex shrink-0 items-center justify-between border-b border-border/15 px-4 py-4 sm:px-6">
-              <div className="min-w-0">
-                <div className="ui-kicker">{t('settings.mobileKeyboard')}</div>
-                <h2 className="section-title mt-1">{t('settings.toolbarPresets')}</h2>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsToolbarPresetsOpen(false)}
-                className="shrink-0 rounded-full bg-surface-2 p-2 text-muted-foreground transition hover:bg-surface-elevated hover:text-foreground"
-                aria-label="Close toolbar presets"
-              >
-                <RiCloseLine size={18} />
-              </button>
-            </div>
-            <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
-              <ToolbarPresetSettings
-                presets={toolbarPresets}
-                selectedPresetId={selectedToolbarPresetId}
-                onSelectPreset={setSelectedToolbarPresetId}
-                onUpdatePreset={(presetId, updater) => {
-                  setToolbarPresets((current) => sanitizeToolbarPresets(current.map((preset) => (
-                    preset.id === presetId ? updater(preset) : preset
-                  ))));
-                }}
-                onAddPreset={() => {
-                  const presetId = `preset-${Date.now()}`;
-                  setToolbarPresets((current) => sanitizeToolbarPresets([
-                    ...current,
-                    {
-                      id: presetId,
-                      label: `Preset ${current.length}`,
-                      programs: [],
-                      includeAlt: false,
-                      rowLayout: [3, 3],
-                      actions: [],
-                      showOnDesktop: false,
-                    },
-                  ]));
-                  setSelectedToolbarPresetId(presetId);
-                }}
-                onRemovePreset={(presetId) => {
-                  setToolbarPresets((current) => sanitizeToolbarPresets(current.filter((preset) => preset.id !== presetId)));
-                }}
-                onResetDefaults={() => {
-                  setToolbarPresets(createDefaultToolbarPresets());
-                  setSelectedToolbarPresetId('default');
-                }}
-              />
-            </div>
-          </div>
-        </>
-      )}
+      {isToolbarPresetsOpen && <ToolbarSettingsDialog
+        presets={toolbarPresets}
+        selectedPresetId={selectedToolbarPresetId}
+        onSelectPreset={setSelectedToolbarPresetId}
+        onChange={handleToolbarPresetsChange}
+        saveState={toolbarSaveState}
+        onRetry={() => toolbarWriter.retry()}
+        onReload={() => void reloadToolbarPresets()}
+        previewMode={toolbarConfigurationTarget?.presetId === selectedToolbarPresetId ? toolbarConfigurationTarget.mode : toolbarConfigurationTarget ? selectedToolbarPresetId : 'auto'}
+        onUsePreset={toolbarConfigurationTarget ? () => {
+          const selected = toolbarPresets.find(preset => preset.id === selectedToolbarPresetId);
+          if (toolbarConfigurationTarget.presentation === 'desktop-actions' && selected && selected.id !== 'default' && !selected.showOnDesktop) {
+            handleToolbarPresetsChange(toolbarPresets.map(preset => preset.id === selected.id ? { ...preset, showOnDesktop: true } : preset));
+          }
+          toolbarConfigurationTarget.select(toolbarConfigurationTarget.presetId === selectedToolbarPresetId ? toolbarConfigurationTarget.mode : selectedToolbarPresetId);
+          setIsToolbarPresetsOpen(false);
+        } : undefined}
+        onClose={() => setIsToolbarPresetsOpen(false)}
+      />}
 
       {isAgentRulesOpen && (
         <>
@@ -5390,7 +5267,7 @@ function App() {
           terminal area from resizing when the user toggles them, which would
           otherwise force xterm.js to refit on every open/close.
           Only rendered when not in pinned-desktop mode (pinned sidebar renders inline above). */}
-      {!showPinnedLeft && (
+      {!isDesktopViewport && (
       <LeftSidebar
         isOpen={sidebarLeftOpen}
         drawerWidthPx={leftDrawerWidthPx}
@@ -5420,14 +5297,15 @@ function App() {
         onOpenQuota={() => setIsQuotaOpen(true)}
         updateState={termdockUpdateState}
         updateActionPending={updateActionPending}
+        updateContext={serviceUpdateContext}
+        updateProgress={serviceUpdateProgress || updateActionError}
         onConfirmUpdateRestart={handleConfirmUpdateRestart}
         onRetryUpdate={handleRetryUpdate}
         serverHealthState={serverHealthState}
         tmuxAvailable={tmuxStatus.available}
         defaultSessionMode={newSessionMode}
-        onTogglePinned={isDesktopViewport ? handleToggleLeftPinned : undefined}
       />)}
-      {!showPinnedRight && <RightSidebar
+      {!isDesktopViewport && <RightSidebar
         isOpen={sidebarRightOpen}
         sessionId={activeSessionId}
         drawerWidthPx={rightDrawerWidthPx}
@@ -5449,7 +5327,6 @@ function App() {
         markdownImageLightboxCloseSignal={markdownImageLightboxCloseSignal}
         onOpenMarkdownImageLightbox={handleOpenMarkdownImageLightbox}
         onCloseMarkdownImageLightbox={handleCloseMarkdownImageLightbox}
-        onTogglePinned={isDesktopViewport ? handleToggleRightPinned : undefined}
       />}
 
       {showBackGuardHint && !isIOS && (
@@ -5506,12 +5383,12 @@ function App() {
     <StartupScreen className="z-modal-panel" status="正在恢复会话…" />
   ) : null;
 
-  // Keep the terminal tree mounted when sessions have different pin states.
+  // Keep desktop panels mounted when hidden so previews, drafts and scroll positions survive.
   if (isDesktopViewport) {
     return (
       <div className="w-screen h-full flex flex-row">
-        {showPinnedLeft && <>
-        <div ref={pinnedLeftPanelRef} className="relative" style={{ width: sidebarLeftWidth, flexShrink: 0, height: '100%' }}>
+        <div ref={pinnedLeftPanelRef} data-desktop-sidebar="left" hidden={!showPinnedLeft}
+          className="relative" style={{ display: showPinnedLeft ? undefined : 'none', width: sidebarLeftWidth, flexShrink: 0, height: '100%' }}>
           <LeftSidebar
             isOpen={sidebarLeftOpen}
             drawerWidthPx={sidebarLeftWidth}
@@ -5541,13 +5418,14 @@ function App() {
             onOpenQuota={() => setIsQuotaOpen(true)}
             updateState={termdockUpdateState}
             updateActionPending={updateActionPending}
+            updateContext={serviceUpdateContext}
+            updateProgress={serviceUpdateProgress || updateActionError}
             onConfirmUpdateRestart={handleConfirmUpdateRestart}
             onRetryUpdate={handleRetryUpdate}
             serverHealthState={serverHealthState}
             tmuxAvailable={tmuxStatus.available}
             defaultSessionMode={newSessionMode}
             pinned={true}
-            onTogglePinned={handleToggleLeftPinned}
           />
         <div
           role="separator"
@@ -5556,13 +5434,11 @@ function App() {
           onMouseDown={handleResizeMouseDown}
         />
         </div>
-        </>}
         <div className="relative flex-1 min-w-0 h-full overflow-hidden">
           {body}
-          {showPinnedRight && (
-            <div
+            <div data-desktop-sidebar="right" hidden={!showPinnedRight}
               className="absolute inset-y-0 right-0 z-20 flex"
-              style={{ width: pinnedRightSidebarInset }}
+              style={{ display: showPinnedRight ? undefined : 'none', width: effectiveRightSidebarWidth + PINNED_SIDEBAR_SEPARATOR_WIDTH_PX }}
             >
               <div
                 role="separator"
@@ -5572,13 +5448,12 @@ function App() {
               />
               <div style={{ width: effectiveRightSidebarWidth, flexShrink: 0, height: '100%' }}>
                 <RightSidebar
-                  isOpen
+                  isOpen={showPinnedRight}
                   sessionId={activeSessionId}
                   drawerWidthPx={effectiveRightSidebarWidth}
                   onClose={handleClosePinnedRight}
                   onOpen={handleOpenRightSidebar}
                   pinned
-                  onTogglePinned={handleToggleRightPinned}
                   rightSidebarFilePreviewOpen={rightSidebarFilePreviewOpen}
                   rightSidebarFilePreviewCloseSignal={rightSidebarFilePreviewCloseSignal}
                   onOpenRightSidebarFilePreview={handleOpenRightSidebarFilePreview}
@@ -5598,7 +5473,6 @@ function App() {
                 />
               </div>
             </div>
-          )}
         </div>
         <AndroidMirrorDock sessionId={activeSessionId} />
         {initialSessionRestoreOverlay}

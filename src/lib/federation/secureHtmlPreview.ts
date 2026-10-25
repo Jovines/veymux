@@ -13,7 +13,7 @@ export interface SecureHtmlPreview {
   html: string;
   shellUrl: string;
   errors: string[];
-  attach(frame: HTMLIFrameElement, report: (message: string) => void): () => void;
+  attach(frame: HTMLIFrameElement, report: (message: string) => void, onEscape?: () => void): () => void;
   dispose(): void;
 }
 function fail(message: string): never { throw new Error(message); }
@@ -180,26 +180,26 @@ export async function prepareSecureHtmlPreview(src: string, options: { fetch: Pr
     const sources = [...externalOrigins].join(' ');
     const csp = document.createElement('meta'); csp.httpEquiv = 'Content-Security-Policy';
     csp.content = `default-src 'none'; script-src 'unsafe-inline' 'wasm-unsafe-eval' blob: ${sources}; style-src 'unsafe-inline' blob: ${sources}; img-src blob: data: ${sources}; font-src blob: data: ${sources}; media-src blob: data: ${sources}; connect-src blob: ${sources} ${[...externalOrigins].map(value => value.replace(/^https:/, 'wss:')).join(' ')}; worker-src blob:; frame-src 'none'; object-src 'none'; base-uri https://termdock-preview.invalid; form-action 'none'`;
-    const base = document.createElement('base'); base.href = virtualBase;
     const referrer = document.createElement('meta'); referrer.name = 'referrer'; referrer.content = 'no-referrer';
     const bootstrap = document.createElement('script'); bootstrap.textContent = previewRuntime + '\ninstallPreviewRuntime(' + [capability, virtualBase, [...externalOrigins], shim].map(scriptText).join(',') + ');';
     const loader = document.createElement('script'); loader.src = shim;
-    document.head.prepend(csp, referrer, base, bootstrap, loader);
+    document.head.prepend(csp, referrer, bootstrap, loader);
     const html = '<!doctype html>\n' + document.documentElement.outerHTML;
     return {
       html, shellUrl: `/preview-shell.html#${capability}`, errors,
-      attach(frame, onError) {
+      attach(frame, onError, onEscape) {
         const pending = new Set<MessagePort>();
         const listener = (event: MessageEvent) => {
           if (event.source !== frame.contentWindow || event.data?.capability !== capability) return;
           if (event.data.type === 'preview-ready') { frame.contentWindow?.postMessage({ type: 'preview-init', capability, html, resources: packed }, '*'); return; }
-          if (event.data.type === 'preview-error') { onError('部分动态内容被安全预览限制'); return; }
+          if (event.data.type === 'preview-error') { onError(typeof event.data.message === 'string' ? event.data.message.slice(0, 240) : '部分动态内容无法运行'); return; }
+          if (event.data.type === 'preview-escape') { onEscape?.(); return; }
           if (event.data.type === 'preview-navigate') {
             void (async () => {
               const url = virtualUrl(String(event.data.url));
               const next = await prepareSecureHtmlPreview(url.pathname + url.search, options);
               if (disposed) { next.dispose(); return; }
-              const detach = next.attach(frame, onError);
+              const detach = next.attach(frame, onError, onEscape);
               liveBridges.add(() => { detach(); next.dispose(); });
               frame.src = next.shellUrl.replace('#', '?navigation=' + crypto.randomUUID() + '#');
             })().catch(error => onError(error instanceof Error ? error.message : '无法打开预览页面'));

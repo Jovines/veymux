@@ -22,7 +22,7 @@ const sseRoute = ast.statements.find(node => ts.isExpressionStatement(node) && t
 const sseHandler = (sseRoute.expression as ts.CallExpression).arguments[1].getText(ast);
 function routeFunctions(names: string[], setup: string, dependencies: Record<string, unknown>) {
   const functions = ast.statements.filter(node => ts.isFunctionDeclaration(node) && names.includes(node.name?.text ?? '')).map(node => node.getText(ast)).join('\n');
-  const context = vm.createContext({ Date, Buffer, performance, setInterval, clearInterval, setTimeout, clearTimeout, console, ...dependencies });
+  const context = vm.createContext({ Date, Buffer, performance, setInterval, clearInterval, setTimeout, clearTimeout, console, globalSessionState: { sessions: [] }, ...dependencies });
   vm.runInContext(ts.transpileModule(`${setup}\n${functions}`.replace(/^export /gm, ''), {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None },
   }).outputText, context);

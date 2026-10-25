@@ -145,6 +145,9 @@ export function extrasFromBody(body: Record<string, unknown>): MessageExtras {
     task: body.task as TaskEnvelope | undefined, expiresAt: body.expires_at as number | undefined });
 }
 export interface TransportDiagnostic {
+  /** Local terminal I/O only; network retry counts are not write evidence. */
+  write_stage?: 'not_started' | 'unknown' | 'paste_attempted' | 'paste_written' | 'submit_attempted' | 'submit_written';
+  write_resolution?: { action: 'retry' | 'cancel'; attempt: number; at: number };
   route_state?: string;
   route_diagnostics?: import('./collaborationRouting.js').CollaborationRouteIdentity;
   remote_received_at?: number;
@@ -156,6 +159,9 @@ export interface TransportDiagnostic {
   checked_at: number;
   fragments_sent?: number;
   fragments_total?: number;
+}
+export function hasUnconfirmedTerminalWrite(diagnostic: TransportDiagnostic | null | undefined): boolean {
+  return (diagnostic?.attempt_count ?? 0) > 0 && diagnostic?.write_stage !== 'not_started' && diagnostic?.write_stage !== 'submit_written';
 }
 export interface MessageFragment {
   message_id: string;

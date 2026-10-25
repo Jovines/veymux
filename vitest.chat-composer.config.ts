@@ -3,12 +3,13 @@ import { playwright } from '@vitest/browser-playwright';
 
 export default defineConfig({
   test: {
-    include: ['src/lib/components/chat/chatComposer.browser.tsx'],
+    include: ['src/lib/components/chat/chatComposer.browser.tsx', 'src/lib/components/chat/chatComposerActions.browser.tsx'],
     browser: {
       enabled: true, headless: true, screenshotFailures: false,
       viewport: { width: 390, height: 844 },
       instances: [{ browser: 'chromium', provider: playwright({ launchOptions: { channel: 'chrome' }, contextOptions: { hasTouch: true, isMobile: true } }) }],
       commands: {
+        async composerTap(context, selector: string) { await context.iframe.locator(selector).tap({ timeout: 5000 }); },
         async touchDrag(context, selector: string, dx: number, dy: number) {
           const box = await context.iframe.locator(selector).boundingBox();
           if (!box) throw new Error(`Missing touch target: ${selector}`);

@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef } from 'react';
 import { X } from 'lucide-react';
 import type { ArchitectureNode } from '../../architecture/model';
 import { useI18n } from '../../i18n';
+import { restoreFocusIfUnclaimed } from '../../utils/focusOwnership';
 
 /** The first tap identifies a module without opening a long reading task. */
 export function ArchitectureNodePreview({ node, onExpand, onClose }: {
@@ -16,7 +17,7 @@ export function ArchitectureNodePreview({ node, onExpand, onClose }: {
     if (document.activeElement !== root.current) previous.current = document.activeElement as HTMLElement | null;
     root.current?.focus({ preventScroll: true });
   }, [node.id]);
-  useLayoutEffect(() => () => { if (previous.current?.isConnected) previous.current.focus({ preventScroll: true }); }, []);
+  useLayoutEffect(() => () => { restoreFocusIfUnclaimed(previous.current, root.current); }, []);
   const button = 'inline-flex min-h-11 shrink-0 items-center justify-center rounded-lg px-2 text-xs hover:bg-surface-elevated focus-visible:ring-2 focus-visible:ring-ring';
   return <section ref={root} tabIndex={-1} aria-label={node.title} data-architecture-inspector data-sidebar-gesture-ignore className="shrink-0 border-t border-border/30 bg-surface px-3 pb-2">
     <div className="flex items-center gap-2">

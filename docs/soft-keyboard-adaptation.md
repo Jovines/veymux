@@ -16,6 +16,8 @@
 
 `nativeKeyboardLayout.ts` 的 `measureNativePagePan` 不读取 visualViewport.height、offsetTop 或键盘高度。保留的同源服务工作区要叠加其 frame 的真实位移。根布局与保留 frame 使用 CSS viewport 单位，不使用可能错误的可视高度 API 决定输入位置。
 
+保留的服务工作区 iframe 通过 portal 挂在入口文档的 body，不能放在已经带安全区 padding 的相对定位宿主内。iOS 的 frame 使用 absolute 跟随原生页面位移，其包含块必须从完整视口起点开始；否则 frame 会下移一个顶部安全区，子页面再留安全区后出现重复顶部留白，底部工具栏也会超出屏幕。`serviceWorkspaceLayout.browser.tsx` 用真实 iframe 覆盖手机、iPad、横屏、Android 与桌面的隐藏初始化、切换恢复及原生位移；这项坐标回归仍不替代 iOS PWA 实机验收。
+
 `useViewportHeight` 仍负责共享视口状态与兼容路径，额外在原生滚动时更新 `--app-native-pan`；键盘开合状态不再是 iOS 输入位置的几何依据。不新增业务页面高度监听，不强制页面 scrollTo，不切换 viewport meta。
 
 实际原生上移期间，根容器释放 Home 指示条的底部 padding，避免系统工具栏上方再留一份安全区空隙；实际位移回到 0 时恢复。顶部 chrome 使用局部 z-index 20，必须高于 Swiper 的 z-index 1 内容画布，否则位置已补回却仍会被背景盖住。对应回归同时检查真实命中层和安全区的释放/恢复。
@@ -46,7 +48,7 @@ TerminalViewport 的真实 textarea 通过 nativeInputHost 放在底部工具栏
 
 聊天编辑器与 aria-hidden 文本副本共享 grid 单元。副本末尾追加空格以保留最后的空行，真实 textarea 随 grid 拉伸，达到最大高度后内部滚动。不要每次输入都先把真实输入高度改为 auto 再读取 scrollHeight。
 
-空态按顶部定位，不随剩余空间重新居中，也不跟随消息末尾。已有消息仅在原本跟随末尾时保持最新消息可见；阅读旧消息时保持位置。
+键盘收起时空态在消息区域内居中；触屏键盘打开时按顶部定位，不随输入框增高重新居中，也不跟随消息末尾。已有消息仅在原本跟随末尾时保持最新消息可见；阅读旧消息时保持位置。
 
 `useTouchScrollBoundary` 挂在聊天工作区/终端工具栏：内部 textarea 或列表能沿当前方向滚动时交给原生滚动，否则阻止纵向边界手势传到页面。点击、横向手势、多指动作不在 touchstart 阶段被阻止。不要全局禁止 touchmove。
 

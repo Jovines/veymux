@@ -1,8 +1,9 @@
 /** Terminal byte activity only; no agent hooks, transcript inspection or polling. */
 export const OUTPUT_START_DELAY_MS = 600;
-export const OUTPUT_START_RECENCY_MS = 1_000;
+export const OUTPUT_START_RECENCY_MS = 1_500;
 export const OUTPUT_MIN_SPAN_MS = 150;
-export const OUTPUT_IDLE_MS = 8_000;
+// This reports recent output, not an inferred job spanning silent tool calls.
+export const OUTPUT_IDLE_MS = 3_000;
 
 export class TerminalOutputActivity {
   private phase: 'idle' | 'pending' | 'active' = 'idle';
@@ -30,6 +31,8 @@ export class TerminalOutputActivity {
       this.firstOutput = this.lastOutput;
       this.deadline = this.lastOutput + OUTPUT_START_DELAY_MS;
       this.schedule(this.deadline);
+    } else if (this.phase === 'pending') {
+      this.settle();
     }
     // Active/pending windows retain one timer; packets only update this number.
   }
@@ -47,12 +50,18 @@ export class TerminalOutputActivity {
     if (this.disposed || this.phase === 'idle') return;
     const now = this.now();
     if (this.phase === 'pending') {
-      if (now < this.deadline) return;
+      if (now < this.firstOutput + OUTPUT_START_DELAY_MS) return;
+      if (now - this.lastOutput < OUTPUT_START_RECENCY_MS && this.lastOutput - this.firstOutput < OUTPUT_MIN_SPAN_MS) {
+        // Keep a lone burst as a candidate long enough for a 1 Hz TUI timer.
+        // It still never activates without a second, sufficiently spaced write.
+        this.deadline = this.lastOutput + OUTPUT_START_RECENCY_MS;
+        return;
+      }
       if (this.timer !== undefined) clearTimeout(this.timer);
       this.timer = undefined;
       // Multiple chunks from one instantaneous write are still a single burst.
       // Qualify a short span of real updates, not one exact final sampling slot.
-      if (this.lastOutput - this.firstOutput < OUTPUT_MIN_SPAN_MS || now - this.lastOutput > OUTPUT_START_RECENCY_MS) {
+      if (this.lastOutput - this.firstOutput < OUTPUT_MIN_SPAN_MS || now - this.lastOutput >= OUTPUT_START_RECENCY_MS) {
         this.phase = 'idle';
         return;
       }

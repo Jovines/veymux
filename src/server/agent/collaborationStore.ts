@@ -4,6 +4,8 @@ import { validateLaunchProfiles, type CollaborationLaunchProfile, type Collabora
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { directLocalId, directRemoteAddress } from './collaborationDirectProtocol.js';
+import { hasUnconfirmedTerminalWrite } from './collaborationProtocol.js';
 import { chatPresentation, validChatUIValues, type ChatUIState } from '../shared/chatPresentation.js';
 import { COLLAB_NAME_FORBIDDEN, COLLAB_LIMITS, CollaborationError, STATUS_RANK, canonicalShortId, drawCollaborationId, newCollaborationId, resolveIdPrefix, validateExtras, type IdResolution, type MessageExtras, type MessageFragment, type TransportDiagnostic } from './collaborationProtocol.js';
 
@@ -21,6 +23,8 @@ function validRevision(value: CollaborationRoleVersion): boolean {
   return !!value && Number.isSafeInteger(value.updatedAt) && value.updatedAt >= 0 && typeof value.version === 'string' && /^[a-zA-Z0-9-]{1,80}$/.test(value.version);
 }
 export interface CollaborationGroup extends CollaborationContext, CollaborationLaunchSettings {
+  /** Internal conversation transport; excluded from collaboration membership and discovery. */
+  sessionChatSessionId?: string;
   id: string;
   name: string;
   sessionIds: string[];
@@ -82,6 +86,10 @@ export type CollaborationMessageKind = 'message' | 'ask' | 'reply' | 'task' | 'h
 export type CollaborationMessageStatus = 'pending' | 'delivered' | 'read' | 'failed' | 'expired' | 'stored';
 
 export interface CollaborationMessage extends MessageExtras {
+  /** Local point-to-point communication; grants no collaboration membership. */
+  direct?: true;
+  /** Owning service's projected sender label for contacts without a shared roster. */
+  directSourceName?: string;
   uiState?: ChatUIState;
   /** Server-authenticated source; never inferred from caller metadata. */
   integrationOrigin?: import('./collaborationTaskTypes.js').TaskOrigin;
@@ -123,7 +131,7 @@ export function terminalMessage(message: CollaborationMessage, raw = false) {
   return { ...body, status: legacyConsumption ? 'pending' as const : message.status === 'read' ? 'delivered' as const : message.status,
     deliveredAt: legacyConsumption ? null : message.deliveredAt,
     deliverySource: legacyConsumption ? undefined : message.deliverySource,
-    snapshot: message.snapshot ? (raw ? message.snapshot : plainCollaborationSnapshot(message.snapshot)) : null };
+    snapshot: !message.direct && message.snapshot ? (raw ? message.snapshot : plainCollaborationSnapshot(message.snapshot)) : null };
 }
 
 interface CollaborationDocument {
@@ -140,6 +148,8 @@ interface CollaborationDocument {
   sequence?: number;
   idempotency?: Record<string, { hash: string; ids: string[]; expiresAt: number }>;
   consumers?: Record<string, number>;
+  /** Shared UI attention only; never part of Agent inboxes or read receipts. */
+  sessionChatViewed?: Record<string, string[]>;
   transport?: Record<string, TransportDiagnostic>;
   prunedThrough?: Record<string, number>;
   prunedSenders?: Record<string, true>;
@@ -247,6 +257,7 @@ export class CollaborationStore {
 
       this.document.idempotency = parsed.idempotency ?? {};
       this.document.consumers = parsed.consumers ?? {};
+      this.document.sessionChatViewed = Object.fromEntries(Object.entries(parsed.sessionChatViewed ?? {}).filter((entry): entry is [string, string[]] => Array.isArray(entry[1]) && entry[1].every(id => typeof id === 'string')));
       this.document.transport = parsed.transport ?? {};
       this.document.fragments = parsed.fragments ?? {};
       this.document.prunedThrough = parsed.prunedThrough ?? {};
@@ -256,11 +267,34 @@ export class CollaborationStore {
     this.document.localGroupRequestsComplete = this.groupCreationAvailable;
     this.document.localGroupRenamesComplete = this.groupRenamesAvailable;
     this.document.localGroupArchivesComplete = this.groupArchivesAvailable;
+    // Recognize legacy chat transports by both their exact binding and an
+    // authenticated chat request, never by a user-chosen name alone.
+    const chatBindings = new Map(this.document.messages.filter(message => message.integrationOrigin?.source === 'session-chat')
+      .map(message => [message.groupId, message.toSessionId]));
+    for (const group of this.document.groups) {
+      const sessionId = chatBindings.get(group.id);
+      if (!group.federated && !group.sessionChatSessionId && sessionId && group.name === `Session 对话 ${sessionId}`
+        && group.sessionIds.length === 1 && group.sessionIds[0] === sessionId) group.sessionChatSessionId = sessionId;
+    }
     this.persistedDocument = JSON.stringify(this.document);
   }
 
   list(): CollaborationGroup[] {
-    return this.document.groups.filter((group) => !group.deleted).sort((a, b) => b.updatedAt - a.updatedAt);
+    return this.document.groups.filter((group) => !group.deleted && !group.sessionChatSessionId).sort((a, b) => b.updatedAt - a.updatedAt);
+  }
+
+  getSessionChat(sessionId: string): CollaborationGroup | null {
+    return this.document.groups.find(group => !group.deleted && !group.federated && group.sessionChatSessionId === sessionId) ?? null;
+  }
+
+  ensureSessionChat(sessionId: string): CollaborationGroup {
+    const existing = this.getSessionChat(sessionId);
+    if (existing) return existing;
+    const now = Date.now();
+    const group: CollaborationGroup = { id: newCollaborationId(this.takenIds(), this.drawId), name: `Session 对话 ${sessionId}`,
+      sessionChatSessionId: sessionId, sessionIds: [sessionId], createdAt: now, updatedAt: now };
+    this.document.groups.push(group); this.persist();
+    return group;
   }
 
   getGroup(id: string): CollaborationGroup | null {
@@ -297,6 +331,7 @@ export class CollaborationStore {
   save(input: { id?: string; name: string; sessionIds: string[]; launchProfiles?: CollaborationLaunchProfile[]; defaultLaunchProfileId?: string | null }): CollaborationGroup {
     const now = Date.now();
     const existing = input.id ? this.document.groups.find((group) => group.id === input.id) : null;
+    if (existing?.sessionChatSessionId) throw new CollaborationError('SESSION_CHAT_NOT_A_GROUP', 'Session conversations are independent of collaboration groups', 409);
     if (input.id && (!existing || existing.deleted)) throw new CollaborationError('GROUP_NOT_FOUND', '协作组已删除，请刷新列表', 404);
     const launchProfiles = input.launchProfiles === undefined ? existing?.launchProfiles : validateLaunchProfiles(input.launchProfiles, input.defaultLaunchProfileId ?? null);
     const defaultLaunchProfileId = input.defaultLaunchProfileId !== undefined ? input.defaultLaunchProfileId : input.launchProfiles !== undefined ? null : existing?.defaultLaunchProfileId;
@@ -350,7 +385,7 @@ export class CollaborationStore {
   getLocalGroupMetadata(id: unknown): LocalGroupMetadata {
     if (typeof id !== 'string' || !/^[a-zA-Z0-9._-]{1,80}$/.test(id)) throw new CollaborationError('INVALID_GROUP_ID', 'An exact group ID is required', 400);
     const group = this.getGroup(id);
-    if (!group || group.deleted) throw new CollaborationError('GROUP_NOT_FOUND', 'Local group does not exist', 404);
+    if (!group || group.deleted || group.sessionChatSessionId) throw new CollaborationError('GROUP_NOT_FOUND', 'Local group does not exist', 404);
     if (group.federated) throw new CollaborationError('GROUP_NOT_LOCAL', 'Administrator metadata operations require a local group', 409);
     if (!Number.isSafeInteger(group.updatedAt) || group.updatedAt < 0) throw new CollaborationError('GROUP_STATE_UNCONFIRMED', 'Group revision is unavailable', 409);
     return { id: group.id, name: group.name, updatedAt: group.updatedAt, ...(group.archivedAt !== undefined ? { archivedAt: group.archivedAt } : {}) };
@@ -443,7 +478,7 @@ export class CollaborationStore {
    * together with the member on removal. */
   setRole(input: { groupId: string; sessionId: string; role: string | null; creationKey?: string }): CollaborationGroup {
     const group = this.getGroup(input.groupId);
-    if (!group || group.deleted) throw new CollaborationError('GROUP_NOT_FOUND', '协作组已删除，请刷新列表', 404);
+    if (!group || group.deleted || group.sessionChatSessionId) throw new CollaborationError('GROUP_NOT_FOUND', '协作组已删除，请刷新列表', 404);
     if (!group.sessionIds.includes(input.sessionId)) throw new CollaborationError('NOT_A_MEMBER', '该会话不在协作组中，无法设置定位', 400);
     const role = input.role === null ? null : sanitizeCollaborationRole(input.role);
     const roles = { ...(group.roles ?? {}) };
@@ -461,7 +496,7 @@ export class CollaborationStore {
 
   remove(id: string): boolean {
     const existing = this.getGroup(id);
-    if (!existing || existing.deleted) return false;
+    if (!existing || existing.deleted || existing.sessionChatSessionId) return false;
     if (existing?.federated) {
       this.mergeFederatedGroup({ ...existing, deleted: true, updatedAt: Math.max(Date.now(), existing.updatedAt + 1) });
       return true;
@@ -480,7 +515,7 @@ export class CollaborationStore {
     expectedSourceUpdatedAt: number; expectedTargetUpdatedAt: number }): void {
     const source = this.getGroup(input.sourceGroupId);
     const target = this.getGroup(input.targetGroupId);
-    if (!source || source.deleted || !target || target.deleted) throw new CollaborationError('GROUP_NOT_FOUND', '协作组已删除，请刷新列表', 404);
+    if (!source || source.deleted || source.sessionChatSessionId || !target || target.deleted || target.sessionChatSessionId) throw new CollaborationError('GROUP_NOT_FOUND', '协作组已删除，请刷新列表', 404);
     if (source.id === target.id || !source.sessionIds.includes(input.sessionId)
       || source.updatedAt !== input.expectedSourceUpdatedAt || target.updatedAt !== input.expectedTargetUpdatedAt) {
       throw new CollaborationError('GROUP_CHANGED', `协作组已变化（当前 updatedAt：源组=${source.updatedAt}，目标组=${target.updatedAt}），请刷新后重新移动成员`, 409,
@@ -507,7 +542,7 @@ export class CollaborationStore {
 
   setRules(groupId: string, text: string, updatedBy: string, expectedVersion?: string): CollaborationRules {
     const group = this.getGroup(groupId);
-    if (!group || group.deleted || !group.sessionIds.includes(updatedBy)) throw new CollaborationError('NOT_A_MEMBER', '只能修改当前协作组的约定', 403);
+    if (!group || group.deleted || group.sessionChatSessionId || !group.sessionIds.includes(updatedBy)) throw new CollaborationError('NOT_A_MEMBER', '只能修改当前协作组的约定', 403);
     if (expectedVersion !== undefined && expectedVersion !== (group.instructions?.version ?? '')) throw new CollaborationError('RULES_CHANGED', '群规已更新，请重新读取后再修改', 409);
     if (typeof text === 'string') text = text.replace(/\r\n?/g, '\n');
     if (typeof text !== 'string' || Buffer.byteLength(text) > 8192 || /[\x00-\x08\x0b-\x1f\x7f]/.test(text)) throw new CollaborationError('INVALID_RULES', '群规最多 8192 UTF-8 字节，不允许终端控制字符');
@@ -558,14 +593,14 @@ export class CollaborationStore {
   }
 
   removeSession(sessionId: string): { updatedGroups: number; dissolvedGroups: number } {
-    const count = this.document.groups.filter(group => group.sessionIds.includes(sessionId)).length;
+    const count = this.list().filter(group => group.sessionIds.includes(sessionId)).length;
     if (count) this.archiveSession(sessionId);
     return { updatedGroups: count, dissolvedGroups: 0 };
   }
 
   /** Archiving a terminal removes its active membership, never its discussions. */
   archiveSession(sessionId: string): void {
-    this.document.groups = this.document.groups.map(group => !group.federated && group.sessionIds.includes(sessionId)
+    this.document.groups = this.document.groups.map(group => !group.federated && !group.sessionChatSessionId && group.sessionIds.includes(sessionId)
       ? pruneRoles({ ...group, sessionIds: group.sessionIds.filter(id => id !== sessionId), updatedAt: Math.max(Date.now(), group.updatedAt + 1) }, group.sessionIds.filter(id => id !== sessionId)) : group);
     this.persist();
   }
@@ -594,6 +629,94 @@ export class CollaborationStore {
   }): CollaborationMessage[] {
     const group = this.getGroup(input.groupId);
     if (!group || group.deleted) throw new Error('协作组不存在');
+    return this.enqueue(input, group);
+  }
+
+  /** Caller authorizes the endpoints. No group document is created,
+   * so contacting someone cannot expose their roster, rules or terminal. */
+  sendDirect(input: MessageExtras & {
+    fromSessionId: string; toSessionIds: string[]; kind: CollaborationMessageKind; content: string;
+    threadId?: string | null; replyTo?: string | null;
+  }): CollaborationMessage[] {
+    const sessionIds = [...new Set([input.fromSessionId, ...input.toSessionIds])].sort();
+    if (!directLocalId(input.fromSessionId) || sessionIds.some(id => !directLocalId(id) && !directRemoteAddress(id))) {
+      throw new CollaborationError('DIRECT_SESSION_UNSUPPORTED', 'Direct contacts require managed Session identities');
+    }
+    const id = `direct-${crypto.createHash('sha256').update(JSON.stringify(sessionIds)).digest('hex')}`;
+    return this.enqueue({ ...input, groupId: id }, { id, name: '', sessionIds, createdAt: 0, updatedAt: 0 }, true);
+  }
+
+  pendingRemoteDirect(): CollaborationMessage[] {
+    this.expire();
+    return this.document.messages.filter(message => message.direct && message.status === 'pending'
+      && directLocalId(message.fromSessionId) && directRemoteAddress(message.toSessionId));
+  }
+
+  revokeDirectPeer(origin: string): void {
+    let changed = false;
+    for (const message of this.document.messages) {
+      if (!message.direct || message.status !== 'pending' || this.diagnostic(message.id)?.last_error === 'DELIVERY_IN_PROGRESS') continue;
+      if (directRemoteAddress(message.fromSessionId ?? '')?.origin !== origin && directRemoteAddress(message.toSessionId)?.origin !== origin) continue;
+      message.status = 'failed'; message.failureReason = 'SESSION_SCOPE_DENIED'; changed = true;
+    }
+    if (changed) this.persist();
+  }
+
+  /** Endpoints have already been mapped and authorized by the authenticated
+   * service. Only message content crosses this boundary, never terminal facts. */
+  receiveDirect(input: CollaborationMessage): CollaborationMessage {
+    if (!input || input.direct !== true || !directRemoteAddress(input.fromSessionId ?? '') || !directLocalId(input.toSessionId)
+      || !/^[a-zA-Z0-9_-]{4,128}$/.test(input.id) || !/^direct-[a-f0-9]{64}$/.test(input.groupId)
+      || typeof input.threadId !== 'string' || !input.threadId || input.threadId.length > 128 || /[\x00-\x1f\x7f]/.test(input.threadId)
+      || !Number.isSafeInteger(input.createdAt) || input.createdAt < 0
+      || input.replyTo != null && !/^[a-zA-Z0-9_-]{4,128}$/.test(input.replyTo)
+      || !MESSAGE_KINDS.has(input.kind) || typeof input.content !== 'string' || !input.content.trim()
+      || Buffer.byteLength(input.content) > COLLAB_LIMITS.message_bytes || Buffer.byteLength(JSON.stringify(input)) > COLLAB_LIMITS.wire_bytes
+      || input.integrationOrigin || input.toPrincipalId || input.instructions
+      || input.directSourceName != null && (typeof input.directSourceName !== 'string' || input.directSourceName.length > 512)
+      || input.fanOutIds != null && (!Array.isArray(input.fanOutIds) || input.fanOutIds.length > 500
+        || input.fanOutIds.some(id => !directLocalId(id) && !directRemoteAddress(id)))) {
+      throw new CollaborationError('INVALID_DIRECT_MESSAGE', 'Invalid direct message');
+    }
+    const extras = validateExtras(input);
+    for (const guard of this.runtimeGuards) guard(input.toSessionId);
+    const existing = this.getMessage(input.id);
+    if (existing) {
+      const identity = (message: CollaborationMessage) => [message.direct, message.groupId, message.fromSessionId, message.toSessionId,
+        message.content, message.kind, message.threadId, message.replyTo ?? null, message.createdAt, message.fanOutIds ?? null,
+        validateExtras(message), message.idempotencyKey ?? null];
+      if (stableJson(identity(existing)) !== stableJson(identity(input))) throw new CollaborationError('MESSAGE_ID_CONFLICT', 'Direct message identity or payload changed', 409);
+      if (input.shellConfirmed === true && !existing.shellConfirmed) { existing.shellConfirmed = true; this.persist(); }
+      return existing;
+    }
+    const message: CollaborationMessage = { ...extras, direct: true, id: input.id, groupId: input.groupId,
+      ...(input.directSourceName ? { directSourceName: input.directSourceName } : {}),
+      fromSessionId: input.fromSessionId, toSessionId: input.toSessionId, kind: input.kind, content: input.content,
+      threadId: input.threadId, replyTo: input.replyTo ?? null, createdAt: input.createdAt,
+      ...(input.fanOutIds ? { fanOutIds: [...input.fanOutIds] } : {}),
+      shellConfirmed: input.shellConfirmed === true, sequence: this.nextSequence(), status: 'pending', deliveredAt: null, readAt: null, snapshot: null };
+    this.document.messages.push(message); this.persist(true);
+    return message;
+  }
+
+  mergeDirectReceipt(id: string, receipt: { status: CollaborationMessageStatus; deliveredAt?: number | null; deliverySource?: CollaborationMessage['deliverySource']; failureReason?: string | null }): void {
+    const message = this.getMessage(id);
+    if (!message?.direct || !['pending', 'delivered', 'read', 'failed', 'expired'].includes(receipt.status)
+      || receipt.deliveredAt != null && !Number.isFinite(receipt.deliveredAt)
+      || receipt.failureReason != null && typeof receipt.failureReason !== 'string') throw new CollaborationError('INVALID_DIRECT_RECEIPT', 'Invalid direct receipt');
+    const status = receipt.status === 'read' ? 'delivered' : receipt.status;
+    if (message.status !== 'pending') return;
+    message.status = status; message.deliveredAt = status === 'delivered' ? receipt.deliveredAt ?? null : null;
+    message.deliverySource = status === 'delivered' ? 'pty_written' : undefined;
+    message.failureReason = receipt.failureReason?.slice(0, 300) ?? null;
+    message.snapshot = null; this.persist();
+  }
+
+  private enqueue(input: MessageExtras & {
+    integrationOrigin?: import('./collaborationTaskTypes.js').TaskOrigin;
+    groupId: string; fromSessionId: string | null; toSessionIds: string[]; kind: CollaborationMessageKind; content: string;
+    threadId?: string | null; replyTo?: string | null;
+  }, group: CollaborationGroup, direct = false): CollaborationMessage[] {
     if (!MESSAGE_KINDS.has(input.kind)) throw new Error('消息类型无效');
     const extras = validateExtras(input);
     const content = input.content;
@@ -623,6 +746,7 @@ export class CollaborationStore {
     const taken = this.takenIds();
     const threadId = input.threadId?.trim() || newCollaborationId(taken, this.drawId);
     const messages = recipients.map((toSessionId): CollaborationMessage => ({
+      ...(direct ? { direct: true as const } : {}),
       ...(input.integrationOrigin ? { integrationOrigin: structuredClone(input.integrationOrigin) } : {}),
       idempotencyKey: input.idempotencyKey, responseKind: extras.responseKind, metadata: extras.metadata, task: extras.task, expiresAt: extras.expiresAt,
       sequence: this.nextSequence(),
@@ -720,6 +844,32 @@ export class CollaborationStore {
   listMessages(groupId: string, limit = 200): CollaborationMessage[] {
     return this.document.messages.filter((message) => message.groupId === groupId).slice(-Math.max(1, Math.min(limit, 500)));
   }
+  sessionChatViewedIds(conversationId: string): string[] {
+    return [...(this.document.sessionChatViewed?.[conversationId] ?? [])];
+  }
+
+  sessionChatSessionIds(): string[] {
+    return this.document.groups.filter(group => !group.deleted && group.sessionChatSessionId).map(group => group.sessionChatSessionId!);
+  }
+
+  markSessionChatViewed(sessionId: string, conversationId: string, ids: string[]): void {
+    const group = this.getSessionChat(sessionId);
+    if (!group || group.id !== conversationId) throw new CollaborationError('CHAT_CHANGED', '对话已变更，请刷新后重试', 409);
+    const originals = new Map(this.document.messages.map(message => [message.id, message]));
+    const eligible = new Set(this.document.messages.filter(message => {
+      const original = message.replyTo ? originals.get(message.replyTo) : undefined;
+      return message.groupId === group.id && message.fromSessionId === sessionId && !!message.toPrincipalId
+        && original?.groupId === group.id && original.toSessionId === sessionId
+        && original.integrationOrigin?.source === 'session-chat' && original.integrationOrigin.integrationId === message.toPrincipalId
+        && !chatPresentation(message.content, message.metadata).ui?.streaming;
+    }).map(message => message.id));
+    const previous = this.sessionChatViewedIds(conversationId), viewed = new Set(previous);
+    for (const id of ids) if (eligible.has(id)) viewed.add(id);
+    if (viewed.size === previous.length) return;
+    (this.document.sessionChatViewed ??= {})[conversationId] = [...viewed];
+    this.persist(true);
+  }
+
   saveChatUIState(messageId: string, sessionId: string, values: unknown, revision: unknown): ChatUIState {
     const message = this.getMessage(messageId), original = message?.replyTo ? this.getMessage(message.replyTo) : null;
     if (!message || message.fromSessionId !== sessionId || !message.toPrincipalId || original?.integrationOrigin?.source !== 'session-chat'
@@ -767,7 +917,23 @@ export class CollaborationStore {
   }
   hasUnconfirmedDelivery(sessionId: string): boolean {
     return this.document.messages.some(message => message.toSessionId === sessionId && message.status === 'pending'
-      && (this.document.transport?.[message.id]?.attempt_count ?? 0) > 0);
+      && hasUnconfirmedTerminalWrite(this.document.transport?.[message.id]));
+  }
+
+  /** Explicit recipient decision only. Never infer this from a screen/reply.
+   * The attempt fence makes a repeated click harmless and a stale one fail. */
+  resolveUnconfirmedDelivery(id: string, recipient: string, action: unknown, attempt: unknown): void {
+    const message = this.getMessage(id), diagnostic = this.diagnostic(id);
+    if (!message || message.toSessionId !== recipient) throw new CollaborationError('NOT_MESSAGE_RECIPIENT', 'Only the recipient can resolve a terminal write', 403);
+    if (!['retry', 'cancel'].includes(String(action)) || !Number.isSafeInteger(attempt) || Number(attempt) < 1) throw new CollaborationError('INVALID_DELIVERY_RESOLUTION', 'A resolution requires retry/cancel and the observed attempt');
+    const previousResolution = diagnostic?.write_resolution;
+    if (previousResolution && previousResolution.action === action && previousResolution.attempt === attempt && diagnostic?.attempt_count === attempt) return;
+    if (message.status !== 'pending' || diagnostic?.attempt_count !== attempt || !hasUnconfirmedTerminalWrite(diagnostic)) throw new CollaborationError('DELIVERY_ATTEMPT_CHANGED', 'Refresh the current delivery before resolving it', 409);
+    const resolution = { action: action as 'retry' | 'cancel', attempt: Number(attempt), at: Date.now() };
+    if (action === 'cancel') { message.status = 'failed'; message.failureReason = 'DELIVERY_CANCELLED_BY_OWNER'; }
+    this.document.transport![id] = { ...diagnostic!, write_resolution: resolution,
+      ...(action === 'retry' ? { write_stage: 'not_started' as const } : {}), next_retry_at: null, last_error: action === 'cancel' ? 'DELIVERY_CANCELLED_BY_OWNER' : null, checked_at: resolution.at };
+    this.persist(true);
   }
 
   confirmShell(messageId: string): void {
@@ -854,7 +1020,7 @@ export class CollaborationStore {
   promoteGroup(id: string, group: CollaborationGroup, expectedUpdatedAt: number): CollaborationGroup {
     validateFederatedGroup(group);
     const existing = this.getGroup(id);
-    if (!existing || existing.deleted) throw new CollaborationError('GROUP_NOT_FOUND', '协作组已删除，请刷新列表', 404);
+    if (!existing || existing.deleted || existing.sessionChatSessionId) throw new CollaborationError('GROUP_NOT_FOUND', '协作组已删除，请刷新列表', 404);
     if (existing.federated || existing.updatedAt !== expectedUpdatedAt || this.getGroup(group.id)) {
       throw new CollaborationError('GROUP_CHANGED', `协作组已被修改（当前 updatedAt=${existing.updatedAt}），请刷新后再保存`, 409,
         { currentUpdatedAt: existing.updatedAt });
@@ -921,7 +1087,11 @@ export class CollaborationStore {
   private expire(): void {
     let changed = false;
     for (const message of this.document.messages) if (message.status === 'pending' && message.expiresAt && message.expiresAt <= Date.now()
-      && this.document.transport?.[message.id]?.last_error !== 'DELIVERY_IN_PROGRESS') {
+      && !((this.document.transport?.[message.id]?.attempt_count ?? 0) > 0
+        && this.document.transport?.[message.id]?.write_stage !== 'not_started'
+        && (this.document.transport?.[message.id]?.last_error === 'DELIVERY_IN_PROGRESS'
+          || this.document.transport?.[message.id]?.last_error === 'DELIVERY_OUTCOME_UNCONFIRMED'
+          || !!this.document.transport?.[message.id]?.write_stage && this.document.transport[message.id].write_stage !== 'not_started'))) {
       message.status = 'expired'; message.failureReason = 'MESSAGE_EXPIRED'; changed = true;
     }
     if (changed) this.persist();
@@ -934,19 +1104,19 @@ export class CollaborationStore {
 
   setSnapshot(id: string, snapshot: string): void {
     const message = this.getMessage(id);
-    if (!message) return;
+    if (!message || message.direct) return;
     message.snapshot = snapshot;
     this.persist();
   }
 
   diagnostic(id: string): TransportDiagnostic | null { return this.document.transport?.[id] ?? null; }
-  recordTransport(id: string, diagnostic: TransportDiagnostic): void {
+  recordTransport(id: string, diagnostic: TransportDiagnostic, durable = false): void {
     if (!this.getMessage(id) || (this.document.transport?.[id]?.checked_at ?? 0) > diagnostic.checked_at) return;
     (this.document.transport ??= {})[id] = diagnostic;
-    this.persist();
+    this.persist(durable);
   }
   /** A route blocks the whole recipient queue, not just its first message. */
-  recordRecipientTransport(sessionId: string, patch: Partial<Omit<TransportDiagnostic, 'attempt_count'>> & { checked_at: number }): void {
+  recordRecipientTransport(sessionId: string, patch: Partial<Omit<TransportDiagnostic, 'attempt_count' | 'write_stage'>> & { checked_at: number }): void {
     let changed = false;
     for (const message of this.document.messages) {
       if (message.toSessionId !== sessionId || message.status !== 'pending') continue;
@@ -991,9 +1161,10 @@ export class CollaborationStore {
       from_principal_id: message.integrationOrigin?.integrationId ?? null, to_principal_id: message.toPrincipalId ?? null,
       delivered_at: facts.deliveredAt, expires_at: message.expiresAt ?? null,
       failure_reason: message.failureReason ?? null, delivery_semantics: message.status === 'stored' ? 'durable_storage' : facts.deliverySource ?? (facts.deliveredAt === null ? 'not_delivered' : 'legacy_or_unspecified'),
-      snapshot: includeSnapshot && message.snapshot ? (raw ? message.snapshot : plainCollaborationSnapshot(message.snapshot)) : null,
+      snapshot: includeSnapshot && !message.direct && message.snapshot ? (raw ? message.snapshot : plainCollaborationSnapshot(message.snapshot)) : null,
       delivery: { status: facts.status,
-        stage: message.status === 'stored' ? 'stored' : facts.deliveredAt !== null ? 'terminal_written' : diagnostic?.route_state === 'identity-mismatch' || diagnostic?.last_error === 'TMUX_PANE_CHANGED' ? 'blocked' : diagnostic?.remote_received_at ? 'remote_received' : 'queued',
+        stage: message.status === 'stored' ? 'stored' : facts.deliveredAt !== null ? 'terminal_written' : diagnostic?.last_error === 'DELIVERY_OUTCOME_UNCONFIRMED' ? 'outcome_unconfirmed' : diagnostic?.route_state === 'identity-mismatch' || diagnostic?.last_error === 'TMUX_PANE_CHANGED' ? 'blocked' : diagnostic?.remote_received_at ? 'remote_received' : 'queued',
+        ...(diagnostic?.write_stage ? { write_stage: diagnostic.write_stage } : {}),
         ...(!diagnostic?.route_diagnostics && diagnostic?.last_error === 'TMUX_PANE_CHANGED' ? { requires_confirmation: true } : {}),
         ...(diagnostic?.route_diagnostics ? { route: diagnostic.route_diagnostics, route_state: diagnostic.route_state,
           requires_confirmation: diagnostic.route_diagnostics.recovery === 'confirmation-required' } : {}),
@@ -1124,6 +1295,12 @@ export class CollaborationStore {
       delete this.document.transport?.[message.id];
       return false;
     });
+    const messageIds = new Set(this.document.messages.map(message => message.id));
+    const chatIds = new Set(this.document.groups.filter(group => !group.deleted && group.sessionChatSessionId).map(group => group.id));
+    for (const [id, ids] of Object.entries(this.document.sessionChatViewed ?? {})) {
+      if (!chatIds.has(id)) delete this.document.sessionChatViewed![id];
+      else this.document.sessionChatViewed![id] = ids.filter(messageId => messageIds.has(messageId));
+    }
     const temporaryPath = `${this.filePath}.${process.pid}.tmp`;
     try {
       fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
@@ -1149,7 +1326,7 @@ function stableJson(value: unknown): string {
 function validateFederatedGroup(group: CollaborationGroup): void {
     if (group.launchProfiles !== undefined || group.defaultLaunchProfileId !== undefined) validateLaunchProfiles(group.launchProfiles ?? [], group.defaultLaunchProfileId);
     if (group.memberLaunchProfiles) for (const profile of Object.values(group.memberLaunchProfiles)) validateLaunchProfiles([profile], profile.id);
-    if (!group.federated || typeof group.id !== 'string' || !group.id.startsWith('cross-') || typeof group.name !== 'string' || !group.name.trim()
+    if (!group.federated || group.sessionChatSessionId !== undefined || typeof group.id !== 'string' || !group.id.startsWith('cross-') || typeof group.name !== 'string' || !group.name.trim()
       || !Number.isFinite(group.updatedAt) || !Number.isFinite(group.createdAt)
       || !Array.isArray(group.sessionIds) || group.sessionIds.some((id) => typeof id !== 'string')
       || !Array.isArray(group.remoteSessions) || group.remoteSessions.some((session) => !session

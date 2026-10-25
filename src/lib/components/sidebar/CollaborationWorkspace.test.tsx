@@ -20,12 +20,13 @@ vi.mock('./CollaborationTaskWorkbench', () => ({ CollaborationTaskWorkbench: ({ 
 const group = { id: 'team', name: '发布准备', sessionIds: ['lead', 'worker'], createdAt: 1, updatedAt: 1 };
 const sessions = group.sessionIds.map((id, i) => ({ sessionId: id, backendSessionId: id, name: i ? '执行成员' : '协调者', customName: true, cwd: '/repo', agent: { slug: 'codex', displayName: 'Codex' }, status: 'ready', capability: 'terminal', currentTask: '', updatedAt: 1 }));
 beforeEach(() => {
+  vi.spyOn(document, 'hasFocus').mockReturnValue(true);
   localStorage.clear(); vi.clearAllMocks(); useCollaborationNavigation.setState({ groupId: null, drafts: {} });
   api.settings.mockResolvedValue({}); api.list.mockResolvedValue({ groups: [group], sessions });
   api.automations.mockResolvedValue({ automations: [], runs: [] });
   useCollaborationPanelDock.getState().setDock('team', null);
 });
-afterEach(() => { cleanup(); useCollaborationPanelDock.getState().setHost('team', null); document.querySelector('[data-workspace-host]')?.remove(); });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); useCollaborationPanelDock.getState().setHost('team', null); document.querySelector('[data-workspace-host]')?.remove(); });
 function setup() { return render(<AgentOperationsPanel initialCollaborationGroupId="team" activeSessionId="lead" onClose={vi.fn()} onNewSession={vi.fn()} />); }
 describe('resident collaboration navigation', () => {
   it('opens the group goal view without global automation and search controls', async () => {
@@ -101,10 +102,10 @@ describe('primary collaboration workspace', () => {
   it('opens the file sidebar from the workspace header while staying in the group', async () => {
     useCollaborationNavigation.getState().open('team');
     const toggle = vi.fn();
-    render(<CollaborationMainWorkspace groupId="team" activeSessionId="lead" defaultSessionMode="shell" onOpenSidebar={vi.fn()} onToggleRightSidebar={toggle} rightSidebarOpen />);
+    render(<CollaborationMainWorkspace groupId="team" activeSessionId="lead" defaultSessionMode="shell" onOpenSidebar={vi.fn()} onToggleRightSidebar={toggle} rightSidebarOpen={false} />);
     await screen.findByRole('region', { name: '目标编辑' });
-    const files = screen.getByRole('button', { name: '文件侧栏' });
-    expect(files.getAttribute('aria-pressed')).toBe('true');
+    const files = screen.getByRole('button', { name: 'Expand tools panel' });
+    expect(files.getAttribute('aria-expanded')).toBe('false');
     fireEvent.click(files);
     expect(toggle).toHaveBeenCalledOnce();
     expect(useCollaborationNavigation.getState().groupId).toBe('team');
@@ -114,13 +115,13 @@ describe('primary collaboration workspace', () => {
     fireEvent.click(screen.getByRole('button', { name: '看板' }));
     expect(routeCollaborationInput('不能写入隐藏的消息')).toBe(false);
   });
-  it('shows the sidebar opener only while the session sidebar is closed', async () => {
+  it('shows one sidebar opener only when the sidebar is closed', async () => {
     const open = vi.fn();
     const props = { groupId: 'team', activeSessionId: 'lead', defaultSessionMode: 'shell' as const, onOpenSidebar: open };
     const rendered = render(<CollaborationMainWorkspace {...props} leftSidebarVisible />);
-    expect(screen.queryByRole('button', { name: '打开会话侧栏' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Collapse session list' })).toBeNull();
     rendered.rerender(<CollaborationMainWorkspace {...props} leftSidebarVisible={false} />);
-    fireEvent.click(screen.getByRole('button', { name: '打开会话侧栏' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Expand session list' }));
     expect(open).toHaveBeenCalledOnce();
   });
 });

@@ -12,8 +12,8 @@ function setup(options: Partial<React.ComponentProps<typeof CollaborationGroupAc
   return { ...result, ...callbacks };
 }
 function open() { fireEvent.contextMenu(screen.getByRole('button', { name: '组标题' }), { clientX: 900, clientY: 600 }); }
-beforeEach(() => { vi.clearAllMocks(); api.remove.mockResolvedValue(undefined); api.save.mockResolvedValue({ group: { ...group, name: '新名称', updatedAt: 8 } }); api.archive.mockResolvedValue({ ...group, archivedAt: 8, updatedAt: 8 }); });
-afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); });
+beforeEach(() => { vi.spyOn(document, 'hasFocus').mockReturnValue(true); vi.clearAllMocks(); api.remove.mockResolvedValue(undefined); api.save.mockResolvedValue({ group: { ...group, name: '新名称', updatedAt: 8 } }); api.archive.mockResolvedValue({ ...group, archivedAt: 8, updatedAt: 8 }); });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 it('opens from right-click without opening the board and supports keyboard navigation and Escape', async () => {
   const callbacks = setup(); open();

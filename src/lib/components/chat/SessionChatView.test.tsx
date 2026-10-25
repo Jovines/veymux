@@ -25,6 +25,24 @@ function pagedHistory(url: unknown, all: ChatMessage[]) {
   return Response.json({ agentAvailable: true, messages: all.slice(start, end), updates: after ? all.slice(Math.max(0, at - 29), at + 1) : undefined, page: { hasOlder: start > 0, hasNewer: end < all.length, mode: before ? 'before' : after ? 'after' : 'latest' } });
 }
 
+it('shows blocked delivery with an actionable terminal entry and clears it after a real write', async () => {
+  const terminal = vi.fn();
+  const message: ChatMessage = { id: 'blocked', role: 'user', content: '检查构建结果', createdAt: 1, status: 'pending', delivery: { state: 'binding-required', canReconnect: true } };
+  const requests = vi.fn(async (_url: unknown, _init?: RequestInit) => Response.json({ agentAvailable: true, messages: [message] }));
+  vi.stubGlobal('fetch', requests);
+  render(<SessionChatView sessionId="blocked-delivery" onTerminal={terminal} />);
+  await screen.findByText('等待恢复');
+  expect(screen.queryByText('已发送')).toBeNull();
+  expect(screen.getByText('终端连接已变化，消息尚未投递。')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: '查看终端' }));
+  expect(terminal).toHaveBeenCalledOnce();
+  expect(requests.mock.calls.every(call => !call[1]?.method)).toBe(true);
+  message.status = 'delivered'; delete message.delivery;
+  fireEvent(window, new Event('online'));
+  await screen.findByText('已投递');
+  expect(screen.queryByText('终端连接已变化，消息尚未投递。')).toBeNull();
+});
+
 it('presents its loading UI without waiting for a hidden terminal or stalled history request', () => {
   vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(() => {})));
   const ready = vi.fn();
@@ -35,7 +53,27 @@ it('presents its loading UI without waiting for a hidden terminal or stalled his
   expect(ready).toHaveBeenLastCalledWith(false);
 });
 
-it('dismisses the selection toolbar when the selection collapses, clears, moves outside or spans messages', async () => {
+it('loads and refreshes a visible unfocused pane but pauses when it is offscreen', async () => {
+  let revision = 1;
+  const requests = vi.fn(async () => Response.json({ agentAvailable: true,
+    messages: [{ id: 'visible-reply', role: 'assistant', content: `visible history ${revision}`, createdAt: 1, status: 'stored' }] }));
+  vi.stubGlobal('fetch', requests);
+  const view = render(<SessionChatView sessionId="visible-unfocused" active={false} visible onTerminal={() => {}} />);
+  await screen.findByText('visible history 1');
+  expect(document.activeElement).not.toBe(composer());
+  revision = 2;
+  act(() => window.dispatchEvent(new Event('online')));
+  await screen.findByText('visible history 2');
+  view.rerender(<SessionChatView sessionId="visible-unfocused" active={false} visible={false} onTerminal={() => {}} />);
+  const count = requests.mock.calls.length;
+  act(() => window.dispatchEvent(new Event('online')));
+  expect(requests).toHaveBeenCalledTimes(count);
+  revision = 3;
+  view.rerender(<SessionChatView sessionId="visible-unfocused" active={false} visible onTerminal={() => {}} />);
+  await screen.findByText('visible history 3');
+});
+
+it('dismisses the selection toolbar outside the conversation or after clearing, and supports spanning messages', async () => {
   const messages = ['第一条消息', '第二条消息'].map((content, index) => ({ id: `a${index}`, role: 'assistant', content, createdAt: index + 1, status: 'stored' }));
   vi.stubGlobal('fetch', vi.fn(async () => Response.json({ agentAvailable: true, messages })));
   render(<><SessionChatView sessionId="selection" onTerminal={() => {}} /><p>会话外的文字</p></>);
@@ -61,8 +99,39 @@ it('dismisses the selection toolbar when the selection collapses, clears, moves 
     const range = document.createRange(); range.setStart(first.firstChild!, 0); range.setEnd(second.firstChild!, 2);
     selection.removeAllRanges(); selection.addRange(range); document.dispatchEvent(new Event('selectionchange'));
   });
-  expect(toolbar()).toBeNull();
+  expect(toolbar()).toBeTruthy();
   act(() => selection.removeAllRanges());
+});
+it('quotes partial consecutive replies and another speaker in order without message actions or unrelated text', async () => {
+  const messages = [
+    { id: 'first', role: 'assistant', content: '忽略前缀，第一段需要引用', createdAt: 1, status: 'stored' },
+    { id: 'second', role: 'assistant', content: '中间完整回复', createdAt: 2, status: 'stored' },
+    { id: 'third', role: 'user', content: '用户补充看这里，忽略尾部', createdAt: 3, status: 'stored' },
+  ];
+  const posts: string[] = [];
+  vi.stubGlobal('fetch', vi.fn(async (_url, init?: RequestInit) => {
+    if (init?.method === 'POST') { posts.push(JSON.parse(String(init.body)).content); return Response.json({ id: 'sent', createdAt: 4, status: 'pending' }); }
+    return Response.json({ agentAvailable: true, agent: { displayName: 'Codex' }, messages });
+  }));
+  render(<SessionChatView sessionId="multiple-selected-quotes" onTerminal={() => {}} />);
+  await screen.findByText('中间完整回复');
+  setComposer('解释这几段');
+  const first = screen.getByText(messages[0].content).firstChild!, last = screen.getByText(messages[2].content).firstChild!;
+  act(() => {
+    const range = document.createRange(); range.setStart(first, '忽略前缀，'.length); range.setEnd(last, '用户补充看这里'.length);
+    window.getSelection()!.removeAllRanges(); window.getSelection()!.addRange(range); document.dispatchEvent(new Event('selectionchange'));
+  });
+  fireEvent.click(screen.getByRole('button', { name: '引用选中内容' }));
+  expect(composerText()).toBe('解释这几段');
+  const quote = document.querySelector('.session-chat-composer blockquote')!.textContent!;
+  expect(quote).toContain('第一段需要引用'); expect(quote).toContain('中间完整回复'); expect(quote).toContain('用户补充看这里');
+  expect(quote).toContain('Codex'); expect(quote).toContain('用户');
+  expect(quote).not.toContain('忽略前缀'); expect(quote).not.toContain('忽略尾部'); expect(quote).not.toContain('已发送');
+  expect(quote.indexOf('第一段需要引用')).toBeLessThan(quote.indexOf('中间完整回复'));
+  expect(quote.indexOf('中间完整回复')).toBeLessThan(quote.indexOf('用户补充看这里'));
+  fireEvent.click(screen.getByRole('button', { name: '发送消息' }));
+  await waitFor(() => expect(posts).toHaveLength(1));
+  expect(posts[0]).toContain('> 对话摘录'); expect(posts[0]).toContain('解释这几段');
 });
 it('keeps an explicitly added quote in the composer after its text selection is cleared', async () => {
   vi.stubGlobal('fetch', vi.fn(async () => Response.json({ agentAvailable: true, messages: [{ id: 'a', role: 'assistant', content: '需要引用的原话', createdAt: 1, status: 'stored' }] })));
@@ -172,17 +241,17 @@ it('observes terminal output independently of progress and final replies', async
   vi.stubGlobal('fetch', vi.fn(async () => Response.json({ agentAvailable: true, agent: { slug: 'codex', displayName: 'Codex' }, messages })));
   const { container } = render(<SessionChatView sessionId="waiting" onTerminal={() => {}} />);
   await screen.findByText('帮我整理');
-  expect(screen.queryByText('工作中…')).toBeNull();
+  expect(screen.queryByText('处理中…')).toBeNull();
   liveOutput('waiting');
-  await screen.findByText('工作中…');
-  expect(screen.getByRole('status', { name: 'Codex工作中' })).toBeTruthy();
+  await screen.findByText('处理中…');
+  expect(screen.getByRole('status', { name: 'Codex处理中' })).toBeTruthy();
   messages = [...messages, { id: 'a1', role: 'assistant', content: '先整理资料', createdAt: 2, status: 'stored', replyTo: 'u', responseKind: 'progress' } as typeof messages[number]];
-  fireEvent(window, new Event('online')); await screen.findByText('先整理资料'); expect(screen.getByText('工作中…')).toBeTruthy();
+  fireEvent(window, new Event('online')); await screen.findByText('先整理资料'); expect(screen.getByText('处理中…')).toBeTruthy();
   messages = [...messages, { id: 'a2', role: 'assistant', content: '这是结果', createdAt: 3, status: 'stored', replyTo: 'u', responseKind: 'result' } as typeof messages[number]];
   fireEvent(window, new Event('online')); await screen.findByText('这是结果');
-  expect(screen.getByText('工作中…')).toBeTruthy();
+  expect(screen.getByText('处理中…')).toBeTruthy();
   act(() => useTerminalStore.getState().clearTerminalOutputActivity('waiting'));
-  expect(screen.queryByText('工作中…')).toBeNull();
+  expect(screen.queryByText('处理中…')).toBeNull();
   expect(container.querySelectorAll('[data-chat-turn="assistant"]')).toHaveLength(1);
   const bodies = container.querySelectorAll('[data-chat-turn="assistant"] [data-chat-message]');
   expect(bodies).toHaveLength(2);
@@ -242,6 +311,14 @@ it('requests only the recent page, prefetches older messages on scroll, and pres
   const scroller = container.querySelector('.session-chat > div') as HTMLElement;
   Object.defineProperty(scroller, 'clientHeight', { value: 500 });
   Object.defineProperty(scroller, 'scrollHeight', { get: () => container.querySelectorAll('[data-chat-message]').length * 100 });
+  // Model real layout: the anchor moves with inserted rows and live scrolling.
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+    if (this === scroller) return { top: 0, bottom: 500, height: 500 } as DOMRect;
+    const row = this.closest('[data-chat-viewport-row]');
+    const rows = [...container.querySelectorAll('[data-chat-viewport-row]')];
+    const top = rows.indexOf(row!) * 100 - scroller.scrollTop;
+    return { top, bottom: top + 100, height: 100 } as DOMRect;
+  });
   scroller.scrollTop = 200; fireEvent.scroll(scroller);
   await screen.findByText('历史消息 70');
   expect(container.querySelectorAll('[data-chat-message]')).toHaveLength(60);
@@ -349,12 +426,12 @@ it('acknowledges an earlier pending request and retains reply feedback when only
   vi.stubGlobal('fetch', vi.fn(async () => Response.json({ agentAvailable: true, messages, confirmedRequestId: requestId, replyPending: true, page: { mode: 'latest', hasOlder: true, hasNewer: false } })));
   render(<SessionChatView sessionId="paged-pending" onTerminal={() => {}} />);
   await screen.findByText('正在处理第 29 步');
-  expect(screen.queryByText('工作中…')).toBeNull();
+  expect(screen.queryByText('处理中…')).toBeNull();
   expect(screen.queryByText('已经送达的原请求')).toBeNull();
   expect(screen.queryByRole('button', { name: '重试发送' })).toBeNull();
 });
 
-it('shows status beside the initial author, then below real replies', async () => {
+it('immediately appends an Agent reply placeholder after sending and merges it into actual replies', async () => {
   let acknowledge!: (response: Response) => void;
   let messages: ChatMessage[] = [];
   vi.stubGlobal('fetch', vi.fn(async (_url, init?: RequestInit) => {
@@ -364,24 +441,50 @@ it('shows status beside the initial author, then below real replies', async () =
   const view = render(<SessionChatView sessionId="instant-author" onTerminal={() => {}} />);
   await screen.findByText('想一起完成什么？');
   setComposer('检查结果'); fireEvent.click(screen.getByRole('button', { name: '发送消息' }));
-  const header = view.container.querySelector('[data-chat-agent-header]')!;
+  const dock = view.container.querySelector('[data-chat-terminal-dock]')!;
   const feedback = screen.getByRole('status', { name: 'Codex发送中' });
-  expect(header.textContent).toContain('Codex');
-  expect(header.querySelector('[aria-hidden="true"]')).toBeTruthy();
-  expect(header.contains(feedback)).toBe(true);
-  expect(feedback.textContent).toBe('发送中…');
+  expect(dock.contains(feedback)).toBe(true);
+  const reply = view.container.querySelector('[data-chat-reply-feedback]')!;
+  expect(reply.querySelector('[data-chat-agent-header]')?.textContent).toContain('Codex');
+  expect(reply.querySelector('[style*=mask]')).toBeTruthy();
+  expect(reply.previousElementSibling?.getAttribute('data-chat-turn')).toBe('user');
+  expect(reply.querySelector('[data-chat-agent-awaiting]')).toBeTruthy();
+  expect(reply.querySelector('.td-loading-spinner')).toBeNull();
+  expect(feedback.textContent).toContain('发送中…');
   messages = [{ id: 'sent', role: 'user', content: '检查结果', createdAt: 1, status: 'delivered' }];
   await act(async () => acknowledge(Response.json({ id: 'sent', status: 'delivered' })));
-  expect(screen.queryByRole('status', { name: 'Codex工作中' })).toBeNull();
+  expect(screen.queryByRole('status', { name: 'Codex处理中' })).toBeNull();
+  expect(screen.getByRole('status', { name: 'Codex等待回复' }).querySelector('.td-loading-spinner')).toBeTruthy();
   liveOutput('instant-author');
-  await screen.findByRole('status', { name: 'Codex工作中' });
+  await screen.findByRole('status', { name: 'Codex处理中' });
   expect(screen.getAllByText('Codex')).toHaveLength(1);
   messages.push({ id: 'progress', role: 'assistant', content: '正在核对结果', createdAt: 2, status: 'stored', replyTo: 'sent', responseKind: 'progress' });
   fireEvent(window, new Event('online')); await screen.findByText('正在核对结果');
   expect(screen.getAllByText('Codex')).toHaveLength(1);
-  expect(screen.getByRole('status', { name: 'Codex工作中' }).textContent).toBe('工作中…');
-  expect(view.container.querySelector('[data-chat-agent-header]')?.contains(screen.getByRole('status', { name: 'Codex工作中' }))).toBe(false);
+  expect(view.container.querySelectorAll('[data-chat-turn="assistant"]')).toHaveLength(1);
+  expect(screen.getByRole('status', { name: 'Codex处理中' }).textContent).toContain('处理中…');
+  expect(view.container.querySelector('[data-chat-agent-header]')?.contains(screen.getByRole('status', { name: 'Codex处理中' }))).toBe(false);
 });
+it('keeps waving for the current question when an older answer arrives late, then stops on its first reply', async () => {
+  const messages: ChatMessage[] = [
+    { id: 'older', role: 'user', content: '上一轮', createdAt: 1, status: 'delivered' },
+    { id: 'older-result', role: 'assistant', content: '之前的答案', createdAt: 2, status: 'stored', replyTo: 'older' },
+    { id: 'current', role: 'user', content: '当前问题', createdAt: 3, status: 'delivered' },
+  ];
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json({ agentAvailable: true, agent: { displayName: 'Codex' }, messages, replyPending: true })));
+  const view = render(<SessionChatView sessionId="late-reply-wave" onTerminal={() => {}} />);
+  await screen.findByText('当前问题');
+  expect(view.container.querySelectorAll('[data-chat-agent-awaiting]')).toHaveLength(1);
+  messages.push({ id: 'late-old', role: 'assistant', content: '上一轮的补充', createdAt: 4, status: 'stored', replyTo: 'older' });
+  fireEvent(window, new Event('online')); await screen.findByText('上一轮的补充');
+  expect(view.container.querySelectorAll('[data-chat-agent-awaiting]')).toHaveLength(1);
+  messages.push({ id: 'current-ack', role: 'assistant', content: '开始处理当前问题', createdAt: 5, status: 'stored', replyTo: 'current', responseKind: 'ack' });
+  fireEvent(window, new Event('online')); await screen.findByText('开始处理当前问题');
+  expect(view.container.querySelector('[data-chat-agent-awaiting]')).toBeNull();
+  expect(view.container.querySelector('[data-chat-reply-feedback]')).toBeNull();
+  expect(screen.getByRole('status', { name: 'Codex等待回复' }).closest('[data-chat-terminal-dock]')).toBeTruthy();
+});
+
 it('removes optimistic agent feedback when sending fails', async () => {
   vi.stubGlobal('fetch', vi.fn(async (_url, init?: RequestInit) => {
     if (init?.method === 'POST') throw new Error('offline');
@@ -390,7 +493,7 @@ it('removes optimistic agent feedback when sending fails', async () => {
   const view = render(<SessionChatView sessionId="failed-author" onTerminal={() => {}} />);
   await screen.findByText('想一起完成什么？');
   setComposer('检查结果'); fireEvent.click(screen.getByRole('button', { name: '发送消息' }));
-  expect(view.container.querySelector('[data-chat-agent-header]')?.textContent).toContain('Codex');
+  expect(screen.getByRole('status', { name: 'Codex发送中' }).closest('[data-chat-terminal-dock]')).toBeTruthy();
   await screen.findByRole('button', { name: '重试发送' });
   expect(view.container.querySelector('[data-chat-reply-feedback]')).toBeNull();
 });
@@ -399,10 +502,10 @@ it('shows terminal activity without a recognized agent or pending chat reply', a
   vi.stubGlobal('fetch', vi.fn(async () => Response.json({ agentAvailable: false, messages: [], replyPending: false })));
   render(<SessionChatView sessionId="unknown-agent" onTerminal={() => {}} />);
   await screen.findByText('当前对话暂不可用。');
-  expect(screen.queryByText('工作中…')).toBeNull();
-  liveOutput('unknown-agent'); expect(screen.getByText('工作中…')).toBeTruthy();
+  expect(screen.queryByText('处理中…')).toBeNull();
+  liveOutput('unknown-agent'); expect(screen.getByText('处理中…')).toBeTruthy();
   act(() => useTerminalStore.getState().clearTerminalSession('unknown-agent'));
-  expect(screen.queryByText('工作中…')).toBeNull();
+  expect(screen.queryByText('处理中…')).toBeNull();
 });
 it('does not let a failed chat submission hide actual terminal output', async () => {
   vi.stubGlobal('fetch', vi.fn(async (_url, init?: RequestInit) => {
@@ -413,32 +516,93 @@ it('does not let a failed chat submission hide actual terminal output', async ()
   await screen.findByText('想一起完成什么？'); liveOutput('active-send-failure');
   setComposer('消息'); fireEvent.click(screen.getByRole('button', { name: '发送消息' }));
   await screen.findByRole('button', { name: '重试发送' });
-  expect(screen.getByText('工作中…')).toBeTruthy();
+  expect(screen.getByText('处理中…')).toBeTruthy();
 });
 
-it('keeps one stable reply affordance through quiet output intervals and removes it only after a final reply', async () => {
-  let messages: ChatMessage[] = [{ id: 'u-stable', role: 'user', content: '跑完整验证再回复', createdAt: 1, status: 'delivered' }];
-  let replyPending = true;
-  vi.stubGlobal('fetch', vi.fn(async () => Response.json({ agentAvailable: true, agent: { displayName: 'Codex' }, messages, replyPending })));
+it('keeps one terminal entry above the composer through silence, activity and replies', async () => {
+  const messages: ChatMessage[] = [{ id: 'u-stable', role: 'user', content: '跑完整验证再回复', createdAt: 1, status: 'delivered' }];
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json({ agentAvailable: true, agent: { displayName: 'Codex' }, messages, replyPending: true })));
   const view = render(<SessionChatView sessionId="stable-reply" onTerminal={() => {}} />);
-  const status = await screen.findByRole('status', { name: 'Codex等待回复' });
-  expect(view.container.querySelector('[data-chat-agent-header]')?.contains(status)).toBe(true);
-  expect(status.querySelector('.animate-spin')).toBeNull();
-  liveOutput('stable-reply'); expect(screen.getByRole('status', { name: 'Codex工作中' })).toBe(status);
+  await screen.findByText('跑完整验证再回复');
+  const entry = view.container.querySelector('[data-chat-terminal-access]')!;
+  const dock = entry.parentElement;
+  expect(entry.textContent).toContain('详情');
+  expect(screen.getByRole('status', { name: 'Codex等待回复' })).toBe(entry);
+  expect(entry.closest('.session-chat-composer')).not.toBeNull();
+  expect(view.container.querySelector('[data-chat-reply-status]')?.getAttribute('data-chat-reply-phase')).toBe('quiet');
+  liveOutput('stable-reply'); expect(screen.getByRole('status', { name: 'Codex处理中' })).toBe(entry);
   act(() => useTerminalStore.getState().setTerminalOutputActivity('stable-reply', false));
-  expect(screen.getByRole('status', { name: 'Codex等待回复' })).toBe(status);
+  expect(view.container.querySelector('[data-chat-terminal-access]')).toBe(entry);
+  expect(entry.textContent).toContain('详情');
   messages.push({ id: 'a-stable', role: 'assistant', content: '验证仍在继续', createdAt: 2, status: 'stored', responseKind: 'progress' });
   fireEvent(window, new Event('online')); await screen.findByText('验证仍在继续');
-  const tailStatus = screen.getByRole('status', { name: 'Codex等待回复' });
-  expect(view.container.querySelector('[data-chat-agent-header]')?.contains(tailStatus)).toBe(false);
-  for (let cycle = 0; cycle < 3; cycle++) {
-    act(() => useTerminalStore.getState().setTerminalOutputActivity('stable-reply', true));
-    expect(screen.getByRole('status', { name: 'Codex工作中' })).toBe(tailStatus);
-    act(() => useTerminalStore.getState().setTerminalOutputActivity('stable-reply', false));
-    expect(screen.getByRole('status', { name: 'Codex等待回复' })).toBe(tailStatus);
-  }
-  replyPending = false;
-  messages = [...messages, { id: 'a-final', role: 'assistant', content: '验证已结束', createdAt: 3, status: 'stored', responseKind: 'result' }];
-  fireEvent(window, new Event('online')); await screen.findByText('验证已结束');
-  expect(view.container.querySelector('[data-chat-reply-status]')).toBeNull();
+  act(() => useTerminalStore.getState().setSessionAgentStatus('stable-reply', { type: 'agent-status', agentStatus: 'working' } as never));
+  expect(screen.getByRole('status', { name: 'Codex处理中' })).toBe(entry);
+  expect(entry.parentElement).toBe(dock);
+  expect(entry.closest('[data-chat-message-actions]')).toBeNull();
+  expect(view.container.querySelectorAll('[data-chat-terminal-access]')).toHaveLength(1);
+});
+
+it('keeps processing from the native terminal status when Codex animations produce no bytes', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json({ agentAvailable: true, agent: { displayName: 'Codex' }, messages: [{ id: 'native-u', role: 'user', content: '保持运行', createdAt: 1, status: 'delivered' }] })));
+  const view = render(<SessionChatView sessionId="native-silent" onTerminal={() => {}} />);
+  await screen.findByText('保持运行'); liveOutput('native-silent');
+  act(() => {
+    useTerminalStore.getState().setTerminalOutputActivity('native-silent', false);
+    useTerminalStore.getState().setSessionTuiProgress('native-silent', { source: 'osc7501', state: 'indeterminate', progress: null, message: 'Working', app: 'codex' });
+  });
+  expect(screen.getByRole('status', { name: 'Codex处理中' })).toBeTruthy();
+  expect(screen.getByRole('status', { name: 'Codex处理中' }).querySelector('.td-loading-spinner')).toBeTruthy();
+  act(() => useTerminalStore.getState().setSessionTuiProgress('native-silent', null));
+  expect(view.container.querySelector('[data-chat-reply-status]')?.getAttribute('data-chat-reply-phase')).toBe('quiet');
+});
+
+it.each(['claude', 'gemini', 'custom-plugin'])('uses %s plugin working phases throughout silent terminal output', async slug => {
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json({ agentAvailable: true, agent: { slug, displayName: 'Plugin Agent' }, messages: [] })));
+  render(<SessionChatView sessionId={`plugin-${slug}`} onTerminal={() => {}} />);
+  await screen.findByText('想一起完成什么？');
+  act(() => {
+    const store = useTerminalStore.getState();
+    store.setTerminalSession(`plugin-${slug}`, { sessionId: `backend-${slug}`, cols: 80, rows: 24 });
+    store.setSessionTuiProgress(`plugin-${slug}`, { source: 'osc7501', state: 'done', progress: null, reviewed: true });
+    store.setSessionAgentStatus(`plugin-${slug}`, { agentStatus: 'working', agentStatusDetail: { id: 'thinking', label: '思考中', tone: 'info' }, agentActivity: 3, reviewed: true });
+  });
+  expect(screen.getByRole('status', { name: 'Plugin Agent处理中' })).toBeTruthy();
+  act(() => useTerminalStore.getState().setSessionAgentStatus(`plugin-${slug}`, { agentStatus: 'waiting', agentActivity: 3, reviewed: true }));
+  expect(screen.queryByRole('status', { name: 'Plugin Agent处理中' })).toBeNull();
+});
+
+it('allows a new native working report after the previous plugin turn was acknowledged', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json({ agentAvailable: true, agent: { displayName: 'Plugin Agent' }, messages: [] })));
+  render(<SessionChatView sessionId="plugin-native-next" onTerminal={() => {}} />);
+  await screen.findByText('想一起完成什么？');
+  act(() => {
+    const store = useTerminalStore.getState();
+    store.setTerminalSession('plugin-native-next', { sessionId: 'backend-next', cols: 80, rows: 24 });
+    store.setSessionAgentStatus('plugin-native-next', { agentStatus: 'done', reviewed: true });
+    store.setSessionTuiProgress('plugin-native-next', { source: 'osc7501', state: 'indeterminate', progress: null });
+  });
+  expect(screen.getByRole('status', { name: 'Plugin Agent处理中' })).toBeTruthy();
+});
+
+it('shows the quiet terminal switch only in the real empty state and retains it while drafting', async () => {
+  let messages: ChatMessage[] = [], release!: (response: Response) => void;
+  let first = true;
+  vi.stubGlobal('fetch', vi.fn(async () => {
+    if (first) { first = false; return new Promise<Response>(resolve => { release = resolve; }); }
+    return Response.json({ agentAvailable: true, messages });
+  }));
+  const terminal = vi.fn();
+  render(<SessionChatView sessionId="mode-welcome-empty" onTerminal={terminal} />);
+  expect(document.querySelector('[data-session-mode-welcome]')).toBeNull();
+  await act(async () => { release(Response.json({ agentAvailable: true, messages: [] })); });
+  await screen.findByRole('button', { name: '切换到终端' });
+  setComposer('保留这个草稿');
+  expect(document.querySelector('[data-session-mode-welcome]')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: '切换到终端' }));
+  expect(terminal).toHaveBeenCalledOnce(); expect(composerText()).toBe('保留这个草稿');
+  messages = [{ id: 'incoming', role: 'assistant', content: '已有对话内容', createdAt: 1, status: 'stored' }];
+  act(() => window.dispatchEvent(new Event('online')));
+  await screen.findByText('已有对话内容');
+  expect(document.querySelector('[data-session-mode-welcome]')).toBeNull();
 });

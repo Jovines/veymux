@@ -1,3 +1,4 @@
+import { SidebarVisibilityButton } from './SidebarVisibilityButton';
 import { DownloadFeedback } from '../ui/DownloadFeedback';
 import { useDragLifetime } from '../../hooks/useDragLifetime';
 import { type MarkdownLocalLinkTarget, MarkdownPreview, ZoomableImage, FILE_PREVIEW_HORIZONTAL_SCROLL_CLASS, logFilePreviewLoadingEvent } from '../markdown/MarkdownPreview';
@@ -51,6 +52,8 @@ import { loadRefractor, resolveLanguage, shouldHighlight, highlightToLines, type
 import { useReferenceLongPressCopy } from './referenceLongPress';
 import { getNextReferenceLineRange, getReferenceFloatingButtonClass, hasNativeTextSelection, type LineRange } from './referenceSelection';
 import { buildFileReference, buildLineReference, buildPromptReference, buildReferenceInputText, resolveAbsoluteReferencePath } from './referencePaths';
+import type { ContextReference } from '../../terminal/contextReference';
+import { readSessionViewMode } from '../chat/sessionViewMode';
 import { ContextDraftDock } from './ContextDraftDock';
 import { AndroidMirrorView, ANDROID_DOCK_GROUP } from '../android/AndroidMirrorView';
 import type { AndroidRecording } from '../../android/api';
@@ -70,6 +73,7 @@ import { SvgInspectionPreview } from './SvgInspectionPreview';
 import { CsvPreview } from './CsvPreview';
 import { KicadProjectPreview } from './KicadProjectPreview';
 import { HtmlPreviewFrame, type HtmlPreviewFrameHandle } from './HtmlPreviewFrame';
+import { DialogFilePreviewToolbar } from './DialogFilePreviewToolbar';
 import { clearFilePreviewSearchHighlights, collectFilePreviewSearchRanges, paintFilePreviewSearchHighlights, ownsFilePreviewSearchHighlights, ownsFilePreviewSearchShortcut, resolveFilePreviewSearchShortcut, scrollFilePreviewSearchRangeIntoView } from './filePreviewSearch';
 import { describeSearchScope, parseExcludePatterns, resolveSearchScopePath } from './fileSearchOptions';
 import './sidebarSelection.css';
@@ -91,7 +95,6 @@ interface RightSidebarProps {
   onOpen?: () => void;
   push?: boolean;
   pinned?: boolean;
-  onTogglePinned?: () => void;
   rightSidebarFilePreviewOpen?: boolean;
   rightSidebarFilePreviewCloseSignal?: number;
   onOpenRightSidebarFilePreview?: () => void;
@@ -1429,6 +1432,8 @@ function scrollDiffAnchorIntoView(anchor: ChangeWalkthroughAnchor): void {
 }
 
 interface FilePreviewProps {
+  presentation?: 'sidebar' | 'dialog';
+  canInsertReference?: boolean;
   /** Standalone previews keep their root and navigation separate from the sidebar. */
   rootPath?: string | null;
   onFileSelect?: (path: string) => void;
@@ -1437,7 +1442,7 @@ interface FilePreviewProps {
   filePath: string | null;
   active?: boolean;
   onInsertReference: (path: string, key?: string, source?: HTMLElement) => void;
-  onInsertText: (text: string, key: string, source?: HTMLElement) => void;
+  onInsertText: (text: string, key: string, source?: HTMLElement, reference?: ContextReference) => void;
   /** Insert a model-feature reference (draft-aware, same as file refs). */
   onInsertFeature?: ReviewReferenceHandler;
   onReferenceCopied: (key: string) => void;
@@ -1536,6 +1541,8 @@ function getNativePointerLogData(event: globalThis.PointerEvent | globalThis.Mou
 }
 
 export function FilePreview({
+  presentation = 'sidebar',
+  canInsertReference = true,
   rootPath: previewRootPath,
   onFileSelect,
   initialMarkdownFragment = null,
@@ -1589,9 +1596,10 @@ export function FilePreview({
   // this near the cursor; non-pointer jumps fall back to the selected line.
   const [floatingInsertPos, setFloatingInsertPos] = useState<{ top: number; left: number } | null>(null);
   const [markdownViewMode, setMarkdownViewMode] = useState<MarkdownViewMode>(() => readMarkdownViewMode());
-  const [htmlViewMode, setHtmlViewMode] = useState<HtmlViewMode>(() => readHtmlViewMode(rootPath, filePath));
+  const [htmlViewMode, setHtmlViewMode] = useState<HtmlViewMode>(() => presentation === 'dialog' ? 'preview' : readHtmlViewMode(rootPath, filePath));
   const htmlPreviewRef = useRef<HtmlPreviewFrameHandle | null>(null);
   const [htmlPreviewFullscreen, setHtmlPreviewFullscreen] = useState(false);
+  const [htmlPreviewWarnings, setHtmlPreviewWarnings] = useState<string[]>([]);
   const [refractor, setRefractor] = useState<RefractorLike | null>(null);
   const [markdownPreviewScrollTop, setMarkdownPreviewScrollTop] = useState(0);
   const [previewHistory, setPreviewHistory] = useState<string[]>([]);
@@ -1609,12 +1617,16 @@ export function FilePreview({
   const [fileSearchIndex, setFileSearchIndex] = useState(0);
   const fileSearchInputRef = useRef<HTMLInputElement | null>(null);
   const getReferenceLongPressHandlers = useReferenceLongPressCopy(onReferenceCopied);
+  const [referenceCopyError, setReferenceCopyError] = useState('');
+  const dialog = presentation === 'dialog';
 
   const readingStateKey = getFilePreviewReadingStateKey(rootPath, filePath);
 
   useEffect(() => {
     if (previousFilePathRef.current === filePath) return;
     previousFilePathRef.current = filePath;
+    setHtmlPreviewWarnings([]);
+    setReferenceCopyError('');
     const absolutePath = filePath && rootPath && !filePath.startsWith('/') ? `${rootPath}/${filePath}` : filePath;
     if (expectedNavigationPathRef.current === absolutePath) {
       expectedNavigationPathRef.current = null;
@@ -1714,7 +1726,7 @@ export function FilePreview({
       const savedReadingState = readFilePreviewReadingState(rootPath, filePath);
       onLineRangeChange(savedReadingState?.lineRange ?? null);
       setMarkdownViewMode(isMarkdown ? readMarkdownViewMode() : 'source');
-      setHtmlViewMode(isHtml ? readHtmlViewMode(rootPath, filePath) : 'source');
+      setHtmlViewMode(isHtml ? (presentation === 'dialog' ? 'preview' : readHtmlViewMode(rootPath, filePath)) : 'source');
       if (isEda) setEdaView(getDefaultEdaPreviewView(fullPath));
     }
     if (!isPathChange) {
@@ -1850,7 +1862,7 @@ export function FilePreview({
       if (objectUrl) URL.revokeObjectURL(objectUrl);
       endLoading('cleanup');
     };
-  }, [filePath, rootPath, externalVersion, manualRefreshNonce, onLineRangeChange, t, edaView]);
+  }, [filePath, rootPath, externalVersion, manualRefreshNonce, onLineRangeChange, t, edaView, presentation]);
 
   // 语义特征 sidecar: 约定放 <模型目录>/features/<名>.json
   useEffect(() => {
@@ -2255,18 +2267,74 @@ export function FilePreview({
   };
 
   const insertRangeReference = (event: MouseEvent<HTMLElement>) => {
+    const reference: ContextReference = { kind: 'code', path: resolveAbsoluteReferencePath(referencePath, rootPath), text: lineReferenceText, ...(lineRange ? { lines: { ...lineRange } } : {}) };
     if (onReviewReference) {
-      onReviewReference(lineReferenceText, lineReferenceKey, undefined, event.currentTarget);
+      onReviewReference(lineReferenceText, lineReferenceKey, { reference }, event.currentTarget);
       return;
     }
     if (!lineRange) return;
-    onInsertText(lineReferenceText, lineReferenceKey, event.currentTarget);
+    onInsertText(lineReferenceText, lineReferenceKey, event.currentTarget, reference);
   };
 
   const handleDownload = () => {
     if (previewState.kind === 'loading' || previewState.kind === 'error') return;
     return downloadState.start();
   };
+
+  const togglePreviewMode = () => {
+    if (isHtml) {
+      setHtmlViewMode(mode => {
+        const next = mode === 'preview' ? 'source' : 'preview';
+        writeHtmlViewMode(rootPath, filePath, next);
+        return next;
+      });
+    } else {
+      if (markdownOutlineOpen) onCloseMarkdownOutline?.();
+      setMarkdownViewMode(mode => {
+        const next = mode === 'preview' ? 'source' : 'preview';
+        writeCache(MARKDOWN_VIEW_MODE_STORAGE_KEY, next);
+        return next;
+      });
+    }
+    onLineRangeChange(null);
+  };
+  const copyFileReference = () => {
+    setReferenceCopyError('');
+    void (async () => {
+      try {
+        if (!navigator.clipboard) throw new Error('Clipboard unavailable');
+        await navigator.clipboard.writeText(reference);
+        onReferenceCopied(fileReferenceKey);
+      } catch { setReferenceCopyError('复制失败，请检查剪贴板权限后重试。'); }
+    })();
+  };
+  const searchPanel = fileSearchOpen && searchableFilePreview && (
+    <div className="mt-2 flex min-w-0 items-center gap-1.5" data-file-preview-search>
+      <div className="flex min-w-0 flex-1 items-center rounded-lg bg-surface-2 px-2 focus-within:bg-surface-elevated">
+        <RiSearch size={13} className="shrink-0 text-muted-foreground" aria-hidden="true" />
+        <input
+          ref={fileSearchInputRef}
+          type="search"
+          value={fileSearchQuery}
+          onChange={(event) => setFileSearchQuery(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key !== 'Enter') return;
+            event.preventDefault();
+            moveFileSearch(event.shiftKey ? -1 : 1);
+          }}
+          className="h-8 min-w-0 flex-1 bg-transparent px-2 text-xs text-foreground outline-none placeholder:text-muted-foreground/70"
+          placeholder={t('rightSidebar.findInFilePlaceholder')}
+          aria-label={t('rightSidebar.findInFile')}
+        />
+        <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground" aria-live="polite">
+          {fileSearchMatches.length > 0 ? `${fileSearchIndex + 1}/${fileSearchMatches.length}` : '0/0'}
+        </span>
+      </div>
+      <button type="button" onClick={() => moveFileSearch(-1)} disabled={fileSearchMatches.length === 0} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-muted-foreground transition hover:bg-surface-elevated hover:text-foreground disabled:opacity-35" aria-label={t('rightSidebar.previousSearchMatch')} title={`${t('rightSidebar.previousSearchMatch')} (Shift+Enter)`}><RiArrowUp size={13} /></button>
+      <button type="button" onClick={() => moveFileSearch(1)} disabled={fileSearchMatches.length === 0} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-muted-foreground transition hover:bg-surface-elevated hover:text-foreground disabled:opacity-35" aria-label={t('rightSidebar.nextSearchMatch')} title={`${t('rightSidebar.nextSearchMatch')} (Enter)`}><RiArrowDown size={13} /></button>
+      <button type="button" onClick={closeFileSearch} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-muted-foreground transition hover:bg-surface-elevated hover:text-foreground" aria-label={t('rightSidebar.closeFileSearch')} title={`${t('rightSidebar.closeFileSearch')} (Esc)`}><RiCloseLine size={13} /></button>
+    </div>
+  );
 
   return (
     // The container is a flex column that fills the panel. The middle scroller
@@ -2291,7 +2359,24 @@ export function FilePreview({
       className="flex h-full min-h-0 flex-col bg-surface text-foreground"
     >
       {getReferenceLongPressHandlers.popoverNode}
-      <div className={`shrink-0 border-b border-border/15 px-3 ${isMobile && (showMarkdownPreview || showHtmlPreview) ? 'py-1.5' : 'py-2'}`}>
+      {dialog ? <DialogFilePreviewToolbar
+        name={display.name} path={readablePath} isMobile={isMobile}
+        back={previewHistory.length > 0 ? { label: t('rightSidebar.backToPreviousPreview'), go: navigateBackInPreview } : undefined}
+        sizeLabel={meta?.size != null ? t('rightSidebar.byteCount', { count: meta.size.toLocaleString() }) : undefined}
+        view={(isHtml || isMarkdown) && previewState.kind === 'text' ? {
+          label: isHtml ? t(htmlViewMode === 'preview' ? 'rightSidebar.htmlSource' : 'rightSidebar.htmlPreview') : t(markdownViewMode === 'preview' ? 'rightSidebar.markdownSource' : 'rightSidebar.markdownPreview'),
+          toggle: togglePreviewMode,
+        } : undefined}
+        fullscreen={showHtmlPreview ? { label: t('rightSidebar.htmlFullscreenEnter'), toggle: () => void htmlPreviewRef.current?.toggleFullscreen() } : undefined}
+        reference={canInsertReference ? { label: t('rightSidebar.insertFileRef'), insert: source => onInsertReference(readablePath, fileReferenceKey, source) } : undefined}
+        search={searchableFilePreview ? { label: t('rightSidebar.findInFile'), toggle: fileSearchOpen ? closeFileSearch : openFileSearch } : undefined}
+        searchPanel={searchPanel}
+        warnings={[...(showHtmlPreview ? htmlPreviewWarnings : []), ...(meta && 'truncated' in meta && meta.truncated && !showHtmlPreview ? [t('rightSidebar.previewTruncated')] : [])]}
+        copied={fileReferenceCopied} copyError={referenceCopyError} onCopy={copyFileReference}
+        onClose={onClose} onRefresh={refreshPreview}
+        download={{ status: downloadState.status, error: downloadState.error, disabled: previewState.kind === 'loading' || previewState.kind === 'error', start: () => void handleDownload(), cancel: downloadState.cancel }}
+      /> : (
+      <div data-file-preview-toolbar className={`shrink-0 border-b border-border/15 px-3 ${isMobile && (showMarkdownPreview || showHtmlPreview) ? 'py-1.5' : 'py-2'}`}>
         <div className="flex items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-1.5">
             {isMobile && onClose && (
@@ -2337,15 +2422,7 @@ export function FilePreview({
             {isMarkdown && previewState.kind === 'text' && (
               <button
                 type="button"
-                onClick={() => {
-                  if (markdownOutlineOpen) onCloseMarkdownOutline?.();
-                  setMarkdownViewMode((mode) => {
-                    const next = mode === 'preview' ? 'source' : 'preview';
-                    writeCache(MARKDOWN_VIEW_MODE_STORAGE_KEY, next);
-                    return next;
-                  });
-                  onLineRangeChange(null);
-                }}
+                onClick={togglePreviewMode}
                 className={`inline-flex h-9 shrink-0 items-center justify-center gap-1 rounded-full bg-surface-2 text-xs font-semibold text-muted-foreground transition hover:bg-surface-elevated hover:text-foreground active:scale-95 ${isMobile ? 'w-9 px-0' : 'px-3'}`}
                 aria-label={markdownViewMode === 'preview' ? t('rightSidebar.markdownSource') : t('rightSidebar.markdownPreview')}
                 title={markdownViewMode === 'preview' ? t('rightSidebar.markdownSource') : t('rightSidebar.markdownPreview')}
@@ -2358,14 +2435,7 @@ export function FilePreview({
             {isHtml && previewState.kind === 'text' && (
               <button
                 type="button"
-                onClick={() => {
-                  setHtmlViewMode((mode) => {
-                    const next = mode === 'preview' ? 'source' : 'preview';
-                    writeHtmlViewMode(rootPath, filePath, next);
-                    return next;
-                  });
-                  onLineRangeChange(null);
-                }}
+                onClick={togglePreviewMode}
                 className={`inline-flex h-9 shrink-0 items-center justify-center gap-1 rounded-full bg-surface-2 text-xs font-semibold text-muted-foreground transition hover:bg-surface-elevated hover:text-foreground active:scale-95 ${isMobile ? 'w-9 px-0' : 'px-3'}`}
                 aria-label={htmlViewMode === 'preview' ? t('rightSidebar.htmlSource') : t('rightSidebar.htmlPreview')}
                 title={htmlViewMode === 'preview' ? t('rightSidebar.htmlSource') : t('rightSidebar.htmlPreview')}
@@ -2386,7 +2456,7 @@ export function FilePreview({
                 <RiFullscreen size={15} />
               </button>
             )}
-            {!isMobile && (
+            {canInsertReference && !isMobile && (
               <button
                 type="button"
                 onClick={event => onInsertReference(readablePath, fileReferenceKey, event.currentTarget)}
@@ -2397,18 +2467,19 @@ export function FilePreview({
                     : 'bg-primary/15 text-primary hover:bg-primary/25'
                 }`}
                 title={t('rightSidebar.insertReference', { reference })}
+                aria-label={t('rightSidebar.insertFileRef')}
               >
                 {fileReferenceCopied ? t('rightSidebar.copied') : fileReferenceInserted ? t('rightSidebar.inserted') : t('rightSidebar.insertFileRef')}
               </button>
             )}
             <button
               type="button"
-              onClick={() => void navigator.clipboard?.writeText(reference)}
+              onClick={copyFileReference}
               className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-surface-2 text-muted-foreground transition hover:bg-surface-elevated hover:text-foreground active:scale-95"
               title={t('rightSidebar.copyReference', { reference })}
               aria-label={t('rightSidebar.copyFileRef')}
             >
-              <RiCopy size={13} />
+              {fileReferenceCopied ? <RiCheck size={13} /> : <RiCopy size={13} />}
             </button>
             <button
               type="button"
@@ -2425,35 +2496,10 @@ export function FilePreview({
             )}
           </div>
         </div>
+        {referenceCopyError && <p role="alert" className="py-1 text-xs text-destructive">{referenceCopyError}</p>}
         <DownloadFeedback status={downloadState.status} error={downloadState.error} />
-        {fileSearchOpen && searchableFilePreview && (
-          <div className="mt-2 flex min-w-0 items-center gap-1.5" data-file-preview-search>
-            <div className="flex min-w-0 flex-1 items-center rounded-lg bg-surface-2 px-2 focus-within:bg-surface-elevated">
-              <RiSearch size={13} className="shrink-0 text-muted-foreground" aria-hidden="true" />
-              <input
-                ref={fileSearchInputRef}
-                type="search"
-                value={fileSearchQuery}
-                onChange={(event) => setFileSearchQuery(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key !== 'Enter') return;
-                  event.preventDefault();
-                  moveFileSearch(event.shiftKey ? -1 : 1);
-                }}
-                className="h-8 min-w-0 flex-1 bg-transparent px-2 text-xs text-foreground outline-none placeholder:text-muted-foreground/70"
-                placeholder={t('rightSidebar.findInFilePlaceholder')}
-                aria-label={t('rightSidebar.findInFile')}
-              />
-              <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground" aria-live="polite">
-                {fileSearchMatches.length > 0 ? `${fileSearchIndex + 1}/${fileSearchMatches.length}` : '0/0'}
-              </span>
-            </div>
-            <button type="button" onClick={() => moveFileSearch(-1)} disabled={fileSearchMatches.length === 0} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-muted-foreground transition hover:bg-surface-elevated hover:text-foreground disabled:opacity-35" aria-label={t('rightSidebar.previousSearchMatch')} title={`${t('rightSidebar.previousSearchMatch')} (Shift+Enter)`}><RiArrowUp size={13} /></button>
-            <button type="button" onClick={() => moveFileSearch(1)} disabled={fileSearchMatches.length === 0} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-muted-foreground transition hover:bg-surface-elevated hover:text-foreground disabled:opacity-35" aria-label={t('rightSidebar.nextSearchMatch')} title={`${t('rightSidebar.nextSearchMatch')} (Enter)`}><RiArrowDown size={13} /></button>
-            <button type="button" onClick={closeFileSearch} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-muted-foreground transition hover:bg-surface-elevated hover:text-foreground" aria-label={t('rightSidebar.closeFileSearch')} title={`${t('rightSidebar.closeFileSearch')} (Esc)`}><RiCloseLine size={13} /></button>
-          </div>
-        )}
-        {meta && !(isMobile && (showMarkdownPreview || showHtmlPreview)) && (
+        {searchPanel}
+        {!dialog && meta && !(isMobile && (showMarkdownPreview || showHtmlPreview)) && (
           <div className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground">
             {meta.size !== null && <span>{t('rightSidebar.byteCount', { count: meta.size.toLocaleString() })}</span>}
             {'truncated' in meta && meta.truncated && <span className="text-[color:var(--warning)]">{t('rightSidebar.previewTruncated')}</span>}
@@ -2463,7 +2509,7 @@ export function FilePreview({
         )}
         {/* Hint row — fixed height so toggling line range doesn't shift the
             file content below. */}
-        {!(isMobile && (showMarkdownPreview || showHtmlPreview)) && !isModel3dPreview && previewState.kind !== 'binary' && <div className="mt-1 flex h-4 items-center gap-2 text-[10px] text-muted-foreground/75">
+        {!dialog && !(isMobile && (showMarkdownPreview || showHtmlPreview)) && !isModel3dPreview && previewState.kind !== 'binary' && <div className="mt-1 flex h-4 items-center gap-2 text-[10px] text-muted-foreground/75">
           <span className="truncate">
             {isEdaPreview
               ? t('rightSidebar.edaPickHint')
@@ -2487,6 +2533,7 @@ export function FilePreview({
           </span>
         </div>}
       </div>
+      )}
       {/* Keep loaded resources and text state across tabs, but release live
           media/rendering surfaces while hidden. */}
       {!active && (previewState.kind === 'video' || previewState.kind === 'model3d' || previewState.kind === 'eda' || showHtmlPreview) ? null : previewState.kind === 'loading' ? (
@@ -2622,7 +2669,7 @@ export function FilePreview({
             onLightboxClose={onCloseMarkdownImageLightbox}
             onLocalLinkOpen={handleMarkdownLocalLinkOpen}
           />
-          {lineRange && floatingInsertPos && (
+          {canInsertReference && lineRange && floatingInsertPos && (
             <button
               type="button"
               onClick={insertRangeReference}
@@ -2645,6 +2692,8 @@ export function FilePreview({
             title={`${display.name} preview`}
             exitFullscreenLabel={t('rightSidebar.htmlFullscreenExit')}
             onFullscreenChange={setHtmlPreviewFullscreen}
+            onWarningsChange={dialog ? setHtmlPreviewWarnings : undefined}
+            showInlineWarnings={!dialog}
           />
         </div>
       ) : previewState.kind === 'text' ? (
@@ -2698,7 +2747,7 @@ export function FilePreview({
           ) : 'Empty file.'}
           {/* Floating insert button — anchors to the selected line so reference
               insertion stays close to the user's last tap/click on every size. */}
-          {lineRange && floatingInsertPos && (
+          {canInsertReference && lineRange && floatingInsertPos && (
             <button
               type="button"
               onClick={insertRangeReference}
@@ -2741,7 +2790,6 @@ export function RightSidebar(
     onOpen,
     push,
     pinned = false,
-    onTogglePinned,
     rightSidebarFilePreviewOpen = false,
     rightSidebarFilePreviewCloseSignal,
     onOpenRightSidebarFilePreview,
@@ -3763,6 +3811,11 @@ export function RightSidebar(
       recentCommitsAbortRef.current = null;
       setGitDetailsLoading(false);
       setBranchAuditPreviewLoading(false);
+      setCommitDiffLoading(null);
+      setRecentCommitsLoading(false);
+      setRecentCommitsLoadingMore(false);
+      // Hiding a desktop panel pauses work without discarding the user's view.
+      if (pinned) return;
       setBranchAuditPreviewError(null);
       setCommitDiff(null);
       setCommitDiffLoading(null);
@@ -3784,17 +3837,17 @@ export function RightSidebar(
       // Keep diff view mode + wrap preference across close/open so the
       // user's chosen reading mode is preserved within a session.
     }
-  }, [isMobile, isOpen, resetGitBundleLoading, setRightSearchOpen]);
+  }, [isMobile, isOpen, pinned, resetGitBundleLoading, setRightSearchOpen]);
 
   // Focus the search input whenever the search box opens, regardless of whether
   // it was opened by the header button or a global keyboard shortcut.
   useEffect(() => {
-    if (!searchOpen) return;
+    if (!searchOpen || !isOpen) return;
     const timer = setTimeout(() => {
       document.querySelector<HTMLInputElement>('input[data-right-search]')?.focus();
     }, 50);
     return () => clearTimeout(timer);
-  }, [searchOpen]);
+  }, [searchOpen, isOpen]);
 
   useEffect(() => {
     if (!isMobile) setMobileFilePreviewOpen(false);
@@ -4317,7 +4370,7 @@ export function RightSidebar(
     }, 500);
   }, [contextDraftText, draftHydrated]);
 
-  const routeReferenceText = useCallback(async (text: string, key: string, suffix?: string, source?: HTMLElement) => {
+  const routeReferenceText = useCallback(async (text: string, key: string, suffix?: string, source?: HTMLElement, reference?: ContextReference) => {
     if (!text) return false;
     setReferenceInsertFailed(false);
     if (source && !captureReferenceInsertionScope(source)()) { setReferenceInsertFailed(true); return false; }
@@ -4325,7 +4378,12 @@ export function RightSidebar(
       markReferenceInserted(key);
       return true;
     }
-    if (contextDraftEnabled) {
+    const target = sessionId ?? useTerminalStore.getState().activeSessionId;
+    if (reference && target && readSessionViewMode(target) === 'chat') {
+      const accepted = await requestReferenceInsertion(suffix ? text + suffix : text, target,
+        () => referenceMountedRef.current && target === useTerminalStore.getState().activeSessionId, source, { reference });
+      if (!accepted) { setReferenceInsertFailed(true); return false; }
+    } else if (contextDraftEnabled) {
       setContextDraftText((current) => appendContextDraft(current, text) + (suffix ?? ''));
       // 触屏设备保持静息行：不展开编辑器、不弹软键盘，由草稿坞行内闪烁反馈追加
       if (!window.matchMedia('(pointer: coarse)').matches) {
@@ -4335,7 +4393,7 @@ export function RightSidebar(
     } else {
       const session = sessionId ?? useTerminalStore.getState().activeSessionId;
       const accepted = await requestReferenceInsertion(suffix ? text + suffix : text, session,
-        () => referenceMountedRef.current && session === useTerminalStore.getState().activeSessionId, source);
+        () => referenceMountedRef.current && session === useTerminalStore.getState().activeSessionId, source, { reference });
       if (!accepted) { setReferenceInsertFailed(true); return false; }
     }
     markReferenceInserted(key);
@@ -4348,9 +4406,11 @@ export function RightSidebar(
   }, [rootPath]);
   const getReferenceLongPressHandlers = useReferenceLongPressCopy(markReferenceCopied);
 
-  const insertPathReference = useCallback((path: string, key?: string, source?: HTMLElement) => {
+  const insertPathReference = useCallback((path: string, key?: string, source?: HTMLElement, kind?: 'file' | 'directory') => {
     const absolutePath = resolveAbsoluteReferencePath(path, rootPath);
-    return routeReferenceText(buildReferenceInputText(absolutePath, rootPath), key ?? `path:${absolutePath}`, undefined, source);
+    const text = buildReferenceInputText(absolutePath, rootPath);
+    const reference: ContextReference = { kind: kind ?? (source?.closest<HTMLElement>('[data-file-tree-type]')?.dataset.fileTreeType === 'directory' ? 'directory' : 'file'), path: absolutePath, text };
+    return routeReferenceText(text, key ?? `path:${absolutePath}`, undefined, source, reference);
   }, [rootPath, routeReferenceText]);
 
   const uploadTargetRef = useRef({ sessionId, contextDraftEnabled, isOpen });
@@ -4391,11 +4451,11 @@ export function RightSidebar(
     } else await insertAndroidPath(path, sessionId, source);
   }, [contextDraftEnabled, insertPathReference, sessionId, t]);
 
-  const insertReferenceText = useCallback((text: string, key: string, source?: HTMLElement) => {
+  const insertReferenceText = useCallback((text: string, key: string, source?: HTMLElement, reference?: ContextReference) => {
     if (!text) return Promise.resolve(false);
     // 多行代码块（有 \n）插入末尾加换行，单行路径不加
     const suffix = text.includes('\n') ? '\n' : undefined;
-    return routeReferenceText(text.endsWith('\n') || text.endsWith(' ') ? text : `${text} `, key, suffix, source);
+    return routeReferenceText(text.endsWith('\n') || text.endsWith(' ') ? text : `${text} `, key, suffix, source, reference);
   }, [routeReferenceText]);
 
   const referenceRouteRef = useRef(insertReferenceText);
@@ -4413,7 +4473,7 @@ export function RightSidebar(
     const session = sessionId ?? useTerminalStore.getState().activeSessionId;
     pendingReferencesRef.current.add(key);
     return insertDirectReference(text, key, evidence, {
-      insert: (value, referenceKey) => insertReferenceText(value, referenceKey, source),
+      insert: (value, referenceKey) => insertReferenceText(value, referenceKey, source, evidence?.reference),
       upload: async (file, signal) => (await uploadFiles('/tmp', [file], signal)).files[0]?.path,
       isCurrent: () => inScope() && referenceMountedRef.current && referenceRouteRef.current === insertReferenceText && session === useTerminalStore.getState().activeSessionId,
     }).catch(() => { setReferenceInsertFailed(true); return false; })
@@ -5339,7 +5399,7 @@ export function RightSidebar(
     ) : null;
   }
 
-  function renderChangeNavigatorReference(path: string, title: string) {
+  function renderChangeNavigatorReference(path: string, title: string, kind: 'file' | 'directory' = 'file') {
     const absolutePath = resolveAbsoluteReferencePath(path, rootPath);
     const referenceKey = `path:${absolutePath}`;
     const referenceInserted = insertedReferenceKey === referenceKey;
@@ -5350,7 +5410,7 @@ export function RightSidebar(
         type="button"
         onClick={(event) => {
           event.stopPropagation();
-          insertPathReference(absolutePath, referenceKey, event.currentTarget);
+          insertPathReference(absolutePath, referenceKey, event.currentTarget, kind);
         }}
         {...getReferenceLongPressHandlers(getPathReferenceText(absolutePath), referenceKey)}
         className={`inline-flex h-6 shrink-0 items-center justify-center overflow-hidden rounded-md text-[11px] font-semibold opacity-100 transition-[max-width,padding,opacity,transform,background-color,color] active:scale-95 ${
@@ -5384,7 +5444,7 @@ export function RightSidebar(
     const directoryRoot = group.root ?? rootPath;
     if (!directoryRoot) return null;
     const absolutePath = resolveAbsoluteReferencePath(directoryPath, directoryRoot);
-    return renderChangeNavigatorReference(absolutePath, t('fileTree.insertRefTitle'));
+    return renderChangeNavigatorReference(absolutePath, t('fileTree.insertRefTitle'), 'directory');
   }
 
   function renderDiffViewTypeToggle() {
@@ -7430,7 +7490,7 @@ export function RightSidebar(
         </div>
         <button
           type="button"
-          onClick={(event) => fileTreeRoot && insertPathReference(fileTreeRoot, fileTreeRootReferenceKey ?? undefined, event.currentTarget)}
+          onClick={(event) => fileTreeRoot && insertPathReference(fileTreeRoot, fileTreeRootReferenceKey ?? undefined, event.currentTarget, 'directory')}
           disabled={!fileTreeRoot}
           {...(fileTreeRoot && fileTreeRootReferenceKey ? getReferenceLongPressHandlers(getPathReferenceText(fileTreeRoot), fileTreeRootReferenceKey) : {})}
           className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition disabled:cursor-not-allowed disabled:opacity-35 active:scale-95 ${
@@ -7872,21 +7932,6 @@ export function RightSidebar(
               if (file) void handleTemporaryImageUpload(file, event.currentTarget.closest<HTMLElement>('[data-sidebar]') ?? undefined);
             }}
           />
-          {onTogglePinned && (
-            <button
-              type="button"
-              onClick={onTogglePinned}
-              className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition active:scale-95 ${
-                pinned
-                  ? 'bg-primary/15 text-primary'
-                  : 'bg-surface-2 text-muted-foreground hover:bg-surface-elevated hover:text-foreground'
-              }`}
-              aria-label={pinned ? t('sidebar.unpinSidebar') : t('sidebar.pinSidebar')}
-              title={pinned ? t('sidebar.unpinSidebar') : t('sidebar.pinSidebar')}
-            >
-              {pinned ? <RiPinOff size={14} /> : <RiPin size={14} />}
-            </button>
-          )}
           <div ref={headerMenuRef} className="relative shrink-0">
             <button
               type="button"
@@ -7957,17 +8002,6 @@ export function RightSidebar(
                   {uploading ? <RiLoader size={14} className="animate-spin text-muted-foreground" /> : <RiImagePlus size={14} className="text-muted-foreground" />}
                   <span>{t('rightSidebar.insertLocalImage')}</span>
                 </button>
-                {onTogglePinned && (
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => { setHeaderMenuOpen(false); onTogglePinned(); }}
-                    className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left transition ${pinned ? 'text-primary hover:bg-primary/10' : 'text-foreground hover:bg-surface-2'}`}
-                  >
-                    {pinned ? <RiPinOff size={14} /> : <RiPin size={14} className="text-muted-foreground" />}
-                    <span>{pinned ? t('sidebar.unpinSidebar') : t('sidebar.pinSidebar')}</span>
-                  </button>
-                )}
                 {pinned && (
                   <div className="mt-1 flex items-center gap-2 border-t border-border/15 px-1.5 pt-1.5" role="group" aria-label={t('rightSidebar.layoutMode')}>
                     <div className="shrink-0 pl-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
@@ -8002,14 +8036,8 @@ export function RightSidebar(
               </div>
             )}
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-2 text-muted-foreground transition hover:bg-destructive/20 hover:text-destructive active:scale-95"
-            aria-label={t('rightSidebar.close')}
-          >
-            <RiCloseLine size={14} />
-          </button>
+          <SidebarVisibilityButton side="right" expanded onClick={onClose}
+            className="h-8 w-8 active:scale-95" />
         </div>
 
         {searchOpen && (

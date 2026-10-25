@@ -6,15 +6,15 @@ import { fileURLToPath } from 'node:url';
 export default defineConfig({
   plugins: [chatUIAdapter()],
   cacheDir: 'node_modules/.vite/keyboard-layout-tests',
-  resolve: { alias: { 'node:diagnostics_channel': fileURLToPath(new URL('./src/lib/shims/diagnosticsChannel.ts', import.meta.url)) } },
+  resolve: { dedupe: ['react', 'react-dom'], alias: { 'node:diagnostics_channel': fileURLToPath(new URL('./src/lib/shims/diagnosticsChannel.ts', import.meta.url)) } },
   optimizeDeps: {
     include: ['react', 'react-dom', 'react-dom/client', 'react/jsx-runtime', 'zustand/react/shallow',
       '@xterm/xterm', '@xterm/addon-fit', '@xterm/addon-webgl', '@xterm/addon-web-links',
       '@xterm/addon-unicode11', '@xterm/addon-search', '@xterm/addon-serialize', '@xterm/addon-image',
-      '@xterm/addon-ligatures', '@xterm/addon-progress', 'browser-haptic', 'qrcode'],
+      '@xterm/addon-ligatures', '@xterm/addon-progress', 'browser-haptic', 'qrcode', '@dnd-kit/core', '@dnd-kit/sortable', '@dnd-kit/utilities'],
   },
   test: {
-    include: ['src/lib/components/chat/chatFullUI.browser.tsx', 'src/lib/components/chat/previewSafeArea.browser.tsx', 'src/lib/components/chat/chatViewport.browser.tsx', 'src/lib/components/chat/nativeChatViewport.browser.tsx', 'src/lib/components/terminal/nativeTerminalInput.browser.tsx', 'src/lib/components/terminal/desktopTerminalInput.browser.tsx', 'src/lib/components/layout/keyboardPanelLayout.browser.tsx'],
+    include: ['src/lib/components/chat/chatFullUI.browser.tsx', 'src/lib/components/chat/previewSafeArea.browser.tsx', 'src/lib/components/chat/chatViewport.browser.tsx', 'src/lib/components/chat/nativeChatViewport.browser.tsx', 'src/lib/components/terminal/nativeTerminalInput.browser.tsx', 'src/lib/components/terminal/desktopTerminalInput.browser.tsx', 'src/lib/components/layout/keyboardPanelLayout.browser.tsx', 'src/lib/components/layout/serviceWorkspaceLayout.browser.tsx', 'src/lib/components/layout/toolbarCustomization.browser.tsx'],
     browser: {
       enabled: true,
       headless: true,
@@ -22,6 +22,31 @@ export default defineConfig({
       viewport: { width: 390, height: 844 },
       instances: [{ browser: 'chromium', provider: playwright({ launchOptions: { channel: 'chrome' }, contextOptions: { hasTouch: true } }) }],
       commands: {
+        async toolbarActionDrag(context, from: string, to: string, touch = false) {
+          const handle = context.iframe.locator(`[data-toolbar-action-key="${from}"] button`).first();
+          const target = context.iframe.locator(`[data-toolbar-action-key="${to}"]`);
+          const start = await handle.boundingBox(), end = await target.boundingBox();
+          if (!start || !end) throw new Error('Missing toolbar drag target');
+          const x = start.x + start.width / 2, y = start.y + start.height / 2;
+          const endX = end.x + end.width / 2, endY = end.y + end.height / 2;
+          if (!touch) {
+            await context.page.mouse.move(x, y); await context.page.mouse.down();
+            await context.page.mouse.move(endX, endY, { steps: 16 }); await context.page.mouse.up();
+            // dnd-kit briefly captures the synthetic click after a pointer drop.
+            await context.page.waitForTimeout(80);
+            return;
+          }
+          const session = await context.context.newCDPSession(context.page);
+          try {
+            await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+            await context.page.waitForTimeout(180);
+            for (let step = 1; step <= 12; step++) {
+              await session.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x + (endX - x) * step / 12, y: y + (endY - y) * step / 12 }] });
+              await context.page.waitForTimeout(16);
+            }
+            await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+          } finally { await session.detach(); }
+        },
         async desktopTerminalPointer(context, action: 'click' | 'right-click' | 'drag' | 'wheel') {
           const box = await context.iframe.locator('.xterm-screen').boundingBox();
           if (!box) throw new Error('Missing terminal screen');

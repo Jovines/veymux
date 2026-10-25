@@ -1,5 +1,6 @@
 import { LoadingSpinner as LoaderCircle } from '../components/ui/Loading';
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { getWorkspaceHost, WORKSPACE_QUERY, type WorkspaceSnapshot, type WorkspaceHost, type ServiceWorkspace } from './workspaceHost';
 
 import { syncThemeColorMeta } from '../utils/themeColorMeta';
@@ -26,16 +27,17 @@ function WorkspaceFrame({ host, item, visible, active }: { host: WorkspaceHost; 
       host.attach(item.key, null);
     };
   }, [host, item.key]);
-  return <iframe ref={frame} title={item.service?.label || '服务工作区'}
+  return createPortal(<iframe ref={frame} title={item.service?.label || '服务工作区'}
     data-workspace-key={item.key}
     src={`/workspace.html?${WORKSPACE_QUERY}=${encodeURIComponent(item.key)}`}
     className="fixed inset-0 w-full border-0 bg-[var(--chrome-bg)]"
-    // Each workspace applies its own safe areas and keyboard layout. Anchor it
-    // to the physical viewport, outside the entry root's safe-area padding.
+    // Each workspace applies its own safe areas and keyboard layout. Native
+    // iOS uses absolute positioning so the frame follows page pan; a body
+    // portal keeps its containing block outside the padded entry root/host.
     style={{ height: 'var(--app-native-frame-height, var(--app-base-vh, 100%))', visibility: visible ? 'visible' : 'hidden', pointerEvents: active ? 'auto' : 'none' }}
     // SecureAccessGate attaches after installing its activation listener.
     // iframe load can precede that effect and swallow the pending sidebar intent.
-    aria-hidden={!active} tabIndex={active ? 0 : -1} allow="clipboard-read; clipboard-write; fullscreen" />;
+    aria-hidden={!active} tabIndex={active ? 0 : -1} allow="clipboard-read; clipboard-write; fullscreen" />, document.body);
 }
 
 export function ServiceWorkspaceHost({ children }: { children: ReactNode }) {

@@ -28,6 +28,7 @@ export async function createBrowserTerminal(
  */
 export class TerminalGeometry {
   private measured: TerminalSize | null = null;
+  private layout: string | null = null;
 
   constructor(
     private readonly terminal: Terminal,
@@ -52,8 +53,14 @@ export class TerminalGeometry {
     const terminal = this.terminal;
     const before = { cols: terminal.cols, rows: terminal.rows };
     const effectivePhase = this.measured ? phase : 'initialize';
+    // DOM renderer derives its CSS cell width from a rounded canvas / cols.
+    // Resizing can therefore change proposeDimensions by one column even
+    // though neither the container nor the actual font cell changed.
+    const cell = terminal.dimensions?.device.cell;
+    const layout = cell ? JSON.stringify([rect.width, rect.height, cell.width, cell.height, window.devicePixelRatio]) : null;
+    const unchangedLayout = layout !== null && layout === this.layout;
     const hysteresis = decideFitHysteresis({
-      reason: effectivePhase === 'initialize' ? 'init-fit' : effectivePhase === 'reveal' ? 'layout-visible' : reason,
+      reason: unchangedLayout ? 'stable-layout' : effectivePhase === 'initialize' ? 'init-fit' : effectivePhase === 'reveal' ? 'layout-visible' : reason,
       currentCols: before.cols, currentRows: before.rows,
       proposedCols: proposed.cols, proposedRows: proposed.rows,
     });
@@ -75,6 +82,7 @@ export class TerminalGeometry {
     if (repairedBeforeResize || repairedAfterResize) terminal.refresh(0, terminal.rows - 1);
     const next = { cols: terminal.cols, rows: terminal.rows };
     this.measured = next;
+    this.layout = layout;
     return {
       reason, backend: 'xterm', width: Math.round(rect.width), height: Math.round(rect.height),
       before, proposed, next, hysteresis, repairedBeforeResize, repairedAfterResize,

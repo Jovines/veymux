@@ -114,7 +114,7 @@ export function formatCollaborationDelivery(input: {
   for (const message of input.messages) {
     const sourceSession = message.fromSessionId ? sessionsById.get(message.fromSessionId) : null;
     const source = message.fromSessionId
-      ? sanitizeCollaborationName(sourceSession?.name ?? message.fromSessionId)
+      ? sanitizeCollaborationName(sourceSession?.name ?? (message.direct ? message.directSourceName : undefined) ?? message.fromSessionId)
       : message.integrationOrigin ? message.integrationOrigin.source === 'session-chat' ? '网页对话用户' : `后台接入 ${sanitizeCollaborationName(message.integrationOrigin.integrationId, 80)}` : '用户';
     const token = tokens.get(message.id) ?? message.id;
     const bytes = Buffer.byteLength(message.content);
@@ -129,9 +129,9 @@ export function formatCollaborationDelivery(input: {
     const fannedNames = (message.fanOutIds ?? [])
       .map((sessionId) => sanitizeCollaborationName(sessionsById.get(sessionId)?.name ?? sessionId));
     blocks.push(formatCollaborationMessage({ ...message, content: body }, source, fannedNames, fence, token));
-    if (message.integrationOrigin?.source === 'session-chat') blocks.push(`此消息来自用户的普通对话界面。请自然地与用户交流，并用 td collab --session ${input.targetSessionId} reply ${token} \"答复正文\" --response-kind result --idempotency-key <稳定唯一key> --text 将面向用户的答复写回对话。终端中的普通输出不会成为聊天回复。需要补充问题时也使用 reply；不要仅在终端打印答案。可使用 Markdown、卡片、表格、图表、交互表单、图片、文件预览和链接等表达形式，自行选择合适的表达方式。组件、交互及提交格式可运行 td collab ui --text 查看，结构化回复用 --file 和 --metadata 提交。`);
+    if (message.integrationOrigin?.source === 'session-chat') blocks.push(`此消息来自用户的普通对话界面。请自然交流，用 td collab --session ${input.targetSessionId} reply ${token} \"答复正文\" --response-kind result --idempotency-key <稳定唯一key> --text 将答复写回对话，勿仅打印到终端。必要澄清也用 reply；有明确选项时优先用交互组件，保留自由输入，勿重复提问。可使用 Markdown、卡片、表格、图表、交互表单、图片、文件预览和链接，自行选择合适的表达方式。组件与提交格式见 td collab ui --text，结构化回复用 --file 和 --metadata 提交。`);
     else if (message.integrationOrigin) blocks.push(`此消息来自后台程序，使用原消息 id 回复：td collab --session ${input.targetSessionId} reply ${token} "答复正文" --response-kind result --idempotency-key <稳定唯一key> --text\n需要时用 --response-kind ack|progress 明确回复收到或进展；result 提交结果。回复持久保存为 stored 并主动推送给后台，不创建看板任务，不代表用户验收。此回复不会进入普通对话界面，不要使用普通对话的结构化展示协议。`);
-    if (message.integrationOrigin?.source === 'session-chat' && message.content.includes('```termdock-context\n')) blocks.push(`正文末尾的 termdock-context 保存附件和协作提及：attachments 中的 path 是当前服务上的文件路径，reference 对应正文里的附件编号标签（如【图片1】）；mentions 中的 groupId / sessionId 是用户选择的协作组与成员。按用户正文决定是否联系，使用 td collab --session ${input.targetSessionId} send <sessionId> "消息内容" --group <groupId> --text。提及仅提供目标信息，不代表已经发送、投递或收到回复。`);
+    if (message.integrationOrigin?.source === 'session-chat' && message.content.includes('```termdock-context\n')) blocks.push(`正文末尾的 termdock-context 保存附件和协作提及：attachments 中的 path 是当前服务上的文件路径，reference 对应正文里的附件编号标签（如【图片1】）；mentions 中的 sessionId 是用户选择的会话，groupId 非空时附带协作组上下文。按用户正文决定是否联系，组内使用 td collab --session ${input.targetSessionId} send <sessionId> "消息内容" --group <groupId> --text；groupId 为空时省略 --group，直接联系该会话，不加入协作组。提及仅提供目标信息，不代表已经发送、投递或收到回复。`);
   }
 
   // The shell header names the group only when every block belongs to one;
@@ -150,6 +150,7 @@ export function formatCollaborationDelivery(input: {
   const educated = input.showRoutingHelp !== false;
   const education: string[] = [];
   if (educated) {
+    education.push('优先联系协作组内成员；用户明确提及或任务确有必要时，可用 td collab send <会话ID> "消息内容" --text 联系本服务或已认证远端服务的组外会话。跨服务直接联系需双方服务均支持。直接联系不授予成员列表、终端查看或控制权限；不要无必要地联系组外会话。');
     const rules = singleGroup?.instructions ?? input.messages.find((message) => message.instructions)?.instructions;
     if (rules?.text) {
       const age = collaborationRulesAge(rules.updatedAt, now);

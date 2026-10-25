@@ -1,4 +1,5 @@
 import { serializeTerminalInput, type TerminalInputGuard, type PromptWriteProgress } from './terminalInput.js';
+import { probeTerminalEcho } from './terminalEchoProbe.js';
 
 /**
  * Fold a prompt into the single-channel form both tmux and agent TUIs expect:
@@ -22,11 +23,16 @@ export function buildBracketedPasteBytes(prompt: string): string {
 }
 
 /** Serialize TD prompt pairs per PTY. Success only records terminal writes. */
-export function writeBracketedPrompt(target: { write: (data: string) => void }, prompt: string, assertCurrent?: TerminalInputGuard, progress?: PromptWriteProgress): Promise<void> {
+export function writeBracketedPrompt(target: { write: (data: string) => void }, prompt: string, assertCurrent?: TerminalInputGuard, progress?: PromptWriteProgress, readEcho?: () => Promise<string>): Promise<void> {
   progress?.('queue_wait');
   return serializeTerminalInput(target, async () => {
     progress?.('queue_acquired');
     assertCurrent?.('queue_acquired');
+    if (readEcho) await probeTerminalEcho({ read: readEcho, assertCurrent, write: async header => {
+      progress?.('paste_attempted');
+      target.write(buildBracketedPasteBytes(header));
+    } });
+    assertCurrent?.('before_paste');
     progress?.('paste_attempted');
     target.write(buildBracketedPasteBytes(prompt));
     progress?.('paste_written');

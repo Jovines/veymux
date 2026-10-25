@@ -1,4 +1,4 @@
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { createServer } from 'node:https';
 import { once } from 'node:events';
 import { execFileSync } from 'node:child_process';
@@ -15,8 +15,9 @@ import { attachRegisteredDirectTargets } from '../federation/directRoutes.js';
 import { CollaborationPeerTransport, connectCollaborationRpc, remoteSession, type CollaborationNode } from './collaborationPeerTransport.js';
 import { CollaborationStore } from './collaborationStore.js';
 const cleanups: Array<() => void> = [];
-afterEach(() => { for (const close of cleanups.splice(0).reverse()) close(); });
+afterEach(() => { for (const close of cleanups.splice(0).reverse()) close(); vi.unstubAllEnvs(); });
 async function fixture() {
+  vi.stubEnv('TERMDOCK_PASSWORD', 'peer-wire-test-password');
   const dir = mkdtempSync(join(tmpdir(), 'td-peer-wire-')); cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
   execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1', '-keyout', join(dir, 'key.pem'), '-out', join(dir, 'ca.pem'), '-subj', '/CN=localhost', '-addext', 'subjectAltName=IP:127.0.0.1,DNS:localhost'], { stdio: 'ignore' });
   const ca = readFileSync(join(dir, 'ca.pem')), key = readFileSync(join(dir, 'key.pem'));
@@ -30,8 +31,11 @@ async function fixture() {
   const server = createServer({ cert: ca, key }, (req, res) => {
     if (req.url === '/onboarding/ca.crt') res.end(ca); else res.writeHead(404).end();
   });
-  const sockets = new WebSocketServer({ server, path: '/api/federation/secure' });
-  sockets.on('connection', socket => void runtime.accept(socket));
+  const sockets = new WebSocketServer({ server });
+  sockets.on('connection', (socket, request) => {
+    if (!['/api/federation/secure', '/api/federation/relay-target'].includes(request.url ?? '')) { socket.close(1008); return; }
+    void runtime.accept(socket, { relayed: request.url === '/api/federation/relay-target' });
+  });
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
   cleanups.push(() => { for (const socket of sockets.clients) socket.terminate(); sockets.close(); server.close(); });
   const address = server.address(); if (!address || typeof address === 'string') throw new Error('address');

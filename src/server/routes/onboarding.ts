@@ -9,7 +9,7 @@ export interface OnboardingOptions {
 
 function sendCaCertificate(res: express.Response, caCertPath: string): void {
   res.setHeader('Content-Type', 'application/x-x509-ca-cert');
-  res.setHeader('Content-Disposition', 'attachment; filename="rootCA.pem"');
+  res.setHeader('Content-Disposition', 'attachment; filename="termdock-ca.crt"');
   res.send(fs.readFileSync(caCertPath));
 }
 

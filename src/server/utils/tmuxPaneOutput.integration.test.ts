@@ -63,3 +63,54 @@ it.skipIf(process.platform === 'win32')('ignores attach/reconnect/resize repaint
     await run(['kill-server']).catch(() => {}); await rm(root, { recursive: true, force: true });
   }
 }, 10_000);
+
+it.skipIf(process.platform === 'win32')('detects a real 1 Hz terminal countdown with no browser, hover, scrolling or input', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'td-countdown-output-'));
+  const socket = join(root, 'tmux.sock');
+  const run = async (args: string[]) => (await exec('tmux', ['-S', socket, ...args], { timeout: 5000 })).stdout;
+  const script = join(root, 'countdown.mjs');
+  const transitions: boolean[] = [];
+  const activity = new TerminalOutputActivity(active => transitions.push(active));
+  let observer: TmuxPaneOutputObserver | undefined;
+  try {
+    await writeFile(script, "let n=0; setInterval(()=>{if(n<5)process.stdout.write('\\rCOUNTDOWN '+(++n));},1000);\n");
+    await run(['-f', '/dev/null', 'new-session', '-d', '-s', 'countdown', '-x', '120', '-y', '40', `${process.execPath} ${script}`]);
+    const grid = (await run(['display-message', '-p', '-t', 'countdown:0', '#{pane_width}x#{pane_height}'])).trim();
+    observer = new TmuxPaneOutputObserver('tmux', '=countdown', () => activity.record(), () => {}, (_binary, args, options) => spawn('tmux', ['-S', socket, ...args], options));
+    observer.start();
+    await vi.waitFor(() => expect(transitions).toEqual([true]), { timeout: 3500 });
+    await vi.waitFor(() => expect(transitions).toEqual([true, false]), { timeout: 7000 });
+    expect((await run(['display-message', '-p', '-t', 'countdown:0', '#{pane_width}x#{pane_height}'])).trim()).toBe(grid);
+  } finally {
+    activity.dispose(); observer?.dispose(); await run(['kill-server']).catch(() => {});
+    await rm(root, { recursive: true, force: true });
+  }
+}, 12_000);
+
+it.skipIf(process.platform === 'win32')('observes native working and idle status that tmux strips from display output without requiring animated output', async () => {
+  const { ProgramStatusTracker } = await import('../shared/programStatus.js');
+  const root = await mkdtemp(join(tmpdir(), 'td-native-status-')), socket = join(root, 'tmux.sock');
+  const run = async (args: string[]) => (await exec('tmux', ['-S', socket, ...args], { timeout: 5000 })).stdout;
+  const script = join(root, 'status.mjs'), tracker = new ProgramStatusTracker();
+  const transitions: boolean[] = [], displayed: string[] = [];
+  let observer: TmuxPaneOutputObserver | undefined, display: IPty | undefined;
+  try {
+    await writeFile(script, "process.stdout.write('READY\\n'); setTimeout(()=>process.stdout.write('\\x1b]7501;state=working:app=fixture\\x1b\\\\'),800); setTimeout(()=>process.stdout.write('\\x1b]7501;state=idle:app=fixture\\x1b\\\\'),2500); setInterval(()=>{},1000);\n");
+    await run(['-f', '/dev/null', 'new-session', '-d', '-s', 'native', '-x', '120', '-y', '40', `${process.execPath} ${script}`]);
+    const env = { ...process.env }; delete env.TMUX; delete env.TMUX_PANE;
+    display = spawnPty('tmux', ['-S', socket, 'attach-session', '-f', 'ignore-size', '-t', '=native'], { name: 'xterm-256color', cols: 120, rows: 40, env });
+    display.onData(data => displayed.push(data));
+    observer = new TmuxPaneOutputObserver('tmux', '=native', () => {}, () => {}, (_binary, args, options) => spawn('tmux', ['-S', socket, ...args], options), (sequence, pane) => {
+      const result = tracker.feed(sequence, `pane${pane.slice(1)}`);
+      if (result.changed) transitions.push(result.progress?.state === 'indeterminate');
+    });
+    observer.start();
+    await vi.waitFor(() => expect(transitions).toEqual([true]), { timeout: 2000 });
+    expect(tracker.activeApps()).toEqual(['fixture']);
+    await vi.waitFor(() => expect(transitions).toEqual([true, false]), { timeout: 3000 });
+    expect(displayed.join('')).not.toContain('7501');
+    expect(tracker.activeApps()).toEqual([]);
+  } finally {
+    observer?.dispose(); display?.kill(); await run(['kill-server']).catch(() => {}); await rm(root, { recursive: true, force: true });
+  }
+}, 7000);

@@ -10,6 +10,21 @@ const previousConnected = Object.getOwnPropertyDescriptor(process, 'connected');
 beforeEach(() => { vi.stubEnv('TERMDOCK_SUPERVISED', '1'); Object.defineProperty(process,'connected',{value:true,configurable:true}); });
 afterEach(() => { vi.unstubAllEnvs(); if(previousConnected) Object.defineProperty(process,'connected',previousConnected); else Reflect.deleteProperty(process,'connected'); });
 describe('TermdockAutoUpdateManager', () => {
+  it('preflights an installed update without requesting a restart and verifies again at confirmation', async () => {
+    const requestRestart = vi.fn(), verifyInstalled = vi.fn(), verifyRestartEntry = vi.fn();
+    const manager = new TermdockAutoUpdateManager({
+      currentVersion: '1.0.0', broadcast: vi.fn(), requestRestart, verifyInstalled, verifyRestartEntry,
+      updateRunner: async () => ({ status: 'updated', currentVersion: '1.0.0', latestVersion: '1.0.1', source: 'official' }),
+    });
+    await manager.checkNow();
+    expect(manager.prepareRestart('1.0.1').status).toBe('ready');
+    expect(requestRestart).not.toHaveBeenCalled();
+    expect(verifyRestartEntry).toHaveBeenCalledOnce();
+    verifyInstalled.mockImplementation(() => { throw new Error('Installation changed after preflight'); });
+    expect(() => manager.confirmRestart('1.0.1')).toThrow('Installation changed after preflight');
+    expect(requestRestart).not.toHaveBeenCalled();
+    expect(manager.getState().status).toBe('error');
+  });
   it('rejects stale reminders and confirmations for a different version without restarting', async () => {
     const requestRestart = vi.fn();
     const manager = new TermdockAutoUpdateManager({

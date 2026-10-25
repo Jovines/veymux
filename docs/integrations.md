@@ -1203,6 +1203,15 @@ td collab --session <目标自身ID> rebind --pane <当前pane-ID> --json
 时仍同步错误，不因 pending 状态相同而隐去新的阻断。运行服务未采集过的历史差异
 不能由新版本凭空补出；`worker.started` 等字段用于确认当前调度事实。
 
+普通 Linux 精确 resume 会话也可通过 `foreground-resume` 实时证明恢复归属：
+核验内核进程起始身份、前台组、控制终端、pane 进程祖先及精确原会话 ID，排除
+第二个终端/前台组对同一会话的当前归属；同组包装器不算重复。恢复连续核验两次，
+粘贴和回车前在同一输入队列再次检查。集成会话的 writer-lock 要求保持不变。
+本机消息 `delivery.write_stage` 记录终端写入阶段；重启后已确认 `submit_written`
+补记 delivered，`not_started` 可自动重试，其余已尝试阶段（以及无阶段的旧在途记录）
+返回 `DELIVERY_OUTCOME_UNCONFIRMED` 并暂停原队列，不重放正文、不补回车、不猜测已读。
+该字段仅描述本机终端调用，跨服务网络重试次数不能当作终端写入证据。
+
 本地/远端目标依据稳定 `remote:` 地址区分，组是否 federated 不影响组内本地消息进入
 本地 worker。后台 worker 在会话登记加载完成后启动，不等待额外 PTY adoption 或
 tmux 元数据 backfill；订阅消息存储变化并保留定时重试。缺绑定/进程/权限时仍保留原

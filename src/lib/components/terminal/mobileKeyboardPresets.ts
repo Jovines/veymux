@@ -17,9 +17,28 @@ export interface ToolbarPresetDefinition {
   showOnDesktop?: boolean;
 }
 
+export interface ToolbarConfigurationTarget {
+  presetId: string;
+  mode: ToolbarPresetMode;
+  presentation: 'mobile' | 'desktop-actions';
+  select: (mode: ToolbarPresetMode) => void;
+}
+
+export function getToolbarRuntimeActions(preset: ToolbarPresetDefinition): MobileToolbarAction[] {
+  return preset.actions.filter(action => action.sequence.trim().length > 0)
+    .map((action, index) => ({ ...action, label: getToolbarActionLabel(action, index) }));
+}
+
 export interface ToolbarPresetOption {
   id: ToolbarPresetMode;
   label: string;
+}
+
+/** Friendly built-in names without rewriting user labels or stored identities. */
+export function getToolbarPresetDisplayName(preset: ToolbarPresetDefinition, baseName: string): string {
+  if (preset.id === 'default' && preset.label === 'Base') return baseName;
+  if (preset.id === 'opencode' && preset.label === 'Code') return 'OpenCode';
+  return preset.label;
 }
 
 export function getToolbarActionLabel(action: MobileToolbarAction, index: number): string {
@@ -212,11 +231,10 @@ export function normalizeProgramMatchEntry(input: unknown): string | null {
 }
 
 export function decodeToolbarSequence(input: string): string {
-  return input
-    .replace(/\\u([0-9a-fA-F]{4})/g, (_match, hex: string) => String.fromCharCode(Number.parseInt(hex, 16)))
-    .replace(/\\r/g, '\r')
-    .replace(/\\n/g, '\n')
-    .replace(/\\t/g, '\t');
+  return input.replace(/\\(u[0-9a-fA-F]{4}|[rnt\\])/g, (_match, escape: string) => {
+    if (escape.startsWith('u')) return String.fromCharCode(Number.parseInt(escape.slice(1), 16));
+    return ({ r: '\r', n: '\n', t: '\t', '\\': '\\' } as Record<string, string>)[escape];
+  });
 }
 
 // Multi-segment delimiter for toolbar sequences. Buttons whose `sequence`
@@ -356,7 +374,7 @@ export function splitButtonsIntoRows<T>(items: T[], rowLayout: number[]): Array<
   while (cursor < items.length) {
     const columns = sanitizedLayout[Math.min(rowIndex, sanitizedLayout.length - 1)] ?? 3;
     rows.push({
-      columns,
+      columns: Math.min(columns, items.length - cursor),
       items: items.slice(cursor, cursor + columns),
     });
     cursor += columns;
