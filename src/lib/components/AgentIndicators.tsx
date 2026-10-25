@@ -30,7 +30,7 @@ import { useTerminalStore } from '../stores/useTerminalStore';
 import { useSidebarStore } from '../stores/useSidebarStore';
 import { useViewportKeyboardState } from '../hooks/useViewportKeyboardState';
 import { useAgentIconSource } from '../hooks/useAgentIconSource';
-import { getNextAttentionSessionId, shouldShowTuiLoading, sessionNeedsReview } from '../utils/agentAttention';
+import { getNextAttentionSessionId, isChatActivityEnabled, shouldShowTuiLoading, sessionNeedsReview } from '../utils/agentAttention';
 import { switchToAttentionSession } from '../utils/sessionAttentionNavigation';
 import {
   MOBILE_ATTENTION_EDGE_GAP_PX,
@@ -343,7 +343,7 @@ export function AgentTabIcon({
     );
   }
 
-  if (shouldShowTuiLoading(state)) {
+  if (isChatActivityEnabled(state?.chatAttention) && shouldShowTuiLoading(state)) {
     return runningIcon(state?.tuiProgress?.message ?? state?.tuiProgress?.app);
   }
   if (state?.tuiProgress?.source === 'osc7501') {
@@ -427,10 +427,11 @@ export function AgentSessionDot({
       />
     );
   }
-  const nativeLoading = shouldShowTuiLoading({ agentStatus: status, agentNeedsReview: needsReview, tuiProgress: progress });
+  const chatActivity = isChatActivityEnabled(chatAttention);
+  const nativeLoading = chatActivity && shouldShowTuiLoading({ agentStatus: status, agentNeedsReview: needsReview, tuiProgress: progress });
   // Raw output is a chat activity fallback. A terminal printing logs does
   // not establish Agent work; terminal mode keeps explicit status signals.
-  if ((chatAttention?.mode && outputActive) || nativeLoading) return <span data-terminal-output-activity className="absolute right-0.5 top-0.5 h-2.5 w-2.5 rounded-full bg-[var(--success)] ring-2 ring-surface motion-safe:animate-pulse" title={nativeLoading ? progress?.message ?? t('agent.aiRunning') : t('agent.recentActivity')} />;
+  if ((chatActivity && outputActive) || nativeLoading) return <span data-terminal-output-activity className="absolute right-0.5 top-0.5 h-2.5 w-2.5 rounded-full bg-[var(--success)] ring-2 ring-surface motion-safe:animate-pulse" title={nativeLoading ? progress?.message ?? t('agent.aiRunning') : t('agent.recentActivity')} />;
   return null;
 }
 

@@ -62,6 +62,7 @@ export interface TerminalStore {
   clearAgentNeedsReview: (sessionId: string) => void;
   setSessionChatIndex: (sessionId: string, index: SessionChatIndex) => void;
   setSessionChatMode: (sessionId: string, mode: boolean) => void;
+  setSessionChatHasMessages: (sessionId: string, hasMessages: boolean) => void;
   markChatMessagesViewed: (sessionId: string, ids: string[]) => void;
   setConnecting: (sessionId: string, isConnecting: boolean) => void;
   recordTerminalOutput: (sessionId: string) => void;
@@ -656,7 +657,7 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
       const unreadIds = index.messageIds.filter(id => !seen.has(id));
       if (JSON.stringify(attention?.index) === JSON.stringify(index) && JSON.stringify(attention?.unreadIds) === JSON.stringify(unreadIds)) return state;
       const sessions = new Map(state.sessions);
-      sessions.set(sessionId, { ...existing, chatAttention: { mode: attention?.mode ?? false, index, unreadIds } });
+      sessions.set(sessionId, { ...existing, chatAttention: { ...attention, mode: attention?.mode ?? false, index, unreadIds } });
       return { sessions };
     });
     if (shared) {
@@ -676,6 +677,15 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
     if (existing.chatAttention?.mode === mode) return state;
     const sessions = new Map(state.sessions);
     sessions.set(sessionId, { ...existing, chatAttention: { ...existing.chatAttention, mode, unreadIds: existing.chatAttention?.unreadIds ?? [] } });
+    return { sessions };
+  }),
+
+  setSessionChatHasMessages: (sessionId, hasMessages) => set(state => {
+    const existing = state.sessions.get(sessionId) ?? { ...createEmptySessionState(sessionId), isConnecting: false };
+    if (existing.chatAttention?.hasMessages === hasMessages) return state;
+    const sessions = new Map(state.sessions);
+    sessions.set(sessionId, { ...existing, chatAttention: { ...existing.chatAttention, mode: existing.chatAttention?.mode ?? false,
+      unreadIds: existing.chatAttention?.unreadIds ?? [], hasMessages } });
     return { sessions };
   }),
 

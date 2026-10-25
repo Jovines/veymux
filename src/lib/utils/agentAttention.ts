@@ -1,6 +1,11 @@
 import type { AgentStatus, TuiProgressReport } from '../terminal/types';
 import type { SessionChatAttention } from '../../server/shared/sessionChatAttention';
 
+/** Chat-specific activity falls back to Terminal rules until content exists. */
+export function isChatActivityEnabled(attention?: SessionChatAttention): boolean {
+  return !!attention?.mode && (attention.hasMessages ?? !!attention.index?.messageIds.length);
+}
+
 export function sessionNeedsReview(state?: { agentNeedsReview?: boolean; chatAttention?: SessionChatAttention }): boolean {
   const chat = state?.chatAttention;
   return !!chat?.unreadIds.length || (chat?.mode && chat.index ? false : !!state?.agentNeedsReview);

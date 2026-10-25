@@ -7,6 +7,16 @@ vi.mock('../federation/browserIntegration', () => ({ savedConnection: () => ({ t
 const index = { conversationId: 'conversation', messageIds: ['a', 'b'] };
 const store = () => useTerminalStore.getState();
 const attention = () => store().sessions.get('chat')!.chatAttention!;
+it('preserves conversation presence through index refreshes, mode switches and backend rebinding', () => {
+  store().setSessionChatMode('chat', true); store().setSessionChatHasMessages('chat', true);
+  store().setSessionChatIndex('chat', { conversationId: 'chat', messageIds: [] });
+  expect(attention().hasMessages).toBe(true);
+  store().setSessionChatMode('chat', false);
+  store().setTerminalSession('chat', { sessionId: 'new-backend', cols: 80, rows: 24 });
+  expect(attention()).toMatchObject({ mode: false, hasMessages: true });
+  store().setSessionChatHasMessages('chat', false);
+  expect(attention()).toMatchObject({ mode: false, hasMessages: false });
+});
 afterEach(() => { clearChatViewingUpdates(); vi.unstubAllGlobals(); store().clearAllTerminalSessions(); localStorage.clear(); vi.restoreAllMocks(); service.id = 'service-a'; });
 it('tracks individual unseen replies, without treating an exposed later reply as earlier replies viewed', () => {
   store().setSessionChatMode('chat', true); store().setSessionChatIndex('chat', index);

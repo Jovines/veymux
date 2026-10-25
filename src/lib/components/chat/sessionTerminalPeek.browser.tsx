@@ -81,7 +81,7 @@ it.each([1280, 390])('checks input once after processing and offers the retained
   expect(backend.connect).toHaveBeenCalledTimes(1); expect(checks).toHaveLength(1);
 });
 
-it.each([1280, 390])('checks idle conversation entries when selecting and returning to retained sessions at width %i', async width => {
+it.each([1280, 390])('checks nonempty idle conversation entries when selecting and returning to retained sessions at width %i', async width => {
   await page.viewport(width, 900); await commands.peekMove('html', .99, .005);
   vi.spyOn(document, 'hasFocus').mockReturnValue(true);
   const ids = [`entry-a-${Date.now()}`, `entry-b-${Date.now()}`];
@@ -97,7 +97,8 @@ it.each([1280, 390])('checks idle conversation entries when selecting and return
       return Response.json({ status: 'ready' });
     }
     if (path.includes('/view-mode')) return Response.json({ mode: 'chat', chatEligibility: { allowed: true, program: 'codex' } });
-    return Response.json({ agentAvailable: true, agent: { displayName: 'Codex', slug: 'codex' }, replyPending: false, messages: [] });
+    return Response.json({ agentAvailable: true, agent: { displayName: 'Codex', slug: 'codex' }, replyPending: false,
+      messages: [{ id: 'entry-user', role: 'user', content: '已有对话', createdAt: 1, status: 'delivered' }] });
   }));
   function Sessions() {
     const [selected, select] = useState(ids[0]);

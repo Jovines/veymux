@@ -8,10 +8,65 @@ import { resetCsrfTokenCache } from '../../terminal/api';
 import { SessionChatView } from './SessionChatView';
 import { beginSessionChatStartup, finishSessionChatStartup } from './sessionChatStartup';
 import { useTerminalStore } from '../../stores/useTerminalStore';
+import { AgentSessionDot } from '../AgentIndicators';
+import { SessionWorkspace } from './SessionWorkspace';
 
 let root: Root | undefined;
 const launches: string[] = [];
-afterEach(() => { root?.unmount(); launches.splice(0).forEach(finishSessionChatStartup); useTerminalStore.getState().clearAllTerminalSessions(); document.body.replaceChildren(); localStorage.clear(); vi.unstubAllGlobals(); });
+afterEach(() => { root?.unmount(); launches.splice(0).forEach(finishSessionChatStartup); useTerminalStore.getState().clearAllTerminalSessions(); document.body.replaceChildren(); localStorage.clear(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+it.each([390, 1280])('switches the complete chat activity policy with conversation presence and Terminal mode at width %i', async width => {
+  await page.viewport(width, 844);
+  // Concurrent DPR pages cannot both own the browser window focus.
+  vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+  const id = `chat-policy-${width}-${Date.now()}`, messages: object[] = [], checks: string[] = [];
+  let mode = 'chat';
+  vi.stubGlobal('fetch', vi.fn(async (url, init?: RequestInit) => {
+    if (String(url).includes('/view-mode')) {
+      if (init?.body) mode = JSON.parse(String(init.body)).mode;
+      return Response.json({ mode, chatEligibility: { allowed: true, program: 'codex' } });
+    }
+    if (String(url).endsWith('/input-check')) { checks.push(String(url)); return Response.json({ status: 'ready' }); }
+    if (init?.method === 'POST' && String(url).endsWith('/chat')) {
+      messages.push({ id: 'request', role: 'user', content: '开始工作', createdAt: 1, status: 'delivered' });
+      return Response.json({ id: 'request', status: 'delivered' });
+    }
+    return Response.json({ agentAvailable: true, agent: { slug: 'codex', displayName: 'Codex' }, messages });
+  }));
+  const host = document.createElement('div'); host.className = 'h-screen flex flex-col'; document.body.append(host); root = createRoot(host);
+  function Dot() {
+    const session = useTerminalStore(state => state.sessions.get(id));
+    return <span data-test-activity-dot className="relative block h-6 w-6"><AgentSessionDot status={session?.agentStatus ?? null}
+      progress={session?.tuiProgress} outputActive={session?.terminalOutputActive} chatAttention={session?.chatAttention} /></span>;
+  }
+  root.render(<><header className="flex h-12 shrink-0"><SessionModeSwitch sessionId={id} share={false} /><Dot /></header>
+    <main className="min-h-0 flex-1"><SessionWorkspace sessionId={id} name="Codex" active>{() => <div>Terminal</div>}</SessionWorkspace></main></>);
+  await expect.element(page.getByText('想一起完成什么？')).toBeVisible();
+  const store = useTerminalStore.getState();
+  store.setTerminalSession(id, { sessionId: 'policy-backend', cols: 80, rows: 24 });
+  const dot = () => document.querySelector('[data-test-activity-dot]')!;
+  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  expect(checks).toHaveLength(0);
+  store.setTerminalOutputActivity(id, true);
+  store.setSessionTuiProgress(id, { source: 'osc7501', state: 'indeterminate', progress: null });
+  await expect.poll(() => dot().childElementCount).toBe(0);
+  await page.getByRole('textbox', { name: '给Codex的消息' }).fill('开始工作');
+  expect(document.querySelector('[data-chat-terminal-access]')?.textContent).toBe('详情');
+  await page.getByRole('button', { name: '发送消息', exact: true }).click();
+  await expect.element(page.getByText('已发送', { exact: true })).toBeVisible();
+  await expect.poll(() => dot().querySelector('[data-terminal-output-activity]')).not.toBeNull();
+  store.setTerminalOutputActivity(id, false);
+  store.setSessionTuiProgress(id, { source: 'osc7501', state: 'remove', progress: null });
+  await expect.poll(() => checks.length).toBe(1);
+  store.setTerminalOutputActivity(id, true);
+  await expect.poll(() => dot().querySelector('[data-terminal-output-activity]')).not.toBeNull();
+  await page.getByRole('button', { name: '切换到终端', exact: true }).click();
+  await expect.poll(() => useTerminalStore.getState().sessions.get(id)?.chatAttention?.mode).toBe(false);
+  await expect.poll(() => dot().childElementCount).toBe(0);
+  expect(checks).toHaveLength(1);
+  store.setSessionAgentStatus(id, { agentStatus: 'working' });
+  await expect.poll(() => dot().querySelector('.animate-pulse')).not.toBeNull();
+  expect(dot().querySelector('[data-terminal-output-activity]')).toBeNull();
+});
 it.each([390, 1280])('recovers an earlier blocked delivery from the visible chat and removes its notice at width %i', async width => {
   await page.viewport(width, 844);
   const id = `chat-recovery-${width}-${Date.now()}`;

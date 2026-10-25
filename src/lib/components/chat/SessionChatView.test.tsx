@@ -509,7 +509,8 @@ it('keeps an empty unavailable chat free of processing activity', async () => {
   act(() => useTerminalStore.getState().clearTerminalSession('unknown-agent'));
   expect(notice.textContent).not.toContain('处理中…');
 });
-it.each(['output', 'working', 'native'])('keeps empty chat details through %s activity and drafting, then processes the first sent message', async signal => {
+it.each(['output', 'working', 'native', 'idle'])('keeps empty chat details through %s activity and drafting, then processes the first sent message', async signal => {
+  const focus = vi.spyOn(document, 'hasFocus').mockReturnValue(true);
   const sessionId = `empty-chat-${signal}`, messages: ChatMessage[] = [];
   vi.stubGlobal('fetch', vi.fn(async (url, init?: RequestInit) => {
     if (init?.method === 'POST' && String(url).endsWith('/chat')) {
@@ -532,11 +533,13 @@ it.each(['output', 'working', 'native'])('keeps empty chat details through %s ac
   expect(details.querySelector('.td-loading-spinner')).toBeNull();
   setComposer('第一条消息');
   expect(details.textContent).toBe('详情');
+  expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).endsWith('/input-check'))).toBe(false);
   fireEvent.click(screen.getByRole('button', { name: '发送消息' }));
   expect(screen.getByRole('status', { name: 'Agent处理中' })).toBe(details);
   await screen.findByText('第一条消息');
   await waitFor(() => expect(messages).toHaveLength(1));
-  expect(details.textContent).toBe('处理中…');
+  expect(details.textContent).toBe(signal === 'idle' ? '详情' : '处理中…');
+  focus.mockRestore();
 });
 it('does not let a failed chat submission hide actual terminal output', async () => {
   vi.stubGlobal('fetch', vi.fn(async (_url, init?: RequestInit) => {
@@ -655,9 +658,9 @@ it.each(['claude', 'codex', 'custom-plugin'])('gives an explicit %s input reques
 
 it.each([['question', '待回答'], ['permission', '待确认'], ['auth', '需要登录'], [undefined, '等你处理']] as const)(
   'uses only an explicit terminal block kind %s to show %s', async (kind, label) => {
-    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ agentAvailable: true, agent: { displayName: 'Agent' }, messages: [], replyPending: false })));
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ agentAvailable: true, agent: { displayName: 'Agent' }, messages: [{ id: 'typed-request', role: 'user', content: '等待问题', createdAt: 1, status: 'delivered' }], replyPending: false })));
     render(<SessionChatView sessionId="typed-input" onTerminal={() => {}} />);
-    await screen.findByText('想一起完成什么？');
+    await screen.findByText('等待问题');
     act(() => {
       useTerminalStore.getState().setTerminalSession('typed-input', { sessionId: 'typed-backend', cols: 80, rows: 24 });
       useTerminalStore.getState().setSessionTuiProgress('typed-input', { source: 'osc7501', state: 'blocked', progress: null, kind });

@@ -63,6 +63,11 @@ describe('active sidebar session visibility', () => {
     } }]]) }));
     expect(row().querySelector('[title="Codex"]')).not.toBeNull();
     expect(row().querySelector('.animate-spin')).toBeNull();
+    expect(row().querySelector('[data-terminal-output-activity]')).toBeNull();
+    rerender(view({ sessionStates: new Map([['one', { ...state, agentStatus: 'idle',
+      chatAttention: { mode: true, hasMessages: true, unreadIds: [] }, tuiProgress: {
+        source: 'osc7501', state: 'indeterminate', progress: null, message: 'Native work',
+      } }]]) }));
     expect(row().querySelector('[data-terminal-output-activity]')).not.toBeNull();
     rerender(view({ sessionStates: new Map([['one', { ...state, isConnecting: true }]]) }));
     expect(row().querySelector('.animate-spin')).not.toBeNull();

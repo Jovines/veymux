@@ -100,6 +100,8 @@ function SessionChatContent({ sessionId, name = '当前会话', canWrite: reques
   const [dragging, setDragging] = useState(false);
   const [pending, setPending] = useState<Pending | null>(() => { try { return JSON.parse(sessionStorage.getItem(`${storageKey}:pending`) || 'null'); } catch { return null; } });
   const [messages, setMessages] = useState<ChatMessage[]>(snapshot?.messages ?? []);
+  const hasChatMessages = messages.length > 0 || !!pending;
+  useLayoutEffect(() => { useTerminalStore.getState().setSessionChatHasMessages(sessionId, hasChatMessages); }, [sessionId, hasChatMessages]);
   const [loading, setLoading] = useState(!snapshot);
   const [agentAvailable, setAgentAvailable] = useState<boolean | undefined>(snapshot?.agentAvailable);
   const chatUnavailable = agentAvailable === false && !startup;
@@ -133,7 +135,7 @@ function SessionChatContent({ sessionId, name = '当前会话', canWrite: reques
   }, [draft, attachments, mentions]);
   const nearBottom = useRef(snapshot?.nearBottom ?? true), busy = useRef(false), generation = useRef(0), refreshSequence = useRef(0);
   const content = useRef<HTMLDivElement>(null), section = useRef<HTMLElement>(null), filePicker = useRef<HTMLInputElement>(null), dragDepth = useRef(0);
-  useSessionChatReview(sessionId, active && historyReady && !loading && !syncInterrupted, section);
+  useSessionChatReview(sessionId, active && hasChatMessages && historyReady && !loading && !syncInterrupted, section);
   useTouchScrollBoundary(section, active && touchLayout);
   const pendingRequest = useRef(pending); pendingRequest.current = pending;
   const historyRevision = useRef<string>();
@@ -427,7 +429,7 @@ function SessionChatContent({ sessionId, name = '当前会话', canWrite: reques
     replyScrollTarget.current = { position: visit.position }; setLocatedMessageId(visit.reply);
     setReturnCount(replyVisits.current.length); setUnreadLocation(value => value + 1);
   };
-  const hasConversation = useRef(false); hasConversation.current = messages.length > 0 || !!pending;
+  const hasConversation = useRef(false); hasConversation.current = hasChatMessages;
   useLayoutEffect(() => {
     if (!content.current || typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(entries => {
@@ -592,10 +594,10 @@ function SessionChatContent({ sessionId, name = '当前会话', canWrite: reques
     if (attention.unreadIds.length) void jumpUnread();
     else setUnreadEntryReady(true);
   }, [visible, historyReady, loading, syncInterrupted, unreadIds, jumpUnread, sessionId]);
-  const terminalOutputActive = useTerminalOutputActivity(sessionId, visible);
+  const terminalOutputActive = useTerminalOutputActivity(sessionId, visible && hasChatMessages);
   const reportedWorking = useTerminalStore(state => {
     const session = state.sessions.get(sessionId);
-    return visible && (session?.agentStatus === 'working' || shouldShowTuiLoading(session));
+    return visible && hasChatMessages && (session?.agentStatus === 'working' || shouldShowTuiLoading(session));
   });
   const reportedStopped = useTerminalStore(state => {
     const session = state.sessions.get(sessionId), progress = session?.tuiProgress;
@@ -604,7 +606,7 @@ function SessionChatContent({ sessionId, name = '当前会话', canWrite: reques
       || session?.agentStatus !== 'working' && !!progress && ['blocked', 'done', 'error', 'pause'].includes(progress.state);
   });
   const inputRequestLabel = useTerminalStore(state => {
-    if (!visible) return null;
+    if (!visible || !hasChatMessages) return null;
     const session = state.sessions.get(sessionId), progress = session?.tuiProgress;
     // Hook waiting signals do not retain the native request kind. Only the
     // terminal's explicit typed report can distinguish a question/permission.
@@ -620,12 +622,12 @@ function SessionChatContent({ sessionId, name = '当前会话', canWrite: reques
   const hasUserRequest = !!pending || messages.some(message => message.role === 'user');
   const deliveryNotice = messages.slice().reverse().find(message => message.role === 'user' && message.status === 'pending' && message.delivery);
   const awaitingDelivery = messages.slice().reverse().find(message => message.role === 'user')?.status === 'pending';
-  const replyPhase = inputRequestLabel ? 'input' : (messages.length > 0 || !!pending) && (!freshLaunch || hasUserRequest) && !reportedStopped && (terminalOutputActive || reportedWorking) ? 'output' : !error && !deliveryNotice && (sendingReply || awaitingDelivery) ? 'sending' : null;
+  const replyPhase = inputRequestLabel ? 'input' : hasChatMessages && (!freshLaunch || hasUserRequest) && !reportedStopped && (terminalOutputActive || reportedWorking) ? 'output' : !error && !deliveryNotice && (sendingReply || awaitingDelivery) ? 'sending' : null;
   const latestQuestion = messages.slice().reverse().find(message => message.role === 'user');
   const waitingForFirstReply = (sendingReply || !reportedStopped && (waitingForReply || replyPhase === 'output')) && !inputRequestLabel && !error && !deliveryNotice && (!!pending || !!latestQuestion && !['failed', 'expired', 'cancelled'].includes(latestQuestion.status) && !hasReplyToLatestMessage(messages));
   const replyFeedback = waitingForFirstReply ? <span className="sr-only">尚未收到回复</span> : null;
   const replyLabel = inputRequestLabel ?? '处理中…';
-  const inputUnconfirmed = useChatTerminalInputCheck(sessionId, replyPhase, active && visible && canWrite && agentAvailable === true && !sending && !pending, active && visible);
+  const inputUnconfirmed = useChatTerminalInputCheck(sessionId, replyPhase, active && visible && hasChatMessages && canWrite && agentAvailable === true && !sending && !pending, active && visible && hasChatMessages);
   const terminalAccess = <div data-chat-terminal-access data-chat-reply-status={!!replyPhase || undefined} data-chat-reply-phase={replyPhase ?? 'idle'} role={replyPhase ? 'status' : undefined} aria-label={replyPhase ? `${agentName}${replyLabel.replace('…', '')}` : undefined} aria-live="polite" title="查看终端中的详细输出" className="pointer-events-auto w-fit max-w-full shrink-0">
     <TerminalPeekTrigger label={inputUnconfirmed ? '输入响应未确认，查看终端' : '查看终端详情'} className={`${floatingButton} text-foreground/80`}>
       {replyPhase === 'input' ? <MessageCircle size={11} aria-hidden="true" className="shrink-0 text-primary" /> : replyPhase ? <LoadingSpinner size={11} className="shrink-0 text-primary" /> : <TerminalSquare size={11} aria-hidden="true" />}
