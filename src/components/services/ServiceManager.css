@@ -37,6 +37,8 @@
 .service-empty { padding: 20px 0; }
 .service-feedback { display: flex; align-items: center; gap: 8px; padding: 20px 0; }
 .service-error { margin: 16px 0 0; font-size: 13px; line-height: 1.6; color: var(--destructive); }
+.service-connection-help { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.service-connection-help .service-button { box-sizing: border-box; text-decoration: none; }
 .service-remove { border-top: 1px solid var(--border); padding-top: 12px; }
 .service-spinning { animation: service-spin 1s linear infinite; }
 @keyframes service-spin { to { transform: rotate(360deg); } }

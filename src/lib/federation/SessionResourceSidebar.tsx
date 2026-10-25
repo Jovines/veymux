@@ -45,7 +45,7 @@ function SharedFiles({ directories, canInsert, onInsert, onDirty }: { directorie
   const [discard, setDiscard] = useState(false);
   const upload = useRef<HTMLInputElement>(null);
   const live = useRef(true);
-  useEffect(() => () => { live.current = false; }, []);
+  useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
   useEffect(() => { if (!directories.some(d => d.path === root)) { setRoot(directories[0]?.path || ''); setFile(null); setEditing(undefined); } }, [directories, root]);
   useEffect(() => { useSidebarStore.getState().setRootPath(root); }, [root]);
   const writable = directories.some(d => d.access === 'write' && (file ? file === d.path || file.startsWith(d.path.replace(/\/+$/, '') + '/') : root === d.path));

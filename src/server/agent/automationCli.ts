@@ -6,7 +6,7 @@ export const AUTOMATION_HELP = `td automation — manage scheduled tasks on the 
   list
   create --name <name> (--every <minutes> | --at HH:MM [--weekdays 0,1,...,6])
     (--self | --session <full-session-id> | --command <launch-command>)
-    [--prompt <text> | --file <path> | --stdin] [--cwd <path>] [--disabled]
+    [--prompt <text> | --file <path> | --stdin] [--cwd <path>] [--mode shell|tmux] [--disabled]
   show|run|pause|resume|delete <automation-id>
   --json (default) | --text
 --self resolves this Termdock session, including surviving tmux panes after restart.
@@ -28,7 +28,7 @@ export interface AutomationCommand {
   schedule?: AutomationSchedule;
 }
 const flags = new Set(['help', 'json', 'text', 'self', 'stdin', 'disabled']);
-const values = new Set(['name', 'every', 'at', 'weekdays', 'session', 'command', 'prompt', 'file', 'cwd']);
+const values = new Set(['name', 'every', 'at', 'weekdays', 'session', 'command', 'prompt', 'file', 'cwd', 'mode']);
 export function parseAutomationCommand(argv: string[]): AutomationCommand {
   const options: AutomationCommand['options'] = {};
   const positional: string[] = [];
@@ -71,6 +71,8 @@ export function parseAutomationCommand(argv: string[]): AutomationCommand {
       command.schedule = { kind: 'daily', time: String(options.at), weekdays: options.weekdays ? [...new Set(String(options.weekdays).split(',').map(Number))] : [0, 1, 2, 3, 4, 5, 6] };
     }
     if (options.self && options.session) throw new Error('Choose --self or --session');
+    if (options.mode && options.mode !== 'shell' && options.mode !== 'tmux') throw new Error('--mode must be shell or tmux');
+    if (options.mode && (options.self || options.session)) throw new Error('--mode applies only to new sessions');
     if (!options.self && !options.session && !options.command) throw new Error('New sessions require --command; use --self or --session for an existing Agent');
     const prompts = ['prompt', 'file', 'stdin'].filter(key => options[key]);
     if (prompts.length > 1) throw new Error('Choose --prompt, --file or --stdin');
@@ -106,6 +108,7 @@ export async function executeAutomationCommand(command: AutomationCommand, io: A
         name: o.name, schedule: command.schedule, enabled: !o.disabled,
         ...(o.cwd ? { cwd: path.resolve(String(o.cwd)) } : !targetSessionId ? { cwd: process.cwd() } : {}),
         command: String(o.command ?? ''), prompt, targetSessionId,
+        ...(o.mode ? { mode: o.mode } : {}),
       });
     } else if (command.action === 'list' || command.action === 'show') {
       result = await request('GET', base);

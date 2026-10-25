@@ -890,7 +890,7 @@ export function LeftSidebar(
     setAgentResumeHistoryError(null);
     try {
       const prepared = await prepareAgentResumeHistory(entry.id);
-      launchSession({ mode: 'shell', cwd: prepared.cwd, command: prepared.command }, true);
+      launchSession({ mode: newSessionOptions.mode, cwd: prepared.cwd, command: prepared.command }, true);
     } catch (error) {
       const code = error && typeof error === 'object' && 'code' in error
         ? String((error as { code?: unknown }).code ?? '')
@@ -1800,7 +1800,7 @@ export function LeftSidebar(
             </div>
           )}
         </Droppable>
-        <CollaborationExecutionArchives groupId={collaboration.id} version={archivesVersion} onRestore={async session => { setNewSessionComposerOpen(false); window.dispatchEvent(new CustomEvent('new-terminal-session', { detail: { mode: 'tmux', cwd: session.cwd, preferredFrontendSessionId: session.sessionId, requireExisting: true } })); await refreshCollaborationGroups(); useCollaborationNavigation.getState().terminal(); closeIfOverlay(); }} />
+        <CollaborationExecutionArchives groupId={collaboration.id} version={archivesVersion} defaultSessionMode={defaultSessionMode} onRestore={async session => { setNewSessionComposerOpen(false); window.dispatchEvent(new CustomEvent('new-terminal-session', { detail: { mode: session.mode, cwd: session.cwd, preferredFrontendSessionId: session.sessionId, requireExisting: true } })); await refreshCollaborationGroups(); useCollaborationNavigation.getState().terminal(); closeIfOverlay(); }} />
         {collaboration.remoteSessions?.map((remote) => {
           const connection = collaborationRemoteConnection(remote);
           const connected = connection === 'connected';

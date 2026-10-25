@@ -3,8 +3,8 @@ import { Archive, RefreshCw } from 'lucide-react';
 import { listExecutionArchives, restoreExecutionSession, type ExecutionArchive, type OrchestrationSession } from '../../terminal/api';
 import { startVisiblePolling } from './startVisiblePolling';
 
-export function CollaborationExecutionArchives({ groupId, version, onRestore }: {
-  groupId: string; version: number; onRestore: (session: OrchestrationSession) => Promise<void>;
+export function CollaborationExecutionArchives({ groupId, version, defaultSessionMode, onRestore }: {
+  groupId: string; version: number; defaultSessionMode?: 'shell' | 'tmux'; onRestore: (session: OrchestrationSession) => Promise<void>;
 }) {
   const [entries, setEntries] = useState<ExecutionArchive[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
@@ -22,7 +22,7 @@ export function CollaborationExecutionArchives({ groupId, version, onRestore }: 
   const restore = async (entry: ExecutionArchive) => {
     if (pending.current) return;
     pending.current = true; setBusy(entry.sessionId); setError('');
-    try { const result = await restoreExecutionSession(entry.sessionId); await onRestore(result.session); setEntries(list => list.filter(item => item.sessionId !== entry.sessionId)); }
+    try { const result = await restoreExecutionSession(entry.sessionId, defaultSessionMode); await onRestore(result.session); setEntries(list => list.filter(item => item.sessionId !== entry.sessionId)); }
     catch (e) { setError(e instanceof Error ? e.message : '恢复失败，归档已保留'); }
     finally { pending.current = false; setBusy(null); }
   };

@@ -1,5 +1,6 @@
 import { SidebarVisibilityButton } from './SidebarVisibilityButton';
 import { DownloadFeedback } from '../ui/DownloadFeedback';
+import { writeClipboardText } from '../../utils/clipboard';
 import { useDragLifetime } from '../../hooks/useDragLifetime';
 import { type MarkdownLocalLinkTarget, MarkdownPreview, ZoomableImage, FILE_PREVIEW_HORIZONTAL_SCROLL_CLASS, logFilePreviewLoadingEvent } from '../markdown/MarkdownPreview';
 export { type MarkdownLocalLinkTarget, resolveMarkdownLocalLinkTarget, isSvgImageSrc, computeMarkdownImageDisplayBox, shouldCloseMarkdownImageLightboxDrag, __testParseMarkdownListBlock, buildMarkdownPreviewRenderResult, buildMarkdownPreviewBlocks, getMarkdownHeadingPathAtLine, getMarkdownHeadingOutline, MarkdownImageLightbox, MarkdownPreview } from '../markdown/MarkdownPreview';
@@ -2302,8 +2303,7 @@ export function FilePreview({
     setReferenceCopyError('');
     void (async () => {
       try {
-        if (!navigator.clipboard) throw new Error('Clipboard unavailable');
-        await navigator.clipboard.writeText(reference);
+        if (!await writeClipboardText(reference)) throw new Error('Clipboard unavailable');
         onReferenceCopied(fileReferenceKey);
       } catch { setReferenceCopyError('复制失败，请检查剪贴板权限后重试。'); }
     })();

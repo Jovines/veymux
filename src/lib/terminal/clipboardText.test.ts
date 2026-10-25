@@ -4,6 +4,7 @@ const state=vi.hoisted(()=>({bridge:undefined as any,read:vi.fn()}));
 vi.mock('../desktop/nativeBridge',()=>({getTermdockDesktopBridge:()=>state.bridge}));
 vi.mock('./api',()=>({sendTmuxAction:state.read}));
 import {writeTerminalClipboardText,copyTmuxTerminalSelection} from './clipboardText';
+import {writeClipboardText} from '../utils/clipboard';
 afterEach(()=>{state.bridge=undefined;state.read.mockReset();vi.restoreAllMocks();});
 it('desktop copy writes on the client even when WebKit denies clipboard access',async()=>{
  const web=vi.fn(async()=>{throw Error('gesture denied');}),writeClipboardText=vi.fn(async()=>{});Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:web}});state.bridge={writeClipboardText};
@@ -26,4 +27,9 @@ it('invalid selection metadata and empty selections preserve clipboard contents'
 
 it('desktop copy failure preserves clipboard and never silently uses a second writer',async()=>{
  const web=vi.fn();Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:web}});state.bridge={writeClipboardText:vi.fn(async()=>{throw Error('unavailable');})};expect(await writeTerminalClipboardText('selection')).toBe(false);expect(web).not.toHaveBeenCalled();
+});
+it('allows an explicit empty text copy while an empty terminal selection preserves the clipboard',async()=>{
+ const write=vi.fn(async()=>{});state.bridge={writeClipboardText:write};
+ expect(await writeTerminalClipboardText('')).toBe(false);expect(write).not.toHaveBeenCalled();
+ expect(await writeClipboardText('')).toBe(true);expect(write).toHaveBeenCalledExactlyOnceWith('');
 });

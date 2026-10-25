@@ -50,7 +50,14 @@ export function collaborationRoutes({ store, resolveSession, resolveContact, res
       if (isEncryptedRequest(req) && !hasEncryptedServiceAccess(req)) {
         throw new CollaborationError('SESSION_SCOPE_DENIED', 'Shared Sessions do not grant collaboration access', 403);
       }
-      const sessionId = resolveSession((req.method === 'GET' ? req.query : req.body) ?? {});
+      let sessionId = resolveSession((req.method === 'GET' ? req.query : req.body) ?? {});
+      // A web conversation can outlive its terminal inventory entry. The
+      // authenticated owner may still return the result to that exact original
+      // recipient; this grants no terminal, inbox or other-message access.
+      if (!sessionId && req.method === 'POST' && req.path === '/reply' && typeof req.body?.sessionId === 'string') {
+        const original = resolveMessage(String(req.body.messageId ?? ''));
+        if (original?.integrationOrigin && original.toSessionId === req.body.sessionId) sessionId = original.toSessionId;
+      }
       if (!sessionId) throw new CollaborationError('SESSION_NOT_FOUND', 'Run inside a Termdock managed session', 404);
       await handler(req, res, sessionId);
     } catch (error) {

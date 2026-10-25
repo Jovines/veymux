@@ -1,4 +1,5 @@
 import { useShareAccess } from '../../federation/ShareAccessContext';
+import { writeClipboardText } from '../../utils/clipboard';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { createPortal, flushSync } from 'react-dom';
 import { Monitor, Maximize2, Unplug, Loader2, MousePointer2, Settings2, Keyboard, Clipboard, X, ChevronLeft, ZoomIn, ZoomOut } from 'lucide-react';
@@ -564,8 +565,7 @@ export default function ComputerControlView({ active = true }: { active?: boolea
         {remoteClipboard !== null && <div className="space-y-1">
           <textarea className={`${inputClass} resize-none py-2 text-base`} rows={2} readOnly value={remoteClipboard} aria-label={t('computer.remoteClipboard')} onFocus={event => event.currentTarget.select()} />
           <button type="button" className={buttonClass} onClick={() => {
-            if (!navigator.clipboard?.writeText) { setClipboardError(true); return; }
-            void navigator.clipboard.writeText(remoteClipboard).then(() => { setClipboardCopied(true); setClipboardError(false); }, () => setClipboardError(true));
+            void writeClipboardText(remoteClipboard).then(copied => { setClipboardCopied(copied); setClipboardError(!copied); });
           }}>{t(clipboardCopied ? 'computer.clipboardCopied' : 'computer.copyToDevice')}</button>
         </div>}
         {clipboardError && <p role="alert" className="text-xs text-destructive">{t('computer.clipboardAccessFailed')}</p>}

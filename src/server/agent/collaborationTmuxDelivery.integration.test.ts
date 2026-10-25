@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -30,11 +30,30 @@ describe.skipIf(process.platform === 'win32')('collaboration tmux transport', ()
     const socket = `td-echo-${process.pid}-${Date.now()}`;
     const run = async (args: string[]) => (await execFileAsync('tmux', ['-L', socket, ...args], { timeout: 5000 })).stdout;
     try {
-      await run(['new-session', '-d', '-s', 'peer', `sh -c 'stty raw -echo; ${echo ? `tee ${out}` : `cat > ${out}`}'`]);
+      const editor = join(directory, 'editor.py');
+      await writeFile(editor, `import os, tty
+tty.setraw(0)
+text = b''
+os.write(1, b'ready\\r\\n> ')
+while True:
+ data = os.read(0, 1024)
+ with open('${out}', 'ab') as f: f.write(data)
+ if not ${echo ? 'True' : 'False'}: continue
+ for c in data:
+  if c == 127: text = text[:-1]
+  elif c == 13:
+   os.write(1, b'\\r\\n' + text + b'\\r\\n')
+   text = b''
+  else: text += bytes([c])
+ os.write(1, b'\\r\\x1b[2K> ' + text)
+`);
+      await run(['new-session', '-d', '-s', 'peer', `python3 ${editor}`]);
       for (let attempt = 0; attempt < 100; attempt++) {
-        if ((await run(['display-message', '-p', '-t', 'peer', '#{pane_current_command}'])).trim() === (echo ? 'tee' : 'cat')) break;
+        if ((await run(['capture-pane', '-p', '-t', 'peer'])).includes('ready')) break;
         await new Promise(resolve => setTimeout(resolve, 20));
       }
+      // The fixture opens its input log only after receiving its first byte.
+      await writeFile(out, '');
       const parts = (await run(['display-message', '-p', '-t', 'peer', '#{pid}:#{session_id}:#{pane_id}:#{pane_pid}'])).trim().split(':');
       const pane = { serverPid: Number(parts[0]), sessionId: parts[1]!, paneId: parts[2]!, panePid: Number(parts[3]), agentSlug: 'test', nativeSessionId: null };
       await run(['select-pane', '-d', '-t', pane.paneId]);
@@ -46,7 +65,7 @@ describe.skipIf(process.platform === 'win32')('collaboration tmux transport', ()
       else await expect(result).rejects.toThrow('TERMINAL_INPUT_ECHO_UNCONFIRMED');
       await new Promise(resolve => setTimeout(resolve, 100));
       const bytes = await readFile(out, 'utf8');
-      expect(bytes).toMatch(echo ? /^\[td\.[a-f0-9]{12}\] BODY\r$/ : /^\[td\.[a-f0-9]{12}\] $/);
+      expect(bytes).toMatch(echo ? /^[~^|%&@#]{2}\x7f{2}BODY\r$/ : /^[~^|%&@#]{2}\x7f{2}$/);
       expect(await run(['list-buffers'])).not.toContain(`termdock-collab-${process.pid}`);
     } finally { await run(['kill-server']).catch(() => undefined); await rm(directory, { recursive: true, force: true }); }
   }, 15000);

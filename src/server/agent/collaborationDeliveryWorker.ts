@@ -127,9 +127,15 @@ export class CollaborationDeliveryWorker {
     if (first && hasUnconfirmedTerminalWrite(prior)) {
       // A retry may repeat network packets with the same id, but cannot undo
       // or safely replay an uncertain terminal paste/Enter after a restart.
-      if (prior?.last_error !== 'DELIVERY_OUTCOME_UNCONFIRMED' && !/TERMINAL_INPUT_ECHO_UNCONFIRMED|TERMINAL_INPUT_UNAVAILABLE/.test(prior?.last_error ?? '')) store.recordRecipientTransport(id, {
-        last_error: 'DELIVERY_OUTCOME_UNCONFIRMED', next_retry_at: null, checked_at: Date.now() });
-      this.states.set(id, { state: 'unavailable', reason: 'DELIVERY_OUTCOME_UNCONFIRMED', checkedAt: Date.now() });
+      const inputCheckFailed = prior?.write_stage === 'probe_attempted'
+        || /TERMINAL_INPUT_ECHO_UNCONFIRMED|TERMINAL_INPUT_UNAVAILABLE/.test(prior?.last_error ?? '');
+      const reason = prior?.last_error?.includes('TERMINAL_INPUT_UNAVAILABLE') ? 'TERMINAL_INPUT_UNAVAILABLE'
+        : inputCheckFailed ? 'TERMINAL_INPUT_ECHO_UNCONFIRMED' : 'DELIVERY_OUTCOME_UNCONFIRMED';
+      // A previous (possibly non-chat) message can block this entire queue.
+      // Tell later messages why they are waiting without inheriting its write
+      // stage/attempt count or claiming that their bodies reached the terminal.
+      store.recordRecipientTransport(id, { last_error: reason, next_retry_at: null, checked_at: Date.now() });
+      this.states.set(id, { state: 'unavailable', reason, checkedAt: Date.now() });
       return;
     }
     if (first && (store.diagnostic(first.id)?.next_retry_at ?? 0) > Date.now()) {
@@ -183,10 +189,10 @@ export class CollaborationDeliveryWorker {
       let writeStage: TransportDiagnostic['write_stage'] = 'unknown';
       const progress: PromptWriteProgress = stage => {
         if (stage === 'paste_attempted' && store.getMessage(message.id)?.status !== 'pending') throw new Error('MESSAGE_NOT_PENDING_BEFORE_PASTE');
-        const next = stage === 'queue_wait' ? 'not_started'
-          : ['paste_attempted', 'paste_written', 'submit_attempted', 'submit_written'].includes(stage) ? stage as TransportDiagnostic['write_stage'] : undefined;
+        const next = stage === 'queue_wait' || stage === 'probe_completed' ? 'not_started'
+          : ['probe_attempted', 'paste_attempted', 'paste_written', 'submit_attempted', 'submit_written'].includes(stage) ? stage as TransportDiagnostic['write_stage'] : undefined;
         if (!next || next === writeStage) return;
-        store.recordTransport(message.id, { ...store.diagnostic(message.id)!, write_stage: next, checked_at: Date.now() }, next === 'paste_attempted' || next === 'submit_written');
+        store.recordTransport(message.id, { ...store.diagnostic(message.id)!, write_stage: next, checked_at: Date.now() }, stage === 'probe_completed' || next === 'probe_attempted' || next === 'paste_attempted' || next === 'submit_written');
         writeStage = next;
       };
       try { await route.write(pending, progress); }

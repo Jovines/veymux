@@ -1,5 +1,16 @@
 # Termdock 配置体系
 
+## 浏览器本地偏好的所有权
+
+`termdock-settings` 同时保存终端排版和新建会话默认值。各模块只能更新自己拥有的字段：
+`normalizeTerminalSettings` 返回排版字段投影，持久化时必须合并原文档，不能用投影替换整份配置。
+初始化、修改字号和恢复默认排版都应保留其他偏好；`useTerminalSettings.test.tsx` 覆盖这些流程及重新加载。
+
+其他跨入口操作沿用共享策略：显式复制使用 `utils/clipboard.ts` 的 `writeClipboardText`，
+只在返回成功后提示已复制；导出使用 `useDownloadTask` 与 `saveDownloadBlob`，将取消信号传到读取和保存。
+关闭、切换文档或切换目标服务时终止旧导出。崩溃恢复页的诊断复制保留独立兜底，
+异步邀请链接复制保留创建 `ClipboardItem` 所需的用户手势时序。
+
 ## 配置加载链（优先级从高到低）
 
 ```

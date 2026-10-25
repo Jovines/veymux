@@ -1,4 +1,5 @@
 import { canonicalShortId } from './collaborationProtocol.js';
+import { directRemoteAddress } from './collaborationDirectProtocol.js';
 import { sanitizeCollaborationRole, type CollaborationGroup, type CollaborationMessage } from './collaborationStore.js';
 
 interface CollaborationPromptSession {
@@ -83,6 +84,13 @@ export function collaborationMessageAnchorTokens(messages: CollaborationMessage[
 function formatCollaborationMessage(message: CollaborationMessage, source: string, fannedNames: string[], fence: string, token: string): string {
   const kindSuffix = message.kind === 'message' ? '' : ` · ${message.kind}`;
   const lines = [`来自:${source}${kindSuffix}${fannedNames.length ? ' · 群发' : ''} · ${token}`];
+  // Names can be identical across services, and a remote service may advertise
+  // localhost. Classify from the authenticated routing identity, not its name,
+  // body, project path, or the recipient's current working directory.
+  const address = message.fromSessionId ? directRemoteAddress(message.fromSessionId) : null;
+  const remote = message.fromSessionId?.startsWith('remote:');
+  lines.push(`来源服务:${remote ? address ? `远端服务 ${address.origin}（不是收件人所在服务）` : '远端服务（地址未确认）' : '本服务（与收件人相同）'}`);
+  if (message.fromSessionId) lines.push(`来源会话:${sanitizeCollaborationRole(message.fromSessionId, 2048)}`);
   if (fannedNames.length) lines.push(`同时发给了:${fannedNames.join('、')}`);
   lines.push('', fence, message.content, fence);
   if (message.task) lines.push('', `任务上报:${JSON.stringify(message.task)}`);

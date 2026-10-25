@@ -1,10 +1,22 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { usesTouchTerminalLayout } from './touchTerminalLayout';
+import { isPhoneDevice, usesTouchTerminalLayout } from './touchTerminalLayout';
 
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+});
+
+describe('phone-only input UI', () => {
+  it.each([
+    ['iPhone', true], ['iPod', true], ['Mozilla/5.0 (Linux; Android 15) Mobile Safari/537.36', true],
+    ['Mozilla/5.0 (Linux; Android 15) Safari/537.36', false], ['iPad', false],
+    ['Mozilla/5.0 (Windows NT 10.0; Win64; x64)', false], ['Mozilla/5.0 (Macintosh; Intel Mac OS X)', false],
+  ])('recognizes %s independently of a narrow touch viewport', (userAgent, expected) => {
+    vi.stubGlobal('navigator', { userAgent, platform: 'MacIntel', maxTouchPoints: 10 });
+    vi.stubGlobal('innerWidth', 390); vi.stubGlobal('innerHeight', 300);
+    expect(isPhoneDevice()).toBe(expected);
+  });
 });
 
 describe('touch terminal layout', () => {

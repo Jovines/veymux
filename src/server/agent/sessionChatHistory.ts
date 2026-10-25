@@ -14,7 +14,8 @@ export function sessionChatHistory(store: CollaborationStore, sessionId: string)
 }
 export function sessionChatIndex(store: CollaborationStore, sessionId: string): SessionChatIndex {
   const { group, messages } = sessionChatHistory(store, sessionId);
-  return { conversationId: group?.id ?? '', messageIds: messages.filter(message => message.toPrincipalId).map(message => message.id), viewedMessageIds: group ? store.sessionChatViewedIds(group.id) : [] };
+  const baseline = new Set(store.sessionChatBaselineIds());
+  return { conversationId: group?.id ?? '', messageIds: messages.filter(message => message.toPrincipalId && !baseline.has(message.id)).map(message => message.id), viewedMessageIds: group ? store.sessionChatViewedIds(group.id) : [] };
 }
 /** No browser polling or additional session inventory. Body/form updates do
  * not rebroadcast unchanged identifiers. Disposed with the terminal stream. */

@@ -1,4 +1,5 @@
 import { sessionNeedsReview } from './lib/utils/agentAttention';
+import { writeClipboardText } from './lib/utils/clipboard';
 import { switchToAttentionSession } from './lib/utils/sessionAttentionNavigation';
 import { useAppFeedback } from './lib/components/ui/AppFeedback';
 import { observeDragLifetime } from './lib/gesture/dragLifetime';
@@ -1774,19 +1775,7 @@ function App() {
   const handleCopyText = useCallback(async (value: string | null | undefined, label = 'url') => {
     if (!value) return;
     try {
-      if (typeof navigator !== 'undefined' && navigator.clipboard) {
-        await navigator.clipboard.writeText(value);
-      } else {
-        const textarea = document.createElement('textarea');
-        textarea.value = value;
-        textarea.style.position = 'fixed';
-        textarea.style.left = '-9999px';
-        document.body.appendChild(textarea);
-        textarea.focus();
-        textarea.select();
-        document.execCommand('copy');
-        document.body.removeChild(textarea);
-      }
+      if (!await writeClipboardText(value)) { setLocalAccessCopied(null); return; }
       setLocalAccessCopied(label);
       window.setTimeout(() => setLocalAccessCopied((current) => current === label ? null : current), 1600);
     } catch {
@@ -2699,7 +2688,7 @@ function App() {
     const cwd = ts?.cwd;
     if (!cwd) return;
     try {
-      await navigator.clipboard?.writeText(cwd);
+      if (!await writeClipboardText(cwd)) return;
       setTabCopiedHint(cwd);
       window.setTimeout(() => {
         setTabCopiedHint((current) => (current === cwd ? null : current));

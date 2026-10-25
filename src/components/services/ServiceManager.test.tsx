@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ServiceManager } from './ServiceManager';
 import { readBrowserServices, saveServiceConnection } from '../../lib/services/serviceDirectory';
-import { createInviteLink } from '../../lib/federation/inviteLink';
+import { createInviteLink, createOnboardingInviteLink } from '../../lib/federation/inviteLink';
 afterEach(() => { cleanup(); localStorage.clear(); });
 describe('shared service manager', () => {
   it('opens the original target route settings without connecting or granting access', async () => {
@@ -81,6 +81,57 @@ it('saves an offline address without probing, opening, or retaining a password',
   fireEvent.click(screen.getByRole('button', { name: '仅保存，不连接' }));
   await waitFor(() => expect(readBrowserServices()).toEqual([{ id: 'https://offline.example:9834', url: 'https://offline.example:9834', label: 'offline.example:9834' }]));
   expect(onAdd).not.toHaveBeenCalled(); expect(onOpen).not.toHaveBeenCalled();
+});
+
+it.each([
+  new DOMException('The operation timed out.', 'TimeoutError'),
+  new Error('The operation timed out.'),
+  new Error('Secure transport unavailable'),
+])('keeps a failed setup invitation retryable and offers a secret-free certificate guide (%s)', async failure => {
+  const code = 'b'.repeat(43);
+  const invitation = createOnboardingInviteLink(createInviteLink({ v: 1, serviceId: `12D3KooW${'a'.repeat(44)}`, code, entryUrl: 'https://192.168.1.23:9834' }), 'http://192.168.1.23:21000');
+  const onAdd = vi.fn().mockRejectedValueOnce(failure).mockResolvedValueOnce(undefined);
+  render(<ServiceManager initiallyAdding onAdd={onAdd} onOpen={async () => {}} />);
+  fireEvent.change(screen.getByLabelText('服务地址或邀请链接'), { target: { value: invitation } });
+  fireEvent.click(screen.getByRole('button', { name: '继续' }));
+  const alert = await screen.findByRole('alert');
+  expect(alert.textContent).not.toContain(failure.message);
+  expect(screen.getByText('连接地址：https://192.168.1.23:9834')).toBeTruthy();
+  const guide = screen.getByRole('link', { name: '打开证书连接引导' });
+  expect(guide.getAttribute('href')).toBe('http://192.168.1.23:21000/connect');
+  expect(guide.getAttribute('rel')).toBe('noopener noreferrer');
+  expect(readBrowserServices()).toEqual([]);
+  fireEvent.click(guide);
+  expect(onAdd).toHaveBeenCalledTimes(1);
+  expect((screen.getByLabelText('服务地址或邀请链接') as HTMLInputElement).value).toBe(invitation);
+  fireEvent.click(screen.getByRole('button', { name: '继续' }));
+  await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+  expect(onAdd).toHaveBeenLastCalledWith(invitation, undefined);
+  expect(screen.queryByRole('link', { name: '打开证书连接引导' })).toBeNull();
+});
+
+it('clears stale connection guidance on edits and never invents an HTTP setup endpoint', async () => {
+  const invitation = createOnboardingInviteLink(createInviteLink({ v: 1, serviceId: `12D3KooW${'a'.repeat(44)}`, code: 'b'.repeat(43), entryUrl: 'https://192.168.1.23:9834' }), 'http://192.168.1.23:21000');
+  render(<ServiceManager initiallyAdding onAdd={async () => { throw new Error('Secure transport unavailable'); }} onOpen={async () => {}} />);
+  fireEvent.change(screen.getByLabelText('服务地址或邀请链接'), { target: { value: invitation } });
+  fireEvent.click(screen.getByRole('button', { name: '继续' }));
+  await screen.findByRole('link', { name: '打开证书连接引导' });
+  fireEvent.change(screen.getByLabelText('服务地址或邀请链接'), { target: { value: 'https://other.example' } });
+  expect(screen.queryByRole('alert')).toBeNull();
+  expect(screen.queryByLabelText('连接帮助')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: '继续' }));
+  await screen.findByRole('alert');
+  expect(screen.getByText('连接地址：https://other.example')).toBeTruthy();
+  expect(screen.queryByRole('link')).toBeNull();
+});
+
+it('explains a used invitation without showing network or certificate advice or leaking raw errors', async () => {
+  const invitation = createOnboardingInviteLink(createInviteLink({ v: 1, serviceId: `12D3KooW${'a'.repeat(44)}`, code: 'b'.repeat(43), entryUrl: 'https://192.168.1.23:9834' }), 'http://192.168.1.23:21000');
+  render(<ServiceManager initiallyAdding onAdd={async () => { throw new Error('INVITATION_USED'); }} onOpen={async () => {}} />);
+  fireEvent.change(screen.getByLabelText('服务地址或邀请链接'), { target: { value: invitation } });
+  fireEvent.click(screen.getByRole('button', { name: '继续' }));
+  expect((await screen.findByRole('alert')).textContent).toContain('邀请已被使用');
+  expect(screen.queryByLabelText('连接帮助')).toBeNull();
 });
 
 it('keeps keyboard focus and input on invalid Enter and save without starting busy work', async () => {

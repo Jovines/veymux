@@ -28,10 +28,13 @@ export function writeBracketedPrompt(target: { write: (data: string) => void }, 
   return serializeTerminalInput(target, async () => {
     progress?.('queue_acquired');
     assertCurrent?.('queue_acquired');
-    if (readEcho) await probeTerminalEcho({ read: readEcho, assertCurrent, write: async header => {
-      progress?.('paste_attempted');
-      target.write(buildBracketedPasteBytes(header));
-    } });
+    if (readEcho) {
+      await probeTerminalEcho({ read: readEcho, assertCurrent,
+        write: async marker => { progress?.('probe_attempted'); target.write(buildBracketedPasteBytes(marker)); },
+        erase: async count => { assertCurrent?.('before_paste'); target.write('\x7f'.repeat(count)); },
+      });
+      progress?.('probe_completed');
+    }
     assertCurrent?.('before_paste');
     progress?.('paste_attempted');
     target.write(buildBracketedPasteBytes(prompt));

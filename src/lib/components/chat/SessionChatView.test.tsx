@@ -39,7 +39,7 @@ it('shows blocked delivery with an actionable terminal entry and clears it after
   expect(requests.mock.calls.every(call => !call[1]?.method)).toBe(true);
   message.status = 'delivered'; delete message.delivery;
   fireEvent(window, new Event('online'));
-  await screen.findByText('已投递');
+  await screen.findByText('已发送');
   expect(screen.queryByText('终端连接已变化，消息尚未投递。')).toBeNull();
 });
 
@@ -443,7 +443,7 @@ it('immediately appends an Agent reply placeholder after sending and merges it i
   await screen.findByText('想一起完成什么？');
   setComposer('检查结果'); fireEvent.click(screen.getByRole('button', { name: '发送消息' }));
   const dock = view.container.querySelector('[data-chat-terminal-dock]')!;
-  const feedback = screen.getByRole('status', { name: 'Codex发送中' });
+  const feedback = screen.getByRole('status', { name: 'Codex处理中' });
   expect(dock.contains(feedback)).toBe(true);
   const reply = view.container.querySelector('[data-chat-reply-feedback]')!;
   expect(reply.querySelector('[data-chat-agent-header]')?.textContent).toContain('Codex');
@@ -451,7 +451,7 @@ it('immediately appends an Agent reply placeholder after sending and merges it i
   expect(reply.previousElementSibling?.getAttribute('data-chat-turn')).toBe('user');
   expect(reply.querySelector('[data-chat-agent-awaiting]')).toBeTruthy();
   expect(reply.querySelector('.td-loading-spinner')).toBeNull();
-  expect(feedback.textContent).toContain('发送中…');
+  expect(feedback.textContent).toContain('处理中…');
   messages = [{ id: 'sent', role: 'user', content: '检查结果', createdAt: 1, status: 'delivered' }];
   await act(async () => acknowledge(Response.json({ id: 'sent', status: 'delivered' })));
   expect(screen.queryByRole('status', { name: 'Codex处理中' })).toBeNull();
@@ -495,19 +495,48 @@ it('removes optimistic agent feedback when sending fails', async () => {
   const view = render(<SessionChatView sessionId="failed-author" onTerminal={() => {}} />);
   await screen.findByText('想一起完成什么？');
   setComposer('检查结果'); fireEvent.click(screen.getByRole('button', { name: '发送消息' }));
-  expect(screen.getByRole('status', { name: 'Codex发送中' }).closest('[data-chat-terminal-dock]')).toBeTruthy();
+  expect(screen.getByRole('status', { name: 'Codex处理中' }).closest('[data-chat-terminal-dock]')).toBeTruthy();
   await screen.findByRole('button', { name: '重试发送' });
   expect(view.container.querySelector('[data-chat-reply-feedback]')).toBeNull();
 });
 
-it('shows terminal activity without a recognized agent or pending chat reply', async () => {
+it('keeps an empty unavailable chat free of processing activity', async () => {
   vi.stubGlobal('fetch', vi.fn(async () => Response.json({ agentAvailable: false, messages: [], replyPending: false })));
   render(<SessionChatView sessionId="unknown-agent" onTerminal={() => {}} />);
-  await screen.findByText('当前对话暂不可用。');
+  const notice = (await screen.findByText('当前对话暂不可用')).parentElement!;
   expect(screen.queryByText('处理中…')).toBeNull();
-  liveOutput('unknown-agent'); expect(screen.getByText('处理中…')).toBeTruthy();
+  liveOutput('unknown-agent'); expect(notice.textContent).not.toContain('处理中…');
   act(() => useTerminalStore.getState().clearTerminalSession('unknown-agent'));
-  expect(screen.queryByText('处理中…')).toBeNull();
+  expect(notice.textContent).not.toContain('处理中…');
+});
+it.each(['output', 'working', 'native'])('keeps empty chat details through %s activity and drafting, then processes the first sent message', async signal => {
+  const sessionId = `empty-chat-${signal}`, messages: ChatMessage[] = [];
+  vi.stubGlobal('fetch', vi.fn(async (url, init?: RequestInit) => {
+    if (init?.method === 'POST' && String(url).endsWith('/chat')) {
+      messages.push({ id: 'first-request', role: 'user', content: '第一条消息', createdAt: 1, status: 'delivered' });
+      return Response.json({ id: 'first-request', status: 'delivered' });
+    }
+    return Response.json({ agentAvailable: true, agent: { slug: 'custom-plugin', displayName: 'Agent' }, messages });
+  }));
+  const view = render(<SessionChatView sessionId={sessionId} onTerminal={() => {}} />);
+  await screen.findByText('想一起完成什么？');
+  act(() => {
+    const store = useTerminalStore.getState();
+    store.setTerminalSession(sessionId, { sessionId: `backend-${signal}`, cols: 80, rows: 24 });
+    if (signal === 'output') store.setTerminalOutputActivity(sessionId, true);
+    if (signal === 'working') store.setSessionAgentStatus(sessionId, { agentStatus: 'working' });
+    if (signal === 'native') store.setSessionTuiProgress(sessionId, { source: 'osc7501', state: 'indeterminate', progress: null });
+  });
+  const details = view.container.querySelector('[data-chat-terminal-access]')!;
+  expect(details.textContent).toBe('详情');
+  expect(details.querySelector('.td-loading-spinner')).toBeNull();
+  setComposer('第一条消息');
+  expect(details.textContent).toBe('详情');
+  fireEvent.click(screen.getByRole('button', { name: '发送消息' }));
+  expect(screen.getByRole('status', { name: 'Agent处理中' })).toBe(details);
+  await screen.findByText('第一条消息');
+  await waitFor(() => expect(messages).toHaveLength(1));
+  expect(details.textContent).toBe('处理中…');
 });
 it('does not let a failed chat submission hide actual terminal output', async () => {
   vi.stubGlobal('fetch', vi.fn(async (_url, init?: RequestInit) => {
@@ -580,9 +609,9 @@ it('keeps processing from the native terminal status when Codex animations produ
 });
 
 it.each(['claude', 'gemini', 'custom-plugin'])('uses %s plugin working phases throughout silent terminal output', async slug => {
-  vi.stubGlobal('fetch', vi.fn(async () => Response.json({ agentAvailable: true, agent: { slug, displayName: 'Plugin Agent' }, messages: [] })));
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json({ agentAvailable: true, agent: { slug, displayName: 'Plugin Agent' }, messages: [{ id: 'plugin-request', role: 'user', content: '继续处理', createdAt: 1, status: 'delivered' }] })));
   render(<SessionChatView sessionId={`plugin-${slug}`} onTerminal={() => {}} />);
-  await screen.findByText('想一起完成什么？');
+  await screen.findByText('继续处理');
   act(() => {
     const store = useTerminalStore.getState();
     store.setTerminalSession(`plugin-${slug}`, { sessionId: `backend-${slug}`, cols: 80, rows: 24 });
@@ -595,9 +624,9 @@ it.each(['claude', 'gemini', 'custom-plugin'])('uses %s plugin working phases th
 });
 
 it('allows a new native working report after the previous plugin turn was acknowledged', async () => {
-  vi.stubGlobal('fetch', vi.fn(async () => Response.json({ agentAvailable: true, agent: { displayName: 'Plugin Agent' }, messages: [] })));
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json({ agentAvailable: true, agent: { displayName: 'Plugin Agent' }, messages: [{ id: 'native-request', role: 'user', content: '下一轮处理', createdAt: 1, status: 'delivered' }] })));
   render(<SessionChatView sessionId="plugin-native-next" onTerminal={() => {}} />);
-  await screen.findByText('想一起完成什么？');
+  await screen.findByText('下一轮处理');
   act(() => {
     const store = useTerminalStore.getState();
     store.setTerminalSession('plugin-native-next', { sessionId: 'backend-next', cols: 80, rows: 24 });

@@ -156,6 +156,22 @@ describe('MultiTerminalView session recovery and keyboard ownership', () => {
     } };
   }
 
+  it.each(['shell', 'tmux'] as const)('uses the current %s default for a restore without an explicit backend', async mode => {
+    const pending = deferred<OpenSessionInventoryResult>();
+    api.openSessionInventoryEntry.mockReturnValue(pending.promise);
+    const updates = vi.fn();
+    const view = render(<MultiTerminalView defaultSessionMode={mode === 'tmux' ? 'shell' : 'tmux'} onSessionDataUpdate={updates} />);
+    await waitFor(() => expect(updates.mock.lastCall?.[0].activeSessionId).toBe('one'));
+    view.rerender(<MultiTerminalView defaultSessionMode={mode} onSessionDataUpdate={updates} />);
+    api.openSessionInventoryEntry.mockClear();
+    dispatch('new-terminal-session', { cwd: '/work', command: 'codex resume native-original' });
+    await waitFor(() => expect(api.openSessionInventoryEntry).toHaveBeenCalledOnce());
+    const request = api.openSessionInventoryEntry.mock.calls[0][0];
+    expect(request).toMatchObject({ mode, cwd: '/work' });
+    if (mode === 'tmux') expect(request.tmuxSessionName).toBeTruthy();
+    else expect(request.tmuxSessionName).toBeNull();
+  });
+
   it('gives the split chooser keyboard ownership, loops focus, and releases it on Escape', async () => {
     // Removing the focused dialog makes JSDOM report an unfocused document;
     // this test models a foreground window, as the browser integration does.

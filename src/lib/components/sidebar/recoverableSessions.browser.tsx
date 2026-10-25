@@ -6,6 +6,7 @@ import { page } from 'vitest/browser';
 import '../../../index.css';
 import { I18nProvider } from '../../i18n';
 import { LeftSidebar } from './LeftSidebar';
+import { AgentOperationsPanel } from './AgentOperationsPanel';
 import type { NewSessionRequestOptions } from '../../terminal/newSessionRequest';
 
 let root: Root | undefined;
@@ -14,6 +15,67 @@ beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn(async () => Response.json({ locale: 'en', groups: [], agents: [], sessions: [], tasks: [] })));
 });
 afterEach(() => { root?.unmount(); document.body.replaceChildren(); vi.unstubAllGlobals(); });
+
+it.each([1440, 390])('keeps the automation backend selection visible and saves it at %s px', async width => {
+  await page.viewport(width, 844);
+  const saved: NewSessionRequestOptions[] = [];
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url.endsWith('/agent-launchers')) return Response.json({ agents: [{ slug: 'codex', displayName: 'Codex', command: 'codex', accentColor: 'var(--primary)', icon: null }] });
+    if (url.endsWith('/operations/automations')) {
+      if (init?.method === 'POST') { saved.push(JSON.parse(String(init.body))); return Response.json({ automation: {} }); }
+      return Response.json({ automations: [], runs: [] });
+    }
+    if (url.includes('/csrf-token')) return Response.json({ csrfToken: 'test-token' });
+    return Response.json({ locale: 'en', groups: [], agents: [], sessions: [], tasks: [] });
+  }));
+  const host = document.createElement('div'); host.id = 'root'; document.body.append(host);
+  root = createRoot(host);
+  flushSync(() => root!.render(<AgentOperationsPanel activeSessionId={null} defaultSessionMode="tmux" onClose={vi.fn()} onNewSession={vi.fn()} />));
+  await page.getByRole('button', { name: '自动任务', exact: true }).click();
+  await page.getByRole('button', { name: '创建第一个任务', exact: true }).click();
+  await page.getByLabelText('任务内容', { exact: true }).fill('检查项目');
+  await page.getByRole('button', { name: '更多设置', exact: true }).click();
+  const select = page.getByRole('combobox', { name: /终端类型/ });
+  await expect.element(select).toHaveValue('tmux');
+  await select.selectOptions('shell');
+  await page.getByRole('button', { name: '创建任务', exact: true }).click();
+  await expect.poll(() => saved.length).toBe(1);
+  expect(saved[0].mode).toBe('shell');
+});
+
+it.each([1440, 390])('restores search history without overriding the selected terminal backend at %s px', async width => {
+  await page.viewport(width, 844);
+  const result = { sessionId: 'native:original', title: '原来的项目名称', cwd: '/work/project', agentSlug: 'codex',
+    agentNativeSessionId: 'native-original', updatedAt: Date.now(), snippet: '', matchCount: 1,
+    source: 'codex', nativeKey: 'native-key', live: false, resumeHistoryId: null, terminalSessionId: null };
+  const requests: string[] = [];
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input); requests.push(url);
+    if (url.includes('/session-search/prepare')) return Response.json({ cwd: result.cwd, command: 'codex resume native-original' });
+    if (url.includes('/session-search?')) return Response.json({ results: [result], total: 1 });
+    if (url.includes('/csrf-token')) return Response.json({ csrfToken: 'test-token' });
+    return Response.json({ locale: 'en', groups: [], agents: [], sessions: [], tasks: [] });
+  }));
+  const onClose = vi.fn(), onNewSession = vi.fn<(options: NewSessionRequestOptions) => void>();
+  const host = document.createElement('div'); host.id = 'root'; document.body.append(host);
+  root = createRoot(host);
+  flushSync(() => root!.render(<AgentOperationsPanel activeSessionId={null} defaultSessionMode="tmux" onClose={onClose} onNewSession={onNewSession} />));
+  await page.getByRole('button', { name: '历史搜索', exact: true }).click();
+  await page.getByRole('button', { name: /原来的项目名称/ }).click();
+  await expect.poll(() => onNewSession.mock.calls.length).toBe(1);
+  const launch = onNewSession.mock.calls[0][0];
+  expect(launch.mode).toBeUndefined();
+  expect(launch).toMatchObject({ cwd: result.cwd, command: 'codex resume native-original' });
+  expect(onClose).not.toHaveBeenCalled();
+  flushSync(() => launch.onResult?.({ ok: false, error: 'connection' }));
+  await expect.element(page.getByText('无法创建恢复会话，请检查目录和连接后重试')).toBeVisible();
+  await page.getByRole('button', { name: /原来的项目名称/ }).click();
+  await expect.poll(() => onNewSession.mock.calls.length).toBe(2);
+  flushSync(() => onNewSession.mock.calls[1][0].onResult?.({ ok: true, sessionId: 'restored' }));
+  await expect.poll(() => onClose.mock.calls.length).toBe(1);
+  expect(requests).toContain('/api/terminal/session-inventory/sessions/restored');
+});
 
 it.each([1440, 390, 320])('keeps consecutive restores reachable at %s px with distinct shared titles', async width => {
   await page.viewport(width, 844);

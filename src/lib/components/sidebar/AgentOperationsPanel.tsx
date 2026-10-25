@@ -489,7 +489,7 @@ function AgentOperationsPanelView({ activeSessionId, initialCollaborationGroupId
         {notice && (!floating || docked) && <div role="status" className="mx-3 mt-2 flex items-center gap-2 rounded-lg bg-primary/10 px-3 py-2 text-[11px] text-primary"><Check size={13} />{notice}</div>}
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           {visitedTabs.has('automation') && <div id="workbench-automation" className={tab === 'automation' ? 'h-full min-h-0 p-4' : 'hidden'}>
-            <AutomationTab automations={automations} runs={automationRuns} agents={agents} sessions={sessions.filter(session => !remoteSessionAddress(session.sessionId))} activeSessionId={activeSessionId} loading={automationsState === 'loading'} loadError={automationsError} busy={busy} setBusy={setBusy} setError={setError} setNotice={setNotice} refresh={refresh} onClose={onClose} />
+            <AutomationTab automations={automations} runs={automationRuns} agents={agents} sessions={sessions.filter(session => !remoteSessionAddress(session.sessionId))} activeSessionId={activeSessionId} defaultSessionMode={defaultSessionMode} loading={automationsState === 'loading'} loadError={automationsError} busy={busy} setBusy={setBusy} setError={setError} setNotice={setNotice} refresh={refresh} onClose={onClose} />
           </div>}
           {visitedTabs.has('collaboration') && <div id="workbench-collaboration" className={tab === 'collaboration' ? `flex-1 min-h-0 overflow-x-hidden overflow-y-auto overscroll-y-contain ${floating ? 'p-3' : 'p-4'}` : 'hidden'}>
           {!panelState && !preferenceError && <p role="status" className="text-[11px] text-muted-foreground">正在恢复消息面板…</p>}
@@ -534,9 +534,10 @@ function AgentOperationsPanelView({ activeSessionId, initialCollaborationGroupId
   );
 }
 
-function AutomationTab({ automations, runs, agents, sessions, activeSessionId, loading, loadError, busy, setBusy, setError, setNotice, refresh, onClose }: {
+function AutomationTab({ automations, runs, agents, sessions, activeSessionId, defaultSessionMode, loading, loadError, busy, setBusy, setError, setNotice, refresh, onClose }: {
   automations: AgentAutomation[]; runs: AutomationRun[]; agents: AgentLauncherInfo[]; sessions: OrchestrationSession[]; activeSessionId: string | null; busy: string | null;
   loading: boolean; loadError: string | null;
+  defaultSessionMode: 'shell' | 'tmux';
   setBusy: (value: string | null) => void; setError: (value: string | null) => void; setNotice: (value: string | null) => void; refresh: () => Promise<void>; onClose: () => void;
 }) {
   const [editing, setEditing] = useState<AgentAutomation | null>(null);
@@ -547,7 +548,7 @@ function AutomationTab({ automations, runs, agents, sessions, activeSessionId, l
     try { await action(); await refresh(); setNotice(successMessage); } catch (error) { setError(error instanceof Error ? error.message : '操作失败'); }
     finally { setBusy(null); }
   };
-  if (showForm) return <AutomationForm key={editing?.id ?? 'new'} agents={agents} sessions={sessions} activeSessionId={activeSessionId} initial={editing} onCancel={() => { setEditing(null); setShowForm(false); setError(null); }} onSaved={async (name, enabled) => { setEditing(null); setShowForm(false); await refresh(); setNotice(editing ? `“${name}”已更新` : enabled ? `“${name}”已创建，将按计划自动运行` : `“${name}”已创建，当前未启用`); }} setError={setError} />;
+  if (showForm) return <AutomationForm key={editing?.id ?? 'new'} agents={agents} sessions={sessions} activeSessionId={activeSessionId} defaultSessionMode={defaultSessionMode} initial={editing} onCancel={() => { setEditing(null); setShowForm(false); setError(null); }} onSaved={async (name, enabled) => { setEditing(null); setShowForm(false); await refresh(); setNotice(editing ? `“${name}”已更新` : enabled ? `“${name}”已创建，将按计划自动运行` : `“${name}”已创建，当前未启用`); }} setError={setError} />;
   return <div className="h-full space-y-4 overflow-y-auto overscroll-y-contain">
     {loadError && <div role="alert" className="rounded-lg bg-destructive/10 p-3 text-[11px] text-destructive">自动任务同步失败：{loadError}<button className={buttonClass} onClick={() => void refresh()}>重新加载</button></div>}
     <div className="flex items-start justify-between gap-4">
@@ -617,8 +618,9 @@ function AutomationTab({ automations, runs, agents, sessions, activeSessionId, l
   </div>;
 }
 
-function AutomationForm({ agents, sessions, activeSessionId, initial, onCancel, onSaved, setError }: {
+function AutomationForm({ agents, sessions, activeSessionId, defaultSessionMode, initial, onCancel, onSaved, setError }: {
   agents: AgentLauncherInfo[]; sessions: OrchestrationSession[]; activeSessionId: string | null; initial: AgentAutomation | null; onCancel: () => void; onSaved: (name: string, enabled: boolean) => Promise<void>; setError: (value: string | null) => void;
+  defaultSessionMode: 'shell' | 'tmux';
 }) {
   const [name, setName] = useState(initial?.name ?? '');
   const activeSession = sessions.find((session) => session.sessionId === activeSessionId);
@@ -630,6 +632,7 @@ function AutomationForm({ agents, sessions, activeSessionId, initial, onCancel, 
   const [prompt, setPrompt] = useState(initial?.prompt ?? '');
   const [targetSessionId, setTargetSessionId] = useState(initial?.targetSessionId ?? '');
   const [targetMode, setTargetMode] = useState<'new' | 'existing'>(initial?.targetSessionId ? 'existing' : 'new');
+  const [sessionMode, setSessionMode] = useState(initial ? initial.mode ?? 'shell' : defaultSessionMode);
   const [kind, setKind] = useState<'interval' | 'daily'>(initial?.schedule.kind ?? 'interval');
   const [everyMinutes, setEveryMinutes] = useState(initial?.schedule.kind === 'interval' ? initial.schedule.everyMinutes : 60);
   const [time, setTime] = useState(initial?.schedule.kind === 'daily' ? initial.schedule.time : '09:00');
@@ -669,7 +672,7 @@ function AutomationForm({ agents, sessions, activeSessionId, initial, onCancel, 
     if (saving || !canSave) return;
     setSaving(true); setError(null);
     try {
-      await saveAgentAutomation({ id: initial?.id, name: taskName, cwd, command: targetMode === 'new' ? command : '', prompt, targetSessionId: targetMode === 'existing' ? targetSessionId || null : null, enabled, schedule: kind === 'interval' ? { kind, everyMinutes } : { kind, time, weekdays } });
+      await saveAgentAutomation({ id: initial?.id, name: taskName, cwd, command: targetMode === 'new' ? command : '', prompt, targetSessionId: targetMode === 'existing' ? targetSessionId || null : null, mode: sessionMode, enabled, schedule: kind === 'interval' ? { kind, everyMinutes } : { kind, time, weekdays } });
       await onSaved(taskName, enabled);
     } catch (error) { setError(error instanceof Error ? error.message : '保存失败'); }
     finally { setSaving(false); }
@@ -747,6 +750,11 @@ function AutomationForm({ agents, sessions, activeSessionId, initial, onCancel, 
               </select>
             </label>
             {targetMode === 'new' ? <>
+              <label className="block space-y-1 text-[10px] text-muted-foreground">终端类型
+                <select className={inputClass} value={sessionMode} onChange={event => setSessionMode(event.target.value as 'shell' | 'tmux')}>
+                  <option value="shell">Shell</option><option value="tmux">tmux</option>
+                </select>
+              </label>
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="min-w-0 space-y-1 text-[10px] text-muted-foreground">Agent / Plugin
                   <select className={inputClass} value={selectedAgentSlug} onChange={(event) => setSelectedAgentSlug(event.target.value)}>
@@ -1595,8 +1603,11 @@ function SearchTab({ active, onClose, onNewSession, setError }: { active: boolea
       if ('sessionId' in prepared && prepared.sessionId) window.dispatchEvent(new CustomEvent('switch-terminal-session', { detail: prepared.sessionId }));
       else if (prepared.cwd) {
         const launch = prepared as { mode?: 'shell' | 'tmux'; tmuxSessionName?: string };
-        await new Promise<void>((resolve, reject) => onNewSession({ mode: launch.mode ?? 'shell',
-          tmuxSessionName: launch.tmuxSessionName, cwd: prepared.cwd, command: prepared.command,
+        const retainedTmuxName = launch.mode === 'tmux' ? launch.tmuxSessionName : undefined;
+        // Leave new terminals to the shared creation defaults; only a retained
+        // tmux has an explicit backend and session name to reattach.
+        await new Promise<void>((resolve, reject) => onNewSession({ mode: retainedTmuxName ? 'tmux' : undefined,
+          tmuxSessionName: retainedTmuxName, cwd: prepared.cwd, command: prepared.command,
           onResult: outcome => {
             if (!outcome.ok) { reject(new Error('无法创建恢复会话，请检查目录和连接后重试')); return; }
             void updateSessionInventoryEntry(outcome.sessionId, { name: result.title, customName: true })

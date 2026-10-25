@@ -62,6 +62,19 @@ describe('collaboration API with arbitrary pull consumers', () => {
     expect((await post(`/reply/${first.body.message_id}`, body)).body.message_id).toBe(first.body.message_id);
     expect(store.listGroupMessages(group.id)).toHaveLength(2);
   });
+  it('returns a result to the original web conversation after its terminal inventory entry is gone', async () => {
+    const group = store.save({ name: 'Archived conversation', sessionIds: ['a', 'closed-session'] });
+    const original = store.send({ groupId: group.id, fromSessionId: null, toSessionIds: ['closed-session'], kind: 'ask', content: 'Finish the check', integrationOrigin: { integrationId: 'webchat-test', source: 'session-chat' } })[0];
+    const input = { sessionId: 'closed-session', messageId: original.id.slice(0, 10), content: 'Verified result', response_kind: 'result', idempotency_key: 'closed-result' };
+    const result = await post('/reply', input);
+    expect(result).toMatchObject({ status: 200, body: { status: 'stored', integration_recorded: true } });
+    expect((await post('/reply', input)).body.message_id).toBe(result.body.message_id);
+    expect((await post('/reply', { ...input, sessionId: 'other-closed-session' })).status).toBe(404);
+    expect((await fetch(`${url}/inbox?sessionId=closed-session`)).status).toBe(404);
+    expect((await post('/send', { sessionId: 'closed-session', targetSessionId: 'a', message: 'Unrelated action' })).status).toBe(404);
+    const terminal = store.send({ groupId: group.id, fromSessionId: 'a', toSessionIds: ['closed-session'], kind: 'message', content: 'Terminal message' })[0];
+    expect((await post('/reply', { ...input, messageId: terminal.id })).status).toBe(404);
+  });
   afterEach(async () => { await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())); fs.rmSync(directory, { recursive: true, force: true }); });
   const post = async (route: string, body: Record<string, unknown>) => {
     const response = await fetch(url + route, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });

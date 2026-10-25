@@ -4,9 +4,9 @@ const user: ChatMessage = { id: 'u', role: 'user', content: '问题', createdAt:
 const reply = (id: string, responseKind: string): ChatMessage => ({ id, role: 'assistant', content: id, createdAt: 2, status: 'stored', replyTo: 'u', responseKind });
 describe('chat reading and reply feedback', () => {
   it('distinguishes accepted requests, blocked delivery and actual terminal writes', () => {
-    expect(chatSendStatus('pending')).toBe('待投递');
+    expect(chatSendStatus('pending')).toBe('待发送');
     expect(chatSendStatus('pending', { state: 'binding-required' })).toBe('等待恢复');
-    expect(chatSendStatus('delivered', { state: 'binding-required' })).toBe('已投递');
+    expect(chatSendStatus('delivered', { state: 'binding-required' })).toBe('已发送');
     expect(chatSendStatus('failed')).toBe('发送失败');
   });
   it('groups adjacent assistant updates while preserving text, order, and user boundaries', () => {

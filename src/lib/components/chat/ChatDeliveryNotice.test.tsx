@@ -15,6 +15,20 @@ it('explains failed input detection and offers owner recovery after checking and
   await act(async () => {});
   expect(request).toHaveBeenCalledWith('/api/terminal/original/chat/pending/delivery', expect.objectContaining({ body: JSON.stringify({ action: 'retry', attempt: 2 }) }));
 });
+it('restores manual retry for an earlier non-chat message blocking this chat, and clears the notice after recovery', async () => {
+  const request = vi.fn(async () => Response.json({ ok: true })), recovered = vi.fn(); vi.stubGlobal('fetch', request);
+  const queued: ChatMessage = { ...message, delivery: { state: 'retrying', inputCheckFailed: true,
+    blockedBy: { messageId: 'blocking-reply', attemptCount: 2 } } };
+  const view = render(<ChatDeliveryNotice message={queued} sessionId="original" canWrite onTerminal={() => {}} onRecovered={recovered} />);
+  expect(screen.getByText(/前一条投递未确认/)).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: '已检查并清理，重新投递' }));
+  await act(async () => {});
+  expect(request).toHaveBeenCalledExactlyOnceWith('/api/terminal/original/chat/pending/delivery', expect.objectContaining({ method: 'POST',
+    body: JSON.stringify({ action: 'retry', attempt: 2, blockingMessageId: 'blocking-reply' }) }));
+  expect(recovered).toHaveBeenCalledOnce();
+  view.rerender(<ChatDeliveryNotice message={{ ...queued, status: 'delivered', delivery: undefined }} sessionId="original" canWrite onTerminal={() => {}} onRecovered={recovered} />);
+  expect(view.container.querySelector('[data-chat-delivery-notice]')).toBeNull();
+});
 it('recovers within the page, retains failed messages and never asks the user to run a command', async () => {
   const recovered = vi.fn(), terminal = vi.fn();
   const request = vi.fn().mockResolvedValueOnce(Response.json({}, { status: 409 })).mockResolvedValueOnce(Response.json({ ok: true }));

@@ -44,6 +44,7 @@ describe('reference long press copy', () => {
   afterEach(() => {
     cleanup();
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it('copies immediately after a mouse long press without showing the copy popover', async () => {
@@ -68,5 +69,14 @@ describe('reference long press copy', () => {
     expect(writeText).not.toHaveBeenCalled();
     expect(onCopied).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: 'Copy' })).toBeTruthy();
+  });
+  it('does not report success when both clipboard and fallback copying fail', async () => {
+    writeText.mockRejectedValueOnce(new Error('clipboard denied'));
+    Object.defineProperty(document, 'execCommand', { configurable: true, value: vi.fn(() => false) });
+    const onCopied = vi.fn();
+    render(<ReferenceButton onCopied={onCopied} />);
+    pointerDown(screen.getByRole('button', { name: 'Reference' }), 'mouse', 1);
+    await vi.advanceTimersByTimeAsync(450);
+    expect(onCopied).not.toHaveBeenCalled();
   });
 });

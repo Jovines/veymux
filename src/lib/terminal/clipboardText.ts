@@ -1,21 +1,11 @@
-import {getTermdockDesktopBridge} from '../desktop/nativeBridge';
+import {writeClipboardText} from '../utils/clipboard';
 import {sendTmuxAction} from './api';
 type TmuxSelectionResponse = Awaited<ReturnType<typeof sendTmuxAction>>;
 export type RequestTmuxSelection = () => Promise<TmuxSelectionResponse>;
 
 /** Explicit user copy writes to this computer, independently of the service. */
-export async function writeTerminalClipboardText(text:string,current:()=>boolean=()=>true):Promise<boolean>{
- if(!text||!current())return false;
- const desktop=getTermdockDesktopBridge();
- if(desktop?.writeClipboardText){try{await desktop.writeClipboardText(text);return current();}catch{return false;}}
- try{await navigator.clipboard.writeText(text);return current();}catch{
-  if(!current())return false;
-  const previous=document.activeElement,textarea=document.createElement('textarea');
-  textarea.value=text;textarea.readOnly=true;textarea.style.position='fixed';textarea.style.left='-9999px';
-  document.body.append(textarea);
-  try{textarea.select();return current()&&document.execCommand('copy');}catch{return false;}
-  finally{textarea.remove();if(previous instanceof HTMLElement&&previous.isConnected)previous.focus({preventScroll:true});}
- }
+export function writeTerminalClipboardText(text:string,current:()=>boolean=()=>true):Promise<boolean>{
+ return text ? writeClipboardText(text,current) : Promise.resolve(false);
 }
 /** Read a captured tmux selection through the current page's encrypted API. */
 export async function copyTmuxTerminalSelection(session:string,current:()=>boolean,request:RequestTmuxSelection=()=>sendTmuxAction(session,{action:'copy-selection'})):Promise<boolean>{

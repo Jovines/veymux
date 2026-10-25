@@ -146,7 +146,7 @@ export function extrasFromBody(body: Record<string, unknown>): MessageExtras {
 }
 export interface TransportDiagnostic {
   /** Local terminal I/O only; network retry counts are not write evidence. */
-  write_stage?: 'not_started' | 'unknown' | 'paste_attempted' | 'paste_written' | 'submit_attempted' | 'submit_written';
+  write_stage?: 'not_started' | 'unknown' | 'probe_attempted' | 'paste_attempted' | 'paste_written' | 'submit_attempted' | 'submit_written';
   write_resolution?: { action: 'retry' | 'cancel'; attempt: number; at: number };
   route_state?: string;
   route_diagnostics?: import('./collaborationRouting.js').CollaborationRouteIdentity;

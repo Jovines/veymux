@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { createTerminalProbeMarker } from './terminalProbeMarker.js';
 
 export interface InputFrame {
   lines: string[]; x: number; y: number; cols: number;
@@ -11,81 +11,77 @@ export interface InputCheckResult {
   residual?: string;
   echoOnly?: boolean;
 }
-const same = (a: InputFrame, b: InputFrame) => a.x === b.x && a.y === b.y && a.cols === b.cols && JSON.stringify(a.lines) === JSON.stringify(b.lines);
-const sameInput = (a: InputFrame, b: InputFrame) => a.x === b.x && a.y === b.y && a.cols === b.cols && a.lines[a.y] === b.lines[b.y];
 
-/** A single reversible edit, never a submitted prompt or an approval key.
- * Delete only a proven insertion at the unchanged cursor, then verify restoration.
- * Missing echo means unknown, not a blocked or dead Agent. */
-export async function probeTerminalReadiness(input: {
-  read: () => Promise<InputFrame>;
+interface TerminalInputProbe {
+  read: () => Promise<string>;
   paste: (text: string) => Promise<void>;
   erase: (count: number) => Promise<void>;
   assertCurrent: () => void;
   shouldStart?: () => boolean;
   timeoutMs?: number;
-}): Promise<InputCheckResult> {
-  const marker = `td${randomBytes(4).toString('hex')}`;
+}
+
+/** Callers establish the no-draft/eligible-input conditions before starting.
+ * Always pair the two-symbol paste with two backspaces on the same runtime,
+ * even if echo times out. Screen text/cursor layout must never gate cleanup.
+ * No Enter, draft detection, or retry of an uncertain edit. */
+export async function probeTerminalInput(input: TerminalInputProbe): Promise<InputCheckResult> {
   const timeout = input.timeoutMs ?? 700;
+  let marker: string | null = null;
   let attempted = false;
-  let before: InputFrame | undefined;
-  let unrelatedOutput = false;
-  const read = async () => {
+  const read = async (remaining = timeout) => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       return await Promise.race([input.read(), new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error('INPUT_CHECK_TIMEOUT')), timeout);
+        timer = setTimeout(() => reject(new Error('INPUT_CHECK_TIMEOUT')), Math.max(1, remaining));
       })]);
     } finally { clearTimeout(timer); }
   };
-  try {
-    if (input.shouldStart?.() === false) return { status: 'skipped' };
-    input.assertCurrent(); before = await read(); input.assertCurrent();
-    // Keep the entire marker on one row so cursor proof and cleanup cannot
-    // cross a wrap boundary, overwrite the draft or depend on Unicode width.
-    if (Math.max(before.x, before.endX ?? before.lines[before.y]?.length ?? 0) + marker.length >= before.cols || before.lines.join('\n').includes(marker)) return { status: 'skipped' };
-    const expected = structuredClone(before);
-    const row = expected.lines[before.y] ?? '';
-    const prefix = before.prefix ?? row.padEnd(before.x, ' ').slice(0, before.x);
-    const suffix = before.suffix ?? row.slice(before.x);
-    if ((prefix + suffix).trimEnd() !== row) return { status: 'skipped' };
-    expected.lines[before.y] = (prefix + marker + suffix).trimEnd();
-    expected.x += marker.length;
-    if (!same(await read(), before)) return { status: 'skipped' };
-    input.assertCurrent();
-    if (input.shouldStart?.() === false) return { status: 'skipped' };
-    attempted = true;
-    await input.paste(marker);
+  const contains = (screen: string) => screen.replace(/\r?\n/g, '').includes(marker!);
+  const waitFor = async (predicate: (screen: string) => boolean) => {
     const deadline = Date.now() + timeout;
     for (;;) {
       input.assertCurrent();
-      const frame = await read(); input.assertCurrent();
-      unrelatedOutput ||= frame.lines.some((line, row) => row !== before!.y && line !== before!.lines[row]);
-      if (sameInput(frame, expected)) {
-        // Re-read immediately before erasing: output or an external tmux
-        // keyboard may have moved the cursor since the first echo.
-        if (!sameInput(await read(), expected)) return { status: 'unconfirmed', residual: marker };
-        input.assertCurrent(); await input.erase(marker.length);
-        const cleanupDeadline = Date.now() + timeout;
-        for (;;) {
-          input.assertCurrent();
-          const restored = await read();
-          unrelatedOutput ||= restored.lines.some((line, row) => row !== before!.y && line !== before!.lines[row]);
-          if (sameInput(restored, before)) {
-            // Let the independent output observer consume the echo/erase
-            // packets before releasing the activity quarantine.
-            await new Promise(resolve => setTimeout(resolve, 60));
-            input.assertCurrent();
-            return { status: 'ready', echoOnly: !unrelatedOutput && same(await read(), before) };
-          }
-          if (Date.now() >= cleanupDeadline) return { status: 'unconfirmed', residual: marker };
-          await new Promise(resolve => setTimeout(resolve, 20));
-        }
-      }
-      if (Date.now() >= deadline) return { status: 'unconfirmed', residual: marker };
+      const screen = await read(deadline - Date.now()); input.assertCurrent();
+      if (predicate(screen)) return true;
+      if (Date.now() >= deadline) return false;
       await new Promise(resolve => setTimeout(resolve, 20));
     }
+  };
+  try {
+    if (input.shouldStart?.() === false) return { status: 'skipped' };
+    input.assertCurrent();
+    const before = await read(); input.assertCurrent();
+    marker = createTerminalProbeMarker(before);
+    if (!marker || input.shouldStart?.() === false) return { status: 'skipped' };
+    let echoed = false;
+    attempted = true;
+    try {
+      await input.paste(marker);
+      echoed = await waitFor(contains);
+    } finally {
+      // Snapshot failures and missing echo must not leave an attempted paste
+      // without its cleanup. A replaced runtime must never receive these keys.
+      input.assertCurrent();
+      await input.erase(marker.length);
+    }
+    if (!await waitFor(screen => !contains(screen))) return { status: 'unconfirmed', residual: marker };
+    if (!echoed) return { status: 'unconfirmed' };
+    // Allow the independent output observer to consume the echo/erase packets.
+    await new Promise(resolve => setTimeout(resolve, 60));
+    input.assertCurrent();
+    const after = await read(); input.assertCurrent();
+    if (contains(after)) return { status: 'unconfirmed', residual: marker };
+    // Screen equality only quarantines probe output; it never gates deletion
+    // or readiness, and does not interpret any part of the screen as a draft.
+    return { status: 'ready', echoOnly: before === after };
   } catch {
-    return { status: attempted ? 'unconfirmed' : 'skipped', ...(attempted ? { residual: marker } : {}) };
+    return { status: attempted ? 'unconfirmed' : 'skipped', ...(attempted && marker ? { residual: marker } : {}) };
   }
+}
+
+export function probeTerminalReadiness(input: Omit<TerminalInputProbe, 'read'> & {
+  read: () => Promise<InputFrame>;
+}): Promise<InputCheckResult> {
+  return probeTerminalInput({ ...input, read: async () => (await input.read()).lines.join('\n') });
 }

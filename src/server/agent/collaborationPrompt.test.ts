@@ -244,8 +244,8 @@ describe('formatCollaborationDelivery', () => {
     ]);
     expect(prompt.split(RULE).length).toBe(3);
     expect(prompt).not.toContain('[Termdock 协作');
-    expect(prompt).toContain('来自:开发 Agent · task · one\n\n```\n第一条\n```');
-    expect(prompt).toContain('来自:another-id · task · two\n\n```\n第二条\n```');
+    expect(prompt).toContain('来自:开发 Agent · task · one\n来源服务:本服务（与收件人相同）\n来源会话:coder-id\n\n```\n第一条\n```');
+    expect(prompt).toContain('来自:another-id · task · two\n来源服务:本服务（与收件人相同）\n来源会话:another-id\n\n```\n第二条\n```');
   });
 
   it('keeps mixed messages and embedded code unambiguous', () => {

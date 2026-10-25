@@ -43,6 +43,42 @@ describe('background collaboration delivery', () => {
     expect(store.diagnostic(message.id)?.last_error).toContain('TERMINAL_INPUT_ECHO_UNCONFIRMED');
   });
 
+  it('persists a failed input probe separately and explains later queued messages without inventing their write attempts', async () => {
+    const first = send(), second = send();
+    const body = vi.fn();
+    resolve.mockResolvedValue({ state: 'ready', tracksWriteProgress: true, write: async (_messages, progress) => {
+      progress?.('queue_wait'); progress?.('probe_attempted');
+      throw new Error('TERMINAL_INPUT_ECHO_UNCONFIRMED');
+      // No body/Enter is written when the preflight echo cannot be confirmed.
+    } });
+    await worker.run('b');
+    expect(store.diagnostic(first.id)?.write_stage).toBe('probe_attempted');
+    store = new CollaborationStore(file); worker = makeWorker();
+    resolve.mockResolvedValue({ state: 'ready', write: body });
+    await worker.run('b');
+    expect(body).not.toHaveBeenCalled();
+    expect(store.diagnostic(first.id)).toMatchObject({ write_stage: 'probe_attempted', attempt_count: 1 });
+    expect(store.diagnostic(second.id)).toMatchObject({ attempt_count: 0, last_error: 'TERMINAL_INPUT_ECHO_UNCONFIRMED', next_retry_at: null });
+    expect(store.diagnostic(second.id)?.write_stage).toBeUndefined();
+    expect(store.receipt(second.id).delivery_semantics).toBe('not_delivered');
+    expect(worker.state('b').reason).toBe('TERMINAL_INPUT_ECHO_UNCONFIRMED');
+  });
+
+  it('allows a confirmed cleaned-up probe to retry across restart before any body was pasted', async () => {
+    const message = send();
+    resolve.mockResolvedValue({ state: 'ready', tracksWriteProgress: true, write: async (_messages, progress) => {
+      progress?.('queue_wait'); progress?.('probe_attempted'); progress?.('probe_completed');
+      throw new Error('runtime changed before body paste');
+    } });
+    await worker.run('b');
+    expect(new CollaborationStore(file).diagnostic(message.id)?.write_stage).toBe('not_started');
+    store = new CollaborationStore(file); worker = makeWorker();
+    resolve.mockResolvedValue({ state: 'ready', write });
+    await vi.advanceTimersByTimeAsync(2000); await worker.run('b');
+    expect(write).toHaveBeenCalledOnce();
+    expect(store.getMessage(message.id)?.status).toBe('delivered');
+  });
+
   it('requires sender confirmation only for a known shell, preserving the queued message', async () => {
     const message = send();
     resolve.mockResolvedValue({ state: 'ready', isShell: true, write, capture: async () => '$ ' });

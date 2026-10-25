@@ -3,6 +3,7 @@ import { Copy, FolderOpen, X } from 'lucide-react';
 import { analysisFile, buildArchitecturePrompt, normalizeAnalysis, type ArchitectureAnalysis } from '../../architecture/model';
 import { useKeyboardLayer } from '../../hooks/useKeyboardLayer';
 import { useI18n } from '../../i18n';
+import { writeClipboardText } from '../../utils/clipboard';
 import { parseScopePaths, relativeScopePath } from '../../architecture/scopePaths';
 import { ArchitecturePathBrowser, ArchitecturePathPicker } from './ArchitecturePathPicker';
 
@@ -106,7 +107,7 @@ export function ArchitectureGenerationForm({ rootPath, initial, outputFile, curr
       <button type="button" disabled={!scope || pending} className={button} onClick={() => {
         if (!prepared) return;
         const revision = ++request.current;
-        void Promise.resolve().then(() => navigator.clipboard.writeText(prompt)).then(() => { if (revision !== request.current) return; onPrepared(outputFile ?? analysisFile(prepared), prepared); setFeedback('copied'); }).catch(() => { if (revision === request.current) setFeedback('failed'); });
+        void writeClipboardText(prompt, () => revision === request.current).then(copied => { if (revision !== request.current) return; if (!copied) { setFeedback('failed'); return; } onPrepared(outputFile ?? analysisFile(prepared), prepared); setFeedback('copied'); });
       }}><Copy size={14} />{t('architecture.copyPrompt')}</button>
     </div>
     {feedback && <p role="status" className="text-xs text-muted-foreground">{t(`architecture.${feedback}`)}</p>}

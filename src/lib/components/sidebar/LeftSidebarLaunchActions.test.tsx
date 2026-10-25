@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { I18nProvider } from '../../i18n';
 import { LeftSidebar } from './LeftSidebar';
 import { AppFeedbackHost } from '../ui/AppFeedback';
+import { listAgentResumeHistory, prepareAgentResumeHistory } from '../../terminal/api';
 
 const codex = {
   slug: 'codex',
@@ -29,6 +30,7 @@ vi.mock('../../hooks/useNewSessionAgentPreference', () => ({
 vi.mock('../../terminal/api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../terminal/api')>()),
   listAgentResumeHistory: vi.fn().mockResolvedValue([]),
+  prepareAgentResumeHistory: vi.fn(),
   listCollaborationTasks: vi.fn().mockResolvedValue({ tasks: [] }),
 }));
 
@@ -39,9 +41,31 @@ afterEach(() => {
   else Reflect.deleteProperty(Element.prototype, 'getAnimations');
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  vi.mocked(listAgentResumeHistory).mockReset().mockResolvedValue([]);
+  vi.mocked(prepareAgentResumeHistory).mockReset();
 });
 
 describe('LeftSidebar launch actions', () => {
+  it.each(['shell', 'tmux'] as const)('resumes history using the composer selection %s', async mode => {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ locale: 'en' })));
+    const agent = { slug: 'codex', displayName: 'Codex', accentColor: 'var(--primary)', icon: null };
+    vi.mocked(listAgentResumeHistory).mockResolvedValue([{ id: 'history', title: 'Original conversation', cwd: '/work',
+      agent, closedAt: 1, titleSource: 'custom', reason: 'closed' }]);
+    vi.mocked(prepareAgentResumeHistory).mockResolvedValue({ cwd: '/work', command: 'codex resume native-original', title: 'Original conversation', agent });
+    const user = userEvent.setup(), onNewSession = vi.fn();
+    render(<I18nProvider><LeftSidebar isOpen pinned drawerWidthPx={320} sessions={[]} tmuxAvailable
+      defaultSessionMode={mode === 'shell' ? 'tmux' : 'shell'}
+      activeSessionId={null} sessionStates={new Map()} onNewSession={onNewSession}
+      onClose={vi.fn()} onCloseSession={vi.fn()} onSplitSession={vi.fn()} onCloseSplit={vi.fn()}
+      onRemoveFromSplit={vi.fn()} splitWorkspaces={[]} onSetSplitLayout={vi.fn()}
+      onReorderSplitWorkspace={vi.fn()} onRenameSplitWorkspace={vi.fn()} onCombineSplitSessions={vi.fn()}
+      onReorderSessions={vi.fn()} onOpenSettings={vi.fn()} /></I18nProvider>);
+    await user.click(screen.getByRole('button', { name: 'More actions' }));
+    await user.click(screen.getByRole('button', { name: mode === 'shell' ? 'Shell' : 'Tmux' }));
+    await user.click(await screen.findByText('Recent conversations'));
+    await user.click(await screen.findByRole('button', { name: 'Resume Original conversation' }));
+    expect(onNewSession).toHaveBeenCalledWith(expect.objectContaining({ mode, cwd: '/work', command: 'codex resume native-original' }));
+  });
   it.each(['New Codex', 'New terminal'])('shows waiting on the requested launcher (%s), then clears it on failure and retry', async (name) => {
     vi.useFakeTimers();
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ locale: 'en' }) })));

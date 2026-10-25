@@ -23,7 +23,8 @@ function persistTerminalSettings(settings: TerminalSettings): void {
   try {
     const stored = window.localStorage.getItem(TERMINAL_SETTINGS_STORAGE_KEY);
     const existingData = stored ? JSON.parse(stored) as Record<string, unknown> : {};
-    const nextData = normalizeTerminalSettings({ ...existingData, ...settings });
+    // This document also belongs to session defaults and future preferences.
+    const nextData = { ...existingData, ...normalizeTerminalSettings({ ...existingData, ...settings }) };
     window.localStorage.setItem(TERMINAL_SETTINGS_STORAGE_KEY, JSON.stringify(nextData));
   } catch {
   }

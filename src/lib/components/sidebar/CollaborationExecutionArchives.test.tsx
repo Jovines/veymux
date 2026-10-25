@@ -6,6 +6,14 @@ const api=vi.hoisted(()=>({list:vi.fn(),restore:vi.fn()}));
 vi.mock('../../terminal/api',()=>({listExecutionArchives:api.list,restoreExecutionSession:api.restore}));
 afterEach(()=>{cleanup();vi.clearAllMocks();});
 const entry={sessionId:'worker',title:'执行 预览优化',groups:[{id:'project'}],agent:{slug:'codex',sessionId:'native-conversation-123'},cleanup:{state:'removed'},cwd:'/execution'};
+it.each(['shell', 'tmux'] as const)('passes the current %s preference to archive restoration',async mode=>{
+ api.list.mockResolvedValue({entries:[entry]});api.restore.mockResolvedValue({session:{sessionId:'worker',mode}});
+ const onRestore=vi.fn();
+ render(<CollaborationExecutionArchives groupId="project" version={1} defaultSessionMode={mode} onRestore={onRestore}/>);
+ fireEvent.click(await screen.findByText('已归档的执行会话 · 1'));fireEvent.click(screen.getByRole('button',{name:'恢复'}));
+ await waitFor(()=>expect(onRestore).toHaveBeenCalledWith({sessionId:'worker',mode}));
+ expect(api.restore).toHaveBeenCalledWith('worker',mode);
+});
 it('shows archived native identity and directory disposition and restores once per click sequence',async()=>{
  api.list.mockResolvedValue({entries:[entry]});let resolve!:(value:unknown)=>void;api.restore.mockImplementation(()=>new Promise(done=>{resolve=done}));const onRestore=vi.fn().mockResolvedValue(undefined);
  render(<CollaborationExecutionArchives groupId="project" version={1} onRestore={onRestore}/>);

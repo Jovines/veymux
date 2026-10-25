@@ -408,9 +408,8 @@ export async function dismissPwaNotificationsForSession(sessionId: string): Prom
   try {
     const registration = await getNotificationRegistration();
     if (!registration || typeof registration.getNotifications !== 'function') return;
-    const tag = `agent:${sessionId}`;
-    const sessionNotifications = await registration.getNotifications({ tag });
-    for (const notification of sessionNotifications) notification.close();
+    const sessionNotifications = await Promise.all(['agent', 'exit'].map(kind => registration.getNotifications({ tag: `${kind}:${sessionId}` })));
+    for (const notification of sessionNotifications.flat()) notification.close();
     const nav = navigator as Navigator & { setAppBadge?: (count: number) => Promise<void> };
     if (typeof nav.setAppBadge === 'function') {
       const remaining = await registration.getNotifications();

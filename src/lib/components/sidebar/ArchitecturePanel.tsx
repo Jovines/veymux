@@ -258,7 +258,7 @@ export function ArchitecturePanel({ rootPath, active, onInsertPrompt, onOpenFile
           </details>
           {parent && parent.files.length > 0 && <details><summary className="cursor-pointer py-2 text-xs text-muted-foreground">{t('architecture.sourceFiles')}</summary>{parent.files.map(file => <button type="button" key={`${file.path}:${file.line ?? ''}`} className="block min-h-10 w-full break-all rounded px-2 py-2 text-left font-mono text-xs text-primary hover:bg-surface-2" onClick={() => onOpenFile(file)}>{file.path}{file.line ? `:${file.line}` : ''}</button>)}</details>}
         </div>}
-        <ArchitectureLibraryTools root={rootPath} file={file} document={document} onLoaded={(next, document) => { selectFile(next); setDocument(document); setRefresh(value => value + 1); }} />
+        <ArchitectureLibraryTools root={rootPath} file={file} document={document} active={active} onLoaded={(next, document) => { selectFile(next); setDocument(document); setRefresh(value => value + 1); }} />
       </>}
     </div>
     {active && !diagramExpanded && inspector(false)}

@@ -6,9 +6,24 @@ export interface ChatDelivery {
   inputCheckFailed?: boolean;
   canReconnect?: boolean;
   attemptCount?: number;
+  /** Owner-only recovery for an earlier message blocking this recipient. */
+  blockedBy?: { messageId: string; attemptCount: number };
 }
 
-export function chatDelivery(status: string, diagnostic: TransportDiagnostic | null, sessionId: string, fullService: boolean): ChatDelivery | undefined {
+export function chatDelivery(status: string, diagnostic: TransportDiagnostic | null, sessionId: string, fullService: boolean,
+  blocker?: { messageId: string; diagnostic: TransportDiagnostic | null }): ChatDelivery | undefined {
+  const own = messageChatDelivery(status, diagnostic, sessionId, fullService);
+  if (status === 'pending' && blocker?.diagnostic?.last_error && blocker.diagnostic.last_error !== 'DELIVERY_IN_PROGRESS'
+    && hasUnconfirmedTerminalWrite(blocker.diagnostic)) {
+    const inputCheckFailed = blocker.diagnostic.write_stage === 'probe_attempted'
+      || /TERMINAL_INPUT_ECHO_UNCONFIRMED|TERMINAL_INPUT_UNAVAILABLE/.test(blocker.diagnostic.last_error);
+    return { ...own ?? { state: 'retrying' }, ...(inputCheckFailed ? { inputCheckFailed: true } : {}),
+      ...(fullService ? { blockedBy: { messageId: blocker.messageId, attemptCount: blocker.diagnostic.attempt_count } } : {}) };
+  }
+  return own;
+}
+
+function messageChatDelivery(status: string, diagnostic: TransportDiagnostic | null, sessionId: string, fullService: boolean): ChatDelivery | undefined {
   if (status !== 'pending' || !diagnostic?.last_error) return;
   // Intermediate paste/submit stages belong to a live attempt. Only a
   // failed attempt or restart reconciliation can make its outcome uncertain.

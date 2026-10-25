@@ -31,7 +31,7 @@ vi.mock('../../terminal/factory', () => ({ createTermdockAPI: () => ({
     queueMicrotask(() => backend.handlers?.onEvent({ type: 'resize-ack', ok: true, ...size }));
   },
 }) }));
-declare module 'vitest/browser' { interface BrowserCommands { peekTap(selector: string): Promise<void>; peekTapOutside(): Promise<void> } }
+declare module 'vitest/browser' { interface BrowserCommands { peekTap(selector: string): Promise<void>; peekTapOutside(): Promise<void>; peekDrag(selector: string, dy: number): Promise<boolean[]> } }
 let root: Root | undefined;
 afterEach(() => {
   root?.unmount(); root = undefined;
@@ -216,34 +216,42 @@ it('hides the countdown after a real touch and keeps the preview open until dism
 
 it.each([
   { width: 390, height: 844, keyboardHeight: 430 },
-  { width: 844, height: 390, keyboardHeight: 260 },
+  { width: 844, height: 390, keyboardHeight: 250 },
   { width: 390, height: 844, keyboardHeight: 430, alreadyOpen: true },
   { width: 390, height: 844, keyboardHeight: 430, native: false },
   { width: 390, height: 844, keyboardHeight: 430, staleInnerHeight: true },
 ])('reclaims the chat composer space for terminal input ($width × $height, already open $alreadyOpen, native $native, stale layout $staleInnerHeight)', async ({ width, height, keyboardHeight, alreadyOpen, native = true, staleInnerHeight }) => {
-  if (native) {
-    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue('iPhone');
-    const viewport = Object.assign(new EventTarget(), { height: 9999, width, offsetTop: 88, offsetLeft: 0, scale: 1 });
-    vi.stubGlobal('visualViewport', viewport);
-  }
+  vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(native ? 'iPhone' : 'Mozilla/5.0 (Linux; Android 15) Mobile Safari/537.36');
+  const viewport = Object.assign(new EventTarget(), { height, width, offsetTop: native ? 88 : 0, offsetLeft: 0, scale: 1 });
+  vi.stubGlobal('visualViewport', viewport);
   await mount(width, height, false, native);
+  const reportKeyboard = async (visible: number) => {
+    viewport.height = visible;
+    document.documentElement.style.setProperty('--app-base-vh', `${height}px`);
+    document.documentElement.style.setProperty('--kb-height', `${height - visible}px`);
+    await page.viewport(width, visible);
+    viewport.dispatchEvent(new Event('resize'));
+    document.dispatchEvent(new CustomEvent('termdock:viewport-keyboard-change', { detail: { isOpen: visible < height } }));
+  };
   const editor = document.querySelector<HTMLElement>('[data-session-chat] [role="textbox"]')!;
   const draft = alreadyOpen ? '保留多行聊天草稿\n'.repeat(6) : '保留聊天草稿';
   await page.getByRole('textbox').fill(draft);
   const originalDraft = readChatEditor(editor).text;
   expect(originalDraft.trimEnd()).toBe(draft.trimEnd());
-  if (alreadyOpen) { await page.viewport(width, keyboardHeight); editor.focus(); }
+  if (alreadyOpen) { await reportKeyboard(keyboardHeight); editor.focus(); if (native) editor.scrollIntoView({ block: 'end' }); }
   await commands.peekTap('[data-chat-terminal-access] [data-terminal-peek-trigger]');
   await expect.element(page.getByRole('dialog', { name: '会话终端预览' })).toBeVisible();
   const panel = document.querySelector<HTMLElement>('[data-terminal-peek]')!;
   const input = panel.querySelector<HTMLTextAreaElement>('textarea[data-terminal-input-anchor]')!;
-  const beforeInput = panel.getBoundingClientRect();
   const workspace = document.querySelector('[data-session-workspace]')!;
   const mode = localStorage.getItem(`termdock:session-view:${location.origin}:touch-peek-${width}-${height}`);
   await commands.peekTap(native ? '[data-terminal-touch-surface]' : '[data-terminal-peek] textarea[data-terminal-input-anchor]');
   await expect.poll(() => document.activeElement).toBe(input);
-  await expect.poll(() => panel.getBoundingClientRect().bottom).toBeGreaterThan(beforeInput.bottom + 60);
+  if (!alreadyOpen) expect(panel.hasAttribute('data-terminal-peek-input-expanded')).toBe(false);
+  await reportKeyboard(keyboardHeight);
   await expect.element(page.getByRole('button', { name: '返回对话', exact: true })).toBeVisible();
+  if (native) input.scrollIntoView({ block: 'end', inline: 'nearest' });
+  await expect.poll(() => panel.getBoundingClientRect().top).toBeGreaterThanOrEqual(0);
   const back = panel.querySelector<HTMLElement>('[aria-label="返回对话"]')!;
   expect(back.scrollWidth).toBeLessThanOrEqual(back.clientWidth);
   expect(back.getBoundingClientRect().height).toBeLessThanOrEqual(panel.querySelector('header')!.getBoundingClientRect().height);
@@ -254,10 +262,12 @@ it.each([
   expect(document.elementFromPoint(width / 2, document.querySelector('[data-chat-composer]')!.getBoundingClientRect().top + 8)?.closest('[data-terminal-peek]')).toBe(panel);
   if (staleInnerHeight) vi.spyOn(window, 'innerHeight', 'get').mockReturnValue(220);
   const blur = vi.fn(); input.addEventListener('blur', blur);
-  for (const visibleHeight of [keyboardHeight, height, keyboardHeight + 20, height, keyboardHeight - 20]) {
-    await page.viewport(width, visibleHeight);
-    input.focus(); // Keep the same focused input throughout viewport changes.
-    if (native) {
+  for (const visibleHeight of [keyboardHeight, height, keyboardHeight + 10, height, keyboardHeight - 10]) {
+    const open = visibleHeight < height;
+    if (open && document.activeElement !== input) await commands.peekTap('[data-terminal-peek] textarea[data-terminal-input-anchor]');
+    await reportKeyboard(visibleHeight);
+    await expect.poll(() => panel.hasAttribute('data-terminal-peek-input-expanded')).toBe(open);
+    if (native && open) {
       // Chromium does not open an OS keyboard or pan an already focused field
       // on viewport resize. Exercise its actual document scrolling for the
       // same input to model WebKit's native pan, without blur or replacement.
@@ -267,9 +277,14 @@ it.each([
     await expect.poll(() => input.getBoundingClientRect().bottom).toBeLessThanOrEqual(visibleHeight);
     await expect.poll(() => panel.querySelector('.xterm-screen')!.getBoundingClientRect().height).toBeGreaterThan(24);
     await expect.poll(() => panel.getBoundingClientRect().top).toBeGreaterThanOrEqual(0);
-    await expect.poll(() => Math.abs(panel.getBoundingClientRect().bottom - workspace.getBoundingClientRect().bottom)).toBeLessThanOrEqual(1);
-    const composerBottom = document.querySelector('[data-chat-composer]')!.getBoundingClientRect().bottom;
-    if (composerBottom <= visibleHeight) expect(document.elementFromPoint(width / 2, composerBottom - 2)?.closest('[data-terminal-peek]')).toBe(panel);
+    if (open) {
+      await expect.poll(() => Math.abs(panel.getBoundingClientRect().bottom - workspace.getBoundingClientRect().bottom)).toBeLessThanOrEqual(1);
+      const composerBottom = document.querySelector('[data-chat-composer]')!.getBoundingClientRect().bottom;
+      if (composerBottom <= visibleHeight) expect(document.elementFromPoint(width / 2, composerBottom - 2)?.closest('[data-terminal-peek]')).toBe(panel);
+    } else {
+      await expect.element(page.getByRole('button', { name: '调整终端预览大小' })).toBeVisible();
+      expect(getComputedStyle(panel.querySelector('section')!).borderRadius).not.toBe('0px');
+    }
     const canvas = panel.querySelector('.xterm-screen')!.getBoundingClientRect();
     expect(canvas.top).toBeGreaterThanOrEqual(panel.querySelector('header')!.getBoundingClientRect().bottom);
     await expect.poll(() => panel.querySelector('.xterm-screen')!.getBoundingClientRect().bottom - panel.querySelector(native ? '[data-native-terminal-input-host]' : '[data-mobile-keyboard]')!.getBoundingClientRect().top).toBeLessThanOrEqual(1);
@@ -277,7 +292,7 @@ it.each([
     expect(key.height).toBeGreaterThan(0);
     expect(key.bottom).toBeLessThanOrEqual(visibleHeight + 1);
     expect(document.elementFromPoint(key.left + key.width / 2, key.top + key.height / 2)?.closest('[data-mobile-keyboard]')).not.toBeNull();
-    expect(document.activeElement).toBe(input); expect(blur).not.toHaveBeenCalled();
+    if (native) { expect(document.activeElement).toBe(input); expect(blur).not.toHaveBeenCalled(); }
   }
   await page.screenshot({ element: panel, path: `/tmp/td-keyboard-review/immersive-preview-keyboard-${native ? 'native' : 'compat'}-${width}${staleInnerHeight ? '-stale' : ''}.png` });
   await page.elementLocator(input).fill('pwd');
@@ -300,7 +315,7 @@ it.each([
   { width: 390, height: 844, visible: 430, native: false },
 ])('restores the bubble on keyboard close and preserves native input focus ($width × $height, native $native)', async ({ width, height, visible, native }) => {
   const viewport = Object.assign(new EventTarget(), { height, width, offsetTop: 0, offsetLeft: 0, scale: 1 });
-  if (native) vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue('iPhone');
+  vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(native ? 'iPhone' : 'Mozilla/5.0 (Linux; Android 15) Mobile Safari/537.36');
   vi.stubGlobal('visualViewport', viewport);
   await mount(width, height, false, native);
   const editor = document.querySelector<HTMLElement>('[data-session-chat] [role="textbox"]')!;
@@ -349,4 +364,41 @@ it.each([
   input.removeEventListener('blur', blur); input.removeEventListener('focus', focusEvent);
   await commands.peekTap('[aria-label="关闭终端预览"]');
   await expect.poll(() => document.querySelector('[data-terminal-peek]')).toBeNull();
+});
+
+it.each([
+  { name: 'phone with keyboard closed', ua: 'iPhone', width: 390, height: 844, native: true, keyboardOpen: false },
+  { name: 'phone with chat keyboard open', ua: 'iPhone', width: 390, height: 844, native: true, keyboardOpen: true },
+  { name: 'landscape phone with keyboard closed', ua: 'iPhone', width: 844, height: 390, native: true, keyboardOpen: false },
+  { name: 'touchscreen desktop', ua: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', width: 390, height: 844, native: false, keyboardOpen: true },
+  { name: 'iPad', ua: 'Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X)', width: 768, height: 1024, native: true, keyboardOpen: true },
+])('keeps a bubble throughout terminal scrolling on a $name', async ({ ua, width, height, native, keyboardOpen }) => {
+  vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(ua);
+  const viewport = Object.assign(new EventTarget(), { height, width, offsetTop: 0, offsetLeft: 0, scale: 1 });
+  vi.stubGlobal('visualViewport', viewport);
+  await mount(width, height, false, native);
+  await page.getByRole('textbox').fill('滚动不能展开终端');
+  if (keyboardOpen) {
+    viewport.height = height - 300;
+    document.documentElement.style.setProperty('--app-base-vh', `${height}px`);
+    document.documentElement.style.setProperty('--kb-height', '300px');
+    viewport.dispatchEvent(new Event('resize'));
+    document.dispatchEvent(new CustomEvent('termdock:viewport-keyboard-change', { detail: { isOpen: true } }));
+  }
+  await commands.peekTap('[data-chat-terminal-access] [data-terminal-peek-trigger]');
+  const panel = document.querySelector<HTMLElement>('[data-terminal-peek]')!;
+  const input = panel.querySelector<HTMLTextAreaElement>('textarea[data-terminal-input-anchor]')!;
+  const focus = vi.spyOn(input, 'focus');
+  const target = native ? '[data-terminal-touch-surface]' : '[data-terminal-peek] textarea[data-terminal-input-anchor]';
+  expect(await commands.peekDrag(target, -40)).not.toContain(true);
+  expect(panel.hasAttribute('data-terminal-peek-input-expanded')).toBe(false);
+  expect(focus).not.toHaveBeenCalled();
+  expect(backend.input).not.toHaveBeenCalled();
+  if (!keyboardOpen || !/iPhone/.test(ua)) {
+    await commands.peekTap(target);
+    await expect.poll(() => document.activeElement).toBe(input);
+    expect(panel.hasAttribute('data-terminal-peek-input-expanded')).toBe(false);
+  }
+  focus.mockRestore();
+  expect(backend.connect).toHaveBeenCalledOnce(); expect(backend.close).not.toHaveBeenCalled();
 });

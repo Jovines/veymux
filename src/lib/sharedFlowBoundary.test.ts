@@ -18,3 +18,14 @@ it('routes component exports through the shared platform save flow', () => {
   const offenders = files.filter(file => /\.download\s*=/.test(readFileSync(resolve(root, file), 'utf8')));
   expect(offenders).toEqual([]);
 });
+
+it('keeps explicit UI copy actions on the shared clipboard writer', () => {
+  const root = resolve('src');
+  const files = readdirSync(root, { recursive: true }).map(String)
+    .filter(file => /\.tsx$/.test(file) && !file.includes('.test.') && !file.includes('.browser.'));
+  // The crash recovery screen must copy diagnostics even if the normal feature
+  // dependency graph failed to initialize; it keeps its isolated fallback.
+  const offenders = files.filter(file => file !== 'lib/components/ui/ErrorBoundary.tsx'
+    && /navigator\.clipboard\??\.writeText\s*\(/.test(readFileSync(resolve(root, file), 'utf8')));
+  expect(offenders).toEqual([]);
+});

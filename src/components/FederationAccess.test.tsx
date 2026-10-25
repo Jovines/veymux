@@ -8,9 +8,42 @@ const serviceId = '12D3KooW' + '1'.repeat(44);
 const code = 'secret-invite-code'.repeat(3);
 const inviteUrl = createInviteLink({ v: 1, serviceId, code, entryUrl: 'https://c.example', name: '工作电脑' });
 function more() { const button = screen.getByRole('button', { name: /更多选项/ }); if (button.getAttribute('aria-expanded') !== 'true') fireEvent.click(button); }
-function allWhenEmpty() { if (screen.queryByRole('button', { name: /已选 [1-9]/ })) return; more(); const button = screen.getByRole('button', { name: '全部终端' }); if (button.getAttribute('aria-pressed') !== 'true') fireEvent.click(button); }
+function allWhenEmpty() { if (screen.queryByRole('button', { name: /已选 [1-9]/ })) return; fireEvent.click(screen.getByRole('radio', { name: '全部终端' })); }
 afterEach(() => { cleanup(); localStorage.clear(); Reflect.deleteProperty(navigator, 'clipboard'); document.documentElement.style.removeProperty('--background'); document.documentElement.style.removeProperty('--foreground'); });
 describe('FederationAccess invitation flow', () => {
+  it('shares all terminals directly from the first level without changing access permissions or opening more options', async () => {
+    const onCreateInvite = vi.fn().mockResolvedValue({ url: inviteUrl, expiresAt: Date.now() + 600000 });
+    render(<FederationAccess paired initialShareSessionId="one" sessions={[{ sessionId: 'one', name: '构建任务' }]} onConnect={() => {}} onClose={() => {}} onCreateInvite={onCreateInvite} />);
+    expect(screen.getByRole('group', { name: '分享范围' })).toBeTruthy();
+    expect((screen.getByRole('radio', { name: '指定会话' }) as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(screen.getByRole('radio', { name: '全部终端' }));
+    expect(screen.getByText('包含以后新建的终端')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /已选|选择终端/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /更多选项/ }).getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(screen.getByRole('button', { name: '生成并复制链接' }));
+    await waitFor(() => expect(onCreateInvite).toHaveBeenCalledExactlyOnceWith({ viewMode: 'chat', scope: { kind: 'service' }, actions: ['session.view'] }));
+  });
+  it('retains a specific-session selection when switching back from all terminals', async () => {
+    const onCreateInvite = vi.fn().mockResolvedValue({ url: inviteUrl, expiresAt: Date.now() + 600000 });
+    render(<FederationAccess paired initialShareSessionId="stable" sessions={[{ sessionId: 'backend', sourceSessionId: 'stable', name: '构建任务' }, { sessionId: 'other', name: '接口排障' }]} onConnect={() => {}} onClose={() => {}} onCreateInvite={onCreateInvite} />);
+    fireEvent.click(screen.getByRole('radio', { name: '全部终端' }));
+    fireEvent.click(screen.getByRole('radio', { name: '指定会话' }));
+    expect(screen.getByText('构建任务')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '已选 1 个' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('radio', { name: /可操作/ }));
+    fireEvent.click(screen.getByRole('button', { name: '生成并复制链接' }));
+    await waitFor(() => expect(onCreateInvite).toHaveBeenCalledWith(expect.objectContaining({ scope: { kind: 'sessions', sessionIds: ['stable'] }, actions: ['session.view', 'session.input', 'session.resize'] })));
+  });
+  it('shows the forced all-terminal scope for explicit full access and restores the previous scope when it is disabled', () => {
+    render(<FederationAccess paired initialShareSessionId="one" sessions={[{ sessionId: 'one', name: '构建任务' }]} onConnect={() => {}} onClose={() => {}} onCreateInvite={async () => ({ url: inviteUrl, expiresAt: Date.now() + 600000 })} />);
+    more(); fireEvent.click(screen.getByRole('checkbox', { name: '授予完整服务权限' }));
+    expect((screen.getByRole('radio', { name: '全部终端' }) as HTMLInputElement).checked).toBe(true);
+    expect(screen.getByRole('radio', { name: '全部终端' }).closest('fieldset')?.disabled).toBe(true);
+    expect(screen.queryByRole('button', { name: '已选 1 个' })).toBeNull();
+    fireEvent.click(screen.getByRole('checkbox', { name: '授予完整服务权限' }));
+    expect((screen.getByRole('radio', { name: '指定会话' }) as HTMLInputElement).checked).toBe(true);
+    expect(screen.getByRole('button', { name: '已选 1 个' })).toBeTruthy();
+  });
   it('previews custom sharing appearance, retains it when editing and resets to the Session defaults', async () => {
     const onCreateInvite = vi.fn().mockResolvedValue({ url: inviteUrl, expiresAt: Date.now() + 600000 });
     render(<FederationAccess paired initialShareSessionId="stable" sessions={[{ sessionId: 'backend', sourceSessionId: 'stable', name: '原会话' }]} onConnect={() => {}} onClose={() => {}} onCreateInvite={onCreateInvite} />);
@@ -262,6 +295,19 @@ describe('FederationAccess invitation flow', () => {
     fireEvent.click(screen.getByText('生成并复制链接'));
     await waitFor(() => expect(onCreateInvite).toHaveBeenCalledWith(expect.objectContaining({ entryAddress: 'https://192.168.1.23:9834' })));
   });
+  it('defaults local-client invitations to the supplied IP while keeping mDNS available as an explicit choice', async () => {
+    const onCreateInvite = vi.fn().mockResolvedValue({ url: inviteUrl, expiresAt: Date.now() + 600000 });
+    render(<FederationAccess paired currentServiceOrigin="https://127.0.0.1:9834" onConnect={() => {}} onClose={() => {}} onCreateInvite={onCreateInvite} inviteAddresses={[
+      { url: 'https://dv4d.termdock.local:9834', label: '服务域名' },
+      { url: 'https://192.168.1.23:9834', label: 'Wi-Fi' },
+    ]} />);
+    fireEvent.click(screen.getByText('邀请设备'));
+    expect((screen.getByLabelText('接入地址') as HTMLSelectElement).value).toBe('https://192.168.1.23:9834');
+    expect(screen.getByRole('option', { name: /dv4d.termdock.local/ })).toBeTruthy();
+    allWhenEmpty();
+    fireEvent.click(screen.getByText('生成并复制链接'));
+    await waitFor(() => expect(onCreateInvite).toHaveBeenCalledWith(expect.objectContaining({ entryAddress: 'https://192.168.1.23:9834' })));
+  });
   it('validates a manually entered entry address before generating the invitation', async () => {
     const onCreateInvite = vi.fn().mockResolvedValue({ url: inviteUrl, expiresAt: Date.now() + 600000 });
     render(<FederationAccess paired onConnect={() => {}} onClose={() => {}} onCreateInvite={onCreateInvite} inviteAddresses={[{ url: 'https://192.168.1.23:9834', label: 'Wi-Fi' }]} />);
@@ -288,7 +334,7 @@ it('always offers a custom invite address and warns that localhost is local to o
   expect(screen.getByText(/当前地址仅供这台电脑使用/)).toBeTruthy();
   fireEvent.change(screen.getByRole('combobox', { name: '接入地址' }), { target: { value: 'custom' } });
   fireEvent.change(screen.getByPlaceholderText('例如：https://192.168.1.23:9834'), { target: { value: 'https://[::1]:9881' } });
-  more(); fireEvent.click(screen.getByRole('button', { name: '全部终端' }));
+  fireEvent.click(screen.getByRole('radio', { name: '全部终端' }));
   fireEvent.click(screen.getByRole('button', { name: '生成并复制链接' }));
   await waitFor(() => expect(onCreateInvite).toHaveBeenCalledWith({ viewMode: 'chat', entryAddress: 'https://[::1]:9881', scope: { kind: 'service' }, actions: ['session.view'] }));
 });

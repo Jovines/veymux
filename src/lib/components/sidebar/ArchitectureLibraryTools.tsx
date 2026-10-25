@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Download, History, Link, Upload } from 'lucide-react';
 import { analysisFile, ARCHITECTURE_FILE, parseArchitecture, type ArchitectureDocument } from '../../architecture/model';
 import { architectureHistory, exportOmmArchitecture, importOmmArchitecture, saveNativeArchitecture, readNativeArchitecture } from '../../architecture/native';
@@ -6,13 +6,26 @@ import { saveDownloadBlob } from '../../terminal/api';
 import { savedConnection } from '../../federation/browserIntegration';
 import { architectureViewerUrl } from '../../architecture/link';
 import { useI18n } from '../../i18n';
+import { useDownloadTask } from '../../hooks/useFileDownload';
+import { DownloadFeedback } from '../ui/DownloadFeedback';
+import { writeClipboardText } from '../../utils/clipboard';
 
-export function ArchitectureLibraryTools({ root, file, document, onLoaded }: { root: string; file: string; document: ArchitectureDocument | null; onLoaded: (file: string, document: ArchitectureDocument) => void }) {
+export function ArchitectureLibraryTools({ root, file, document, active = true, onLoaded }: { root: string; file: string; document: ArchitectureDocument | null; active?: boolean; onLoaded: (file: string, document: ArchitectureDocument) => void }) {
   const { locale } = useI18n(), zh = locale === 'zh';
   const [error, setError] = useState(''), [message, setMessage] = useState(''), [busy, setBusy] = useState(false);
   const [history, setHistory] = useState<Awaited<ReturnType<typeof architectureHistory>> | null>(null);
   const [pending, setPending] = useState<{ name: string; value: unknown; file: string; revision?: string | null } | null>(null);
   const input = useRef<HTMLInputElement>(null), task = useRef(0);
+  const owner = `${root}\0${file}`;
+  const exportJson = useCallback((signal: AbortSignal) => saveDownloadBlob(new Blob([JSON.stringify(document, null, 2)], { type: 'application/json' }), 'termdock-architecture.json', signal), [document]);
+  const exportOmm = useCallback(async (signal: AbortSignal) => {
+    const bundle = await exportOmmArchitecture(root, file, signal);
+    if (signal.aborted) return 'canceled' as const;
+    return saveDownloadBlob(new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' }), 'architecture.omm.json', signal);
+  }, [root, file]);
+  const jsonDownload = useDownloadTask(exportJson, owner, active && !!document);
+  const ommDownload = useDownloadTask(exportOmm, owner, active && !!document);
+  const working = busy || jsonDownload.status === 'pending' || ommDownload.status === 'pending';
   useEffect(() => { task.current++; setPending(null); setHistory(null); setError(''); setMessage(''); setBusy(false); return () => { task.current++; }; }, [root, file]);
   async function perform(action: (current: () => boolean) => Promise<void>) {
     const version = ++task.current; setBusy(true); setError(''); setMessage('');
@@ -22,12 +35,14 @@ export function ArchitectureLibraryTools({ root, file, document, onLoaded }: { r
   const button = 'inline-flex min-h-11 items-center gap-1.5 rounded-lg px-3 text-xs hover:bg-surface-elevated disabled:opacity-40';
   return <details className="rounded-lg border border-border/15 px-3"><summary className="min-h-11 cursor-pointer py-3 text-xs text-muted-foreground">{zh ? '历史、导入与分享' : 'History, import and sharing'}</summary>
     <div className="flex flex-wrap gap-1">
-      <button className={button} type="button" disabled={busy || !document} onClick={() => void perform(async current => { const history = await architectureHistory(root, file); if (current()) setHistory(history); })}><History size={14} />{zh ? '更新差异' : 'Changes'}</button>
-      <button className={button} type="button" disabled={busy || !document} onClick={() => void perform(async () => { await saveDownloadBlob(new Blob([JSON.stringify(document, null, 2)], { type: 'application/json' }), 'termdock-architecture.json'); })}><Download size={14} />JSON</button>
-      <button className={button} type="button" disabled={busy || !document} onClick={() => void perform(async () => { const bundle = await exportOmmArchitecture(root, file); await saveDownloadBlob(new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' }), 'architecture.omm.json'); })}><Download size={14} />.omm</button>
-      <button className={button} type="button" disabled={busy} onClick={() => input.current?.click()}><Upload size={14} />{zh ? '导入' : 'Import'}</button>
-      <button className={button} type="button" disabled={busy || !document} onClick={() => void perform(async () => { const service = savedConnection(); const url = architectureViewerUrl(window.location.origin, { root, file, ...(service ? { peerId: service.targetPeerId, serviceName: service.serviceName } : {}) }); await navigator.clipboard.writeText(url); setMessage(zh ? '链接已复制，打开时需要登录此 Termdock 服务。' : 'Link copied. Sign in to this Termdock service to view it.'); })}><Link size={14} />{zh ? '复制查看链接' : 'Copy viewer link'}</button>
+      <button className={button} type="button" disabled={working || !document} onClick={() => void perform(async current => { const history = await architectureHistory(root, file); if (current()) setHistory(history); })}><History size={14} />{zh ? '更新差异' : 'Changes'}</button>
+      <button className={button} type="button" disabled={working || !document} onClick={() => void jsonDownload.start()}><Download size={14} />JSON</button>
+      <button className={button} type="button" disabled={working || !document} onClick={() => void ommDownload.start()}><Download size={14} />.omm</button>
+      <button className={button} type="button" disabled={working} onClick={() => input.current?.click()}><Upload size={14} />{zh ? '导入' : 'Import'}</button>
+      <button className={button} type="button" disabled={working || !document} onClick={() => void perform(async current => { const service = savedConnection(); const url = architectureViewerUrl(window.location.origin, { root, file, ...(service ? { peerId: service.targetPeerId, serviceName: service.serviceName } : {}) }); if (!await writeClipboardText(url, current)) throw new Error(zh ? '复制失败，请重试。' : 'Could not copy. Please try again.'); if (current()) setMessage(zh ? '链接已复制，打开时需要登录此 Termdock 服务。' : 'Link copied. Sign in to this Termdock service to view it.'); })}><Link size={14} />{zh ? '复制查看链接' : 'Copy viewer link'}</button>
     </div>
+    <DownloadFeedback {...jsonDownload} />
+    <DownloadFeedback {...ommDownload} />
     <input ref={input} hidden type="file" accept=".json,application/json" onChange={event => {
       const candidate = event.target.files?.[0]; event.target.value = ''; if (!candidate) return;
       void perform(async current => {

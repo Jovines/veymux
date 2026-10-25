@@ -11,6 +11,17 @@ it('projects a failed input probe with owner-only resolution and keeps active pr
   expect(chatDelivery('pending', { ...failed, last_error: 'DELIVERY_IN_PROGRESS' }, 'session', true)).toBeUndefined();
 });
 
+it('offers recovery of an earlier blocked message without claiming that the waiting message was attempted', () => {
+  const blocker = { messageId: 'earlier-message', diagnostic: { relay_online: null, peer_reachable: true, next_retry_at: null,
+    checked_at: 1, attempt_count: 2, write_stage: 'probe_attempted' as const, last_error: 'TERMINAL_INPUT_ECHO_UNCONFIRMED' } };
+  const waiting = { ...blocker.diagnostic, attempt_count: 0, write_stage: undefined };
+  expect(chatDelivery('pending', waiting, 'session', true, blocker)).toEqual({ state: 'retrying', inputCheckFailed: true,
+    blockedBy: { messageId: 'earlier-message', attemptCount: 2 } });
+  expect(chatDelivery('pending', waiting, 'session', false, blocker)).toEqual({ state: 'retrying', inputCheckFailed: true });
+  expect(chatDelivery('pending', null, 'session', true, { ...blocker, diagnostic: { ...blocker.diagnostic, last_error: 'DELIVERY_IN_PROGRESS' } })).toBeUndefined();
+  expect(chatDelivery('delivered', waiting, 'session', true, blocker)).toBeUndefined();
+});
+
 const diagnostic: TransportDiagnostic = { relay_online: null, peer_reachable: false, attempt_count: 0,
   next_retry_at: 30000, last_error: 'TMUX_PANE_CHANGED', checked_at: 1, route_state: 'identity-mismatch',
   route_diagnostics: { expected: null, observed: [], truncated: false, recovery: 'confirmation-required', reason: 'NATIVE_IDENTITY_UNCONFIRMED', rebind_command: 'untrusted' } };

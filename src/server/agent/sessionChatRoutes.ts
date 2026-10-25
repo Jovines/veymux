@@ -4,7 +4,7 @@ import type { CollaborationMessage, CollaborationStore } from './collaborationSt
 import { encryptedRequestSubject, hasEncryptedServiceAccess } from '../federation/requestContext.js';
 import { chatPresentation } from '../shared/chatPresentation.js';
 import { chatReplyExcerpt } from '../shared/chatReplyContext.js';
-import { CollaborationError } from './collaborationProtocol.js';
+import { CollaborationError, hasUnconfirmedTerminalWrite } from './collaborationProtocol.js';
 import { sessionChatHistory, sessionChatIndex } from './sessionChatHistory.js';
 import { chatDelivery } from '../shared/chatDelivery.js';
 /** Clients authorized to view this Session share its durable chat history.
@@ -49,7 +49,9 @@ export function sessionChatRoutes(options: {
       const original = message.toPrincipalId && message.replyTo ? originals.get(message.replyTo) : undefined;
       return original ? { replyContext: { id: original.id, text: chatReplyExcerpt(original.content), createdAt: original.createdAt } } : {};
     };
-    const project = (m: CollaborationMessage) => ({ id: m.id, role: m.toPrincipalId ? 'assistant' : 'user', ...(m.toPrincipalId ? chatPresentation(m.content, m.metadata) : { content: m.content, delivery: chatDelivery(m.status, options.store.diagnostic(m.id), ctx.session.sessionId, hasEncryptedServiceAccess(req)) }), ...(m.uiState ? { uiState: m.uiState } : {}), createdAt: m.createdAt, status: m.failureReason === 'DELIVERY_CANCELLED_BY_OWNER' ? 'cancelled' : m.status === 'read' ? 'delivered' : m.status, replyTo: m.replyTo, ...replyContext(m), requestId: m.idempotencyKey, responseKind: m.responseKind, ...(paged ? { sequence: m.sequence } : {}) });
+    const head = options.store.inbox(ctx.session.sessionId, { pendingOnly: true, limit: 1 })[0];
+    const blocker = head ? { messageId: head.id, diagnostic: options.store.diagnostic(head.id) } : undefined;
+    const project = (m: CollaborationMessage) => ({ id: m.id, role: m.toPrincipalId ? 'assistant' : 'user', ...(m.toPrincipalId ? chatPresentation(m.content, m.metadata) : { content: m.content, delivery: chatDelivery(m.status, options.store.diagnostic(m.id), ctx.session.sessionId, hasEncryptedServiceAccess(req), head?.id !== m.id ? blocker : undefined) }), ...(m.uiState ? { uiState: m.uiState } : {}), createdAt: m.createdAt, status: m.failureReason === 'DELIVERY_CANCELLED_BY_OWNER' ? 'cancelled' : m.status === 'read' ? 'delivered' : m.status, replyTo: m.replyTo, ...replyContext(m), requestId: m.idempotencyKey, responseKind: m.responseKind, ...(paged ? { sequence: m.sequence } : {}) });
     const messages = visible.slice(start, end).map(project);
     // Refresh only the small tail already displayed, including delivery and
     // form revisions, while fetching subsequent replies contiguously.
@@ -92,11 +94,22 @@ export function sessionChatRoutes(options: {
     const ctx = context(req), body = req.body;
     if (!ctx) { res.status(404).json({ error: '会话不可用' }); return; }
     if (!hasEncryptedServiceAccess(req)) { res.status(403).json({ error: '此分享入口不能处理投递结果' }); return; }
-    if (!body || Object.keys(body).some(key => !['action', 'attempt'].includes(key))) { res.status(400).json({ error: '处理请求无效' }); return; }
+    if (!body || Object.keys(body).some(key => !['action', 'attempt', 'blockingMessageId'].includes(key))
+      || body.blockingMessageId !== undefined && (typeof body.blockingMessageId !== 'string' || !body.blockingMessageId || body.blockingMessageId.length > 128)) { res.status(400).json({ error: '处理请求无效' }); return; }
     const message = options.store.getMessage(String(req.params.messageId));
     if (!message || message.toSessionId !== ctx.session.sessionId || message.integrationOrigin?.source !== 'session-chat') { res.status(404).json({ error: '消息不可用' }); return; }
     try {
-      options.store.resolveUnconfirmedDelivery(message.id, ctx.session.sessionId, body.action, body.attempt);
+      let targetId = message.id;
+      if (body.blockingMessageId !== undefined) {
+        const head = options.store.inbox(ctx.session.sessionId, { pendingOnly: true, limit: 1 })[0];
+        const diagnostic = head && options.store.diagnostic(head.id);
+        if (message.status !== 'pending' || !head || head.id !== body.blockingMessageId
+          || !diagnostic?.last_error || diagnostic.last_error === 'DELIVERY_IN_PROGRESS' || !hasUnconfirmedTerminalWrite(diagnostic)) {
+          res.status(409).json({ error: '投递状态已变化，请刷新后重试' }); return;
+        }
+        targetId = head.id;
+      }
+      options.store.resolveUnconfirmedDelivery(targetId, ctx.session.sessionId, body.action, body.attempt);
       options.deliver(ctx.session.sessionId); res.json({ ok: true });
     } catch (error) { res.status(error instanceof CollaborationError ? error.httpStatus : 500).json({ error: '投递状态已变化，请刷新后重试' }); }
   });

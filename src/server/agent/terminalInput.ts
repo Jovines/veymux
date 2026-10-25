@@ -24,7 +24,8 @@ export type TerminalInputCheckPhase = 'guard_capture' | 'launch_persisted' | 'ru
   | 'queue_acquired' | 'before_paste' | 'before_submit' | 'launch_state_commit';
 export type TerminalInputGuard = (phase?: TerminalInputCheckPhase) => void;
 export type PromptWriteStage = 'guard_captured' | 'runtime_resolving' | 'runtime_resolved'
-  | 'queue_wait' | 'queue_acquired' | 'paste_attempted' | 'paste_written' | 'submit_attempted' | 'submit_written';
+  | 'queue_wait' | 'queue_acquired' | 'probe_attempted' | 'probe_completed'
+  | 'paste_attempted' | 'paste_written' | 'submit_attempted' | 'submit_written';
 export type PromptWriteProgress = (stage: PromptWriteStage) => void;
 export class TerminalInputTargetChangedError extends Error {
   readonly code = 'TERMINAL_INPUT_TARGET_CHANGED';

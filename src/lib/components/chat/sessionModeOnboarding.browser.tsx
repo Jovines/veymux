@@ -230,7 +230,7 @@ it.each([390, 1280])('recovers queued chat inside the workspace without commands
   expect((await input.element()).textContent).toContain('下一条草稿');
   recovery.fail = false;
   await page.getByRole('button', { name: '重新连接', exact: true }).click();
-  await expect.element(page.getByText('已投递', { exact: true })).toBeVisible();
+  await expect.element(page.getByText('已发送', { exact: true })).toBeVisible();
   expect(recovery.calls).toBe(2);
   expect(document.querySelector('[data-chat-delivery-notice]')).toBeNull();
   expect(document.querySelectorAll('[data-chat-message="delivery-fixture"]')).toHaveLength(1);

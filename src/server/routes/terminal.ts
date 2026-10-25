@@ -2011,6 +2011,7 @@ async function openInventorySession(
 }
 
 interface OrchestrationSessionSnapshot extends ReturnType<CollaborationStore['sessionFacts']> {
+  mode: TerminalMode;
   route_state: CollaborationRouteState;
   route_error: string | null;
   route_checked_at: number | null;
@@ -2070,6 +2071,7 @@ function orchestrationSessionSnapshot(record: PersistedClientSession): Orchestra
     sessionId: record.sessionId,
     agentNativeSessionId: binding?.pane ? binding.pane.nativeSessionId : binding?.nativeSessionId ?? backend?.agentSession?.sessionId ?? record.agentResume?.sessionId ?? null,
     backendSessionId: backendId ?? null,
+    mode: backend?.mode ?? record.mode,
     name: presentation.displayName,
     ...presentation,
     cwd: backend?.cwd ?? record.cwd ?? '',
@@ -2256,7 +2258,7 @@ async function runAgentAutomation(automation: AgentAutomation, req?: express.Req
       const opened = await openInventorySession(request, {
         name: automation.name,
         customName: true,
-        mode: 'shell',
+        mode: automation.mode ?? 'shell',
         cwd: automation.cwd,
       });
       frontendSessionId = opened.session.sessionId;
@@ -6772,14 +6774,12 @@ async function spawnTerminalSessionUnlocked(req: express.Request, input: SpawnTe
   let rows = input.rows || 24;
   const sessionId = Math.random().toString(36).substring(2, 15) +
                     Math.random().toString(36).substring(2, 15);
-  let mode = normalizeMode(input.mode);
-  // tmux 不可用时自动降级为 shell 模式，避免 "spawn tmux ENOENT" 错误
+  const mode = normalizeMode(input.mode);
   if (mode === 'tmux') {
     const tmuxStatus = await getTmuxStatus();
     if (!tmuxStatus.available) {
       if (input.attachExistingOnly) throw new Error('TMUX_UNAVAILABLE');
-      console.warn('[termdock] tmux not available, falling back to shell mode:', tmuxStatus.reason);
-      mode = 'shell';
+      throw new HttpStatusError(503, 'tmux 暂不可用，请恢复后重试，或选择 Shell 新建会话', 'TMUX_UNAVAILABLE');
     }
   }
   const tmuxSessionName = mode === 'tmux' ? normalizeTmuxSessionName(input.tmuxSessionName) : null;
@@ -7825,6 +7825,8 @@ router.get('/operations/automations', (_req, res) => {
 
 router.post('/operations/automations', async (req, res) => {
   try {
+    const mode = req.body?.mode;
+    if (mode !== undefined && mode !== 'shell' && mode !== 'tmux') return res.status(400).json({ error: '无效的终端类型' });
     const schedule = normalizeAutomationSchedule(req.body?.schedule);
     const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
     const command = typeof req.body?.command === 'string' ? req.body.command.trim() : '';
@@ -7850,6 +7852,7 @@ router.post('/operations/automations', async (req, res) => {
       command,
       prompt,
       targetSessionId: targetSessionId || null,
+      mode,
       schedule,
     });
     res.json({ automation });
@@ -8465,8 +8468,9 @@ router.post('/operations/session-search/prepare', async (req, res) => {
         if (owner || await findExternalCodexWriter(target)) return res.status(409).json({ error: '这条会话已在其他终端运行，请先切换到原终端或关闭后恢复', code: 'AGENT_SESSION_ACTIVE_ELSEWHERE' });
         return res.json({ command, cwd, title: entry.title, agent });
       }
-      // A terminated process cannot be resumed. Reopen its project directory.
-      return res.json({ mode: 'shell', cwd, title: entry.title });
+      // A terminated process cannot be resumed. Let the client's selected
+      // terminal backend reopen its project directory.
+      return res.json({ cwd, title: entry.title });
     } catch (error) { return res.status(400).json({ error: `无法重新打开终端：${getErrorMessage(error)}` }); }
   }
   const key = typeof req.body?.nativeKey === 'string' ? req.body.nativeKey : '';
@@ -8559,6 +8563,8 @@ function restoreArchivedMembership(entry: import('../agent/executionArchives.js'
   }
 }
 router.post('/operations/execution-archives/:sessionId/restore', executionArchiveAction(async req => {
+  const mode = req.body?.mode;
+  if (mode !== undefined && mode !== 'shell' && mode !== 'tmux') throw new Error('无效的终端类型');
   const entry = executionArchives.get(req.params.sessionId);
   if (!entry) throw new Error('执行归档不存在');
   const existing = globalSessionState.sessions.find(record => record.sessionId === entry.sessionId);
@@ -8576,7 +8582,7 @@ router.post('/operations/execution-archives/:sessionId/restore', executionArchiv
   if (findActiveAgentResumeOwner('', target) || await findExternalCodexWriter(target)) throw new Error('此 Agent 会话已在其他终端打开，请切换到已有会话');
   await restoreTaskWorkspace(entry.workspace, entry.cleanup);
   await pathValidator.allowSessionCwd(entry.cwd);
-  const opened = await openInventorySession(req, { preferredFrontendSessionId: entry.sessionId, name: entry.title, customName: true, mode: 'tmux', cwd: entry.cwd });
+  const opened = await openInventorySession(req, { preferredFrontendSessionId: entry.sessionId, name: entry.title, customName: true, mode: mode ?? 'tmux', cwd: entry.cwd });
   const record = globalSessionState.sessions.find(record => record.sessionId === opened.session.sessionId)!;
   const backend = terminalSessions.get(opened.terminalSession.sessionId);
   if (!backend) throw new Error('恢复终端失败，归档记录已保留');

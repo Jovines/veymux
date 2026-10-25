@@ -10,6 +10,8 @@ describe('automation CLI', () => {
     ['create', '--name', 'test', '--every', '5', '--prompt', 'test'],
     ['create', '--name', 'test', '--every', '5', '--self', '--session', 'a', '--prompt', 'test'],
     ['create', '--name', 'test', '--every', '5', '--self', '--prompt', 'test', '--stdin'],
+    ['create', '--name', 'test', '--every', '5', '--command', 'test', '--mode', 'invalid'],
+    ['create', '--name', 'test', '--every', '5', '--self', '--prompt', 'test', '--mode', 'tmux'],
     ['delete'], ['list', '--disabled'], ['pause', 'id', 'extra'],
   ])('rejects invalid arguments %j', (...args) => {
     expect(() => parseAutomationCommand(args)).toThrow();
@@ -38,6 +40,11 @@ describe('automation CLI', () => {
     const io = makeIO(); vi.mocked(io.self).mockRejectedValue(new Error('stale session'));
     expect(await executeAutomationCommand(parseAutomationCommand(['create', '--name', 'test', '--every', '5', '--self', '--prompt', 'test']), io)).toBe(1);
     expect(io.request).not.toHaveBeenCalled();
+  });
+  it.each(['shell', 'tmux'])('saves an explicit %s backend for background runs', async mode => {
+    const io = makeIO();
+    await executeAutomationCommand(parseAutomationCommand(['create', '--name', 'review', '--every', '30', '--command', 'codex', '--mode', mode]), io);
+    expect(io.request).toHaveBeenCalledWith('POST', expect.any(String), expect.objectContaining({ mode, targetSessionId: null }));
   });
   it.each(['pause', 'resume', 'run', 'delete'])('routes %s and accepts no-content deletion', async (action) => {
     const io = makeIO(); vi.mocked(io.request).mockResolvedValue({ statusCode: 204, body: '' });

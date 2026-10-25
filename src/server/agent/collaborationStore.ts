@@ -150,6 +150,8 @@ interface CollaborationDocument {
   consumers?: Record<string, number>;
   /** Shared UI attention only; never part of Agent inboxes or read receipts. */
   sessionChatViewed?: Record<string, string[]>;
+  /** Replies predating attention tracking; excluded from reminders, never asserted viewed. */
+  sessionChatAttentionBaseline?: string[];
   transport?: Record<string, TransportDiagnostic>;
   prunedThrough?: Record<string, number>;
   prunedSenders?: Record<string, true>;
@@ -192,7 +194,7 @@ export class CollaborationStore {
       activity_observed_at: typeof observedAt === 'number' && Number.isFinite(observedAt) ? observedAt : null,
       last_peer_sync_at: Date.now(), activity_source: 'remote_terminal_output' });
   }
-  private document: CollaborationDocument = { version: 2, groups: [], messages: [], terminalHistoryComplete: true, localGroupRequestsComplete: true };
+  private document: CollaborationDocument = { version: 2, groups: [], messages: [], terminalHistoryComplete: true, localGroupRequestsComplete: true, sessionChatAttentionBaseline: [] };
   private persistedDocument = JSON.stringify(this.document);
   private historyAvailable = true;
   private groupCreationAvailable = true;
@@ -203,6 +205,7 @@ export class CollaborationStore {
    *  constructor seam so tests can force a collision and prove the guard
    *  below actually skips it; production always uses the CSPRNG default. */
   constructor(private readonly filePath: string, private readonly drawId: () => string = drawCollaborationId) {
+    let initializeChatAttention = false;
     try {
       const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8')) as Partial<CollaborationDocument>;
       const validMarkers = (value: unknown, validate: (entry: unknown) => boolean) => value === undefined
@@ -258,6 +261,9 @@ export class CollaborationStore {
       this.document.idempotency = parsed.idempotency ?? {};
       this.document.consumers = parsed.consumers ?? {};
       this.document.sessionChatViewed = Object.fromEntries(Object.entries(parsed.sessionChatViewed ?? {}).filter((entry): entry is [string, string[]] => Array.isArray(entry[1]) && entry[1].every(id => typeof id === 'string')));
+      initializeChatAttention = this.historyAvailable && parsed.sessionChatAttentionBaseline === undefined;
+      this.document.sessionChatAttentionBaseline = Array.isArray(parsed.sessionChatAttentionBaseline)
+        ? parsed.sessionChatAttentionBaseline.filter((id): id is string => typeof id === 'string') : [];
       this.document.transport = parsed.transport ?? {};
       this.document.fragments = parsed.fragments ?? {};
       this.document.prunedThrough = parsed.prunedThrough ?? {};
@@ -276,7 +282,18 @@ export class CollaborationStore {
       if (!group.federated && !group.sessionChatSessionId && sessionId && group.name === `Session 对话 ${sessionId}`
         && group.sessionIds.length === 1 && group.sessionIds[0] === sessionId) group.sessionChatSessionId = sessionId;
     }
+    if (initializeChatAttention) {
+      const chatIds = new Set(this.document.groups.filter(group => !group.deleted && !group.federated && group.sessionChatSessionId).map(group => group.id));
+      // Older clients never recorded exposure. Adopt existing replies as history
+      // once, including stores already written by the first unread implementation.
+      // Unfinished replies still need attention when their stream completes.
+      this.document.sessionChatAttentionBaseline = this.document.messages.filter(message => chatIds.has(message.groupId)
+        && message.toPrincipalId && !chatPresentation(message.content, message.metadata).ui?.streaming).map(message => message.id);
+    }
     this.persistedDocument = JSON.stringify(this.document);
+    // Persist before serving any indices so an idle restart cannot move the
+    // baseline forward and swallow replies received since the first migration.
+    if (initializeChatAttention) this.persist(true);
   }
 
   list(): CollaborationGroup[] {
@@ -609,7 +626,7 @@ export class CollaborationStore {
     if (this.document.groups.length === 0 && this.document.messages.length === 0) return;
     this.document = { version: 2, localGroupRequests: this.document.localGroupRequests, localGroupRequestsComplete: this.groupCreationAvailable,
       localGroupRenames: this.document.localGroupRenames, localGroupRenamesComplete: this.groupRenamesAvailable, groups: this.document.groups
-      .map((group) => group.deleted ? group : ({ ...group, deleted: true, updatedAt: Math.max(Date.now(), group.updatedAt + 1) })), messages: [] };
+      .map((group) => group.deleted ? group : ({ ...group, deleted: true, updatedAt: Math.max(Date.now(), group.updatedAt + 1) })), messages: [], sessionChatAttentionBaseline: [] };
     this.persist();
   }
 
@@ -846,6 +863,10 @@ export class CollaborationStore {
   }
   sessionChatViewedIds(conversationId: string): string[] {
     return [...(this.document.sessionChatViewed?.[conversationId] ?? [])];
+  }
+
+  sessionChatBaselineIds(): string[] {
+    return [...(this.document.sessionChatAttentionBaseline ?? [])];
   }
 
   sessionChatSessionIds(): string[] {
@@ -1296,6 +1317,7 @@ export class CollaborationStore {
       return false;
     });
     const messageIds = new Set(this.document.messages.map(message => message.id));
+    this.document.sessionChatAttentionBaseline = this.document.sessionChatAttentionBaseline?.filter(id => messageIds.has(id));
     const chatIds = new Set(this.document.groups.filter(group => !group.deleted && group.sessionChatSessionId).map(group => group.id));
     for (const [id, ids] of Object.entries(this.document.sessionChatViewed ?? {})) {
       if (!chatIds.has(id)) delete this.document.sessionChatViewed![id];

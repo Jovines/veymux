@@ -32,10 +32,11 @@ function getKeyboardHeightPx(): number {
     return 0;
   }
 
-  const fromCssVar = Number.parseFloat(
-    document.documentElement.style.getPropertyValue('--kb-height') || '0'
-  );
-  if (Number.isFinite(fromCssVar) && fromCssVar > 0) {
+  const cssHeight = document.documentElement.style.getPropertyValue('--kb-height').trim();
+  const fromCssVar = Number.parseFloat(cssHeight);
+  // An explicit zero is the shared controller's closed state. Do not
+  // override it with viewport dimensions left over from an open keyboard.
+  if (cssHeight && Number.isFinite(fromCssVar) && fromCssVar >= 0) {
     return Math.round(fromCssVar);
   }
 

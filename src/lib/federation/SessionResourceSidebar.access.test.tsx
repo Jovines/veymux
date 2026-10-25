@@ -3,6 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { SessionResourceSidebar } from './SessionResourceSidebar';
 import { useSidebarStore } from '../stores/useSidebarStore';
+import { StrictMode } from 'react';
 
 vi.mock('../components/sidebar/Sidebar', () => ({ Sidebar: ({ children }: any) => <aside>{children}</aside> }));
 vi.mock('../components/sidebar/FileTree', () => ({ FileTree: ({ rootPath, onFileSelect, onPathReference }: any) => <div><button onClick={() => onFileSelect(`${rootPath}/file.txt`)}>打开测试文件</button>{onPathReference && <button onClick={() => onPathReference(`${rootPath}/file.txt`)}>插入文件引用</button>}</div> }));
@@ -29,4 +30,10 @@ it('allows file references for writable sessions but keeps read-only directories
   fireEvent.click(screen.getByRole('button', { name: '打开测试文件' }));
   expect(await screen.findByRole('button', { name: '预览内插入引用' })).toBeTruthy();
   expect(screen.queryByRole('button', { name: '编辑' })).toBeNull();
+});
+it('opens the shared editor under the application StrictMode lifecycle', async () => {
+  render(<StrictMode><SessionResourceSidebar resources={{ directories: [{ path: '/allowed', access: 'write' }] }} pinned open onClose={() => {}} onInsert={() => false} /></StrictMode>);
+  fireEvent.click(screen.getByRole('button', { name: '打开测试文件' }));
+  fireEvent.click(await screen.findByRole('button', { name: '编辑' }));
+  expect(await screen.findByRole('textbox', { name: '编辑文件内容' })).toBeTruthy();
 });

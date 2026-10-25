@@ -82,7 +82,7 @@ it('reopens plain terminal directories and reports deleted directories or missin
   const f = fixture(); f.context.archiveAgentResumeRecord({ ...record, agentResume: null }, 'closed');
   const req = { body: { terminalSessionId: 'closed' } }, res = f.response();
   await f.routes.get('post:/operations/session-search/prepare')!(req, res);
-  expect(res.json).toHaveBeenCalledWith({ mode: 'shell', cwd: '/work', title: record.name });
+  expect(res.json).toHaveBeenCalledWith({ cwd: '/work', title: record.name });
   f.deps.resolveWorkingDirectory.mockRejectedValue(new Error('directory does not exist'));
   const missing = f.response(); await f.routes.get('post:/operations/session-search/prepare')!(req, missing);
   expect(missing.status).toHaveBeenCalledWith(400);

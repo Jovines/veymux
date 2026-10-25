@@ -57,7 +57,7 @@ describe('buffer-channel delivery', () => {
     const { run, stdin, calls, bodies } = recorder({ 'capture-pane': 'no echo' });
     const result = expect(writeCollaborationTmuxPane(run, PANE, 'PRIVATE BODY', stdin, undefined, undefined, undefined, true)).rejects.toThrow('TERMINAL_INPUT_ECHO_UNCONFIRMED');
     await vi.advanceTimersByTimeAsync(1500); await result;
-    expect(bodies).toHaveLength(1); expect(bodies[0]).toMatch(/^\[td\.[a-f0-9]{12}\] $/);
+    expect(bodies).toHaveLength(1); expect(bodies[0]).toMatch(/^[~^|%&@#]{2}$/);
     expect(calls.some(args => args[0] === 'set-buffer')).toBe(false);
     expect(calls.at(-1)![0]).toBe('delete-buffer');
   });

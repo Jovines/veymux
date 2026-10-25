@@ -24,6 +24,8 @@ const apiMocks = vi.hoisted(() => ({
   listCollaborationMessages: vi.fn().mockResolvedValue({ messages: [] }),
   searchTerminalSessions: vi.fn().mockResolvedValue({ results: [] }),
   prepareSearchSession: vi.fn(),
+  prepareAgentResumeHistory: vi.fn(),
+  saveAgentAutomation: vi.fn(),
   updateSessionInventoryEntry: vi.fn(),
   saveCollaborationGroup: vi.fn(),
   removeCollaborationGroup: vi.fn(),
@@ -49,13 +51,13 @@ vi.mock('../../terminal/api', () => ({
   subscribeCollaborationGroups: vi.fn(() => () => {}),
   retryCollaborationPeers: vi.fn(),
   listCollaborationMessages: apiMocks.listCollaborationMessages,
-  prepareAgentResumeHistory: vi.fn(),
+  prepareAgentResumeHistory: apiMocks.prepareAgentResumeHistory,
   prepareSearchSession: apiMocks.prepareSearchSession,
   updateSessionInventoryEntry: apiMocks.updateSessionInventoryEntry,
   removeAgentAutomation: vi.fn(),
   removeCollaborationGroup: apiMocks.removeCollaborationGroup,
   runAgentAutomation: vi.fn(),
-  saveAgentAutomation: vi.fn(),
+  saveAgentAutomation: apiMocks.saveAgentAutomation,
   saveCollaborationGroup: apiMocks.saveCollaborationGroup,
   sendCollaborationMessage: apiMocks.sendCollaborationMessage,
   spawnCollaborationAgent: apiMocks.spawnCollaborationAgent,
@@ -77,6 +79,8 @@ afterEach(() => {
   apiMocks.listCollaborationGroups.mockReset().mockResolvedValue({ groups: [], sessions: [] });
   apiMocks.searchTerminalSessions.mockReset().mockResolvedValue({ results: [] });
   apiMocks.prepareSearchSession.mockReset();
+  apiMocks.prepareAgentResumeHistory.mockReset();
+  apiMocks.saveAgentAutomation.mockReset().mockResolvedValue({ automation: {} });
   apiMocks.updateSessionInventoryEntry.mockReset().mockResolvedValue({});
   apiMocks.saveCollaborationGroup.mockReset();
   apiMocks.removeCollaborationGroup.mockReset();
@@ -187,6 +191,17 @@ describe('AgentOperationsPanel', () => {
     expect(picker.textContent).toContain('Codex');
     expect(picker.textContent).toContain('Custom Agent · Plugin');
     expect(screen.queryByText('启动命令')).toBeNull();
+  });
+  it.each(['shell', 'tmux'] as const)('captures the %s preference when configuring a background task', async mode => {
+    const user = userEvent.setup();
+    render(<AgentOperationsPanel activeSessionId={null} defaultSessionMode={mode} onClose={vi.fn()} onNewSession={vi.fn()} />);
+    await user.click(screen.getByRole('button', { name: '自动任务' }));
+    await user.click(screen.getByRole('button', { name: '创建第一个任务' }));
+    await user.type(screen.getByLabelText('任务内容'), '检查项目');
+    await user.click(screen.getByRole('button', { name: '更多设置' }));
+    expect(screen.getByLabelText('终端类型')).toHaveProperty('value', mode);
+    await user.click(screen.getByRole('button', { name: '创建任务' }));
+    await waitFor(() => expect(apiMocks.saveAgentAutomation).toHaveBeenCalledWith(expect.objectContaining({ mode, targetSessionId: null })));
   });
 
   it('starts with an orienting empty state and reveals a compact form with custom scheduling on demand', async () => {
@@ -1008,6 +1023,30 @@ describe('closed session search recovery', () => {
   const closed = { sessionId: 'closed-tmux', title: '原来的项目名称', cwd: '/work/project', agentSlug: 'codex',
     agentNativeSessionId: 'native-original', updatedAt: Date.now(), snippet: '', matchCount: 1,
     source: 'codex', nativeKey: 'native-key', live: false, resumeHistoryId: null, terminalSessionId: 'closed-tmux' };
+  it.each(['native', 'terminal', 'history', 'directory', 'legacy-directory'])('defers a new %s restore to the shared terminal preference', async source => {
+    const result = { ...closed, terminalSessionId: source === 'terminal' || source === 'directory' ? closed.terminalSessionId : null,
+      nativeKey: source === 'native' || source === 'terminal' ? closed.nativeKey : null,
+      resumeHistoryId: source === 'history' ? 'saved-history' : null, recoverable: true };
+    const prepared = { cwd: closed.cwd, command: source.includes('directory') ? undefined : 'codex resume native-original' };
+    apiMocks.searchTerminalSessions.mockResolvedValue({ results: [result] });
+    apiMocks.prepareSearchSession.mockResolvedValue(source === 'legacy-directory' ? { ...prepared, mode: 'shell' } : prepared);
+    apiMocks.prepareAgentResumeHistory.mockResolvedValue(prepared);
+    const onClose = vi.fn(), onNewSession = vi.fn();
+    const user = userEvent.setup();
+    render(<AgentOperationsPanel activeSessionId={null} defaultSessionMode="tmux" onClose={onClose} onNewSession={onNewSession} />);
+    await user.click(screen.getByRole('button', { name: '历史搜索' }));
+    await user.click(await screen.findByRole('button', { name: /原来的项目名称/ }));
+    await waitFor(() => expect(onNewSession).toHaveBeenCalledOnce());
+    const launch = onNewSession.mock.calls[0][0];
+    expect(launch).toMatchObject(prepared);
+    expect(launch.mode).toBeUndefined();
+    expect(launch.tmuxSessionName).toBeUndefined();
+    if (source === 'history') expect(apiMocks.prepareAgentResumeHistory).toHaveBeenCalledWith('saved-history');
+    else expect(apiMocks.prepareSearchSession).toHaveBeenCalledWith(source === 'native' ? closed.nativeKey : null,
+      ...(source === 'native' ? [] : [closed.terminalSessionId]));
+    await act(async () => launch.onResult({ ok: true, sessionId: 'restored' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+  });
   it('waits for creation and preserves the original name when restoring closed tmux', async () => {
     apiMocks.searchTerminalSessions.mockResolvedValue({ results: [closed], total: 1 });
     apiMocks.prepareSearchSession.mockResolvedValue({ mode: 'tmux', tmuxSessionName: 'wt-original', cwd: '/work/project' });

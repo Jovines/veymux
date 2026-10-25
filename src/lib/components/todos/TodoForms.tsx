@@ -1,4 +1,5 @@
 import { useId, useRef, useState, type ReactNode } from 'react';
+import { writeClipboardText } from '../../utils/clipboard';
 import { createPortal } from 'react-dom';
 import { Bot, CalendarClock, Check, ChevronDown, Clock, FolderOpen, ListTodo, Monitor, MousePointer2, Play, Send, X } from 'lucide-react';
 import { useKeyboardLayer } from '../../hooks/useKeyboardLayer';
@@ -137,7 +138,7 @@ function CollectorWebhookFields({ collectorId, webhook, onChange }: { collectorI
     <label className="flex min-h-11 items-center gap-3"><input type="checkbox" checked={webhook.enabled} onChange={e => onChange({ ...webhook, enabled: e.target.checked })} />允许 Webhook 通知触发此来源的收集</label>
     {webhook.enabled && <>
       <p className="text-xs leading-6">通知发送 JSON，作为本轮收集的补充上下文。可与定时收集同时启用。停用此来源也会停止 Webhook 触发。</p>
-      {command ? <><code className="block break-all rounded-lg bg-surface-2 p-3 text-xs">POST /hooks/todo/{collectorId}</code><button type="button" className={todoSecondary} onClick={() => { void navigator.clipboard.writeText(command).then(() => setCopied(true)).catch(() => setCopied(false)); }}>{copied ? '已复制' : '复制调用示例（含凭据）'}</button><p className="text-xs leading-6">将示例中的服务地址换为该服务可访问的 HTTPS 地址。凭据仅能触发本来源，请只提供给对应的通知服务。</p></> : <p className="text-xs leading-6">保存后生成本来源专用的调用凭据；重新编辑可复制调用示例。</p>}
+      {command ? <><code className="block break-all rounded-lg bg-surface-2 p-3 text-xs">POST /hooks/todo/{collectorId}</code><button type="button" className={todoSecondary} onClick={() => { void writeClipboardText(command).then(setCopied); }}>{copied ? '已复制' : '复制调用示例（含凭据）'}</button><p className="text-xs leading-6">将示例中的服务地址换为该服务可访问的 HTTPS 地址。凭据仅能触发本来源，请只提供给对应的通知服务。</p></> : <p className="text-xs leading-6">保存后生成本来源专用的调用凭据；重新编辑可复制调用示例。</p>}
     </>}
   </div></details>;
 }
@@ -155,5 +156,5 @@ function CollectorSessionFields({ session, sessions, onChange }: { session: NonN
 export function IntegrationHelp() {
   const [copied, setCopied] = useState(false);
   const command = 'td todo add --title "检查项目依赖" --description "核实升级影响" --source "项目巡检" --external-id "deps-review"';
-  return <FormBody><p className="text-sm leading-7 text-muted-foreground">外部程序或 Agent 可以在服务所在机器，通过 CLI 写入待办。相同来源与外部标识会去重。</p><pre className="overflow-x-auto rounded-lg bg-surface-2 p-4 text-xs leading-6"><code>{command}</code></pre><button className={todoSecondary} onClick={() => { void navigator.clipboard.writeText(command).then(() => setCopied(true)).catch(() => setCopied(false)); }}>{copied ? '已复制' : '复制命令'}</button><p className="text-xs leading-6 text-muted-foreground">完整用法：<code>td todo --help</code>。API：<code className="break-all">POST /api/terminal/operations/todos</code>，沿用当前服务的鉴权和加密连接。</p></FormBody>;
+  return <FormBody><p className="text-sm leading-7 text-muted-foreground">外部程序或 Agent 可以在服务所在机器，通过 CLI 写入待办。相同来源与外部标识会去重。</p><pre className="overflow-x-auto rounded-lg bg-surface-2 p-4 text-xs leading-6"><code>{command}</code></pre><button className={todoSecondary} onClick={() => { void writeClipboardText(command).then(setCopied); }}>{copied ? '已复制' : '复制命令'}</button><p className="text-xs leading-6 text-muted-foreground">完整用法：<code>td todo --help</code>。API：<code className="break-all">POST /api/terminal/operations/todos</code>，沿用当前服务的鉴权和加密连接。</p></FormBody>;
 }

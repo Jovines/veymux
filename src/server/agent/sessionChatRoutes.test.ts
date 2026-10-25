@@ -105,6 +105,32 @@ it('does not project recovery cards for an active paste, while retaining real in
   expect((await f.read()).messages[0].delivery).toEqual({ state: 'outcome-unknown', attemptCount: 1 });
   expect((await f.read('shared', true)).messages[0].delivery).toEqual({ state: 'outcome-unknown' });
 });
+it('lets the owner recover the actual queue head blocking a later chat message, including a non-chat reply', async () => {
+  const f = await fixture();
+  const group = f.store.save({ name: 'Peers', sessionIds: ['peer', 'agent'] });
+  const [head] = f.store.send({ groupId: group.id, fromSessionId: 'peer', toSessionIds: ['agent'], kind: 'message', content: 'private peer reply' });
+  f.store.recordTransport(head.id, { relay_online: null, peer_reachable: true, attempt_count: 2, next_retry_at: null,
+    last_error: 'TERMINAL_INPUT_ECHO_UNCONFIRMED', checked_at: Date.now(), write_stage: 'probe_attempted' });
+  const sent = await f.post('后续消息').then(r => r.json());
+  const visible = (await f.read()).messages.find((m: { id: string }) => m.id === sent.id);
+  expect(visible.delivery).toMatchObject({ state: 'retrying', blockedBy: { messageId: head.id, attemptCount: 2 } });
+  expect(visible.delivery.attemptCount).toBeUndefined();
+  const shared = (await f.read('shared', true)).messages.find((m: { id: string }) => m.id === sent.id);
+  expect(shared.delivery.blockedBy).toBeUndefined();
+  const recover = (blockingMessageId = head.id, attempt = 2, scoped = false) => fetch(`${f.base}/agent/chat/${sent.id}/delivery`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', ...(scoped ? { 'test-access': 'scoped' } : {}) },
+    body: JSON.stringify({ action: 'retry', attempt, blockingMessageId }) });
+  expect((await recover(head.id, 2, true)).status).toBe(403);
+  expect((await recover(sent.id)).status).toBe(409);
+  expect((await recover(head.id, 1)).status).toBe(409);
+  expect(f.store.diagnostic(head.id)?.write_stage).toBe('probe_attempted');
+  expect((await recover()).status).toBe(200);
+  expect(f.store.diagnostic(head.id)?.write_stage).toBe('not_started');
+  expect(f.store.getMessage(sent.id)?.status).toBe('pending');
+  expect(f.store.diagnostic(sent.id)?.attempt_count ?? 0).toBe(0);
+  expect((await f.read()).messages.find((m: { id: string }) => m.id === sent.id).delivery).toBeUndefined();
+  expect((await recover()).status).toBe(409);
+});
 it('rechecks only the authenticated current session and rejects shared or redirected recovery requests', async () => {
   const f = await fixture();
   const recover = (body: object = {}, scoped = false) => fetch(`${f.base}/agent/chat/recover`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(scoped ? { 'test-access': 'scoped' } : {}) }, body: JSON.stringify(body) });

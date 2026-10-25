@@ -33,7 +33,7 @@ async function mount(messages: object[] = [], agent?: { displayName: string; slu
   const host = document.createElement('div'); host.style.height = '100dvh'; document.body.append(host);
   function App() {
     const [index, setIndex] = useState(0);
-    return <Swiper onSwiper={value => { swiper = value; }} onSlideChange={value => setIndex(value.activeIndex)} speed={0} touchStartPreventDefault={false} noSwipingSelector={SESSION_NO_SWIPE} focusableElements={SESSION_SWIPER_FOCUSABLE_ELEMENTS} className="session-chat-swiper h-full">
+    return <Swiper onSwiper={value => { swiper = value; }} onSlideChange={value => setIndex(value.activeIndex)} speed={180} touchStartPreventDefault={false} noSwipingSelector={SESSION_NO_SWIPE} focusableElements={SESSION_SWIPER_FOCUSABLE_ELEMENTS} className="terminal-session-swiper session-chat-swiper h-full">
       <SwiperSlide><SessionChatView sessionId="browser-composer" active={index === 0} onTerminal={() => {}} /></SwiperSlide>
       <SwiperSlide><div>第二个 Session</div></SwiperSlide>
     </Swiper>;
@@ -67,6 +67,35 @@ it('switches Sessions from the composer while keeping vertical history scrolling
   await commands.touchDrag('.session-chat-scroll', -240, 1);
   await expect.poll(() => swiper?.activeIndex).toBe(1);
 });
+it.each([390, 1280])('keeps the composer in the slide paint order through a partial swipe at width %i', async width => {
+  await page.viewport(width, 844); await mount();
+  await page.getByRole('textbox').fill('保留草稿和焦点');
+  const editor = document.querySelector<HTMLElement>('[role="textbox"]')!;
+  const composer = document.querySelector<HTMLElement>('[data-chat-composer]')!;
+  const before = composer.getBoundingClientRect();
+  const focusEvents: string[] = [];
+  const recordFocus = (event: Event) => focusEvents.push(event.type);
+  editor.addEventListener('focus', recordFocus); editor.addEventListener('blur', recordFocus);
+  try {
+    // Production slides contain positioned surfaces at different local levels.
+    // A 2D pager must flatten them before compositing adjacent slide layers.
+    expect(getComputedStyle(swiper!.wrapperEl).transformStyle).toBe('flat');
+    for (const offset of [-20, -90, -180, -90, 0]) {
+      swiper!.wrapperEl.style.transitionDuration = '0ms'; swiper!.setTranslate(offset); await frame();
+      const rect = composer.getBoundingClientRect();
+      expect(rect.left).toBeCloseTo(before.left + offset, 0);
+      expect(rect.top).toBe(before.top);
+      expect(composer.contains(document.elementFromPoint(Math.max(1, rect.left + rect.width * .8), rect.top + 20))).toBe(true);
+      expect(document.activeElement).toBe(editor);
+      expect(readChatEditor(editor).text).toBe('保留草稿和焦点');
+    }
+    expect(focusEvents).toEqual([]);
+    expect(document.querySelector('[role="textbox"]')).toBe(editor);
+  } finally {
+    editor.removeEventListener('focus', recordFocus); editor.removeEventListener('blur', recordFocus);
+  }
+});
+
 it('scrolls code horizontally without switching the Session', async () => {
   await page.viewport(390, 844);
   await mount([{ id: 'code', role: 'assistant', content: `\`\`\`text\n${'long_code_line_'.repeat(40)}\n\`\`\``, createdAt: 1, status: 'stored' }]);
@@ -315,18 +344,18 @@ it.each([390, 1280])('keeps reply loading in the conversation and the terminal e
   const input = document.querySelector('[role="textbox"]') as HTMLElement;
   await page.getByRole('textbox').fill('检查本次构建');
   await page.getByRole('button', { name: '发送消息', exact: true }).click();
-  await expect.element(page.getByRole('status', { name: 'Codex发送中' })).toBeVisible();
+  await expect.element(page.getByRole('status', { name: 'Codex处理中' })).toBeVisible();
   const card = document.querySelector<HTMLElement>('[data-chat-reply-status]')!;
   const dock = document.querySelector<HTMLElement>('[data-chat-terminal-dock]')!;
   const form = document.querySelector<HTMLElement>('[data-chat-composer]')!;
   expect(dock.contains(card)).toBe(true);
   expect(card.closest('.session-chat-scroll')).toBeNull();
   expect(card.getBoundingClientRect().bottom).toBeLessThanOrEqual(form.getBoundingClientRect().top);
-  expect(dock.querySelector('[data-chat-terminal-access]')?.textContent).toBe('发送中…');
+  expect(dock.querySelector('[data-chat-terminal-access]')?.textContent).toBe('处理中…');
   expect(document.activeElement).toBe(input);
   messages.push({ id: 'sent-author', role: 'user', content: '检查本次构建', createdAt: Date.now(), status: 'delivered' });
   acknowledge(Response.json({ id: 'sent-author', status: 'delivered' }));
-  await expect.element(page.getByRole('status', { name: 'Codex发送中' })).not.toBeInTheDocument();
+  await expect.element(page.getByRole('status', { name: 'Codex处理中' })).not.toBeInTheDocument();
   await expect.element(page.getByRole('status', { name: 'Codex处理中' })).not.toBeInTheDocument();
   expect(dock.querySelector('[data-chat-terminal-access]')?.textContent).toBe('详情');
 

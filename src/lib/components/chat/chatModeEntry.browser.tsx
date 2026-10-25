@@ -12,6 +12,56 @@ import { useTerminalStore } from '../../stores/useTerminalStore';
 let root: Root | undefined;
 const launches: string[] = [];
 afterEach(() => { root?.unmount(); launches.splice(0).forEach(finishSessionChatStartup); useTerminalStore.getState().clearAllTerminalSessions(); document.body.replaceChildren(); localStorage.clear(); vi.unstubAllGlobals(); });
+it.each([390, 1280])('recovers an earlier blocked delivery from the visible chat and removes its notice at width %i', async width => {
+  await page.viewport(width, 844);
+  const id = `chat-recovery-${width}-${Date.now()}`;
+  const message = { id: 'queued-chat', role: 'user', content: '保留并发送这条消息', createdAt: 1, status: 'pending',
+    delivery: { state: 'retrying', inputCheckFailed: true, blockedBy: { messageId: 'earlier-peer-reply', attemptCount: 2 } } as object | undefined };
+  const attempts: object[] = [];
+  vi.stubGlobal('fetch', vi.fn(async (url, init?: RequestInit) => {
+    if (String(url).endsWith('/queued-chat/delivery')) {
+      attempts.push(JSON.parse(String(init?.body))); message.status = 'delivered'; message.delivery = undefined;
+      return Response.json({ ok: true });
+    }
+    return Response.json({ agentAvailable: true, agent: { slug: 'codex', displayName: 'Codex' }, messages: [message] });
+  }));
+  const host = document.createElement('div'); host.className = 'h-screen'; document.body.append(host); root = createRoot(host);
+  root.render(<SessionChatView sessionId={id} onTerminal={() => {}} />);
+  await expect.element(page.getByText('前一条投递未确认，后续消息已暂停。请检查终端后重新投递。')).toBeVisible();
+  const retry = page.getByRole('button', { name: '已检查并清理，重新投递', exact: true });
+  await expect.element(retry).toBeVisible();
+  await retry.click();
+  await expect.poll(() => attempts).toEqual([{ action: 'retry', attempt: 2, blockingMessageId: 'earlier-peer-reply' }]);
+  await expect.poll(() => document.querySelector('[data-chat-delivery-notice]')).toBeNull();
+  await expect.element(page.getByText('保留并发送这条消息')).toBeVisible();
+  await expect.element(page.getByText('已发送', { exact: true })).toBeVisible();
+});
+it.each([390, 1280])('keeps empty chat details during activity and drafting until the first message at width %i', async width => {
+  await page.viewport(width, 844);
+  const id = `empty-chat-details-${width}-${Date.now()}`, messages: object[] = [];
+  vi.stubGlobal('fetch', vi.fn(async (url, init?: RequestInit) => {
+    if (init?.method === 'POST' && String(url).endsWith('/chat')) {
+      messages.push({ id: 'first', role: 'user', content: '第一条消息', createdAt: 1, status: 'delivered' });
+      return Response.json({ id: 'first', status: 'delivered' });
+    }
+    return Response.json({ agentAvailable: true, agent: { slug: 'customagent-status', displayName: 'CustomAgent' }, messages });
+  }));
+  const host = document.createElement('div'); host.className = 'h-screen'; document.body.append(host); root = createRoot(host);
+  root.render(<SessionChatView sessionId={id} onTerminal={() => {}} />);
+  await expect.element(page.getByText('想一起完成什么？')).toBeVisible();
+  const store = useTerminalStore.getState();
+  store.setTerminalSession(id, { sessionId: 'empty-chat-backend', cols: 80, rows: 24 });
+  store.setTerminalOutputActivity(id, true);
+  store.setSessionAgentStatus(id, { agentStatus: 'working' });
+  await expect.poll(() => document.querySelector('[data-chat-terminal-access]')?.textContent).toBe('详情');
+  expect(document.querySelector('[data-chat-terminal-access] .td-loading-spinner')).toBeNull();
+  await page.getByRole('textbox', { name: '给CustomAgent的消息' }).fill('第一条消息');
+  expect(document.querySelector('[data-chat-terminal-access]')?.textContent).toBe('详情');
+  await page.getByRole('button', { name: '发送消息', exact: true }).click();
+  await expect.element(page.getByRole('status', { name: 'CustomAgent处理中' })).toBeVisible();
+  expect(document.querySelector('[data-chat-terminal-access] .td-loading-spinner')).not.toBeNull();
+  await expect.poll(() => messages.length).toBe(1);
+});
 it.each([390, 1280])('retries plugin recognition and switches both mode entries at width %i', async width => {
   await page.viewport(width, 844);
   const id = `plugin-mode-${width}-${Date.now()}`;

@@ -8,6 +8,7 @@ import { LoadingSpinner as RiLoaderCircle } from '../ui/Loading';
  */
 
 import React from 'react';
+import { writeClipboardText } from '../../utils/clipboard';
 import {
   CircleCheck as RiCircleCheck,
   TriangleAlert as RiAlertLine,
@@ -249,7 +250,7 @@ function AgentHooksSettings(): React.ReactElement {
   const copyMigrationPrompt = async (migrationError: AgentPluginErrors) => {
     const text = migrationError.migration?.aiPrompt ?? migrationError.errors.join('\n');
     try {
-      await navigator.clipboard.writeText(text);
+      if (!await writeClipboardText(text)) { setPluginError(text); return; }
       setCopiedMigrationSlug(migrationError.slug);
       window.setTimeout(() => setCopiedMigrationSlug((slug) => slug === migrationError.slug ? null : slug), 1800);
     } catch {

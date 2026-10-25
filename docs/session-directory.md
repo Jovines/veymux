@@ -8,6 +8,16 @@
 
 目录读取实时标题、程序、目录、prompt state 和 Agent，保留现有标题/Agent 浏览器缓存。旧 backend 的实时元数据不覆盖新 backend 的记录。目录只订阅元数据变化，终端正文输出不触发选择器重新渲染。用户自定义的 shell 检测配置沿用主界面的配置加载链。
 
+## 创建与恢复的终端类型
+
+新建终端、分屏和历史恢复需要创建新进程时，沿用当前用户选择的 Shell / tmux。历史搜索不自行补 Shell；恢复准备响应只有在接回仍存在的 tmux 时才指定类型和 tmux 名称。旧服务返回的目录重开 `mode: shell` 也不覆盖当前选择。侧栏历史恢复使用新建面板中选中的类型。
+
+已运行会话的切换、断线重连和现存 tmux 的重新挂载保持原进程及原类型。归档执行会话需要重新启动时，客户端把当前选择传给恢复接口，返回后按实际类型挂载。无类型参数的旧客户端保留原有归档恢复行为。
+
+自动任务将配置时选中的类型保存到任务；手动运行与定时运行读取同一字段，编辑时保留任务自身的选择。旧任务和未指定类型的 CLI 请求沿用原有 Shell 行为；CLI 可通过 `--mode shell|tmux` 明确指定新建类型。指定已有目标的任务直接向原会话投递。托管执行、待办运行及后台集成按其持久运行架构使用 tmux，不能混用浏览器新建偏好。
+
+服务端收到明确 tmux 请求后，如果 tmux 临时不可用，返回失败并保留选择，禁止悄悄改为 Shell。入口验证覆盖 `AgentOperationsPanel.test.tsx`、`LeftSidebarLaunchActions.test.tsx`、`MultiTerminalView.test.tsx`、`CollaborationExecutionArchives.test.tsx`、`terminalSessionSearch.test.ts`、`terminalLaunchPreferences.test.ts` 及自动任务存储 / CLI 回归。桌面和移动浏览器入口使用 `vitest.session-recovery.config.ts`；浏览器结果不代表真实 macOS / iOS 实机验收。
+
 ## 统一投影
 
 纯规则位于 `src/server/utils/sessionDisplayName.ts` 的 `getSessionPresentation`。前端 `terminal/display.ts` 导出同一规则；原来的 `getSessionDisplayLines`、`getSessionDisplayName` 和协作兼容入口共用这套优先级：已命名会话 → 有意义的实时标题 → 非 shell 程序 → 目录 → 可读存储名或 Agent 通用名称。目录标题不会被误当作任务标题，自动生成的 tmux/路由标识不会落到默认 UI 标签中。

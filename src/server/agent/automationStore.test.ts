@@ -56,6 +56,16 @@ describe('AutomationStore', () => {
     expect(restored.list()[0]).toMatchObject({ id: task.id, name: 'Review', lastRunStatus: 'success' });
     expect(restored.listRuns(task.id)[0]).toMatchObject({ frontendSessionId: 'frontend-1', status: 'success' });
   });
+  it.each(['shell', 'tmux'] as const)('retains the selected %s backend across edits and a restart', mode => {
+    const store = new AutomationStore(filePath);
+    const input = { name: 'Review', enabled: true, cwd: '/repo', command: 'codex', prompt: 'review',
+      schedule: { kind: 'interval' as const, everyMinutes: 60 } };
+    const task = store.save({ ...input, mode });
+    const reloaded = new AutomationStore(filePath);
+    expect(reloaded.get(task.id)?.mode).toBe(mode);
+    expect(reloaded.save({ ...input, id: task.id }).mode).toBe(mode);
+    expect(reloaded.save({ ...input, id: task.id, mode: mode === 'shell' ? 'tmux' : 'shell' }).mode).not.toBe(mode);
+  });
 
   it('pauses scheduled runs and resumes from the next anchored interval', () => {
     vi.useFakeTimers();

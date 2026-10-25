@@ -3,7 +3,7 @@ import { createPortal, flushSync } from 'react-dom';
 import { ArrowLeft, SquareArrowOutUpRight, TerminalSquare, X } from 'lucide-react';
 import { useSessionCapabilities } from '../../federation/ShareAccessContext';
 import { isFocusTargetAvailable, restoreFocusIfUnclaimed } from '../../utils/focusOwnership';
-import { usesTouchTerminalLayout } from '../../utils/touchTerminalLayout';
+import { isPhoneDevice, usesTouchTerminalLayout } from '../../utils/touchTerminalLayout';
 import { useTerminalPeekIdleClose } from './useTerminalPeekIdleClose';
 import { focusKeyboardInput, measureNativePagePan, usesNativeKeyboardLayout } from '../../hooks/nativeKeyboardLayout';
 import { useViewportKeyboardState } from '../../hooks/useViewportKeyboardState';
@@ -141,7 +141,7 @@ export function useSessionTerminalPeek({ enabled, name, expand }: { enabled: boo
   });
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const [engaged, setEngaged] = useState(false);
-  const [inputExpanded, setInputExpanded] = useState(false);
+  const [terminalInputFocused, setTerminalInputFocused] = useState(false);
   const [touchOpened, setTouchOpened] = useState(false);
   const [position, setPosition] = useState<ReturnType<typeof terminalPeekPosition> | null>(null);
   const [preferredSize, setPreferredSize] = useState(readPeekSize);
@@ -155,24 +155,15 @@ export function useSessionTerminalPeek({ enabled, name, expand }: { enabled: boo
   const previousFocus = useRef<HTMLElement | null>(null);
   const open = available && !!anchor;
   const openRef = useRef(open); openRef.current = open;
-  const keyboard = useViewportKeyboardState({ enabled: open && usesTouchTerminalLayout() });
-  const keyboardWasOpen = useRef(false);
-  useLayoutEffect(() => {
-    if (!open) { keyboardWasOpen.current = false; return; }
-    if (keyboard.isOpen) {
-      keyboardWasOpen.current = true;
-      if (host.contains(document.activeElement) && capabilities.has('session.input')) setInputExpanded(true);
-    } else if (keyboardWasOpen.current) {
-      // OS keyboard dismissal can leave DOM focus on the very same input.
-      // Restore only the bubble geometry; never blur, refocus or reconnect.
-      keyboardWasOpen.current = false;
-      setInputExpanded(false);
-    }
-  }, [open, keyboard.isOpen, host, capabilities]);
+  const phone = isPhoneDevice();
+  const keyboard = useViewportKeyboardState({ enabled: open && phone });
+  // Pointer down also starts scrolling; even focus alone can be a hardware
+  // keyboard. Expansion requires all three independently observed facts.
+  const inputExpanded = open && phone && keyboard.isOpen && terminalInputFocused && capabilities.has('session.input');
   const close = useCallback((restore = true) => {
     const focused = document.activeElement;
     const restoreTarget = restore && focused instanceof Node && host.contains(focused) ? previousFocus.current : null;
-    setAnchor(null); setEngaged(false); setInputExpanded(false);
+    setAnchor(null); setEngaged(false); setTerminalInputFocused(false);
     if (restoreTarget?.isConnected) requestAnimationFrame(() => {
       restoreFocusIfUnclaimed(restoreTarget, host);
     });
@@ -187,7 +178,7 @@ export function useSessionTerminalPeek({ enabled, name, expand }: { enabled: boo
       setPreferredSize(size);
       previousFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
       setEngaged(false);
-      setInputExpanded(false);
+      setTerminalInputFocused(false);
     }
     setPosition(positionForAnchor(source, size, resizeOrigin.current, readPeekBounds(safeAreaProbe)));
     setAnchor(source);
@@ -249,21 +240,19 @@ export function useSessionTerminalPeek({ enabled, name, expand }: { enabled: boo
   }, [open, inside, close, inputExpanded]);
   // Hover only reveals the canvas. Explicit terminal interaction enables its
   // existing input gate synchronously, before that very pointer/wheel event.
-  const engage = (event: Event) => {
-    if (!capabilities.has('session.input')) return;
-    const expandInput = usesTouchTerminalLayout() && (event.type === 'pointerdown' || event.type === 'focusin');
-    if (!engaged || expandInput && !inputExpanded) flushSync(() => {
-      setEngaged(true);
-      if (expandInput) setInputExpanded(true);
-    });
-  };
+  const engage = () => { if (!engaged && capabilities.has('session.input')) flushSync(() => setEngaged(true)); };
   useLayoutEffect(() => {
     if (!open) return;
     // The terminal's stable portal keeps its React ancestry in the workspace;
     // use its DOM host for capture when it has moved into the popover.
-    const interact = (event: Event) => { if (openRef.current) engage(event); };
+    const interact = () => { if (openRef.current) engage(); };
+    const syncInputFocus = (event: FocusEvent) => {
+      const input = event.type === 'focusout' ? event.relatedTarget : event.target;
+      setTerminalInputFocused(input instanceof HTMLTextAreaElement && input.matches('[data-terminal-input-anchor]') && host.contains(input));
+    };
+    host.addEventListener('focusin', syncInputFocus, true); host.addEventListener('focusout', syncInputFocus, true);
     host.addEventListener('pointerdown', interact, true); host.addEventListener('wheel', interact, true); host.addEventListener('focusin', interact, true);
-    return () => { host.removeEventListener('pointerdown', interact, true); host.removeEventListener('wheel', interact, true); host.removeEventListener('focusin', interact, true); };
+    return () => { host.removeEventListener('pointerdown', interact, true); host.removeEventListener('wheel', interact, true); host.removeEventListener('focusin', interact, true); host.removeEventListener('focusin', syncInputFocus, true); host.removeEventListener('focusout', syncInputFocus, true); };
   });
   return {
     host, attachNormal,

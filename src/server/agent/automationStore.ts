@@ -14,6 +14,8 @@ export interface AgentAutomation {
   command: string;
   prompt: string;
   targetSessionId: string | null;
+  /** Captured when configured; scheduled runs have no browser preferences. */
+  mode?: 'shell' | 'tmux';
   schedule: AutomationSchedule;
   createdAt: number;
   updatedAt: number;
@@ -109,6 +111,7 @@ export class AutomationStore {
     command: string;
     prompt?: string;
     targetSessionId?: string | null;
+    mode?: 'shell' | 'tmux';
     schedule: AutomationSchedule;
   }): AgentAutomation {
     const now = Date.now();
@@ -122,6 +125,7 @@ export class AutomationStore {
       command: input.command.trim(),
       prompt: input.prompt?.trim() ?? '',
       targetSessionId: input.targetSessionId?.trim() || null,
+      mode: input.mode ?? existing?.mode ?? 'shell',
       schedule: input.schedule,
       createdAt,
       updatedAt: now,

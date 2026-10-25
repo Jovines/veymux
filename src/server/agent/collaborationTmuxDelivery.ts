@@ -111,15 +111,19 @@ async function writeTmuxPrompt(
         await validateTarget?.();
         return captureTmuxPaneText(run, pane);
       },
-      write: async header => {
-        progress?.('paste_attempted');
-        await stdin(['load-buffer', '-b', buffer, '-', ';', 'paste-buffer', '-p', '-r', '-d', '-b', buffer, '-t', pane.paneId], header);
+      write: async marker => {
+        progress?.('probe_attempted');
+        await stdin(['load-buffer', '-b', buffer, '-', ';', 'paste-buffer', '-p', '-r', '-d', '-b', buffer, '-t', pane.paneId], marker);
+      },
+      erase: async count => {
+        await assertSamePane(run, pane, true); await validateTarget?.(); assertCurrent?.('before_paste');
+        await run(['send-keys', '-t', pane.paneId, '-N', String(count), 'BSpace']);
       }, assertCurrent,
     });
-    if (verifyEcho) { await assertSamePane(run, pane, true); await validateTarget?.(); }
+    if (verifyEcho) { progress?.('probe_completed'); await assertSamePane(run, pane, true); await validateTarget?.(); }
     assertCurrent?.('before_paste');
     // Paste the body once, then send one unbracketed CR after 50ms. The echo
-    // check only observes the header; it never infers Agent consumption.
+    // check observes and removes its marker; it never infers Agent consumption.
     progress?.('paste_attempted');
     await stdin([
       // The body arrives on stdin, not argv: it is user content, and in a

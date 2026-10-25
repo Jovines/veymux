@@ -31,7 +31,7 @@ export async function architectureHistory(root: string, file: string, signal?: A
   if (!Array.isArray(result.versions)) throw new Error('Invalid architecture history');
   return result.versions as { id: string; savedAt: string; changes: ArchitectureChange[] }[];
 }
-export async function exportOmmArchitecture(root: string, file: string) { return request(root, `bundle?${new URLSearchParams({ file })}`); }
+export async function exportOmmArchitecture(root: string, file: string, signal?: AbortSignal) { return request(root, `bundle?${new URLSearchParams({ file })}`, signal); }
 export async function importOmmArchitecture(root: string, bundle: unknown, revision?: string | null) {
   const result = await request(root, 'bundle', undefined, { bundle, revision });
   return parseArchitecture(JSON.stringify(result.document));

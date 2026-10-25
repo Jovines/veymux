@@ -4016,36 +4016,9 @@ export async function applyDiffHunk(request: ApplyDiffHunkRequest): Promise<Appl
   return response.json();
 }
 
-export type AutomationSchedule =
-  | { kind: 'interval'; everyMinutes: number }
-  | { kind: 'daily'; time: string; weekdays: number[] };
-
-export interface AgentAutomation {
-  id: string;
-  name: string;
-  enabled: boolean;
-  cwd: string;
-  command: string;
-  prompt: string;
-  targetSessionId: string | null;
-  schedule: AutomationSchedule;
-  createdAt: number;
-  updatedAt: number;
-  nextRunAt: number | null;
-  lastRunAt: number | null;
-  lastRunStatus: 'running' | 'success' | 'failed' | null;
-  lastRunMessage: string | null;
-}
-
-export interface AutomationRun {
-  id: string;
-  automationId: string;
-  startedAt: number;
-  finishedAt: number | null;
-  status: 'running' | 'success' | 'failed';
-  frontendSessionId: string | null;
-  message: string | null;
-}
+export type AutomationSchedule = import('../../server/agent/automationStore').AutomationSchedule;
+export type AgentAutomation = import('../../server/agent/automationStore').AgentAutomation;
+export type AutomationRun = import('../../server/agent/automationStore').AutomationRun;
 
 export type CollaborationLaunchProfile = import('../../server/agent/collaborationLaunchProfiles').CollaborationLaunchProfile;
 export interface CollaborationGroup {
@@ -4092,6 +4065,7 @@ export interface CollaborationMessage {
 }
 
 export interface OrchestrationSession {
+  mode?: 'shell' | 'tmux';
   /** Explicit support from the authenticated owning service; absent on old peers. */
   canDirectContact?: boolean;
   route_state?: string;
@@ -4384,8 +4358,8 @@ export async function archiveExecutionSession(sessionId: string): Promise<{ entr
   const result = await operationsRequest<{ entry: ExecutionArchive }>(`/execution-archives/${encodeURIComponent(sessionId)}/archive`, { method: 'POST' });
   executionArchiveRead = null; currentCollaborationDirectory().invalidate(); return result;
 }
-export async function restoreExecutionSession(sessionId: string): Promise<{ session: OrchestrationSession }> {
-  const result = await operationsRequest<{ session: OrchestrationSession }>(`/execution-archives/${encodeURIComponent(sessionId)}/restore`, { method: 'POST' });
+export async function restoreExecutionSession(sessionId: string, mode?: 'shell' | 'tmux'): Promise<{ session: OrchestrationSession }> {
+  const result = await operationsRequest<{ session: OrchestrationSession }>(`/execution-archives/${encodeURIComponent(sessionId)}/restore`, { method: 'POST', body: JSON.stringify({ mode }) });
   executionArchiveRead = null; currentCollaborationDirectory().invalidate(); return result;
 }
 export async function ensureCollaborationTeam(groupId: string, input: { agentSlug: string; launchProfileId?: string; cwd: string; coordinatorSessionId?: string | null; coordinatorCreationKey?: string }): Promise<{ coordinatorSessionId: string; reviewerSessionIds: string[] }> {

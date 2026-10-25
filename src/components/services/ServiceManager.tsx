@@ -5,6 +5,17 @@ import { listServiceConnections, normalizeServiceAddress, observeServiceConnecti
 import './ServiceManager.css';
 import { useI18n } from '../../lib/i18n';
 import { parseInviteLink } from '../../lib/federation/inviteLink';
+import { describeInvitationFailure } from '../../lib/federation/invitationFailure';
+
+function connectionFailureMessage(failure: unknown): string | undefined {
+  if (!(failure instanceof Error)) return;
+  if (failure.name === 'TimeoutError' || /^(The operation timed out\.?|The operation was aborted due to timeout\.?|signal timed out|Secure handshake timed out|Secure connection timed out)$/i.test(failure.message)) {
+    return '连接超时。请确认分享电脑已唤醒、Termdock 正在运行，且当前设备能访问这个地址。';
+  }
+  if (['Secure transport unavailable', 'Failed to fetch', 'Load failed', 'NetworkError when attempting to fetch resource.'].includes(failure.message)) {
+    return '未能建立安全连接。请先检查服务地址和网络；如果浏览器提示证书错误，再完成证书信任设置。';
+  }
+}
 
 export interface ServiceNavigation { title?: string; back?: () => void }
 export interface ServiceManagerProps {
@@ -51,6 +62,7 @@ export function ServiceManager({ current, renderRoutes, renderRelayServices, onO
   const [busy, setBusyState] = useState(false);
   const setBusy = useCallback((value: boolean) => { setBusyState(value); onBusyChange?.(value); }, [onBusyChange]);
   const [error, setError] = useState('');
+  const [connectionHelp, setConnectionHelp] = useState<{ origin: string; setupUrl?: string }>();
   const [certificateReview, setCertificateReview] = useState<CertificateReview>();
   const [certificatePins, setCertificatePins] = useState<Record<string, string>>({});
   const certificateGeneration = useRef(0);
@@ -65,7 +77,7 @@ export function ServiceManager({ current, renderRoutes, renderRelayServices, onO
   };
   const cancelCertificateReview = () => { certificateGeneration.current++; discardCertificateReceipt(); setCertificateReview(undefined); };
   const cancelReviewRef = useRef(cancelCertificateReview); cancelReviewRef.current = cancelCertificateReview;
-  const back = useCallback(() => { cancelReviewRef.current(); setPage(previous => previous.kind === 'routes' || previous.kind === 'relay-services' ? { kind: 'edit', service: previous.service } : { kind: 'list' }); setError(''); }, []);
+  const back = useCallback(() => { cancelReviewRef.current(); setPage(previous => previous.kind === 'routes' || previous.kind === 'relay-services' ? { kind: 'edit', service: previous.service } : { kind: 'list' }); setError(''); setConnectionHelp(undefined); }, []);
   const title = page.kind === 'add' ? '添加服务' : page.kind === 'edit' ? '服务设置' : page.kind === 'routes' ? '备用连接' : page.kind === 'relay-services' ? '可中转的服务' : undefined;
   useEffect(() => { onNavigation?.({ title, ...(title ? { back } : {}) }); }, [title, back, onNavigation]);
   useEffect(() => {
@@ -143,14 +155,29 @@ export function ServiceManager({ current, renderRoutes, renderRelayServices, onO
     busyRef.current = true;
     setBusy(true); setError('');
     let generation = certificateGeneration.current;
-    try { const pending = task(); generation = certificateGeneration.current; await pending; } catch (failure) { if (ownerIsCurrent(generation)) setError(failure instanceof Error ? failure.message : '暂时无法完成，请重试。'); }
+    try { const pending = task(); generation = certificateGeneration.current; await pending; } catch (failure) { if (ownerIsCurrent(generation)) setError(connectionFailureMessage(failure) || (failure instanceof Error ? failure.message : '暂时无法完成，请重试。')); }
     finally { busyRef.current = false; if (mounted.current) setBusy(false); }
   };
   const submitInput = async (input: string, password?: string) => {
     let result: { passwordRequired?: boolean; certificateReviewRequired?: boolean } | void;
     await perform(async () => {
-      const origin = input.includes('#termdock-invite=') ? parseInviteLink(input).url : normalizeServiceAddress(input);
-      result = await openWithCertificateReview(origin, () => onAdd(input, password), input);
+      setConnectionHelp(undefined);
+      const invitation = input.includes('#termdock-invite=') ? parseInviteLink(input) : undefined;
+      const origin = invitation?.url || normalizeServiceAddress(input);
+      try { result = await openWithCertificateReview(origin, () => onAdd(input, password), input); }
+      catch (failure) {
+        const message = connectionFailureMessage(failure);
+        const invitationFailure = invitation ? describeInvitationFailure(failure) : undefined;
+        if (message || invitationFailure?.kind === 'connection') {
+          // The setup page is public guidance only. Keep the one-use invitation
+          // here so opening the guide cannot redeem it in another origin.
+          const setup = invitation ? new URL(input) : undefined;
+          if (setup) { setup.hash = ''; setup.search = ''; }
+          setConnectionHelp({ origin, ...(setup?.protocol === 'http:' && setup.pathname === '/connect' ? { setupUrl: setup.href } : {}) });
+        }
+        if (invitationFailure) throw new Error(message || `${invitationFailure.title}。${invitationFailure.description}`);
+        throw failure;
+      }
       if (result?.passwordRequired) setPage({ kind: 'add', input, passwordRequired: true });
       else if (!result?.certificateReviewRequired) back();
     });
@@ -188,7 +215,7 @@ export function ServiceManager({ current, renderRoutes, renderRelayServices, onO
   </>;
   return <div className="service-manager">
     {!hideHeader && <div className="service-heading">{title && <button type="button" className="service-icon-button" aria-label="返回服务" disabled={busy} onClick={back}><ArrowLeft size={20} /></button>}<h2>{title || '服务'}</h2></div>}
-    <div hidden={!!certificateReview}>{page.kind === 'relay-services' ? renderRelayServices?.(pageService!, setBusy) : page.kind === 'routes' ? renderRoutes?.(pageService!, setBusy) : page.kind === 'list' ? list : page.kind === 'add' ? <AddServiceForm onValidate={onValidate} onSave={input => perform(async () => { cancelCertificateReview(); const url = normalizeServiceAddress(input); setServices(await saveServiceConnection({ id: url, url, label: new URL(url).host })); back(); })} onTargetChange={cancelCertificateReview} initialInput={page.input} passwordRequired={page.passwordRequired} busy={busy} onSubmit={submitInput} /> : <EditServiceForm onRelayServices={renderRelayServices && page.service.targetPeerId ? () => setPage({ kind: 'relay-services', service: page.service }) : undefined} onRoutes={renderRoutes && page.service.targetPeerId ? () => setPage({ kind: 'routes', service: page.service }) : undefined} service={pageService!} busy={busy} canRemove={!current || !sameService(page.service, current)} onSave={name => void perform(async () => { setServices(await saveServiceConnection({ ...pageService!, label: name })); back(); })} onRemove={() => void perform(async () => { setServices(await removeServiceConnection(page.service.id)); back(); })} />}</div>
+    <div hidden={!!certificateReview}>{page.kind === 'relay-services' ? renderRelayServices?.(pageService!, setBusy) : page.kind === 'routes' ? renderRoutes?.(pageService!, setBusy) : page.kind === 'list' ? list : page.kind === 'add' ? <AddServiceForm onValidate={onValidate} onSave={input => perform(async () => { cancelCertificateReview(); const url = normalizeServiceAddress(input); setServices(await saveServiceConnection({ id: url, url, label: new URL(url).host })); back(); })} onTargetChange={() => { cancelCertificateReview(); setConnectionHelp(undefined); setError(''); }} initialInput={page.input} passwordRequired={page.passwordRequired} busy={busy} onSubmit={submitInput} /> : <EditServiceForm onRelayServices={renderRelayServices && page.service.targetPeerId ? () => setPage({ kind: 'relay-services', service: page.service }) : undefined} onRoutes={renderRoutes && page.service.targetPeerId ? () => setPage({ kind: 'routes', service: page.service }) : undefined} service={pageService!} busy={busy} canRemove={!current || !sameService(page.service, current)} onSave={name => void perform(async () => { setServices(await saveServiceConnection({ ...pageService!, label: name })); back(); })} onRemove={() => void perform(async () => { setServices(await removeServiceConnection(page.service.id)); back(); })} />}</div>
     {certificateReview && <section className="service-certificate-review" aria-label="HTTPS 证书确认">
       <h3>检查 HTTPS 证书</h3><p>{certificateReview.origin}</p>
       {certificateReview.changed && <p role="alert">当前证书与已保存的信任指纹不同。请通过独立可信渠道重新核对，再决定是否更新信任。</p>}
@@ -200,6 +227,11 @@ export function ServiceManager({ current, renderRoutes, renderRelayServices, onO
     </section>}
     {!certificateReview && certificateTrust && Object.keys(certificatePins).length > 0 && <details className="service-certificate-pins"><summary>已信任的 HTTPS 证书（{Object.keys(certificatePins).length}）</summary>{Object.entries(certificatePins).map(([origin, fingerprint]) => <div key={origin}><p>{origin}<br /><code>{fingerprint.match(/.{1,2}/g)?.join(':').toUpperCase()}</code></p><button type="button" className="service-button service-secondary" disabled={busy} onClick={() => void perform(async () => { const generation = certificateGeneration.current; await certificateTrust.revoke(origin); if (!ownerIsCurrent(generation)) return; const pins = await certificateTrust.listPins(); if (ownerIsCurrent(generation)) setCertificatePins(pins); })}>撤销信任</button></div>)}</details>}
     {error && <p className="service-error" role="alert">{error}</p>}
+    {error && connectionHelp && <section className="service-connection-help" aria-label="连接帮助">
+      <p className="service-address">连接地址：{connectionHelp.origin}</p>
+      <p className="service-help">局域网地址通常需要在同一网络内访问。请先确认分享电脑上的服务可以打开。</p>
+      {connectionHelp.setupUrl && <><p className="service-help">若浏览器提示证书错误，可先打开引导完成信任设置，再回到这里点“继续”。打开引导不会接受邀请。</p><a className="service-button service-secondary" href={connectionHelp.setupUrl} target="_blank" rel="noopener noreferrer">打开证书连接引导</a></>}
+    </section>}
   </div>;
 }
 function AddServiceForm({ onValidate, busy, onSubmit, onSave, onTargetChange, initialInput = '', passwordRequired = false }: { onValidate: (input: string) => boolean; onSave: (input: string) => Promise<void>; onTargetChange: () => void; initialInput?: string; passwordRequired?: boolean; busy: boolean; onSubmit: (input: string, password?: string) => Promise<{ passwordRequired?: boolean; certificateReviewRequired?: boolean } | void> }) {
