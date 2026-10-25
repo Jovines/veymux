@@ -75,7 +75,7 @@ export function collaborationMessageAnchorTokens(messages: CollaborationMessage[
 
 /** A single delivered message: `来自:X · kind · id` over a fenced body. The
  *  message id rides the source line — it is the one place a recipient can
- *  look up how to reply (`td collab --help`, always present below) without a
+ *  look up how to reply (`td collab --help`, taught on first delivery) without a
  *  per-message command template. A fan-out dispatch (message.fanOutIds
  *  present) is flagged `· 群发` and names the sibling recipients on their own
  *  line, so a broadcast is never mistaken for a one-to-one assignment — raw
@@ -89,8 +89,11 @@ function formatCollaborationMessage(message: CollaborationMessage, source: strin
   // body, project path, or the recipient's current working directory.
   const address = message.fromSessionId ? directRemoteAddress(message.fromSessionId) : null;
   const remote = message.fromSessionId?.startsWith('remote:');
-  lines.push(`来源服务:${remote ? address ? `远端服务 ${address.origin}（不是收件人所在服务）` : '远端服务（地址未确认）' : '本服务（与收件人相同）'}`);
-  if (message.fromSessionId) lines.push(`来源会话:${sanitizeCollaborationRole(message.fromSessionId, 2048)}`);
+  const service = remote ? address ? `远端 ${address.origin}` : '远端（地址未确认）' : '本服务';
+  // The service and its native session ID together identify the sender. Do
+  // not repeat the encoded origin inside a second full remote routing ID.
+  const session = message.fromSessionId ? ` · 会话 ${sanitizeCollaborationRole(address?.id ?? message.fromSessionId, 2048)}` : '';
+  lines.push(`来源:${service}${session}`);
   if (fannedNames.length) lines.push(`同时发给了:${fannedNames.join('、')}`);
   lines.push('', fence, message.content, fence);
   if (message.task) lines.push('', `任务上报:${JSON.stringify(message.task)}`);
@@ -105,8 +108,7 @@ export function formatCollaborationDelivery(input: {
   /**
    * false: omit the one-time education block (routing examples, capture and
    * cross-service guidance, the current group rules). Dynamic notices
-   * (unreachable peers) and the help line are always included — they report
-   * current conditions, not education. Callers gate this on a per-session
+   * (unreachable peers) are always included. Callers gate static help on a per-session
    * education state keyed by roster plus rules version, so a rule change
    * re-educates on the next delivery.
    */
@@ -122,7 +124,7 @@ export function formatCollaborationDelivery(input: {
   for (const message of input.messages) {
     const sourceSession = message.fromSessionId ? sessionsById.get(message.fromSessionId) : null;
     const source = message.fromSessionId
-      ? sanitizeCollaborationName(sourceSession?.name ?? (message.direct ? message.directSourceName : undefined) ?? message.fromSessionId)
+      ? sanitizeCollaborationName(sourceSession?.name ?? (message.direct ? message.directSourceName : undefined) ?? message.fromSessionId, 24)
       : message.integrationOrigin ? message.integrationOrigin.source === 'session-chat' ? '网页对话用户' : `后台接入 ${sanitizeCollaborationName(message.integrationOrigin.integrationId, 80)}` : '用户';
     const token = tokens.get(message.id) ?? message.id;
     const bytes = Buffer.byteLength(message.content);
@@ -196,7 +198,7 @@ export function formatCollaborationDelivery(input: {
     const session = sessionsById.get(id);
     return `注意：${session ? sanitizeCollaborationName(session.name) : id} 服务不可达，消息无法送达；仅可排队等待重连。`;
   });
-  const notes = [...education, ...dynamicNotices, '帮助:td collab --help'];
+  const notes = [...education, ...dynamicNotices, ...(educated ? ['帮助:td collab --help'] : [])];
 
   if (!blocks.length) return notes.join('\n');
   // Recipient identity rides the shell under the header so the recipient
@@ -204,7 +206,7 @@ export function formatCollaborationDelivery(input: {
   // separate notification needed) and, in a single-group delivery, its role
   // (定位). The name needs no group claim and survives mixed batches; the
   // role only rides when the batch maps to exactly one group.
-  const ownName = sanitizeCollaborationName(sessionsById.get(input.targetSessionId)?.name ?? '');
+  const ownName = sanitizeCollaborationName(sessionsById.get(input.targetSessionId)?.name ?? '', 24);
   const ownRole = singleGroup
     ? sanitizeCollaborationRole(singleGroup.roles?.[input.targetSessionId] ?? '')
     : '';

@@ -128,7 +128,7 @@ describe('formatCollaborationDelivery', () => {
     expect(prompt).not.toMatch(/ · message(?!-)/);
     expect(prompt).not.toContain('查看群规');
     expect(prompt).not.toContain('63a047b4-7d6e');
-    expect(prompt).toContain('帮助:td collab --help');
+    expect(prompt).not.toContain('帮助:td collab --help');
     expect(prompt).not.toContain('td collab reply');
   });
 
@@ -244,8 +244,8 @@ describe('formatCollaborationDelivery', () => {
     ]);
     expect(prompt.split(RULE).length).toBe(3);
     expect(prompt).not.toContain('[Termdock 协作');
-    expect(prompt).toContain('来自:开发 Agent · task · one\n来源服务:本服务（与收件人相同）\n来源会话:coder-id\n\n```\n第一条\n```');
-    expect(prompt).toContain('来自:another-id · task · two\n来源服务:本服务（与收件人相同）\n来源会话:another-id\n\n```\n第二条\n```');
+    expect(prompt).toContain('来自:开发 Agent · task · one\n来源:本服务 · 会话 coder-id\n\n```\n第一条\n```');
+    expect(prompt).toContain('来自:another-id · task · two\n来源:本服务 · 会话 another-id\n\n```\n第二条\n```');
   });
 
   it('keeps mixed messages and embedded code unambiguous', () => {
@@ -368,7 +368,7 @@ describe('formatCollaborationDelivery', () => {
     expect(prompt).toContain('```\n检查构建\n```');
     expect(prompt).not.toContain('td collab send');
     expect(prompt).not.toContain('联系其他成员');
-    expect(prompt).toContain('帮助:td collab --help');
+    expect(prompt).not.toContain('帮助:td collab --help');
     expect(prompt).not.toContain('td collab capture');
     expect(prompt).not.toContain('想看伙伴');
     expect(prompt.length).toBeLessThan(400);
@@ -381,7 +381,7 @@ describe('formatCollaborationDelivery', () => {
       sessions: [{ sessionId: 'remote:peer', name: 'Reviewer · Mac', status: 'service-unreachable' }],
     });
     expect(prompt).not.toContain('td collab send');
-    expect(prompt).toContain('帮助:td collab --help');
+    expect(prompt).not.toContain('帮助:td collab --help');
     expect(prompt).toContain('服务不可达，消息无法送达');
     // Cross-service education is static guidance, so it rides the education
     // block and stays suppressed once delivered.
