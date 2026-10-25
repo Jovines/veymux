@@ -5,7 +5,7 @@ const { spawnSync } = require('node:child_process');
 
 function nativeBuildEnvironment(inherited = process.env, platform = process.platform) {
   const env = { ...inherited };
-  if (platform !== 'darwin' || (env.SDKROOT && env.CC && env.CXX)) return env;
+  if (platform !== 'darwin') return env;
 
   function resolve(command, args, directory) {
     const result = spawnSync(command, args, { env, encoding: 'utf8', timeout: 5000 });
@@ -29,7 +29,8 @@ function nativeBuildEnvironment(inherited = process.env, platform = process.plat
 
   // Pin the selection for every xcrun query and for node-gyp. Never change the
   // machine-wide xcode-select setting or replace explicit compiler/SDK choices.
-  env.DEVELOPER_DIR ||= resolve('/usr/bin/xcode-select', ['-p'], true);
+  const explicitToolchain = env.SDKROOT && env.CC && env.CXX;
+  if (!explicitToolchain) env.DEVELOPER_DIR ||= resolve('/usr/bin/xcode-select', ['-p'], true);
   // The explicit SDK name matters: bare --show-sdk-path can select the CLT SDK
   // even when an older Xcode is selected (nodejs/node-gyp#3344).
   env.SDKROOT ||= resolve('/usr/bin/xcrun', ['--sdk', 'macosx', '--show-sdk-path'], true);
@@ -41,6 +42,14 @@ function nativeBuildEnvironment(inherited = process.env, platform = process.plat
   };
   env.CC ||= compiler('clang');
   env.CXX ||= compiler('clang++');
+  // Recent CLT installations ship libc++ headers in the SDK without the
+  // compiler's usual sibling include directory. node-gyp's SDK selection alone
+  // then leaves <functional> unavailable. Use the selected SDK's real headers,
+  // retaining any explicit user include path and leaving other SDKs untouched.
+  const headers = path.join(env.SDKROOT, 'usr/include/c++/v1');
+  if (!env.CPLUS_INCLUDE_PATH && fs.existsSync(path.join(headers, 'functional'))) {
+    env.CPLUS_INCLUDE_PATH = headers;
+  }
   return env;
 }
 

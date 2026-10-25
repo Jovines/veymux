@@ -86,6 +86,34 @@ export class CollaborationService {
     this.persist();
   }
   descriptor() { return { ...this.options.node(), ...(this.document.origin ? { origin: this.document.origin } : {}) }; }
+  /** Origins in persisted session ids are local aliases, not service identities.
+   * Retain those aliases across address changes; service id and CA stay pinned.
+   * Namespace loopback peers so two different Macs never share one alias. */
+  private canonicalNodes(nodes: CollaborationNode[], origin: string): CollaborationNode[] {
+    const ids = new Set<string>();
+    return nodes.map(node => {
+      validateCollaborationNode(node);
+      if (ids.has(node.serviceId)) throw new Error('DUPLICATE_SERVICE_DIRECTORY');
+      ids.add(node.serviceId);
+      if (node.serviceId === this.options.node().serviceId) {
+        if (node.caFingerprint256 !== this.options.node().caFingerprint256) throw new Error('LOCAL_NODE_MISMATCH');
+        return { ...node, origin };
+      }
+      const old = this.document.peers.find(peer => peer.serviceId === node.serviceId);
+      if (old) {
+        if (old.caFingerprint256 !== node.caFingerprint256) throw new Error('PEER_IDENTITY_CHANGED');
+        return { ...old };
+      }
+      const host = new URL(node.origin).hostname;
+      const loopbackCollision = ['localhost', '127.0.0.1', '[::1]'].includes(host)
+        && (node.origin === origin || this.document.peers.some(peer => peer.origin === node.origin)
+          || nodes.some(other => other.serviceId !== node.serviceId && other.origin === node.origin));
+      const alias = loopbackCollision
+        ? `https://${node.serviceId.toLowerCase()}.localhost` : node.origin;
+      if (alias === origin || this.document.peers.some(peer => peer.origin === alias)) throw new Error('PEER_IDENTITY_CHANGED');
+      return { ...node, origin: alias };
+    });
+  }
   /** Only fully paired directory peers may route opaque encrypted traffic to
    * another fully paired peer. A shared-session registration never qualifies. */
   canRoute(subject: string, target: string): boolean {
@@ -115,6 +143,16 @@ export class CollaborationService {
 
   private receiveDirect(peer: CollaborationNode, packet: Packet) {
     if (!this.options.deliver || this.effectiveScope(peer.serviceId) !== undefined) throw new Error('SESSION_SCOPE_DENIED');
+    if (packet.targetServiceId !== undefined) {
+      if (packet.targetServiceId !== this.options.node().serviceId || typeof packet.targetOrigin !== 'string') throw new Error('INVALID_DIRECT_MESSAGE');
+      validateCollaborationNode({ serviceId: packet.targetServiceId as string, origin: packet.targetOrigin });
+      const normalize = (id: string) => {
+        const target = directRemoteAddress(id);
+        return target && target.origin === packet.targetOrigin ? remoteSession(this.node().origin, target.id) : id;
+      };
+      packet = { ...packet, ...(typeof packet.targetSessionId === 'string' ? { targetSessionId: normalize(packet.targetSessionId) } : {}),
+        ...(packet.message ? { message: { ...(packet.message as CollaborationMessage), toSessionId: normalize((packet.message as CollaborationMessage).toSessionId) } } : {}) };
+    }
     if (!packet.message) {
       const target = typeof packet.targetSessionId === 'string' ? directRemoteAddress(packet.targetSessionId) : null;
       if (!target || target.origin !== this.node().origin || !directLocalId(packet.fromSessionId)
@@ -170,8 +208,10 @@ export class CollaborationService {
           try {
             const client = await this.client(peer);
             const body = { type: 'collaboration-service', action: 'direct-message', message,
+              targetServiceId: peer.serviceId, targetOrigin: peer.origin,
               sourceName: this.options.sessions().find(session => session.sessionId === message.fromSessionId)?.name };
             let result = previous?.remote_received_at ? await client.request({ type: 'collaboration-service', action: 'direct-message',
+              targetServiceId: peer.serviceId, targetOrigin: peer.origin,
               messageId: message.id, fromSessionId: message.fromSessionId, targetSessionId: message.toSessionId, shellConfirmed: message.shellConfirmed === true })
               : await client.request(body);
             if (result.directContacts === 1 && result.missing === message.id) result = await client.request(body);
@@ -226,14 +266,8 @@ export class CollaborationService {
     const self = this.node(origin);
     const own = nodes.find(node => node?.serviceId === self.serviceId);
     if (!own || own.origin !== origin || own.caFingerprint256 !== self.caFingerprint256) throw new Error('LOCAL_NODE_MISMATCH');
-    const ids = new Set<string>(), origins = new Set<string>();
-    for (const node of nodes) {
-      validateCollaborationNode(node);
-      if (ids.has(node.serviceId) || origins.has(node.origin)) throw new Error('DUPLICATE_SERVICE_DIRECTORY');
-      ids.add(node.serviceId); origins.add(node.origin);
-      const old = this.document.peers.find(peer => peer.serviceId === node.serviceId || peer.origin === node.origin);
-      if (old && (old.serviceId !== node.serviceId || old.origin !== node.origin || old.caFingerprint256 !== node.caFingerprint256)) throw new Error('PEER_IDENTITY_CHANGED');
-    }
+    nodes = this.canonicalNodes(nodes, origin);
+    if (new Set(nodes.map(node => node.origin)).size !== nodes.length) throw new Error('DUPLICATE_SERVICE_DIRECTORY');
     const removed = new Set(this.document.removedPeers?.map(peer => peer.serviceId));
     const eligible = nodes.filter(node => node.serviceId !== self.serviceId && !removed.has(node.serviceId));
     if (new Set([...this.document.peers.map(peer => peer.serviceId), ...eligible.map(node => node.serviceId)]).size > 63) throw new Error('PEER_LIMIT');
@@ -343,7 +377,9 @@ export class CollaborationService {
     }
     if (packet.action === 'group') {
       const canonical = packet.group as CollaborationGroup;
-      if (!canonical?.sessionIds?.some(id => address(id)?.origin === peer.origin) && !this.document.replicas?.[canonical?.id]?.includes(peer.origin)) throw new Error('GROUP_SENDER_NOT_MEMBER');
+      const sender = Array.isArray(packet.nodes) ? (packet.nodes as CollaborationNode[]).find(node => node.serviceId === subject) : undefined;
+      if (!sender || sender.caFingerprint256 !== peer.caFingerprint256) throw new Error('PEER_IDENTITY_CHANGED');
+      if (!canonical?.sessionIds?.some(id => address(id)?.origin === sender.origin) && !this.document.replicas?.[canonical?.id]?.includes(peer.origin)) throw new Error('GROUP_SENDER_NOT_MEMBER');
       this.merge(canonical, packet.nodes as CollaborationNode[], peer); return { ok: true };
     }
     throw new Error('COLLABORATION_OPERATION_UNSUPPORTED');
@@ -366,11 +402,16 @@ export class CollaborationService {
     if (!canonical || typeof canonical.id !== 'string' || !canonical.id.startsWith('cross-') || !Array.isArray(canonical.sessionIds)
       || canonical.sessionIds.length < 2 || canonical.sessionIds.length > 500 || typeof canonical.name !== 'string' || !canonical.name.trim() || COLLAB_NAME_FORBIDDEN.test(canonical.name)
       || !Number.isFinite(canonical.updatedAt) || canonical.updatedAt > Date.now() + 60_000 || !Array.isArray(nodes) || nodes.length > 65) throw new Error('INVALID_GROUP');
-    for (const node of nodes) {
-      validateCollaborationNode(node);
-      const trusted = this.document.peers.find(peer => peer.serviceId === node.serviceId || peer.origin === node.origin);
-      if (trusted && (trusted.serviceId !== node.serviceId || trusted.origin !== node.origin || trusted.caFingerprint256 !== node.caFingerprint256)) throw new Error('PEER_IDENTITY_CHANGED');
-    }
+    // Convert the sender's unambiguous aliases through pinned service ids before
+    // comparing membership. Never rewrite stored messages or another peer's CA.
+    if (new Set(nodes.map(node => node?.origin)).size !== nodes.length) throw new Error('DUPLICATE_SERVICE_DIRECTORY');
+    const normalized = this.canonicalNodes(nodes, this.node().origin);
+    const aliases = new Map(nodes.map((node, index) => [node.origin, normalized[index].origin]));
+    canonical = mapGroup(canonical, id => {
+      const target = address(id);
+      return target && aliases.has(target.origin) ? remoteSession(aliases.get(target.origin)!, target.id) : id;
+    });
+    nodes = normalized;
     const self = this.node(), own = nodes.find(node => node.serviceId === self.serviceId);
     if (!own || own.origin !== self.origin || own.caFingerprint256 !== self.caFingerprint256) throw new Error('LOCAL_NODE_MISMATCH');
     const existing = this.options.store.getGroup(canonical.id);

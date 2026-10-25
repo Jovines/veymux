@@ -8125,7 +8125,7 @@ router.get('/operations/orchestration/peers', async (req, res) => {
   });
 });
 
-router.post('/operations/orchestration/members', (req, res) => {
+router.post('/operations/orchestration/members', async (req, res) => {
   const sourceSessionId = resolveFrontendSessionId(req.body ?? {});
   const groupId = typeof req.body?.groupId === 'string' ? req.body.groupId.trim() : '';
   const targetSessionId = typeof req.body?.targetSessionId === 'string' ? req.body.targetSessionId.trim() : '';
@@ -8135,15 +8135,24 @@ router.post('/operations/orchestration/members', (req, res) => {
   if (!sourceSessionId) return res.status(400).json({ error: '无法识别当前会话；请从 Termdock 会话内运行 td collab' });
   if (!group || !group.sessionIds.includes(sourceSessionId)) return res.status(403).json({ error: '当前会话不在该协作组中' });
   if (!action) return res.status(400).json({ error: '成员操作无效' });
-  if (!globalSessionState.sessions.some((candidate) => candidate.sessionId === targetSessionId)) {
+  const service = req.app.locals.collaborationService;
+  const available = globalSessionState.sessions.some(candidate => candidate.sessionId === targetSessionId)
+    || service?.directory().sessions.some((candidate: { sessionId: string; serviceConnected?: boolean }) => candidate.sessionId === targetSessionId && candidate.serviceConnected);
+  if (!available && !(action === 'remove' && group.sessionIds.includes(targetSessionId))) {
     return res.status(404).json({ error: '目标会话不存在' });
   }
   const nextSessionIds = action === 'add'
     ? Array.from(new Set([...group.sessionIds, targetSessionId]))
     : group.sessionIds.filter((sessionId) => sessionId !== targetSessionId);
   if (group.federated && nextSessionIds.length < 2) return res.status(400).json({ error: '跨服务组仍需两个成员；移出操作未保存' });
-  const updated = collaborationStore.save({ id: group.id, name: group.name, sessionIds: nextSessionIds });
-  res.json({ ok: true, group: updated });
+  try {
+    assertPeerRegistrationAuthority(req);
+    if (!service) throw new Error('COLLABORATION_UNAVAILABLE');
+    const updated = await service.save({ id: group.id, name: group.name, sessionIds: nextSessionIds, expectedUpdatedAt: group.updatedAt });
+    res.json({ ok: true, ...updated });
+  } catch (error) {
+    res.status(error instanceof CollaborationError ? error.httpStatus : 400).json({ error: getErrorMessage(error) });
+  }
 });
 
 router.post('/operations/orchestration/spawn', async (req, res) => {

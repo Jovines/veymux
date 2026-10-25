@@ -26,7 +26,8 @@ vi.mock('./deviceAuthorization', async importOriginal => {
   return { ...original, readDeviceAuthorization: (client: Parameters<typeof original.readDeviceAuthorization>[0], options: Parameters<typeof original.readDeviceAuthorization>[1]) => original.readDeviceAuthorization(client, { ...options, maxAgeMs: 0 }) };
 });
 vi.mock('../../components/FederationAccess', () => ({ default: (props: Record<string, any>) => { mocks.accessProps = props; return <div>Service management<button onClick={props.onClose}>Close management</button></div>; } }));
-vi.mock('./SessionAccessView', () => ({ SessionAccessView: () => <div>Shared terminal</div> }));
+const sharedClients: unknown[] = [];
+vi.mock('./SessionAccessView', () => ({ SessionAccessView: ({ client }: { client: unknown }) => { sharedClients.push(client); return <div>Shared terminal</div>; } }));
 vi.mock('../components/auth/LoginScreen', () => ({ LoginScreen: (props: Record<string, any>) => <div>Password login<span>{props.serviceOrigin}</span><button disabled={!props.focusEnabled} onClick={props.onManageServices}>Manage before login</button></div> }));
 import { SecureAccessGate } from './SecureAccessGate';
 import { setConnectionRecovery, useConnectionRecovery } from './connectionRecovery';
@@ -310,6 +311,19 @@ describe('desktop relay workspace ownership', () => {
   });
 });
 describe('device authorization lifecycle', () => {
+  it('rebinds a shared workspace to a fresh encrypted client when its permissions stay unchanged', async () => {
+    mocks.request.mockResolvedValue({ type: 'result', fullService: false, grants: [{ actions: ['session.view'] }] });
+    const original = mocks.client;
+    render(<SecureAccessGate><div>Owner workspace</div></SecureAccessGate>);
+    await screen.findByText('Shared terminal');
+    expect(sharedClients.at(-1)).toBe(original);
+    try {
+      mocks.client = { ...original };
+      fireEvent.focus(window);
+      await waitFor(() => expect(sharedClients.at(-1)).toBe(mocks.client));
+      expect(screen.queryByText('Password login')).toBeNull();
+    } finally { mocks.client = original; }
+  });
   it('does not claim retained authorization on a first offline visit', async () => {
     mocks.saved.mockReturnValue(undefined);
     vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);

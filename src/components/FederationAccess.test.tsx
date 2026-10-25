@@ -11,6 +11,20 @@ function more() { const button = screen.getByRole('button', { name: /更多选�
 function allWhenEmpty() { if (screen.queryByRole('button', { name: /已选 [1-9]/ })) return; fireEvent.click(screen.getByRole('radio', { name: '全部终端' })); }
 afterEach(() => { cleanup(); localStorage.clear(); Reflect.deleteProperty(navigator, 'clipboard'); document.documentElement.style.removeProperty('--background'); document.documentElement.style.removeProperty('--foreground'); });
 describe('FederationAccess invitation flow', () => {
+  it('keeps the selected stable session and its appearance through backend replacement and an empty reconnect snapshot', async () => {
+    const onCreateInvite = vi.fn().mockResolvedValue({ url: inviteUrl, expiresAt: Date.now() + 600000 });
+    const props = { paired: true, initialShareSessionId: 'stable', onConnect: () => {}, onClose: () => {}, onCreateInvite };
+    const view = render(<FederationAccess {...props} sessions={[{ sessionId: 'old-backend', sourceSessionId: 'stable', name: '构建任务' }]} />);
+    more();
+    fireEvent.change(screen.getByRole('textbox', { name: '分享显示名称' }), { target: { value: '更新后继续分享' } });
+    view.rerender(<FederationAccess {...props} sessions={[]} />);
+    view.rerender(<FederationAccess {...props} sessions={[{ sessionId: 'new-backend', sourceSessionId: 'stable', name: '构建任务' }]} />);
+    expect((screen.getByRole('textbox', { name: '分享显示名称' }) as HTMLInputElement).value).toBe('更新后继续分享');
+    fireEvent.click(screen.getByRole('button', { name: '生成并复制链接' }));
+    await waitFor(() => expect(onCreateInvite).toHaveBeenCalledWith(expect.objectContaining({
+      scope: { kind: 'sessions', sessionIds: ['stable'] }, sessionAppearance: { stable: { name: '更新后继续分享' } },
+    })));
+  });
   it('shares all terminals directly from the first level without changing access permissions or opening more options', async () => {
     const onCreateInvite = vi.fn().mockResolvedValue({ url: inviteUrl, expiresAt: Date.now() + 600000 });
     render(<FederationAccess paired initialShareSessionId="one" sessions={[{ sessionId: 'one', name: '构建任务' }]} onConnect={() => {}} onClose={() => {}} onCreateInvite={onCreateInvite} />);

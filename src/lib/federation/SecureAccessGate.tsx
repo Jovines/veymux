@@ -12,6 +12,7 @@ import type { PendingInvitation } from '../../server/federation/invitations';
 import { connectDevice, connectionRoutes, connectionAddresses, createEntryInvitation, authenticateKnownConnection, preferDirectConnection, connectServiceAddress, connectOpenService, currentSecureClient, getActiveClient, getIdentity, invalidateSecureTransport, savedConnection, SECURE_STATE_EVENT, type ConnectionIntent } from './browserIntegration';
 import { createInviteLink, createOnboardingInviteLink, parseInviteLink } from './inviteLink';
 import { SessionAccessView } from './SessionAccessView';
+import type { SecureClient } from './secureClient';
 import { LoginScreen } from '../components/auth/LoginScreen';
 import { OPEN_SERVICE_ACCESS_EVENT, type SessionShareRequest } from './accessEvents';
 import { DeviceAuthorizationRequired, readDeviceAuthorization } from './deviceAuthorization';
@@ -49,6 +50,7 @@ export function SecureAccessGate({ children }: { children: ReactNode }) {
   const [nativeTarget, setNativeTarget] = useState<Pick<ServiceConnection, 'url' | 'serviceOrigin' | 'label' | 'targetPeerId'>>();
   const [incomingInvitation, setIncomingInvitation] = useState(initialInvitation);
   const [ready, setReady] = useState(false);
+  const [authorizedClient, setAuthorizedClient] = useState<SecureClient>();
   const [open, setOpen] = useState(!!initialInvitation);
   const invitationPending = useRef(!!initialInvitation), connectInFlight = useRef(0);
   invitationPending.current = !!incomingInvitation && open;
@@ -161,8 +163,8 @@ export function SecureAccessGate({ children }: { children: ReactNode }) {
         if (getWorkspaceHost()?.focusSession(service.targetPeerId, sessionId)) return;
         const connection = { ...service, serviceName: service.label };
         sessionStorage.setItem(OPEN_SESSION_KEY, JSON.stringify({ serviceId: connection.targetPeerId, sessionId }));
-        await connectDevice(connection);
-        if (!stopped && request === revision) { setRemoteSession(sessionId); setReady(true); }
+        const connected = await connectDevice(connection);
+        if (!stopped && request === revision) { setAuthorizedClient(connected); setRemoteSession(sessionId); setReady(true); }
       })().catch(failure => {
         if (stopped || request !== revision) return;
         setAccessError(failure instanceof Error ? failure.message : '暂时无法打开远程会话'); setOpen(true);
@@ -206,6 +208,9 @@ export function SecureAccessGate({ children }: { children: ReactNode }) {
       const route = path === 'relay' ? `经 ${entry?.label || entryId?.slice(-12) || '入口服务'} 中转` : '直连';
       return client.request({ type: 'device-name', name: defaultDeviceName(), onlyIfMissing: true, profile: { ...profile, route } });
     }).catch(() => {});
+    // Permissions may be unchanged after reconnect, while the encrypted client
+    // has been replaced. Make that identity reactive for the shared workspace.
+    setAuthorizedClient(client);
     setFullService(permissions.fullService);
     setCanManage(permissions.canManage);
     setReady(true); setChecking(false); setError(false);
@@ -538,7 +543,7 @@ export function SecureAccessGate({ children }: { children: ReactNode }) {
   return <>
     <div className="h-full min-h-0" style={accessFailure ? { visibility: 'hidden' } : undefined}
       ref={element => element?.toggleAttribute('inert', !!accessFailure)} aria-hidden={accessFailure ? true : undefined}>
-    {ready ? fullService && !remoteSession ? children : <SessionAccessView client={currentSecureClient()!} initialSessionId={remoteSession} initialViewLayout={sharedLayout || savedConnection()?.viewLayout} initialViewMode={savedConnection()?.viewMode} /> : accessFailure ? null : checking && !error && !open ? <StartupScreen
+    {ready ? fullService && !remoteSession ? children : <SessionAccessView client={authorizedClient!} initialSessionId={remoteSession} initialViewLayout={sharedLayout || savedConnection()?.viewLayout} initialViewMode={savedConnection()?.viewMode} /> : accessFailure ? null : checking && !error && !open ? <StartupScreen
       status={showConnectionDetails ? '连接时间较长，仍在等待服务…' : connectionMessage}
       detail={showConnectionDetails ? displayName : undefined}
       actionLabel={showConnectionDetails ? '管理服务' : undefined}

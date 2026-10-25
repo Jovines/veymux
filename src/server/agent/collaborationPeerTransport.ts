@@ -30,6 +30,13 @@ function localSession(origin: string, id: string): string {
   const prefix = `remote:${encodeURIComponent(origin)}:`;
   return id.startsWith(prefix) ? decodeURIComponent(id.slice(prefix.length)) : id;
 }
+function mapAlias(id: string, source: string, target: string, peer: string, local: string): string {
+  for (const [from, to] of [[source, peer], [target, local]]) {
+    const prefix = `remote:${encodeURIComponent(from)}:`;
+    if (id.startsWith(prefix)) return remoteSession(to, decodeURIComponent(id.slice(prefix.length)));
+  }
+  return id;
+}
 export function validateCollaborationNode(input: CollaborationNode): void {
   const url = new URL(input.origin);
   if (url.protocol !== 'https:' || url.origin !== input.origin || url.username || url.password
@@ -204,6 +211,15 @@ export class CollaborationPeerTransport {
   receive(subjectId: string, packet: Packet): Record<string, unknown> {
     const b = this.binding(subjectId, String(packet.groupId));
     const store = this.options.store;
+    if (packet.targetServiceId !== undefined) {
+      if (packet.targetServiceId !== this.options.serviceId || typeof packet.sourceOrigin !== 'string' || typeof packet.targetOrigin !== 'string') throw new Error('INVALID_PEER_MESSAGE');
+      validateCollaborationNode({ serviceId: subjectId, origin: packet.sourceOrigin });
+      validateCollaborationNode({ serviceId: this.options.serviceId, origin: packet.targetOrigin });
+      const source = packet.sourceOrigin, target = packet.targetOrigin;
+      const map = (id: string) => mapAlias(id, source, target, b.peer.origin, b.localOrigin);
+      packet = { ...packet, ...(packet.context ? { context: mapContext(packet.context as CollaborationContext, map) } : {}),
+        ...(packet.message ? { message: { ...(packet.message as CollaborationMessage), toSessionId: map((packet.message as CollaborationMessage).toSessionId) } } : {}) };
+    }
     if (packet.context) store.mergeContext(b.groupId, mapContext(packet.context as CollaborationContext, id => localSession(b.localOrigin, id)));
     if (packet.message) {
       const message = packet.message as CollaborationMessage;
@@ -241,7 +257,8 @@ export class CollaborationPeerTransport {
     });
     const group = store.getGroup(b.groupId)!;
     const activity = this.options.activity?.().filter(item => group.sessionIds.includes(item.sessionId) && !item.sessionId.startsWith('remote:')) ?? [];
-    return { activity, context: mapContext(store.context(b.groupId), id => id.startsWith('remote:') ? id : remoteSession(b.localOrigin, id)), receipts, receivedIds: packet.ids.filter(id => {
+    return { sourceOrigin: b.localOrigin, targetOrigin: b.peer.origin, targetServiceId: b.peer.serviceId,
+      activity, context: mapContext(store.context(b.groupId), id => id.startsWith('remote:') ? id : remoteSession(b.localOrigin, id)), receipts, receivedIds: packet.ids.filter(id => {
       const message = store.getMessage(id as string);
       return message?.groupId === b.groupId && message.fromSessionId?.startsWith(`remote:${encodeURIComponent(b.peer.origin)}:`) && !message.toSessionId.startsWith('remote:');
     }) };
@@ -298,6 +315,7 @@ export class CollaborationPeerTransport {
         const payloads: Array<CollaborationMessage | undefined> = requests.length ? requests : [undefined];
         for (const message of payloads) {
           const result = await client.request({ type: 'collaboration-exchange', groupId: b.groupId,
+            sourceOrigin: b.localOrigin, targetOrigin: b.peer.origin, targetServiceId: b.peer.serviceId,
             context: mapContext(store.context(b.groupId), id => id.startsWith('remote:') ? id : remoteSession(b.localOrigin, id)),
             ids: batch.map(m => m.id), known: batch.map(m => ({ id: m.id, status: m.status, deliveredAt: m.deliveredAt, hasSnapshot: !!m.snapshot, shellConfirmed: m.shellConfirmed, last_error: store.diagnostic(m.id)?.last_error ?? null })), ...(message ? { message } : {}) });
           if (Array.isArray(result.activity)) for (const item of result.activity.slice(0, 500)) {
@@ -305,7 +323,17 @@ export class CollaborationPeerTransport {
             const id = remoteSession(b.peer.origin, item.sessionId);
             if (store.getGroup(b.groupId)?.sessionIds.includes(id)) store.recordPeerActivity(id, item.last_terminal_output_at, item.activity_observed_at);
           }
-          if (result.context) store.mergeContext(b.groupId, mapContext(result.context as CollaborationContext, id => localSession(b.localOrigin, id)));
+          if (result.context) {
+            let context = result.context as CollaborationContext;
+            if (result.targetServiceId !== undefined) {
+              if (result.targetServiceId !== this.options.serviceId || typeof result.sourceOrigin !== 'string' || typeof result.targetOrigin !== 'string') throw new Error('INVALID_PEER_MESSAGE');
+              validateCollaborationNode({ serviceId: b.peer.serviceId, origin: result.sourceOrigin });
+              validateCollaborationNode({ serviceId: this.options.serviceId, origin: result.targetOrigin });
+              const source = result.sourceOrigin, target = result.targetOrigin;
+              context = mapContext(context, id => mapAlias(id, source, target, b.peer.origin, b.localOrigin));
+            }
+            store.mergeContext(b.groupId, mapContext(context, id => localSession(b.localOrigin, id)));
+          }
           if (Array.isArray(result.receivedIds)) for (const item of batch) {
             if (result.receivedIds.includes(item.id)) this.accepted.add(item.id); else this.accepted.delete(item.id);
           }

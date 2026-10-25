@@ -180,6 +180,21 @@ test('Darwin rebuild preserves a fully explicit toolchain and flags without prob
   assert.deepEqual(f.discovery(), []);
 });
 
+for (const explicit of [false, true]) test(`Darwin CLT rebuild discovers SDK libc++ headers with ${explicit ? 'explicit' : 'discovered'} tools`, t => {
+  const f = macFixture(t);
+  const tools = explicit ? f.explicit : f.selected;
+  const headers = path.join(tools.SDKROOT, 'usr/include/c++/v1');
+  fs.mkdirSync(headers, { recursive: true });
+  fs.writeFileSync(path.join(headers, 'functional'), '// SDK libc++ fixture');
+  const result = f.run(explicit ? tools : {});
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(f.invocation().toolchain.CPLUS_INCLUDE_PATH, headers);
+  if (explicit) assert.deepEqual(f.discovery(), []);
+  const custom = f.run({ ...(explicit ? tools : {}), CPLUS_INCLUDE_PATH: '/user/headers' });
+  assert.equal(custom.status, 0, custom.stderr);
+  assert.equal(f.invocation().toolchain.CPLUS_INCLUDE_PATH, '/user/headers');
+});
+
 for (const key of ['SDKROOT', 'CC', 'CXX']) test(`Darwin rebuild preserves explicit ${key} while resolving missing settings`, t => {
   const f = macFixture(t);
   const value = key === 'SDKROOT' ? f.explicit.SDKROOT : 'custom compiler --flag';

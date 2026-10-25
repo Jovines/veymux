@@ -4,6 +4,15 @@ version = "0.1.0"
 edition = "2021"
 rust-version = "1.93"
 
+# Darwin 27 rejects stripped proc-macro dylibs with a misaligned LINKEDIT
+# string pool (rust-lang/rust#157750). Keep build-time dylibs unstripped;
+# this also covers package:mac and local release builds outside our publisher.
+[profile.release]
+strip = "none"
+
+[profile.release.build-override]
+debug = true
+
 [lib]
 name = "termdock_preview"
 

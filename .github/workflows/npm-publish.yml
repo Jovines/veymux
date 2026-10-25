@@ -72,6 +72,12 @@ jobs:
           src/server/agent/sessionAttachmentRoutes.test.ts
           src/server/agent/sessionChatRoutes.test.ts
           src/server/agent/collaborationCli.test.ts
+          src/server/agent/collaborationOriginAliases.test.ts
+          src/server/agent/collaborationDirectWire.integration.test.ts
+          src/server/agent/collaborationDirectFederation.test.ts
+          src/server/agent/collaborationPeerTransport.test.ts
+          src/server/agent/collaborationService.scoped.test.ts
+          src/server/routes/terminalCollaborationMembers.test.ts
           src/server/agent/collaborationPrompt.test.ts
           src/server/shared/sessionAppearance.test.ts
           src/server/agent/sessionViewModeRoutes.test.ts

@@ -20,6 +20,7 @@ import { DirectTargetRegistry } from './federation/directTargetRegistry.js';
 import { secureChannelOriginAllowed } from './federation/originPolicy.js';
 import { RelayRouter } from './federation/relay.js';
 import { DesktopSelfRelay } from './federation/selfRelay.js';
+import { withPeerEndpoint } from './agent/collaborationEndpoints.js';
 import { assertPublicSecurity, securityHeaders } from './utils/publicSecurity.js';
 import { apiCachePolicy } from './utils/apiCachePolicy.js';
 import 'dotenv/config';
@@ -659,20 +660,23 @@ export function startServer(options: ServerOptions = {}): StartServerResult {
       if (packet.type === 'collaboration-exchange' && collaborationTransport) return collaborationTransport.receive(subjectId, packet);
       throw new Error('COLLABORATION_UNAVAILABLE');
     };
-    const connectPeer = (peer: import('./agent/collaborationPeerTransport.js').CollaborationNode) => {
-      if (['localhost', '127.0.0.1', '[::1]'].includes(new URL(peer.origin).hostname)) throw new Error('WAITING_FOR_PEER_CONNECTION');
-      return connectCollaborationRpc(runtime.identity, peer, undefined, packet => receiveCollaboration(peer.serviceId, packet));
-    };
+    const peerEndpoint = <T>(peer: import('./agent/collaborationPeerTransport.js').CollaborationNode,
+      connect: (node: import('./agent/collaborationPeerTransport.js').CollaborationNode, ca?: Buffer, certificateFingerprint256?: string) => Promise<T>) =>
+      withPeerEndpoint(peer, routeAccess.configuredDirectTargets(), path.join(homedir(), '.termdock', 'federation'), connect);
+    const connectPeer = (peer: import('./agent/collaborationPeerTransport.js').CollaborationNode) => peerEndpoint(peer,
+      (node, ca, pin) => connectCollaborationRpc(runtime.identity, node, undefined, packet => receiveCollaboration(peer.serviceId, packet), ca, pin));
     const connectVia = async (peer: import('./agent/collaborationPeerTransport.js').CollaborationNode, via: import('./agent/collaborationPeerTransport.js').CollaborationNode) => {
-      const entry = await connectCollaborationRpc(runtime.identity, via);
-      try {
-        const ticket = await entry.request({ type: 'route-ticket', serviceId: peer.serviceId });
-        if (typeof ticket.routeToken !== 'string') throw new Error('ROUTE_UNAVAILABLE');
-        const url = new URL('/api/federation/relay', via.origin.replace(/^https:/, 'wss:'));
-        url.searchParams.set('routeToken', ticket.routeToken);
-        // TLS authenticates the entry; Noise pins the final destination.
-        return await connectCollaborationRpc(runtime.identity, { ...via, serviceId: peer.serviceId }, url.href, packet => receiveCollaboration(peer.serviceId, packet));
-      } finally { entry.close(); }
+      return peerEndpoint(via, async (endpoint, ca, pin) => {
+        const entry = await connectCollaborationRpc(runtime.identity, endpoint, undefined, undefined, ca, pin);
+        try {
+          const ticket = await entry.request({ type: 'route-ticket', serviceId: peer.serviceId });
+          if (typeof ticket.routeToken !== 'string') throw new Error('ROUTE_UNAVAILABLE');
+          const url = new URL('/api/federation/relay', endpoint.origin.replace(/^https:/, 'wss:'));
+          url.searchParams.set('routeToken', ticket.routeToken);
+          // TLS authenticates the entry; Noise pins the final destination.
+          return await connectCollaborationRpc(runtime.identity, { ...endpoint, serviceId: peer.serviceId }, url.href, packet => receiveCollaboration(peer.serviceId, packet), ca, pin);
+        } finally { entry.close(); }
+      });
     };
     collaborationTransport = new CollaborationPeerTransport({
       reverse: reverseCollaboration,

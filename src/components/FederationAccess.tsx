@@ -144,6 +144,23 @@ export function FederationAccess({ onConnect, onClose, onConnectWithPassword, on
   const [pendingRevoke, setPendingRevoke] = useState<string>();
   const [selectingSessions, setSelectingSessions] = useState(false);
   const [draftSessionIds, setDraftSessionIds] = useState<string[]>([]);
+  const selectionSources = useRef(new Map<string, string>());
+  useEffect(() => {
+    // Rebind an open dialog through stable inventory ids when the service
+    // replaces its backend PTYs, including a transient empty directory.
+    for (const session of sessions) selectionSources.current.set(session.sessionId, session.sourceSessionId || session.sessionId);
+    const currentId = (id: string) => {
+      const stable = selectionSources.current.get(id);
+      return sessions.find(session => session.sessionId === id || (stable && session.sourceSessionId === stable))?.sessionId || id;
+    };
+    const rebind = (ids: string[]) => {
+      const next = [...new Set(ids.map(currentId))];
+      return next.every((id, index) => id === ids[index]) && next.length === ids.length ? ids : next;
+    };
+    setSelectedIds(rebind); setDraftSessionIds(rebind);
+    setSessionAppearance(previous => Object.keys(previous).some(id => currentId(id) !== id)
+      ? Object.fromEntries(Object.entries(previous).map(([id, value]) => [currentId(id), value])) : previous);
+  }, [sessions]);
   const requestedIds = initialShareSessionIds?.length ? initialShareSessionIds : initialShareSessionId ? [initialShareSessionId] : [];
   const requestKey = JSON.stringify(requestedIds);
   const appliedShare = useRef<string>();

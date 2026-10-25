@@ -14,12 +14,13 @@ import { createIdentity } from '../federation/secureProtocol.js';
 import { RelayRouter } from '../federation/relay.js';
 import { attachRegisteredDirectTargets } from '../federation/directRoutes.js';
 import { CollaborationService } from './collaborationService.js';
+import { withPeerEndpoint } from './collaborationEndpoints.js';
 import { CollaborationStore } from './collaborationStore.js';
 import { connectCollaborationRpc, remoteSession, type CollaborationNode, type CollaborationPeerTransport, type CollaborationRpc } from './collaborationPeerTransport.js';
 
 const cleanup: Array<() => void> = [];
 afterEach(() => { cleanup.splice(0).reverse().forEach(close => close()); vi.restoreAllMocks(); });
-it.each(['direct', 'relay-only'] as const)('sends and replies without groups over verified WSS + Noise (%s), without a page or plaintext business HTTP', async mode => {
+it.each(['direct', 'relay-only', 'saved-address'] as const)('sends and replies without groups over verified WSS + Noise (%s), without a page or plaintext business HTTP', async mode => {
   vi.spyOn(authProtection, 'getPasswordVerifier').mockReturnValue(`scrypt$${'0'.repeat(32)}$${'1'.repeat(128)}`);
   const dir = mkdtempSync(join(tmpdir(), 'td-direct-wire-')); cleanup.push(() => rmSync(dir, { force: true, recursive: true }));
   execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1', '-keyout', join(dir, 'key.pem'), '-out', join(dir, 'ca.pem'), '-subj', '/CN=localhost', '-addext', 'subjectAltName=IP:127.0.0.1,DNS:localhost'], { stdio: 'ignore' });
@@ -63,12 +64,15 @@ it.each(['direct', 'relay-only'] as const)('sends and replies without groups ove
   sourceService = new CollaborationService({ file: join(dir, 'source-service.json'), store: sourceStore, node: () => ({ serviceId: source.serviceId }), sessions: () => [session('sender')], transport,
     deliver: id => { for (const message of sourceStore.inbox(id, { pendingOnly: true })) sourceStore.markDelivered([message.id]); },
     connect: peer => relayOrigin ? connectCollaborationRpc(sourceIdentity, { ...peer, origin: relayOrigin }, `${relayOrigin.replace('https:', 'wss:')}/api/federation/relay`, packet => sourceService.receive(peer.serviceId, packet))
-      : connectCollaborationRpc(sourceIdentity, peer, undefined, packet => sourceService.receive(peer.serviceId, packet)),
+      : mode === 'saved-address' ? withPeerEndpoint(peer, [{ serviceId: target.serviceId, url: target.origin, certificateFingerprint256: target.caFingerprint256!.replaceAll(':', '') }], dir,
+        (node, ca, pin) => connectCollaborationRpc(sourceIdentity, node, undefined, packet => sourceService.receive(peer.serviceId, packet), ca, pin))
+        : connectCollaborationRpc(sourceIdentity, peer, undefined, packet => sourceService.receive(peer.serviceId, packet)),
   });
   cleanup.push(() => { sourceService.close(); targetService.close(); });
-  targetService.connectKnown(target.origin, [source, target]); sourceService.connectKnown(source.origin, [source, target]);
+  const advertised = mode === 'saved-address' ? { ...target, origin: `https://${target.serviceId.toLowerCase()}.localhost` } : target;
+  targetService.connectKnown(target.origin, [source, target]); sourceService.connectKnown(source.origin, [source, advertised]);
   await sourceService.refresh(); await targetService.refresh();
-  const targetSession = remoteSession(target.origin, 'target'); expect(sourceService.resolveDirectContact(targetSession), JSON.stringify(sourceService.directory().services)).toBe(targetSession);
+  const targetSession = remoteSession(advertised.origin, 'target'); expect(sourceService.resolveDirectContact(targetSession), JSON.stringify(sourceService.directory().services)).toBe(targetSession);
   const message = sourceStore.sendDirect({ fromSessionId: 'sender', toSessionIds: [targetSession], kind: 'ask', content: '跨服务证据\n'.repeat(24000), idempotencyKey: 'wire-direct' })[0];
   await sourceService.flushDirect();
   expect(sourceStore.receipt(message.id)).toMatchObject({ status: 'delivered', snapshot: null });
@@ -82,4 +86,8 @@ it.each(['direct', 'relay-only'] as const)('sends and replies without groups ove
   const stranger = await connectCollaborationRpc(await createIdentity(), target); cleanup.push(() => stranger.close());
   await expect(stranger.request({ type: 'collaboration-service', action: 'direct-message', message })).rejects.toThrow('COLLABORATION_PAIRING_REQUIRED');
   await expect(connectCollaborationRpc(sourceIdentity, { ...target, caFingerprint256: Array(32).fill('00').join(':') })).rejects.toThrow();
+  if (mode === 'saved-address') {
+    await expect(withPeerEndpoint(target, [{ serviceId: target.serviceId, url: target.origin, certificateFingerprint256: '00'.repeat(32) }], dir,
+      (node, ca, pin) => connectCollaborationRpc(sourceIdentity, node, undefined, undefined, ca, pin))).rejects.toThrow();
+  }
 }, 20000);
