@@ -73,7 +73,10 @@ export class DesktopSelfRelay {
 
   private refresh(): void {
     if (this.stopped) return;
-    const desired = new Map([...desktopDirectTargets(this.options.desktopFile, this.options.serviceId), ...(this.options.targets?.() || [])]
+    // The shared registry already resolves native migration and explicit routes.
+    // Re-reading legacy bookmarks here would revive removed or untrusted targets.
+    const targets = this.options.targets ? this.options.targets() : desktopDirectTargets(this.options.desktopFile, this.options.serviceId);
+    const desired = new Map(targets
       .filter(target => target.serviceId !== this.options.serviceId)
       .map(target => [JSON.stringify([target.serviceId, normalizeServiceAddress(target.url)]), { ...target, url: normalizeServiceAddress(target.url) } as SelfRelayTarget]));
     for (const [serviceId, state] of this.states) {

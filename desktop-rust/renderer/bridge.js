@@ -442,6 +442,8 @@
     collaborationFocus: (id,targetPeerId) => invoke('collaborationFocus', {id,...(targetPeerId?{targetPeerId}:{} )}),
     getServiceConnection:serviceConnection,acknowledgeServiceInvitation:acknowledgeInvitation,
     serviceConnections: () => invoke('connections'),
+    collaborationDescriptors: () => invoke('collaborationDescriptors'),
+    rememberCollaborationDescriptor: node => invoke('rememberCollaborationDescriptor', { node }),
     saveServiceConnection: connection => invoke('saveConnection', { connection }),
     importServiceConnection: connection => invoke('importConnection', { connection }),
     removeServiceConnection: id => invoke('removeConnection', { id }),

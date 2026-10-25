@@ -849,6 +849,18 @@ async fn preview_dispatch(
             Ok(json!(true))
         }
         "connections" => Ok(json!(crate::config::service_connections(&shell.config.lock().unwrap().connections))),
+        "collaborationDescriptors" => Ok(json!(shell.config.lock().unwrap().collaboration_descriptors())),
+        "rememberCollaborationDescriptor" => {
+            let caller = shell.windows.lock().unwrap().get(window.label())
+                .and_then(|service| service.connection.target_peer_id.clone());
+            let node = serde_json::from_value(args.get("node").cloned().ok_or("Missing public descriptor")?)
+                .map_err(|_| "Invalid public descriptor")?;
+            let changed = shell.config.lock().unwrap().remember_collaboration_descriptor(caller.as_deref(), node)?;
+            if changed {
+                store(&app)?;
+            }
+            Ok(Value::Null)
+        }
         "saveConnection" | "importConnection" => {
             let connection = parse_connection(&args)?;
             {

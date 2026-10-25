@@ -17,13 +17,13 @@ function origin(value: unknown): string | undefined {
  * have been pinned there before its administrator can discover other entries.
  * This supplies addresses, never the Desktop client's device authorization.
  */
-export function desktopDirectTargets(file: string, localServiceId: string, format: 'electron' | 'preview' = 'electron'): DirectTargetConfig[] {
+export function desktopDirectTargets(file: string, localServiceId: string, format: 'electron' | 'rust' = 'electron'): DirectTargetConfig[] {
   if (!localServiceId) return [];
   try {
     if (statSync(file).size > 1024 * 1024) return [];
     const data = JSON.parse(readFileSync(file, 'utf8'));
     if (data?.version !== 1 || !Array.isArray(data.connections) || data.connections.length > 256) return [];
-    const removedKeys = format === 'preview' ? data.removedKeys : data.removedServiceKeys;
+    const removedKeys = format === 'rust' ? data.removedKeys : data.removedServiceKeys;
     const removed = new Set(Array.isArray(removedKeys) ? removedKeys : []);
     const connections = data.connections.filter((item: Record<string, unknown> | null) => item && ![item.id, item.targetPeerId, item.serviceOrigin || item.url].some(key => removed.has(key)));
     if (!connections.some((item: Record<string, unknown>) => item.targetPeerId === localServiceId)) return [];
@@ -39,8 +39,8 @@ export function desktopDirectTargets(file: string, localServiceId: string, forma
         const url = origin(address);
         if (!url) continue;
         const caFingerprint256 = trusts.get(url);
-        const pin = format === 'preview' ? data.certificatePins?.[url] : undefined;
-        // Preview pins the leaf certificate, whereas Electron approves a CA.
+        const pin = format === 'rust' ? data.certificatePins?.[url] : undefined;
+        // Rust pins the leaf certificate, whereas Electron approves a CA.
         // Never reinterpret one as the other or discard an invalid saved pin.
         if (pin !== undefined && (typeof pin !== 'string' || !/^[\da-f]{64}$/i.test(pin))) continue;
         targets.set(JSON.stringify([item.targetPeerId, url]), { serviceId: item.targetPeerId, url,
@@ -55,15 +55,23 @@ export function desktopDirectTargets(file: string, localServiceId: string, forma
   } catch { return []; }
 }
 
-/** Both installations keep their own bookmarks and trust. Reading Preview's
- * native directory also supports already-installed Preview apps, without
- * copying credentials or overwriting the Electron configuration. */
+/** The stable Rust directory is authoritative after migration. Old Electron
+ * and Preview bookmarks must not revive removed routes or old certificate pins.
+ * Before migration, retain discovery from both legacy installations. */
 export function desktopServiceTargets(home: string, localServiceId: string, platform: NodeJS.Platform = process.platform): DirectTargetConfig[] {
-  const previewRoot = platform === 'darwin' ? join(home, 'Library', 'Application Support')
+  const nativeRoot = platform === 'darwin' ? join(home, 'Library', 'Application Support')
     : platform === 'win32' ? process.env.APPDATA || join(home, 'AppData', 'Roaming')
       : process.env.XDG_CONFIG_HOME || join(home, '.config');
+  const stableFile = join(nativeRoot, 'com.jovines.termdock', 'connections.json');
+  try {
+    statSync(stableFile);
+    return desktopDirectTargets(stableFile, localServiceId, 'rust');
+  } catch (error) {
+    // An unreadable stable directory is unknown; only absence permits legacy fallback.
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return [];
+  }
   const key = (target: DirectTargetConfig) => JSON.stringify([target.serviceId, target.url]);
   const targets = new Map(desktopDirectTargets(join(home, '.termdock', 'desktop.json'), localServiceId).map(target => [key(target), target]));
-  for (const target of desktopDirectTargets(join(previewRoot, 'com.jovines.termdock.preview', 'connections.json'), localServiceId, 'preview')) targets.set(key(target), target);
+  for (const target of desktopDirectTargets(join(nativeRoot, 'com.jovines.termdock.preview', 'connections.json'), localServiceId, 'rust')) targets.set(key(target), target);
   return [...targets.values()].slice(0, 64);
 }

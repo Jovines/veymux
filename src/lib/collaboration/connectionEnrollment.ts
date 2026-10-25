@@ -1,6 +1,6 @@
 import { currentSecureClient, openAuthorizedServiceClient, readPinnedCollaborationDescriptor, savedConnection, SECURE_STATE_EVENT } from '../federation/browserIntegration';
 import type { SecureClient } from '../federation/secureClient';
-import { listServiceConnections, observeServiceConnections, type ServiceConnection } from '../services/serviceDirectory';
+import { listServiceConnections, observeServiceConnections, type ServiceConnection, type CollaborationDescriptor } from '../services/serviceDirectory';
 
 type Node = { serviceId: string; origin: string; caFingerprint256?: string };
 /** Connection setup only: enroll public identities through already authorized
@@ -12,6 +12,7 @@ export function installCollaborationEnrollment(): void {
   const completed = new Map<string, string>();
   const scopedPeers = new Set<string>();
   const descriptors = new Map<string, Node>();
+  const publishedDescriptors = new Map<string, string>();
   const enroll = async (client: SecureClient, node: Node, nodes: Node[]) => {
     const signature = JSON.stringify(nodes);
     if (completed.get(node.serviceId) === signature) return;
@@ -35,7 +36,8 @@ export function installCollaborationEnrollment(): void {
       const services = await Promise.race([listServiceConnections(), new Promise<never>((_, reject) => { directoryTimeout = setTimeout(() => reject(new Error('SERVICE_DIRECTORY_TIMEOUT')), 8000); })]).finally(() => clearTimeout(directoryTimeout));
       if (!services.some(service => service.targetPeerId === selected.targetPeerId)) services.push({ ...selected, id: selected.targetPeerId, label: selected.serviceName || selected.url });
       const unique = [...new Map(services.filter(service => !!service.targetPeerId).map(service => [service.targetPeerId!, service])).values()].slice(0, 64);
-      if (unique.length < 2) return;
+      const bridge = window.termdockDesktop;
+      const sharedDescriptors: Record<string, CollaborationDescriptor> = await bridge?.collaborationDescriptors?.().catch(() => ({})) ?? {};
       const verified: Array<{ service: ServiceConnection; node: Node }> = [];
       // Bounded sequential setup; saved bookmarks never authorize business access
       // to peers, and every descriptor is checked against its pinned service id.
@@ -46,13 +48,22 @@ export function installCollaborationEnrollment(): void {
           if (!node) {
             const descriptor = service.targetPeerId === selected.targetPeerId
               ? (await active.request({ type: 'collaboration-descriptor' }, { timeoutMs: 5000 })).node as Node
-              : await readPinnedCollaborationDescriptor({ ...service, targetPeerId: service.targetPeerId! }, AbortSignal.timeout(8000));
+              : sharedDescriptors[service.targetPeerId!] ?? await readPinnedCollaborationDescriptor({ ...service, targetPeerId: service.targetPeerId! }, AbortSignal.timeout(8000));
             if (descriptor?.serviceId !== service.targetPeerId) throw new Error('PEER_IDENTITY_MISMATCH');
             const origin = descriptor.origin || service.serviceOrigin || service.url;
             const url = new URL(origin);
             if (url.protocol !== 'https:' || url.origin !== origin) throw new Error('INVALID_SERVICE_ORIGIN');
             node = { serviceId: descriptor.serviceId, origin, ...(descriptor.caFingerprint256 ? { caFingerprint256: descriptor.caFingerprint256 } : {}) };
             descriptors.set(key, node);
+          }
+          if (service.targetPeerId === selected.targetPeerId && bridge?.rememberCollaborationDescriptor) {
+            const signature = JSON.stringify(node);
+            if (publishedDescriptors.get(node.serviceId) !== signature) {
+              // Publish only this page's public descriptor. Each native window
+              // retains its own authorization and encrypted business connection.
+              await bridge.rememberCollaborationDescriptor(node as CollaborationDescriptor);
+              publishedDescriptors.set(node.serviceId, signature);
+            }
           }
           verified.push({ service, node });
         } catch { /* Another service may be offline or not yet upgraded; retry setup later. */ }

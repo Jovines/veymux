@@ -62,6 +62,7 @@ jobs:
           src/components/FederationAccess.test.tsx
           src/components/ShareResourceFields.test.tsx
           src/lib/services
+          src/lib/collaboration/connectionEnrollment.test.ts
           src/lib/zIndexTokens.test.ts
           src/server/federation
           src/server/android/adb.test.ts

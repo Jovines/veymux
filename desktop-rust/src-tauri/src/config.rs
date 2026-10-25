@@ -275,6 +275,14 @@ impl WindowState {
         }
     }
 }
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CollaborationDescriptor {
+    pub service_id: String,
+    pub origin: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ca_fingerprint256: Option<String>,
+}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Config {
@@ -285,6 +293,7 @@ pub struct Config {
     pub removed_keys: Vec<String>,
     pub ports: BTreeMap<String, u16>,
     pub certificate_pins: BTreeMap<String, String>,
+    pub collaboration_descriptors: BTreeMap<String, CollaborationDescriptor>,
     pub desktop_preferences: Preferences,
     pub last_connection_url: Option<String>,
     pub open_connections: Vec<String>,
@@ -302,6 +311,7 @@ impl Default for Config {
             removed_keys: vec![],
             ports: BTreeMap::new(),
             certificate_pins: BTreeMap::new(),
+            collaboration_descriptors: BTreeMap::new(),
             desktop_preferences: Preferences::default(),
             last_connection_url: None,
             open_connections: vec![],
@@ -312,6 +322,33 @@ impl Default for Config {
     }
 }
 impl Config {
+    /// Public identity metadata only; never another window's device credentials.
+    pub fn collaboration_descriptors(&self) -> BTreeMap<String, CollaborationDescriptor> {
+        self.collaboration_descriptors.iter().filter(|(id, _)| {
+            self.connections.iter().any(|c| c.target_peer_id.as_ref() == Some(*id)
+                && !self.removed_keys.iter().any(|key| key == &c.id || key == *id || key == &c.url || c.service_origin.as_ref() == Some(key)))
+        }).map(|(id, node)| (id.clone(), node.clone())).collect()
+    }
+    pub fn remember_collaboration_descriptor(&mut self, caller_peer: Option<&str>, node: CollaborationDescriptor) -> Result<bool, String> {
+        if caller_peer != Some(node.service_id.as_str()) || !peer(&node.service_id)
+            || !self.connections.iter().any(|c| c.target_peer_id.as_deref() == caller_peer)
+            || node.origin.len() > 2048 || !node.origin.starts_with("https://") || origin(&node.origin)? != node.origin {
+            return Err("Public descriptor must belong to this pinned service window".into());
+        }
+        if let Some(pin) = &node.ca_fingerprint256 {
+            let parts = pin.split(':').collect::<Vec<_>>();
+            if parts.len() != 32 || parts.iter().any(|part| part.len() != 2 || !part.bytes().all(|c| c.is_ascii_hexdigit())) {
+                return Err("Invalid public certificate authority fingerprint".into());
+            }
+        }
+        if self.collaboration_descriptors.get(&node.service_id) == Some(&node) { return Ok(false); }
+        self.collaboration_descriptors.retain(|id, _| self.connections.iter().any(|c| c.target_peer_id.as_ref() == Some(id)));
+        if self.collaboration_descriptors.len() >= 256 && !self.collaboration_descriptors.contains_key(&node.service_id) {
+            return Err("Public descriptor directory is full".into());
+        }
+        self.collaboration_descriptors.insert(node.service_id.clone(), node);
+        Ok(true)
+    }
     pub fn load(file: &Path, stable: &Path) -> Result<Self, String> {
         let mut config: Self = match fs::read(file) {
             Ok(bytes) => serde_json::from_slice(&bytes)
@@ -468,6 +505,69 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn already_upgraded_users_gain_public_metadata_without_changing_existing_configuration() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("connections.json");
+        let id = format!("12D3KooW{}", "A".repeat(44));
+        let mut original = Config::default();
+        original.imported_bookmarks = true; original.imported_preview = true;
+        original.connections.push(serde_json::from_value(serde_json::json!({
+            "id":"existing", "url":"https://local.test", "label":"My service", "targetPeerId":id,
+            "routes":[{"targetPeerId":id,"url":"https://alternate.test"}]
+        })).unwrap());
+        original.removed_keys.push("removed-service".into());
+        original.certificate_pins.insert("https://local.test".into(), "ab".repeat(32));
+        original.profile_keys.insert(id.clone(), "existing-authorized-profile".into());
+        original.open_connections.push("existing".into());
+        original.last_connection_url = Some("https://local.test".into());
+        let mut before = serde_json::to_value(&original).unwrap();
+        before.as_object_mut().unwrap().remove("collaborationDescriptors");
+        fs::write(&file, serde_json::to_vec(&before).unwrap()).unwrap();
+        let mut loaded = Config::load(&file, &dir.path().join("absent-legacy.json")).unwrap();
+        let node = CollaborationDescriptor { service_id:id.clone(), origin:"https://local.test".into(), ca_fingerprint256:None };
+        loaded.remember_collaboration_descriptor(Some(&id), node).unwrap();
+        loaded.persist(&file).unwrap();
+        let mut after: serde_json::Value = serde_json::from_slice(&fs::read(&file).unwrap()).unwrap();
+        assert_eq!(after.as_object_mut().unwrap().remove("collaborationDescriptors").unwrap().as_object().unwrap().len(), 1);
+        assert_eq!(after, before);
+    }
+    #[test]
+    fn public_collaboration_metadata_is_owned_by_its_pinned_window_and_removed_with_the_bookmark() {
+        let id = format!("12D3KooW{}", "A".repeat(44));
+        let mut config = Config::default();
+        config.connections.push(serde_json::from_value(serde_json::json!({
+            "id":"own", "url":"https://local.test", "label":"Local", "targetPeerId":id
+        })).unwrap());
+        let node = CollaborationDescriptor { service_id: id.clone(), origin: "https://local.test".into(), ca_fingerprint256: Some(vec!["AB";32].join(":")) };
+        assert!(config.remember_collaboration_descriptor(None, node.clone()).is_err());
+        assert!(config.remember_collaboration_descriptor(Some("another-window"), node.clone()).is_err());
+        assert!(config.collaboration_descriptors().is_empty());
+        assert_eq!(config.remember_collaboration_descriptor(Some(&id), node.clone()), Ok(true));
+        assert_eq!(config.remember_collaboration_descriptor(Some(&id), node.clone()), Ok(false));
+        assert_eq!(config.collaboration_descriptors().get(&id), Some(&node));
+        config.removed_keys.push(id.clone());
+        assert!(config.collaboration_descriptors().is_empty());
+        config.removed_keys.clear(); config.connections.clear();
+        assert!(config.collaboration_descriptors().is_empty());
+    }
+    #[test]
+    fn public_collaboration_metadata_rejects_invalid_origins_fingerprints_and_private_fields() {
+        let id = format!("12D3KooW{}", "A".repeat(44));
+        let mut config = Config::default();
+        config.connections.push(serde_json::from_value(serde_json::json!({
+            "id":"own", "url":"https://local.test", "label":"Local", "targetPeerId":id
+        })).unwrap());
+        let node = CollaborationDescriptor { service_id: id.clone(), origin: "https://local.test".into(), ca_fingerprint256: None };
+        for value in ["http://local.test", "https://user:secret@local.test", "https://local.test/path", "https://local.test#secret"] {
+            assert!(config.remember_collaboration_descriptor(Some(&id), CollaborationDescriptor { origin:value.into(), ..node.clone() }).is_err());
+        }
+        assert!(config.remember_collaboration_descriptor(Some(&id), CollaborationDescriptor { ca_fingerprint256:Some("invalid".into()), ..node }).is_err());
+        assert!(serde_json::from_value::<CollaborationDescriptor>(serde_json::json!({
+            "serviceId":id, "origin":"https://local.test", "privateKey":"never-copy-credentials"
+        })).is_err());
+        assert!(config.collaboration_descriptors().is_empty());
+    }
     fn menu_connection(id:&str,url:&str,peer:Option<&str>,label:&str)->Connection {
         Connection{id:id.into(),url:url.into(),label:label.into(),target_peer_id:peer.map(str::to_owned),service_origin:None,entry_service_id:None,routes:vec![]}
     }

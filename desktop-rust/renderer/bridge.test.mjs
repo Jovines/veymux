@@ -5,6 +5,15 @@ import vm from 'node:vm';
 import {JSDOM} from 'jsdom';
 import {webcrypto} from 'node:crypto';
 const source = fs.readFileSync(new URL('./bridge.js', import.meta.url), 'utf8');
+test('public collaboration descriptor cache uses local IPC without fetching or opening cross-window sockets', async () => {
+  const node = { serviceId: 'public-service', origin: 'https://local.test' };
+  const f = fixture({ invoke: async op => op === 'collaborationDescriptors' ? { 'public-service': node } : null });
+  assert.deepEqual(JSON.parse(JSON.stringify(await f.window.termdockDesktop.collaborationDescriptors())), { 'public-service': node });
+  await f.window.termdockDesktop.rememberCollaborationDescriptor(node);
+  assert.deepEqual(f.ipc.map(call => call.op), ['collaborationDescriptors', 'rememberCollaborationDescriptor']);
+  assert.deepEqual(JSON.parse(JSON.stringify(f.ipc[1].args)), { node });
+  assert.equal(f.calls.length, 0); assert.equal(f.socketCalls.length, 0);
+});
 function fixture(overrides = {}) {
   const calls = [], socketCalls = [], ipc = [], storage = overrides.storage??new Map(), listeners=new Map(), handlers=new Map();
   const batch='11111111-1111-4111-8111-111111111111', receipt='22222222-2222-4222-8222-222222222222'; let data=[];

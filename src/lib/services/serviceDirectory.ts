@@ -5,6 +5,11 @@
 import { normalizeServiceAddress, canonicalConnectionRouting, MAX_SAVED_ROUTES, type ServiceRoute } from '../../server/federation/connectionModel';
 export { normalizeServiceAddress };
 export type { ServiceRoute };
+export interface CollaborationDescriptor {
+  serviceId: string;
+  origin: string;
+  caFingerprint256?: string;
+}
 export interface ServiceConnection {
   id: string;
   url: string;
@@ -25,6 +30,8 @@ function removedServiceKeys(): string[] {
   } catch { return []; }
 }
 export interface ServiceDirectoryBridge {
+  collaborationDescriptors?(): Promise<Record<string, CollaborationDescriptor>>;
+  rememberCollaborationDescriptor?(node: CollaborationDescriptor): Promise<void>;
   getServiceConnection?(): Promise<(ServiceConnection & { invitation?: string }) | null>;
   serviceConnections?(): Promise<ServiceConnection[]>;
   saveServiceConnection?(connection: ServiceConnection): Promise<ServiceConnection[]>;

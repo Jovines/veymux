@@ -15,6 +15,45 @@ function fixture() {
   return { root, file, data, save, fingerprint256 };
 }
 describe('local Desktop relay directory', () => {
+  function nativeFixture() {
+    const { root, data } = fixture();
+    const directory = join(root, 'Library', 'Application Support', 'com.jovines.termdock');
+    mkdirSync(directory, { recursive: true });
+    const file = join(directory, 'connections.json');
+    const config = { version: 1, connections: data.connections, removedKeys: [] as string[], certificatePins: { 'https://c.internal:9834': 'cd'.repeat(32) } };
+    const save = (value: unknown = config) => writeFileSync(file, JSON.stringify(value)); save();
+    return { root, data, file, config, save };
+  }
+  it('discovers the current stable Rust installation without an Electron or Preview directory', () => {
+    const { root } = nativeFixture();
+    expect(desktopServiceTargets(root, 'B', 'darwin')).toEqual([
+      { serviceId: 'C', url: 'https://c.internal:9834', label: '内网电脑', certificateFingerprint256: 'CD'.repeat(32) },
+    ]);
+  });
+  it('uses the stable native directory as authority after migration, including trust and removals', () => {
+    const { root, data, config, save } = nativeFixture();
+    mkdirSync(join(root, '.termdock'));
+    writeFileSync(join(root, '.termdock', 'desktop.json'), JSON.stringify(data));
+    const previewDir = join(root, 'Library', 'Application Support', 'com.jovines.termdock.preview');
+    mkdirSync(previewDir);
+    writeFileSync(join(previewDir, 'connections.json'), JSON.stringify({ ...config, certificatePins: { 'https://c.internal:9834': 'ab'.repeat(32) } }));
+    expect(desktopServiceTargets(root, 'B', 'darwin')[0].certificateFingerprint256).toBe('CD'.repeat(32));
+    save({ ...config, removedKeys: ['C'] });
+    expect(desktopServiceTargets(root, 'B', 'darwin')).toEqual([]);
+    save({ ...config, connections: config.connections.slice(0, 1) });
+    expect(desktopServiceTargets(root, 'B', 'darwin')).toEqual([]);
+    save({ ...config, certificatePins: { 'https://c.internal:9834': 'invalid' } });
+    expect(desktopServiceTargets(root, 'B', 'darwin')).toEqual([]);
+  });
+  it('does not revive legacy routes when the stable native configuration is invalid or lacks the local pin', () => {
+    const { root, data, file, config, save } = nativeFixture();
+    mkdirSync(join(root, '.termdock'));
+    writeFileSync(join(root, '.termdock', 'desktop.json'), JSON.stringify(data));
+    writeFileSync(file, 'broken');
+    expect(desktopServiceTargets(root, 'B', 'darwin')).toEqual([]);
+    save({ ...config, connections: config.connections.slice(1) });
+    expect(desktopServiceTargets(root, 'B', 'darwin')).toEqual([]);
+  });
   function previewFixture() {
     const { root, file: old, data } = fixture();
     rmSync(old);

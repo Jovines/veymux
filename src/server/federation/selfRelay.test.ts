@@ -20,7 +20,7 @@ import { RelaySocket } from '../../lib/federation/relaySocket.js';
 import * as authProtection from '../utils/authProtection.js';
 const cleanups: (() => void)[] = [];
 afterEach(() => { for (const close of cleanups.splice(0).reverse()) close(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
-it.each(['configured', 'preview'] as const)('keeps A reachable through B using an A-initiated tunnel with %s configuration and no public B-to-A dial', async source => {
+it.each(['configured', 'preview', 'stable'] as const)('keeps A reachable through B using an A-initiated tunnel with %s configuration and no public B-to-A dial', async source => {
   vi.stubEnv('TERMDOCK_PASSWORD', 'reverse-relay-password');
   vi.stubGlobal('CloseEvent', class extends Event { code: number; reason: string; constructor(type: string, init: { code: number; reason: string }) { super(type); this.code = init.code; this.reason = init.reason; } });
   const dir = mkdtempSync(join(tmpdir(), 'td-reverse-relay-')); cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
@@ -74,7 +74,7 @@ it.each(['configured', 'preview'] as const)('keeps A reachable through B using a
   entry.listen(0, '127.0.0.1'); await once(entry, 'listening');
   cleanups.push(() => { for (const ws of wss.clients) ws.terminate(); wss.close(); entry.close(); });
   const origin = `https://127.0.0.1:${(entry.address() as { port: number }).port}`;
-  const previewDir = join(dir, 'Library', 'Application Support', 'com.jovines.termdock.preview');
+  const previewDir = join(dir, 'Library', 'Application Support', source === 'stable' ? 'com.jovines.termdock' : 'com.jovines.termdock.preview');
   mkdirSync(previewDir, { recursive: true });
   const previewFile = join(previewDir, 'connections.json');
   const alternateOrigin = origin.replace('127.0.0.1', 'localhost');
@@ -84,12 +84,15 @@ it.each(['configured', 'preview'] as const)('keeps A reachable through B using a
       [alternateOrigin]: new X509Certificate(leaf).fingerprint256.replaceAll(':', '').toLowerCase(),
     } };
   const save = () => writeFileSync(previewFile, JSON.stringify(preview));
-  if (source === 'preview') save();
-  const selfRelay = new DesktopSelfRelay({ desktopFile: join(dir, 'absent-desktop.json'), identity: a.identity, serviceId: a.serviceId,
-    localOrigin: () => localOrigin, baseDir: dir, targets: () => source === 'preview' ? desktopServiceTargets(dir, a.serviceId, 'darwin') : [{ serviceId: b.serviceId, url: origin, caPath: 'ca.pem' }] });
+  if (source !== 'configured') save();
+  const legacyFile = join(dir, 'legacy-desktop.json');
+  if (source === 'stable') writeFileSync(legacyFile, JSON.stringify({ version: 1, connections: preview.connections,
+    trustedCertificateAuthorities: [{ origin, fingerprint256: new X509Certificate(ca).fingerprint256 }] }));
+  const selfRelay = new DesktopSelfRelay({ desktopFile: legacyFile, identity: a.identity, serviceId: a.serviceId,
+    localOrigin: () => localOrigin, baseDir: dir, targets: () => source !== 'configured' ? desktopServiceTargets(dir, a.serviceId, 'darwin') : [{ serviceId: b.serviceId, url: origin, caPath: 'ca.pem' }] });
   cleanups.push(() => selfRelay.close()); selfRelay.start();
   await vi.waitFor(() => expect(router.hasRoute(a.serviceId)).toBe(true), { timeout: 3000 });
-  if (source === 'preview') {
+  if (source !== 'configured') {
     await vi.waitFor(() => expect(router.providerCount(a.serviceId)).toBe(2), { timeout: 3000 });
     const first = [...providers][0]; first.terminate();
     await vi.waitFor(() => expect(providers.has(first)).toBe(false));
@@ -120,7 +123,7 @@ it.each(['configured', 'preview'] as const)('keeps A reachable through B using a
   const cancelled = await browser.fetch('/api/terminal/fs/download');
   await cancelled.body!.cancel();
   expect(await browser.request({ type: 'permissions' })).toMatchObject({ fullService: true });
-  if (source === 'preview') {
+  if (source !== 'configured') {
     // Dropping the provider forces a fresh authenticated connection; input is not replayed.
     for (const ws of wss.clients) ws.terminate();
     await vi.waitFor(() => expect(browser.closed).toBe(true));
