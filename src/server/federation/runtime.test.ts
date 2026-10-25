@@ -779,6 +779,9 @@ it('closes an established relay and stops terminal input when the password is re
 
 describe('shared selection copy authority', () => {
   it.each([false, true])('reads only the bound Session selection without granting tmux control (relayed=%s)', async relayed => {
+    const previousPassword = process.env.TERMDOCK_PASSWORD;
+    process.env.TERMDOCK_PASSWORD = 'selection-copy-test-password';
+    cleanup.push(() => { if (previousPassword === undefined) delete process.env.TERMDOCK_PASSWORD; else process.env.TERMDOCK_PASSWORD = previousPassword; });
     const f = await fixture({}, false, undefined, relayed), client = await f.connect();
     const grant = f.runtime.store.grant({ subjectId: client.identity.peerId, scope: { kind: 'sessions', sessionIds: ['one'] }, actions: ['session.view'] });
     client.channel.send({ type: 'ws-open', id: 'selection', path: '/api/terminal/one/ws' });
