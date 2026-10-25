@@ -164,8 +164,12 @@ import { configuredTmuxRecoveryConcurrency, TmuxRecoveryOperationStore, type Tmu
 import { assessAgentResourceBudget, collectHostResourceSnapshot, configuredAgentResourceBudget, getTermdockOwnedAgentSessionIds } from '../utils/hostResources.js';
 import { AutomationStore, normalizeAutomationSchedule, type AgentAutomation } from '../agent/automationStore.js';
 import { writeBracketedPrompt, canDeliverPromptToAgent } from '../agent/promptDelivery.js';
+import { buildBracketedPasteBytes } from '../agent/promptDelivery.js';
+import { serializeTerminalInput } from '../agent/terminalInput.js';
+import { probeTerminalReadiness, type InputCheckResult } from '../agent/terminalReadinessProbe.js';
+import { probeTmuxReadiness } from '../agent/tmuxReadinessProbe.js';
 import { captureTerminalInputGuard, captureRuntimeInputGuard, waitAndWriteTerminalInput, type TerminalInputGuard, type PromptWriteProgress } from '../agent/terminalInput.js';
-import { createSessionStateWriter, mergeReloadedSessionState, mergeSessionLaunchState, type LaunchStateChange } from '../agent/sessionLaunchState.js';
+import { createSessionStatePersistence, mergeSessionLaunchState, type LaunchStateChange } from '../agent/sessionLaunchState.js';
 import { waitForIntegrationShell, IntegrationShellWaitError } from '../agent/integrationShellWait.js';
 import type { LaunchPhase } from '../agent/sessionLaunchDiagnostics.js';
 import { agentLaunchBlockReason, normalizeAgentLaunchCheck, type AgentLaunchCheck } from '../agent/agentLaunchCheck.js';
@@ -665,6 +669,9 @@ const CONTROL_BROADCAST_COALESCE_MS = 50;
 const SESSION_INVENTORY_CACHE_TTL_MS = 1500;
 
 async function getSessionInventorySnapshot(options: { refresh?: boolean } = {}): Promise<SessionInventory> {
+  // A refreshing caller must not consume a scan started before its mutation.
+  // After that scan settles, callers may share the next one.
+  if (options.refresh && sessionInventoryBuildPromise) await sessionInventoryBuildPromise;
   if (sessionInventoryBuildPromise) return sessionInventoryBuildPromise;
   const now = Date.now();
   if (!options.refresh && latestSessionInventory && now - latestSessionInventoryAt < SESSION_INVENTORY_CACHE_TTL_MS) {
@@ -966,16 +973,8 @@ async function migrateFromClientStatesFile(): Promise<GlobalSessionState | null>
 }
 
 async function loadGlobalSessionStateFromDisk(reload = false): Promise<void> {
-  const beforeRead = structuredClone(globalSessionState.sessions);
   try {
-    const data = await readJsonFileIfExists<GlobalSessionState>(GLOBAL_SESSION_STATE_FILE);
-    if (data) {
-      const sessions = deduplicateGlobalSessions(
-        (data.sessions || []).map(s => normalizePersistedClientSession(s)).filter((s): s is PersistedClientSession => s !== null));
-      globalSessionState = {
-        sessions: reload ? mergeReloadedSessionState(sessions, beforeRead, globalSessionState.sessions) : sessions,
-        updatedAt: typeof data.updatedAt === 'number' ? data.updatedAt : Date.now(),
-      };
+    if (await globalSessionStatePersistence.load(reload)) {
       console.log(`[session-persist] Loaded ${globalSessionState.sessions.length} sessions from global state`);
       return;
     }
@@ -1075,8 +1074,19 @@ async function watchGlobalSessionStateFile(): Promise<void> {
   }
 }
 
-const writeGlobalSessionState = createSessionStateWriter(() => globalSessionState,
-  snapshot => writeJsonFile(GLOBAL_SESSION_STATE_FILE, snapshot));
+const globalSessionStatePersistence = createSessionStatePersistence(() => globalSessionState,
+  async () => {
+    const data = await readJsonFileIfExists<GlobalSessionState>(GLOBAL_SESSION_STATE_FILE);
+    if (!data) return null;
+    return {
+      sessions: deduplicateGlobalSessions((data.sessions || []).map(s => normalizePersistedClientSession(s))
+        .filter((s): s is PersistedClientSession => s !== null)),
+      updatedAt: typeof data.updatedAt === 'number' ? data.updatedAt : Date.now(),
+    };
+  },
+  snapshot => writeJsonFile(GLOBAL_SESSION_STATE_FILE, snapshot),
+  state => { globalSessionState = state; });
+const writeGlobalSessionState = globalSessionStatePersistence.write;
 function schedulePersistGlobalState(): void {
   if (persistGlobalStateTimer) clearTimeout(persistGlobalStateTimer);
   persistGlobalStateTimer = setTimeout(() => {
@@ -1991,13 +2001,7 @@ async function openInventorySession(
     });
   }
 
-  let inventory = await getSessionInventorySnapshot({ refresh: true });
-  // A shared build may have started before this mutation. Wait for a new build
-  // if it lacks the confirmed binding, without spawning the terminal again.
-  if (!inventory.clientSessions.some(session => session.sessionId === savedRecord.sessionId
-    && session.backendSessionId === savedRecord.backendSessionId)) {
-    inventory = await getSessionInventorySnapshot({ refresh: true });
-  }
+  const inventory = await getSessionInventorySnapshot({ refresh: true });
   return {
     session: getClientSessionView(inventory, savedRecord.sessionId),
     terminalSession: makeTerminalSessionPayload(backend.backendSessionId, backend.session, backend.cols, backend.rows),
@@ -7931,11 +7935,17 @@ export function deliverPeerCollaboration(sessionId: string): void { void tryDeli
 router.use(sessionViewModeRoutes(sessionViewModes, resolveStableFederationSessionId, async (id, command) => {
   if (command === undefined) {
     const record = globalSessionState.sessions.find(session => session.sessionId === id);
-    const backend = record ? resolveOrchestrationBackend(record) : null;
-    // Read the current foreground process rather than a cached Agent title/resume identity.
-    const live = record?.mode === 'tmux' && record.tmuxSessionName
-      ? await resolveLiveTmuxMetadata(record.tmuxSessionName, false, true) : null;
-    command = live?.rawArgs ?? backend?.activeProgram?.rawArgs ?? backend?.activeProgram?.command ?? '';
+    // Recognition is read-only: it must not depend on repairing/persisting a
+    // collaboration binding (including for externally installed Agent plugins).
+    if (record?.mode === 'tmux' && record.tmuxSessionName) {
+      const live = await resolveLiveTmuxMetadata(record.tmuxSessionName, false, true);
+      // ps may not expose argv on macOS. The freshly observed pane program is
+      // still usable; a cached backend may instead describe a previous Agent.
+      command = live?.rawArgs ?? live?.foregroundProgram ?? '';
+    } else {
+      const backend = record?.backendSessionId ? terminalSessions.get(record.backendSessionId) : null;
+      command = backend?.activeProgram?.rawArgs ?? backend?.activeProgram?.command ?? '';
+    }
   }
   const program = chatProgramName(command);
   const agent = detectAgentFromCommand(command, agentCustomCommands());
@@ -9930,7 +9940,75 @@ router.post('/:sessionId/agent-launch', async (req, res) => {
   }
 });
 
-router.post('/:sessionId/input', express.text({ type: '*/*' }), (req, res) => {
+// One diagnostic per observed event or explicit foreground entry. Concurrent
+// tabs share the in-flight operation; uncertain edits must not accumulate.
+// Keep the promise even after completion: an uncertain write is never retried.
+const terminalInputChecks = new WeakMap<TerminalSession, { evidence: string; entryId?: string; uncertain?: boolean; running: boolean; result: Promise<InputCheckResult> }>();
+router.post('/:sessionId/input-check', async (req, res) => {
+  let disconnected = false;
+  res.once('close', () => { if (!res.writableEnded) disconnected = true; });
+  const stable = resolveStableFederationSessionId(req.params.sessionId);
+  const record = globalSessionState.sessions.find(candidate => candidate.sessionId === stable);
+  const backendId = record?.backendSessionId;
+  const session = backendId ? terminalSessions.get(backendId) : undefined;
+  if (!record || !backendId || !session) return res.status(404).json({ status: 'skipped' });
+  // The client binds its edge to the actual backend it observed. Never probe
+  // a replacement runtime on behalf of a stale tab.
+  if (req.body?.backendSessionId !== backendId) return res.status(409).json({ status: 'skipped' });
+  const entryId = req.body?.entryId;
+  if (entryId !== undefined && (typeof entryId !== 'string' || !/^[A-Za-z0-9_-]{1,100}$/.test(entryId))) return res.status(400).json({ status: 'skipped' });
+  const evidence = `${session.lastOutputAt}:${JSON.stringify(session.agentSession)}`;
+  const guard = terminalInputGuard(record);
+  let previous = terminalInputChecks.get(session);
+  while (previous?.running) {
+    const outcome = await previous.result;
+    if (outcome.status !== 'skipped' || !entryId || previous.entryId === entryId || disconnected) return res.json(outcome);
+    // A quick return may have joined an entry cancelled before any paste.
+    // Give the new visit its check, re-reading the shared queue each time.
+    previous = terminalInputChecks.get(session);
+  }
+  if (previous && (entryId && previous.entryId === entryId
+    || previous.evidence === evidence && (!entryId || previous.uncertain))) return res.json(await previous.result);
+  const result = serializeTerminalInput(session.ptyProcess, async (): Promise<InputCheckResult> => {
+    let finish: ((echoOnly: boolean) => void) | undefined;
+    let lastOutputAt = session.lastOutputAt;
+    let checked: InputCheckResult = { status: 'skipped' };
+    try {
+      guard();
+      if (disconnected || session.outputActivity?.active || session.agentSession?.status === 'working' || session.agentSession?.status === 'waiting'
+        || session.tuiProgress && ['set', 'indeterminate', 'blocked'].includes(session.tuiProgress.state)) return checked;
+      const binding = collaborationRouting.get(record.sessionId);
+      const inspected = session.mode === 'tmux' && binding ? await inspectCollaborationTmux(binding, undefined, false) : undefined;
+      guard();
+      if (session.mode === 'tmux' ? inspected?.state !== 'ready' || !inspected.pane?.agentSlug || inspected.pane.isShell : !canDeliverPromptToAgent(session)) return checked;
+      session.outputActivity ??= new TerminalOutputActivity(active => {
+        if (terminalSessions.get(backendId) === session) broadcastEvent(backendId, { type: 'terminal-output-activity', active });
+      });
+      const startDiagnostic = () => {
+        lastOutputAt = session.lastOutputAt;
+        finish = session.outputActivity!.beginInputDiagnostic();
+      };
+      const shouldStart = () => !disconnected && !session.outputActivity?.active
+        && session.agentSession?.status !== 'working' && session.agentSession?.status !== 'waiting';
+      checked = session.mode === 'tmux' && inspected?.pane
+        ? await probeTmuxReadiness({ pane: inspected.pane, run: runTmux, stdin: runTmuxStdin, assertCurrent: guard, shouldStart, beforePaste: startDiagnostic })
+        : await probeTerminalReadiness({ read: () => session.autoTitleTerminal.inputFrame(), assertCurrent: guard, shouldStart,
+          paste: async text => { guard(); startDiagnostic(); session.ptyProcess.write(buildBracketedPasteBytes(text)); },
+          erase: async count => { guard(); session.ptyProcess.write('\x7f'.repeat(count)); } });
+      return checked;
+    } catch { return checked; }
+    finally {
+      finish?.(checked.echoOnly === true);
+      if (finish && checked.echoOnly) session.lastOutputAt = lastOutputAt;
+      const entry = terminalInputChecks.get(session);
+      if (entry?.result === result) { entry.running = false; entry.uncertain = checked.status === 'unconfirmed'; entry.evidence = `${session.lastOutputAt}:${JSON.stringify(session.agentSession)}`; }
+    }
+  });
+  terminalInputChecks.set(session, { evidence, entryId, running: true, result });
+  return res.json(await result);
+});
+
+router.post('/:sessionId/input', express.text({ type: '*/*' }), async (req, res) => {
   const { sessionId } = req.params;
   const session = terminalSessions.get(sessionId);
 
@@ -9943,7 +10021,10 @@ router.post('/:sessionId/input', express.text({ type: '*/*' }), (req, res) => {
   try {
     const paste = new TerminalPasteBuffer(() => {});
     const parts = paste.complete(data);
-    for (const part of parts) session.ptyProcess.write(part);
+    await serializeTerminalInput(session.ptyProcess, async () => {
+      if (terminalSessions.get(sessionId) !== session) throw new Error('TERMINAL_INPUT_TARGET_CHANGED');
+      for (const part of parts) session.ptyProcess.write(part);
+    });
     session.lastActivity = Date.now();
     res.json({ success: true });
   } catch (error) {
@@ -10655,12 +10736,14 @@ export function handleTerminalWebSocket(
     }
   });
 
-  const inputQueue = new TerminalInputQueue(data => {
+  const inputQueue = new TerminalInputQueue(data => serializeTerminalInput(session.ptyProcess, async () => {
+    if (ws.readyState !== ws.OPEN) return;
+    if (terminalSessions.get(sessionId) !== session) throw new Error('TERMINAL_INPUT_TARGET_CHANGED');
     session.lastActivity = Date.now();
     if (attachment) attachment.write(data);
     else if (session.mode === 'tmux') return enqueueTmuxIo(session, async () => { session.ptyProcess.write(data); });
     else session.ptyProcess.write(data);
-  }, error => {
+  }), error => {
     if (ws.readyState !== ws.OPEN) return;
     ws.send(JSON.stringify({ type: 'error', error: error.message }));
     ws.close(1011, 'Terminal input preparation failed');

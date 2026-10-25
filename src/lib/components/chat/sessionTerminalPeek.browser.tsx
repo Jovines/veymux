@@ -57,6 +57,68 @@ async function mount(width = 1280, withAssistant = false, paneTitle = false, rep
   await expect.element(page.getByText('处理中…')).toBeVisible(); await frame();
   return { completeReply: () => { replyPending = false; window.dispatchEvent(new Event('online')); } };
 }
+it.each([1280, 390])('checks input once after processing and offers the retained terminal on uncertainty at width %i', async width => {
+  await mount(width);
+  vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+  const previousFetch = vi.mocked(fetch).getMockImplementation()!;
+  const checks: unknown[] = [];
+  vi.mocked(fetch).mockImplementation(async (url, init) => {
+    if (String(url).endsWith('/input-check')) { checks.push(JSON.parse(String(init?.body))); return Response.json({ status: 'unconfirmed' }); }
+    return previousFetch(url, init);
+  });
+  const editor = document.querySelector('[data-session-chat] [role="textbox"]') as HTMLElement;
+  editor.focus(); await userEvent.keyboard('保留未发送草稿');
+  backend.handlers?.onEvent({ type: 'terminal-output-activity', active: false });
+  await expect.element(page.getByRole('button', { name: '输入响应未确认，查看终端' })).toBeVisible();
+  expect(checks).toEqual([{ backendSessionId: 'backend-peek' }]);
+  expect(document.querySelector('[data-chat-terminal-access]')?.textContent).toBe('检查终端');
+  expect(document.querySelector('[data-chat-terminal-access] .td-loading-spinner')).toBeNull();
+  expect(editor.textContent).toContain('保留未发送草稿');
+  expect(backend.inputs).not.toHaveBeenCalled();
+  await page.screenshot({ path: `/tmp/termdock-input-check-${width}-dpr${devicePixelRatio}.png` });
+  await page.getByRole('button', { name: '输入响应未确认，查看终端' }).click();
+  await expect.element(page.getByRole('dialog', { name: '会话终端预览' })).toBeVisible();
+  expect(backend.connect).toHaveBeenCalledTimes(1); expect(checks).toHaveLength(1);
+});
+
+it.each([1280, 390])('checks idle conversation entries when selecting and returning to retained sessions at width %i', async width => {
+  await page.viewport(width, 900); await commands.peekMove('html', .99, .005);
+  vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+  const ids = [`entry-a-${Date.now()}`, `entry-b-${Date.now()}`];
+  const checks: Array<{ id: string; entryId: string }> = [];
+  for (const id of ids) {
+    localStorage.setItem(`termdock:session-view:${location.origin}:${id}`, 'chat');
+    useTerminalStore.getState().setTerminalSession(id, { sessionId: `backend-${id}`, mode: 'shell', cols: 80, rows: 24 });
+  }
+  vi.stubGlobal('fetch', vi.fn(async (url, init) => {
+    const path = String(url);
+    if (path.endsWith('/input-check')) {
+      checks.push({ id: decodeURIComponent(path.split('/')[3]), entryId: JSON.parse(String(init?.body)).entryId });
+      return Response.json({ status: 'ready' });
+    }
+    if (path.includes('/view-mode')) return Response.json({ mode: 'chat', chatEligibility: { allowed: true, program: 'codex' } });
+    return Response.json({ agentAvailable: true, agent: { displayName: 'Codex', slug: 'codex' }, replyPending: false, messages: [] });
+  }));
+  function Sessions() {
+    const [selected, select] = useState(ids[0]);
+    return <><nav className="flex h-12 shrink-0"><button onClick={() => select(ids[0])}>会话 A</button><button onClick={() => select(ids[1])}>会话 B</button></nav>
+      {ids.map(id => <div key={id} className={selected === id ? 'min-h-0 flex-1' : 'hidden'}><SessionWorkspace sessionId={id} name={id} active={selected === id}>{() => <div>终端</div>}</SessionWorkspace></div>)}</>;
+  }
+  const host = document.createElement('div'); host.className = 'h-screen flex flex-col'; document.body.append(host); root = createRoot(host); root.render(<Sessions />);
+  await expect.poll(() => checks.length).toBe(1); expect(checks[0].id).toBe(ids[0]);
+  const editor = document.querySelector(`[data-session-workspace="${ids[0]}"] [role="textbox"]`) as HTMLElement;
+  editor.focus(); await userEvent.keyboard('切回来保留草稿');
+  await page.getByRole('button', { name: '会话 B' }).click();
+  await expect.poll(() => checks.length).toBe(2); expect(checks[1].id).toBe(ids[1]);
+  await page.getByRole('button', { name: '会话 A' }).click();
+  await expect.poll(() => checks.length).toBe(3); expect(checks[2].id).toBe(ids[0]);
+  expect(checks[2].entryId).not.toBe(checks[0].entryId);
+  expect(editor.textContent).toContain('切回来保留草稿');
+  await page.getByRole('button', { name: '会话 A' }).click(); await frame(); expect(checks).toHaveLength(3);
+  expect(backend.inputs).not.toHaveBeenCalled();
+  await page.screenshot({ path: `/tmp/termdock-entry-probe-${width}-dpr${devicePixelRatio}.png` });
+});
+
 it.each([1280, 390])('baseline: switches between chat and the retained full terminal at width %i', async width => {
   await mount(width);
   const editor = document.querySelector('[data-session-chat] [role="textbox"]') as HTMLElement;
@@ -68,6 +130,32 @@ it.each([1280, 390])('baseline: switches between chat and the retained full term
   await page.getByRole('button', { name: '切换到对话' }).click();
   expect(editor.textContent).toContain('保留聊天草稿');
   expect(backend.connect).toHaveBeenCalledTimes(1);
+});
+
+it.each([1280, 390])('opens unread chat from the active terminal bell and locates its reply at width %i', async width => {
+  await mount(width, true, false, 48, true);
+  const store = useTerminalStore.getState(); store.setActiveSessionId(sessionId);
+  await page.getByRole('button', { name: '切换到终端' }).click();
+  await expect.element(page.getByRole('button', { name: '切换到对话' })).toBeVisible();
+  const messageIds = Array.from({ length: 48 }, (_, i) => `a${i + 1}`);
+  store.setSessionChatIndex(sessionId, { conversationId: 'bell-chat', messageIds, viewedMessageIds: messageIds.filter(id => id !== 'a4') });
+  const fetchHistory = vi.mocked(fetch).getMockImplementation()!;
+  vi.mocked(fetch).mockImplementation(async (url, init) => String(url).endsWith('/chat/viewed')
+    ? Response.json({ chatIndex: { conversationId: 'bell-chat', messageIds, viewedMessageIds: messageIds } })
+    : fetchHistory(url, init));
+  await expect.poll(() => document.querySelector('[data-attention-button]')).not.toBeNull();
+  await page.screenshot({ path: `/tmp/termdock-unread-bell-before-${width}-dpr${devicePixelRatio}.png` });
+  await page.elementLocator(document.querySelector('[data-attention-button]')!).click();
+  await expect.element(page.getByRole('button', { name: '切换到终端' })).toBeVisible();
+  await expect.element(page.getByText('继续检查第 4 项构建结果', { exact: true })).toBeVisible();
+  const scroll = document.querySelector('.session-chat-scroll')!.getBoundingClientRect();
+  const reply = document.querySelector('[data-chat-viewport-row="a4"]')!.getBoundingClientRect();
+  expect(reply.top).toBeGreaterThanOrEqual(scroll.top);
+  expect(reply.bottom).toBeLessThanOrEqual(scroll.bottom);
+  expect(useTerminalStore.getState().activeSessionId).toBe(sessionId);
+  await expect.poll(() => useTerminalStore.getState().sessions.get(sessionId)?.chatAttention?.unreadIds, { timeout: 3000 }).toEqual([]);
+  await expect.poll(() => document.querySelector('[data-attention-button]')).toBeNull();
+  await page.screenshot({ path: `/tmp/termdock-unread-bell-after-${width}-dpr${devicePixelRatio}.png` });
 });
 
 it.each([1280, 390])('measures and synchronizes the new Agent terminal behind chat before sending its startup command at width %i', async width => {
@@ -303,6 +391,26 @@ it('uses the whole window for a preview anchored in a narrow split pane', async 
   await expect.poll(() => document.querySelector('[data-terminal-peek]')).toBeNull();
 });
 
+it.each([1280, 390])('opens the retained terminal for an explicitly blocked Agent without submitting an answer at width %i', async width => {
+  await mount(width);
+  const store = useTerminalStore.getState();
+  store.setSessionAgentStatus(sessionId, { agentStatus: 'waiting' });
+  await expect.element(page.getByRole('status', { name: 'Codex等你处理' })).toBeVisible();
+  expect(document.querySelector('[data-chat-reply-status] .td-loading-spinner')).toBeNull();
+  store.setSessionAgentStatus(sessionId, { agentStatus: 'idle' });
+  store.setSessionTuiProgress(sessionId, { source: 'osc7501', state: 'blocked', progress: null, kind: 'question' });
+  await expect.element(page.getByRole('status', { name: 'Codex待回答' })).toBeVisible();
+  const writes = backend.inputs.mock.calls.length;
+  await page.getByRole('button', { name: '查看终端详情', exact: true }).click();
+  await expect.element(page.getByRole('dialog', { name: '会话终端预览' })).toBeVisible();
+  expect(backend.inputs.mock.calls.length).toBe(writes);
+  store.setSessionTuiProgress(sessionId, { source: 'osc7501', state: 'blocked', progress: null, kind: 'permission' });
+  await expect.element(page.getByRole('status', { name: 'Codex待确认' })).toBeVisible();
+  expect(document.querySelector('[data-chat-reply-status] .td-loading-spinner')).toBeNull();
+  store.setSessionAgentStatus(sessionId, { agentStatus: 'working' });
+  await expect.element(page.getByRole('status', { name: 'Codex处理中' })).toBeVisible();
+});
+
 it.each([1280, 390])('keeps a preview entry above the composer after activity stops at width %i', async width => {
   const { completeReply } = await mount(width, true);
   const status = document.querySelector<HTMLElement>('[data-chat-reply-status]')!;
@@ -314,12 +422,12 @@ it.each([1280, 390])('keeps a preview entry above the composer after activity st
   expect(document.querySelector('[data-chat-reply-feedback]')).toBeNull();
   await page.screenshot({ path: `/tmp/termdock-output-status-${width}-dpr${devicePixelRatio}.png` });
   backend.handlers!.onEvent({ type: 'terminal-output-activity', active: false });
-  await expect.element(page.getByRole('status', { name: 'Codex等待回复' })).toBeVisible();
+  await expect.element(page.getByRole('status', { name: 'Codex处理中' })).not.toBeInTheDocument();
   const entry = document.querySelector('[data-chat-terminal-access]')!;
   expect(entry.isConnected).toBe(true);
   expect(status).toBe(entry);
-  expect(status.textContent).toContain('等待回复…');
-  expect(status.querySelector('.td-loading-spinner')).not.toBeNull();
+  expect(status.textContent).toBe('详情');
+  expect(status.querySelector('.td-loading-spinner')).toBeNull();
   completeReply();
   await expect.poll(() => document.querySelector('[data-chat-reply-status]')).toBeNull();
   expect(entry.textContent).toBe('详情');
@@ -394,7 +502,8 @@ it('keeps processing and an explicit detail action from native working status wh
   await expect.element(page.getByRole('dialog', { name: '会话终端预览' })).toBeVisible();
   await page.screenshot({ path: `/tmp/termdock-native-silent-working-dpr${devicePixelRatio}.png` });
   backend.handlers!.onEvent({ type: 'tui-progress', tuiProgress: { source: 'osc7501', state: 'remove', progress: null, app: 'codex' } });
-  await expect.element(page.getByRole('status', { name: 'Codex等待回复' })).toBeVisible();
+  await expect.element(page.getByRole('status', { name: 'Codex处理中' })).not.toBeInTheDocument();
+  expect(document.querySelector('[data-chat-terminal-access]')?.textContent).toBe('详情');
 });
 
 it('acknowledges native completion in chat, including a result that arrived in terminal mode', async () => {
@@ -457,7 +566,7 @@ it.each([1280, 390, 320])('keeps the composer preview dock and reply actions sta
   await page.screenshot({ path: `/tmp/termdock-inline-status-${width}-dpr${devicePixelRatio}.png` });
   for (const active of [false, true, false]) {
     backend.handlers!.onEvent({ type: 'terminal-output-activity', active });
-    await expect.poll(() => document.querySelector('[data-chat-reply-status]')?.getAttribute('data-chat-reply-phase')).toBe(active ? 'output' : 'quiet');
+    await expect.poll(() => document.querySelector('[data-chat-terminal-access]')?.getAttribute('data-chat-reply-phase')).toBe(active ? 'output' : 'idle');
     expect(document.querySelector('[data-chat-terminal-access] button')).toBe(trigger);
     expect(trigger.getBoundingClientRect().top).toBe(button.top);
     await frame();

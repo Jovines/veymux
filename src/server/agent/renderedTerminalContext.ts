@@ -1,5 +1,6 @@
 import xtermHeadless from '@xterm/headless';
 import type { Terminal as HeadlessTerminal } from '@xterm/headless';
+import type { InputFrame } from './terminalReadinessProbe.js';
 
 const { Terminal } = xtermHeadless;
 
@@ -48,6 +49,22 @@ export class RenderedTerminalContext {
     await new Promise<void>((resolve) => terminal.write('', resolve));
     if (this.disposed || generation !== this.generation || terminal !== this.terminal) return '';
     return this.read(includeCursor);
+  }
+
+  async inputFrame(): Promise<InputFrame> {
+    await this.snapshot(true);
+    if (this.disposed) throw new Error('TERMINAL_DISPOSED');
+    const buffer = this.terminal.buffer.active;
+    const line = buffer.getLine(buffer.baseY + buffer.cursorY);
+    let endX = 0;
+    for (let col = 0; line && col < this.cols; col++) {
+      const cell = line.getCell(col);
+      if (cell?.getChars().trim()) endX = col + cell.getWidth();
+    }
+    return { cols: this.cols, x: buffer.cursorX, y: buffer.cursorY,
+      prefix: line?.translateToString(false, 0, buffer.cursorX) ?? '',
+      suffix: line?.translateToString(true, buffer.cursorX).trimEnd() ?? '', endX,
+      lines: Array.from({ length: this.rows }, (_, row) => buffer.getLine(buffer.baseY + row)?.translateToString(true).trimEnd() ?? '') };
   }
 
   read(includeCursor = false): string {

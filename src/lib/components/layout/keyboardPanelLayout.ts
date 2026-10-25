@@ -1,5 +1,8 @@
-import type { CSSProperties } from 'react';
+import { createContext, type CSSProperties } from 'react';
 import { usesNativeKeyboardLayout } from '../../hooks/nativeKeyboardLayout';
+
+/** A viewport-bounded portal already owns the available content height. */
+export const KeyboardPanelLayoutOwnedContext = createContext(false);
 
 const rootStyle: CSSProperties = Object.freeze({
   transform: 'translateY(var(--kb-translate-y, 0px))',

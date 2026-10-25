@@ -1,6 +1,7 @@
 import { useTerminalStore } from '../../stores/useTerminalStore';
 import { shouldShowTuiLoading } from '../../utils/agentAttention';
 import { useTerminalOutputActivity } from '../../hooks/useTerminalOutputActivity';
+import { useChatTerminalInputCheck } from './useChatTerminalInputCheck';
 import { useTouchScrollBoundary } from '../../hooks/useTouchScrollBoundary';
 import { usePreserveInputFocus } from '../../hooks/usePreserveInputFocus';
 import { focusKeyboardInput, usesNativeKeyboardLayout } from '../../hooks/nativeKeyboardLayout';
@@ -111,7 +112,9 @@ function SessionChatContent({ sessionId, name = '当前会话', canWrite: reques
   const [unseen, setUnseen] = useState(false);
   const unreadIds = useTerminalStore(state => state.sessions.get(sessionId)?.chatAttention?.unreadIds ?? noUnreadMessages);
   const [unreadLocation, setUnreadLocation] = useState(0);
+  const [unreadEntryReady, setUnreadEntryReady] = useState(false);
   const unreadScrollTarget = useRef<string>(), unreadEntry = useRef(false), locatingUnread = useRef(false);
+  const liveScrollTarget = useRef<string>();
   const markViewed = useCallback((id: string) => useTerminalStore.getState().markChatMessagesViewed(sessionId, [id]), [sessionId]);
   const [copied, setCopied] = useState('');
   const scroll = useRef<HTMLDivElement>(null), input = useRef<HTMLDivElement>(null);
@@ -278,7 +281,7 @@ function SessionChatContent({ sessionId, name = '当前会话', canWrite: reques
     historyMessages.current = next; setMessages(next);
   }, []);
   const refresh = useCallback(async (signal?: AbortSignal, latest = false) => {
-    if (replyAbort.current) return;
+    if (replyAbort.current || locatingUnread.current) return;
     signal = AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(15000)]);
     const sequence = ++refreshSequence.current, client = currentSecureClient();
     const current = historyMessages.current, after = latest ? undefined : current[current.length - 1]?.id;
@@ -291,11 +294,6 @@ function SessionChatContent({ sessionId, name = '当前会话', canWrite: reques
     }
     if (signal.aborted || sequence !== refreshSequence.current || currentSecureClient() !== client) return;
     if (payload.unchanged && payload.revision && payload.revision === historyRevision.current) { setLoading(false); setSyncInterrupted(false); setHistoryReady(true); return; }
-    if (payload.page?.hasNewer && nearBottom.current && !pageState.current.hasNewer) {
-      // A resumed reader following the live tail can jump straight to the
-      // newest page instead of downloading a backlog before showing it.
-      payload = await readChatHistory(sessionId, signal, undefined, confirmation); latest = true;
-    }
     const items = payload.messages;
     if (!Array.isArray(items) || payload.updates !== undefined && !Array.isArray(payload.updates)) throw new Error('暂时无法读取对话，请重试');
     const incoming = [...payload.updates ?? [], ...items];
@@ -313,8 +311,16 @@ function SessionChatContent({ sessionId, name = '当前会话', canWrite: reques
       pageState.current.hasOlder = payload.page?.hasOlder === true; setHasOlder(pageState.current.hasOlder);
     }
     setReplyPending(payload.replyPending);
+    // The end of a loaded history page is not the live tail. Appending the
+    // next page must preserve the reader rather than skip through that page.
+    if (!latest && pageState.current.hasNewer) nearBottom.current = false;
     pageState.current.hasNewer = payload.page?.hasNewer === true;
     const existing = new Set(current.map(message => message.id));
+    // Follow short replies, but never scroll past the opening of a new reply
+    // just because a whole long result (or several replies) arrived at once.
+    if (!latest && current.length && nearBottom.current) {
+      liveScrollTarget.current = items.find(message => message.role === 'assistant' && !existing.has(message.id))?.id;
+    }
     if (pageState.current.hasNewer || current.length && !nearBottom.current && items.some(message => !existing.has(message.id))) setUnseen(true);
     applyMessages(incoming, replace);
     setPending(previous => previous && (payload.confirmedRequestId === previous.requestId || incoming.some(message => message.requestId === previous.requestId)) ? null : previous);
@@ -458,9 +464,23 @@ function SessionChatContent({ sessionId, name = '当前会话', canWrite: reques
     const target = unreadScrollTarget.current;
     const row = target ? el.querySelector<HTMLElement>(`[data-chat-viewport-row="${CSS.escape(target)}"]`) : null;
     if (row) {
+      // The previous page can emit a delayed scroll event while this page is
+      // loading. The explicit unread destination owns follow mode as well.
       el.scrollTop += row.getBoundingClientRect().top - el.getBoundingClientRect().top - 12;
+      nearBottom.current = !pageState.current.hasNewer && el.scrollHeight - el.scrollTop - el.clientHeight < 96;
       scrollPosition.current = el.scrollTop; unreadScrollTarget.current = undefined;
       programmaticScrollTop.current = el.scrollTop;
+      setUnseen(!nearBottom.current);
+    } else if (liveScrollTarget.current && nearBottom.current) {
+      const incoming = [...el.querySelectorAll<HTMLElement>('[data-chat-viewport-row]')].find(row => row.dataset.chatViewportRow === liveScrollTarget.current);
+      liveScrollTarget.current = undefined;
+      if (incoming) {
+        const start = el.scrollTop + incoming.getBoundingClientRect().top - el.getBoundingClientRect().top - 12;
+        el.scrollTop = Math.min(el.scrollHeight - el.clientHeight, Math.max(el.scrollTop, start));
+        nearBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 96;
+        setUnseen(!nearBottom.current || pageState.current.hasNewer);
+        programmaticScrollTop.current = el.scrollTop;
+      } else bottom();
     } else if (nearBottom.current && hasConversation.current) bottom();
     else restoreAnchor();
     scrollPosition.current = el.scrollTop; captureAnchor();
@@ -532,13 +552,15 @@ function SessionChatContent({ sessionId, name = '当前会话', canWrite: reques
     const id = useTerminalStore.getState().sessions.get(sessionId)?.chatAttention?.unreadIds[0];
     if (!id || locatingUnread.current || !visibleRef.current) return;
     cancelReplyNavigation(true);
-    locatingUnread.current = true; nearBottom.current = false;
+    liveScrollTarget.current = undefined;
+    const sequence = ++refreshSequence.current, client = currentSecureClient();
+    locatingUnread.current = true; nearBottom.current = false; setUnreadEntryReady(false);
+    let located = false;
     try {
       if (!historyMessages.current.some(message => message.id === id)) {
-        const sequence = ++refreshSequence.current, client = currentSecureClient();
         const payload = await readChatHistory(sessionId, AbortSignal.timeout(15000), undefined, { around: id });
         if (sequence !== refreshSequence.current || currentSecureClient() !== client || !visibleRef.current) return;
-        if (!Array.isArray(payload.messages)) throw new Error('暂时无法读取对话');
+        if (!Array.isArray(payload.messages) || !payload.messages.some(message => message.id === id)) throw new Error('暂时无法读取对话');
         if (payload.messages.some(message => message.ui)) await loadChatRichContent();
         if (sequence !== refreshSequence.current || currentSecureClient() !== client || !visibleRef.current) return;
         if (payload.chatIndex) useTerminalStore.getState().setSessionChatIndex(sessionId, payload.chatIndex);
@@ -548,17 +570,26 @@ function SessionChatContent({ sessionId, name = '当前会话', canWrite: reques
         historyEpoch.current++; olderAbort.current?.abort(); nearbyIds.clear();
         applyMessages(payload.messages, true);
       }
-      unreadScrollTarget.current = id; setUnreadLocation(value => value + 1);
-    } catch { if (visibleRef.current) setSyncInterrupted(true); }
-    finally { locatingUnread.current = false; }
+      unreadScrollTarget.current = id; setUnreadLocation(value => value + 1); located = true;
+    } catch { if (visibleRef.current) { unreadEntry.current = false; setSyncInterrupted(true); } }
+    finally { locatingUnread.current = false; if (visibleRef.current) setUnreadEntryReady(located); }
   }, [sessionId, applyMessages, nearbyIds, cancelReplyNavigation]);
   useEffect(() => {
-    if (!visible) { unreadEntry.current = false; return; }
+    if (!visible) return;
+    const open = (event: Event) => {
+      if ((event as CustomEvent<string>).detail === sessionId) void jumpUnread();
+    };
+    window.addEventListener('switch-terminal-session', open);
+    return () => window.removeEventListener('switch-terminal-session', open);
+  }, [visible, sessionId, jumpUnread]);
+  useEffect(() => {
+    if (!visible) { unreadEntry.current = false; setUnreadEntryReady(false); return; }
     if (!historyReady || loading || syncInterrupted || unreadEntry.current) return;
     const attention = useTerminalStore.getState().sessions.get(sessionId)?.chatAttention;
     if (!attention?.index) return;
     unreadEntry.current = true;
     if (attention.unreadIds.length) void jumpUnread();
+    else setUnreadEntryReady(true);
   }, [visible, historyReady, loading, syncInterrupted, unreadIds, jumpUnread, sessionId]);
   const terminalOutputActive = useTerminalOutputActivity(sessionId, visible);
   const reportedWorking = useTerminalStore(state => {
@@ -571,32 +602,43 @@ function SessionChatContent({ sessionId, name = '当前会话', canWrite: reques
       || session?.agentStatus === 'done' && !shouldShowTuiLoading(session)
       || session?.agentStatus !== 'working' && !!progress && ['blocked', 'done', 'error', 'pause'].includes(progress.state);
   });
+  const inputRequestLabel = useTerminalStore(state => {
+    if (!visible) return null;
+    const session = state.sessions.get(sessionId), progress = session?.tuiProgress;
+    // Hook waiting signals do not retain the native request kind. Only the
+    // terminal's explicit typed report can distinguish a question/permission.
+    if (session?.agentStatus === 'waiting') return '等你处理';
+    if (session?.agentStatus === 'working' || progress?.state !== 'blocked') return null;
+    return progress.kind === 'question' ? '待回答' : progress.kind === 'permission' ? '待确认'
+      : progress.kind === 'auth' ? '需要登录' : '等你处理';
+  });
   const waitingForReply = agentAvailable === true && !pending && (replyPending ?? hasUnansweredMessage(messages));
   const sendingReply = sending && !!pending;
-  // Delivery does not prove work is running. Preserve the preview affordance
-  // during silence while describing only what the server can observe.
+  // Message/reply bookkeeping must never manufacture working activity. Only
+  // observed terminal output or an explicit working report enables that label.
   const hasUserRequest = !!pending || messages.some(message => message.role === 'user');
   const deliveryNotice = messages.slice().reverse().find(message => message.role === 'user' && message.status === 'pending' && message.delivery);
   const awaitingDelivery = messages.slice().reverse().find(message => message.role === 'user')?.status === 'pending';
-  const replyPhase = (!freshLaunch || hasUserRequest) && !reportedStopped && (terminalOutputActive || reportedWorking) ? 'output' : !error && !deliveryNotice && (sendingReply || awaitingDelivery) ? 'sending' : !error && !deliveryNotice && waitingForReply ? 'quiet' : null;
+  const replyPhase = inputRequestLabel ? 'input' : (!freshLaunch || hasUserRequest) && !reportedStopped && (terminalOutputActive || reportedWorking) ? 'output' : !error && !deliveryNotice && (sendingReply || awaitingDelivery) ? 'sending' : null;
   const latestQuestion = messages.slice().reverse().find(message => message.role === 'user');
-  const waitingForFirstReply = !!replyPhase && !error && !deliveryNotice && (!!pending || !!latestQuestion && !['failed', 'expired', 'cancelled'].includes(latestQuestion.status) && !hasReplyToLatestMessage(messages));
-  const replyFeedback = waitingForFirstReply ? <span className="sr-only">等待回复</span> : null;
-  const replyLabel = replyPhase === 'output' ? '处理中…' : replyPhase === 'sending' ? '发送中…' : '等待回复…';
+  const waitingForFirstReply = (sendingReply || !reportedStopped && (waitingForReply || replyPhase === 'output')) && !inputRequestLabel && !error && !deliveryNotice && (!!pending || !!latestQuestion && !['failed', 'expired', 'cancelled'].includes(latestQuestion.status) && !hasReplyToLatestMessage(messages));
+  const replyFeedback = waitingForFirstReply ? <span className="sr-only">尚未收到回复</span> : null;
+  const replyLabel = inputRequestLabel ?? (replyPhase === 'sending' ? '发送中…' : '处理中…');
+  const inputUnconfirmed = useChatTerminalInputCheck(sessionId, replyPhase, active && visible && canWrite && agentAvailable === true && !sending && !pending, active && visible);
   const terminalAccess = <div data-chat-terminal-access data-chat-reply-status={!!replyPhase || undefined} data-chat-reply-phase={replyPhase ?? 'idle'} role={replyPhase ? 'status' : undefined} aria-label={replyPhase ? `${agentName}${replyLabel.replace('…', '')}` : undefined} aria-live="polite" title="查看终端中的详细输出" className="pointer-events-auto w-fit max-w-full shrink-0">
-    <TerminalPeekTrigger label="查看终端详情" className={`${floatingButton} text-foreground/80`}>
-      {replyPhase ? <LoadingSpinner size={11} className="shrink-0 text-primary" /> : <TerminalSquare size={11} aria-hidden="true" />}
-      {replyPhase && <><span>{replyLabel}</span><span aria-hidden="true" className="text-muted-foreground">·</span></>}<span>详情</span><ChevronUp size={10} aria-hidden="true" className="ml-0.5 text-muted-foreground" />
+    <TerminalPeekTrigger label={inputUnconfirmed ? '输入响应未确认，查看终端' : '查看终端详情'} className={`${floatingButton} text-foreground/80`}>
+      {replyPhase === 'input' ? <MessageCircle size={11} aria-hidden="true" className="shrink-0 text-primary" /> : replyPhase ? <LoadingSpinner size={11} className="shrink-0 text-primary" /> : <TerminalSquare size={11} aria-hidden="true" />}
+      <span>{replyPhase ? replyLabel : inputUnconfirmed ? '检查终端' : '详情'}</span><ChevronUp size={10} aria-hidden="true" className="ml-0.5 text-muted-foreground" />
     </TerminalPeekTrigger>
   </div>;
   const tooLong = new TextEncoder().encode(composeChatContent(composeChatDraft(draft, attachments, mentions), reference)).byteLength > 32000;
   return <section ref={section} style={keyboardLayout.rootStyle} data-session-chat onDragEnter={event => { if (event.dataTransfer.types.includes('Files')) { event.preventDefault(); dragDepth.current++; if (canWrite) setDragging(true); } }} onDragOver={event => { if (event.dataTransfer.types.includes('Files')) { event.preventDefault(); event.dataTransfer.dropEffect = canWrite ? 'copy' : 'none'; } }} onDragLeave={event => { if (event.dataTransfer.types.includes('Files')) { dragDepth.current = Math.max(0, dragDepth.current - 1); if (!dragDepth.current) setDragging(false); } }} onDrop={event => { let draggedReference: string | null; try { draggedReference = readFileReferenceDrag(event.dataTransfer); } catch (error) { event.preventDefault(); setError(error instanceof Error ? error.message : '文件引用无效'); return; } if (draggedReference && active && canWrite) { event.preventDefault(); event.stopPropagation(); insertReference(draggedReference, readContextReferenceDrag(event.dataTransfer)); return; } const files = Array.from(event.dataTransfer.files); if (files.length) { event.preventDefault(); event.stopPropagation(); setDragging(false); dragDepth.current = 0; transfer.addFiles(files); } else if (canWrite && (event.target as Element).closest('[data-chat-composer]')) { const text = event.dataTransfer.getData('text/plain'); if (text) { event.preventDefault(); insertText(text); } } }} onKeyDown={e => e.stopPropagation()} className="session-chat relative flex h-full min-h-0 flex-col overflow-hidden bg-[var(--chrome-bg)] text-foreground" aria-label={`${name}对话`}>
     {mediaSettingsOpen && active && canWrite && <ChatMediaSettingsDialog close={() => setMediaSettingsOpen(false)} />}
     <MediaUploadToast result={active ? transfer.mediaResult : null} onDismiss={transfer.dismissMediaResult} />
-    <div ref={scroll} style={keyboardLayout.contentStyle} className="session-chat-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 [overflow-anchor:none] sm:px-8" onScroll={() => { const el = scroll.current!; if (!active || !el.clientHeight) return; scrollPosition.current = el.scrollTop; captureAnchor(); const programmed = programmaticScrollTop.current; programmaticScrollTop.current = undefined; if (programmed !== undefined && Math.abs(el.scrollTop - programmed) < 1) return; nearBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 96; if (nearBottom.current && !pageState.current.hasNewer) setUnseen(false); if (el.scrollTop < el.clientHeight) void loadOlder(); }}>
+    <div ref={scroll} style={keyboardLayout.contentStyle} className="session-chat-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 [overflow-anchor:none] sm:px-8" onScroll={() => { const el = scroll.current!; if (!active || !el.clientHeight) return; scrollPosition.current = el.scrollTop; captureAnchor(); const programmed = programmaticScrollTop.current; programmaticScrollTop.current = undefined; if (programmed !== undefined && Math.abs(el.scrollTop - programmed) < 1) return; nearBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 96; setUnseen(!nearBottom.current || pageState.current.hasNewer); if (el.scrollTop < el.clientHeight) void loadOlder(); }}>
       <div ref={content} className={`mx-auto flex min-h-full w-full max-w-screen-2xl flex-col ${messages.length || pending ? 'pb-12 pt-5 sm:pt-8' : 'py-5 sm:py-8'}`}>
         {hasOlder && <div ref={olderEdge} data-chat-older-edge aria-hidden="true" className="h-12 shrink-0">{olderLoading && <div className="space-y-2 py-2"><div className="chat-loading-skeleton h-3 w-3/4 rounded bg-surface-2" /><div className="chat-loading-skeleton h-3 w-1/2 rounded bg-surface-2" /></div>}</div>}
-        {!startup && (loading || !historyReady) && !messages.length && !pending ? <ChatLoading /> : !messages.length && !pending ? <div className={`session-chat-welcome mx-auto flex shrink-0 flex-col items-center py-6 text-center ${touchLayout && keyboard.isOpen ? '' : 'my-auto'}`}><MessageCircle size={27} strokeWidth={1.5} className="mb-4 text-primary" /><h2 className="text-xl font-semibold tracking-tight sm:text-2xl">想一起完成什么？</h2><p className="mt-2 max-w-md text-[15px] leading-7 text-muted-foreground">直接描述你的目标，或从一个问题开始。</p><div className="mt-5 flex flex-wrap justify-center gap-2">{['帮我梳理一下当前工作', '请解释一下刚才的结果', '我们继续下一步'].map(text => <button type="button" key={text} className={`${button} border border-border/60 text-left text-xs text-muted-foreground`} disabled={!canWrite} onClick={() => { writeEditorDraft(text, text.length, true); }}>{text}</button>)}</div><SessionModeWelcomeHint onTerminal={onTerminal} /></div> : <ChatTimeline replyFeedback={replyFeedback} onJumpToReply={jumpToReply} locatingReply={locatingReply} locatedMessageId={locatedMessageId} unreadIds={unreadIds} viewing={visible && historyReady && !loading && !syncInterrupted} onViewed={markViewed} pendingMessage={pending && <ChatUserMessage content={pending.content} createdAt={pending.createdAt} status={sending ? '发送中…' : '待重试'}>{!sending && <><button type="button" className="min-h-9 rounded-lg px-2 hover:bg-surface-2" onClick={() => { const parsed = parseChatContent(pending.content); const restored = parseChatDraft(parsed.text); writeEditorDraft(restored.text, restored.text.length, true); setExtras(restored); setReference(parsed.reference); setPending(null); setError(''); focusKeyboardInput(input.current); }}>修改草稿</button><button type="button" className="inline-flex min-h-9 items-center gap-1 rounded-lg px-2 text-primary hover:bg-surface-2" disabled={!canWrite || agentAvailable !== true} onClick={() => void send(pending)}><RefreshCw size={12} />重试发送</button></>}</ChatUserMessage>} sessionId={sessionId} uiWritable={active && canWrite && !pending && !sending && agentAvailable === true} onAction={onAction} messages={messages} scrollRoot={scroll} nearbyIds={nearbyIds} agentName={agentName} agentSlug={agentSlug} canWrite={canWrite} copied={copied} onReference={quoteMessage} onCopy={onCopy} />}
+        {!startup && (loading || !historyReady) && !messages.length && !pending ? <ChatLoading /> : !messages.length && !pending ? <div className={`session-chat-welcome mx-auto flex shrink-0 flex-col items-center py-6 text-center ${touchLayout && keyboard.isOpen ? '' : 'my-auto'}`}><MessageCircle size={27} strokeWidth={1.5} className="mb-4 text-primary" /><h2 className="text-xl font-semibold tracking-tight sm:text-2xl">想一起完成什么？</h2><p className="mt-2 max-w-md text-[15px] leading-7 text-muted-foreground">直接描述你的目标，或从一个问题开始。</p><div className="mt-5 flex flex-wrap justify-center gap-2">{['帮我梳理一下当前工作', '请解释一下刚才的结果', '我们继续下一步'].map(text => <button type="button" key={text} className={`${button} border border-border/60 text-left text-xs text-muted-foreground`} disabled={!canWrite} onClick={() => { writeEditorDraft(text, text.length, true); }}>{text}</button>)}</div><SessionModeWelcomeHint onTerminal={onTerminal} /></div> : <ChatTimeline replyFeedback={replyFeedback} onJumpToReply={jumpToReply} locatingReply={locatingReply} locatedMessageId={locatedMessageId} unreadIds={unreadIds} viewing={visible && unreadEntryReady && historyReady && !loading && !syncInterrupted} onViewed={markViewed} pendingMessage={pending && <ChatUserMessage content={pending.content} createdAt={pending.createdAt} status={sending ? '发送中…' : '待重试'}>{!sending && <><button type="button" className="min-h-9 rounded-lg px-2 hover:bg-surface-2" onClick={() => { const parsed = parseChatContent(pending.content); const restored = parseChatDraft(parsed.text); writeEditorDraft(restored.text, restored.text.length, true); setExtras(restored); setReference(parsed.reference); setPending(null); setError(''); focusKeyboardInput(input.current); }}>修改草稿</button><button type="button" className="inline-flex min-h-9 items-center gap-1 rounded-lg px-2 text-primary hover:bg-surface-2" disabled={!canWrite || agentAvailable !== true} onClick={() => void send(pending)}><RefreshCw size={12} />重试发送</button></>}</ChatUserMessage>} sessionId={sessionId} uiWritable={active && canWrite && !pending && !sending && agentAvailable === true} onAction={onAction} messages={messages} scrollRoot={scroll} nearbyIds={nearbyIds} agentName={agentName} agentSlug={agentSlug} canWrite={canWrite} copied={copied} onReference={quoteMessage} onCopy={onCopy} />}
       </div>
     </div>
     {dragging && <div className="pointer-events-none absolute inset-3 z-20 flex items-center justify-center rounded-2xl border-2 border-dashed border-primary bg-surface/95 text-sm text-primary"><Paperclip size={18} className="mr-2" />松开以添加文件</div>}
@@ -618,7 +660,7 @@ function SessionChatContent({ sessionId, name = '当前会话', canWrite: reques
         {terminalAccess}
         {locatingReply || returnCount > 0 ? <button type="button" aria-label={locatingReply ? '取消定位' : '返回回复'} className={`${floatingButton} pointer-events-auto ml-3 text-foreground/80`} onPointerDown={event => event.preventDefault()} onClick={() => locatingReply ? cancelReplyNavigation() : returnToReply()}>
           {locatingReply ? <X size={13} aria-hidden="true" /> : <CornerDownRight size={13} aria-hidden="true" />}<span>{locatingReply ? '取消定位' : '返回回复'}</span>
-        </button> : (unseen || unreadIds.length > 0) && <div data-chat-new-message-prompt className="chat-new-message-prompt pointer-events-auto ml-3 min-w-0"><button type="button" aria-label={unreadIds.length ? `${unreadIds.length} 条未读消息` : '查看新消息'} className={`${floatingButton} text-foreground/80`} onClick={() => void (unreadIds.length ? jumpUnread() : jumpLatest())}><ArrowDown size={14} className="shrink-0" /><span className="truncate">{unreadIds.length ? `${unreadIds.length} 条未读` : '查看新消息'}</span></button></div>}
+        </button> : (unseen || unreadIds.length > 0) && <div data-chat-new-message-prompt className="chat-new-message-prompt pointer-events-auto ml-3 min-w-0"><button type="button" aria-label={unreadIds.length ? `${unreadIds.length} 条未读消息` : '回到最新'} className={`${floatingButton} text-foreground/80`} onPointerDown={event => event.preventDefault()} onClick={() => void (unreadIds.length ? jumpUnread() : jumpLatest())}><ArrowDown size={14} className="shrink-0" /><span className="truncate">{unreadIds.length ? `${unreadIds.length} 条未读` : '回到最新'}</span></button></div>}
       </div>
       <form data-chat-composer className="rounded-2xl border border-border bg-surface p-2.5 transition-colors focus-within:border-primary/60" onSubmit={e => { e.preventDefault(); if (!pending) void send(); }}>
         {reference && <ChatReferenceCard reference={reference} onRemove={() => setReference(null)} />}

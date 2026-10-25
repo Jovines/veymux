@@ -12,6 +12,7 @@ import { expect, it, vi } from 'vitest';
 import { Terminal } from '@xterm/headless';
 import { TerminalClientAttachment } from '../utils/terminalClientAttachment.js';
 import { TerminalInputQueue } from '../utils/terminalInputQueue.js';
+import { serializeTerminalInput } from '../agent/terminalInput.js';
 import { TerminalPasteBuffer } from '../utils/terminalPasteBuffer.js';
 import { TerminalOutputDelivery, resolveTerminalReplayCursor } from '../utils/terminalOutputDelivery.js';
 import { TmuxInitialScreen } from '../utils/tmuxInitialScreen.js';
@@ -73,7 +74,7 @@ it('retains the window throughout refresh and presents the measured grid without
     let io = Promise.resolve<unknown>(undefined);
     const context = vm.createContext({
       Date, Buffer, performance, setTimeout, clearTimeout, console, process, os,
-      TerminalClientAttachment, TerminalInputQueue, TerminalPasteBuffer, TmuxInitialScreen, TmuxDisplayGeometry,
+      TerminalClientAttachment, TerminalInputQueue, serializeTerminalInput, TerminalPasteBuffer, TmuxInitialScreen, TmuxDisplayGeometry,
       TerminalOutputDelivery, resolveTerminalReplayCursor, buildTmuxAttachArgs, claimTmuxSize: claimSize, redrawTmuxClient: redraw, PtySpawnDeferredError,
       terminalSessions: new Map([['backend', session]]), wsClients, tmuxAttachments, globalSessionState: { sessions: [] },
       outputDeliveries: new WeakMap(), independentTmuxClients: new WeakSet(), independentTmuxReplays: new WeakMap(),

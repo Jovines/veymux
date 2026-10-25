@@ -8,6 +8,7 @@ import { SharedSessionSampler, SharedSnapshotCache } from '../utils/sharedSampli
 import { TerminalPasteBuffer } from '../utils/terminalPasteBuffer.js';
 import { TerminalClientAttachment } from '../utils/terminalClientAttachment.js';
 import { TerminalInputQueue } from '../utils/terminalInputQueue.js';
+import { serializeTerminalInput } from '../agent/terminalInput.js';
 import { TmuxDisplayGeometry } from '../utils/tmuxDisplayGeometry.js';
 import { TerminalOutputDelivery, resolveTerminalReplayCursor } from '../utils/terminalOutputDelivery.js';
 import { TmuxInitialScreen } from '../utils/tmuxInitialScreen.js';
@@ -60,12 +61,14 @@ it('merges forced inventory refreshes and allows recovery after a rejected build
   `, { buildSessionInventory: build });
   const calls = Array.from({ length: 25 }, () => context.getSessionInventorySnapshot({ refresh: true }));
   expect(build).toHaveBeenCalledOnce();
+  finish({ tmuxSessions: [] });
+  await vi.waitFor(() => expect(build).toHaveBeenCalledTimes(2));
   finish({ tmuxSessions: [] }); await Promise.all(calls);
   build.mockImplementationOnce(() => Promise.reject(new Error('inventory failed')));
   await expect(context.getSessionInventorySnapshot({ refresh: true })).rejects.toThrow('inventory failed');
   build.mockImplementationOnce(() => Promise.resolve({ tmuxSessions: [] }));
   await context.getSessionInventorySnapshot({ refresh: true });
-  expect(build).toHaveBeenCalledTimes(3);
+  expect(build).toHaveBeenCalledTimes(4);
 });
 
 it('reconciles from one liveness snapshot, preserves unknown/new sessions, and never calls has-session', async () => {
@@ -131,7 +134,7 @@ it('keeps the real WS handler PTYs through flow pauses, while unsubscribe/reconn
     const TMUX_POLL_INTERVAL = 500, ACTIVE_PROGRAM_POLL_INTERVAL = 1200;
     globalThis.attachSse = ${sseHandler};
   `, {
-    TmuxDisplayGeometry, SharedSessionSampler, TerminalClientAttachment, TerminalInputQueue, TerminalPasteBuffer, TmuxInitialScreen, TerminalOutputDelivery, resolveTerminalReplayCursor,
+    TmuxDisplayGeometry, SharedSessionSampler, TerminalClientAttachment, TerminalInputQueue, serializeTerminalInput, TerminalPasteBuffer, TmuxInitialScreen, TerminalOutputDelivery, resolveTerminalReplayCursor,
     terminalSessions: new Map([['backend', session]]), wsClients: new Map(),
     tmuxAttachments: new WeakMap(),
     outputDeliveries: new WeakMap(), independentTmuxClients: new WeakSet(), independentTmuxReplays: new WeakMap(),

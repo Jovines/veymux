@@ -9,7 +9,11 @@ export async function getChatEligibility(sessionId: string, command?: string): P
   const query = new URLSearchParams({ chatEligibility: '1' });
   if (command !== undefined) query.set('command', command);
   const response = await fetch(`/api/terminal/${encodeURIComponent(sessionId)}/view-mode?${query}`);
-  if (!response.ok) throw new Error('暂时无法识别当前程序，请检查连接后重试');
+  if (!response.ok) {
+    if (response.status === 404) throw new Error('当前会话尚未同步，请等待连接完成后重试');
+    if (response.status === 401 || response.status === 403) throw new Error('当前连接无权访问此会话，请重新连接服务后重试');
+    throw new Error(`当前程序识别失败（${response.status}），请稍后重试；持续失败时请查看服务日志`);
+  }
   const result = await response.json();
   if (currentSecureClient() !== client || (savedConnection()?.targetPeerId || location.origin) !== target) throw new Error('连接已切换，请重试');
   if (typeof result.chatEligibility?.allowed !== 'boolean') throw new Error('程序识别暂不可用，请更新服务后重试');

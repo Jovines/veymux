@@ -108,6 +108,19 @@ it('keeps the terminal on connection failure and never writes the mode', async (
   fireEvent.click(screen.getByRole('button', { name: '切换到对话' })); await screen.findByRole('alert');
   expect(screen.getByRole('button', { name: '切换到对话' })).toBeTruthy(); expect(mode).toBeNull();
 });
+it.each([
+  [404, '当前会话尚未同步'],
+  [403, '当前连接无权访问此会话'],
+  [503, '当前程序识别失败（503）'],
+])('explains a failed recognition request with HTTP %i without changing mode', async (status, message) => {
+  const previous = globalThis.fetch;
+  vi.stubGlobal('fetch', vi.fn((url, init) => String(url).includes('chatEligibility')
+    ? Promise.resolve(Response.json({}, { status })) : previous(url, init)));
+  render(<SessionModeSwitch sessionId={`failed-recognition-${status}`} />);
+  fireEvent.click(screen.getByRole('button', { name: '切换到对话' }));
+  expect((await screen.findByRole('alert')).textContent).toContain(message);
+  expect(mode).toBeNull(); expect(config.chatProgramNames).toEqual([]);
+});
 it('discards a recognition response after the session changes', async () => {
   let finish!: (response: Response) => void;
   vi.stubGlobal('fetch', vi.fn((url) => String(url).includes('chatEligibility') ? new Promise<Response>(resolve => { finish = resolve; }) : Promise.resolve(Response.json({ mode: null }))));

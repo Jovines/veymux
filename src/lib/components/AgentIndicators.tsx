@@ -31,6 +31,7 @@ import { useSidebarStore } from '../stores/useSidebarStore';
 import { useViewportKeyboardState } from '../hooks/useViewportKeyboardState';
 import { useAgentIconSource } from '../hooks/useAgentIconSource';
 import { getNextAttentionSessionId, shouldShowTuiLoading, sessionNeedsReview } from '../utils/agentAttention';
+import { switchToAttentionSession } from '../utils/sessionAttentionNavigation';
 import {
   MOBILE_ATTENTION_EDGE_GAP_PX,
   MOBILE_ATTENTION_SIZE_PX,
@@ -162,7 +163,7 @@ function jumpToNextAgentAttention(): void {
   if (active?.agentNeedsReview) {
     store.clearAgentNeedsReview(active.sessionId);
   }
-  window.dispatchEvent(new CustomEvent('switch-terminal-session', { detail: nextId }));
+  switchToAttentionSession(nextId);
 }
 
 function jumpToSession(sessionId: string): void {

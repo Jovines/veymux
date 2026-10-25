@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from 'node:util';
 import type { PersistedAgentResumeInfo } from './resumePersistence.js';
 import type { AgentLaunchAttempt } from './agentLaunchAttempt.js';
 import type { AgentLaunchCheck } from './agentLaunchCheck.js';
@@ -50,24 +51,27 @@ export function mergeSessionLaunchState<T extends SessionLaunchState>(
     agentNativeIdentity: change.nativeIdentity === undefined ? current.agentNativeIdentity ?? null : change.nativeIdentity };
 }
 
-/** A file watcher can finish reading an old snapshot after an in-memory launch
- * or deletion. It must not revert server-owned fields or resurrect that ID. */
+/** Merge disk against the last synchronized baseline, preserving pending local
+ * changes even when they predate the watcher read. Never revert server-owned
+ * launch fields or resurrect a locally deleted ID. */
 export function mergeReloadedSessionState<T extends SessionLaunchState & { sessionId: string }>(
-  disk: T[], beforeRead: T[], current: T[],
+  disk: T[], baseline: T[], current: T[],
 ): T[] {
-  const before = new Map(beforeRead.map(record => [record.sessionId, record]));
+  const before = new Map(baseline.map(record => [record.sessionId, record]));
   const live = new Map(current.map(record => [record.sessionId, record]));
+  const unchanged = (record: T, previous: T | undefined) => !!previous && isDeepStrictEqual(
+    mergeSessionLaunchState(record, record), mergeSessionLaunchState(previous, previous));
   const result: T[] = [];
   const seen = new Set<string>();
   for (const candidate of disk) {
     const id = candidate.sessionId, now = live.get(id), old = before.get(id);
     if (seen.has(id) || old && !now) continue;
     seen.add(id);
-    result.push(now ? JSON.stringify(now) !== JSON.stringify(old) ? now
+    result.push(now ? !unchanged(now, old) ? now
       : mergeSessionLaunchState(candidate, now) : candidate);
   }
   for (const record of current) {
-    if (!seen.has(record.sessionId) && (JSON.stringify(record) !== JSON.stringify(before.get(record.sessionId))
+    if (!seen.has(record.sessionId) && (!unchanged(record, before.get(record.sessionId))
       || record.agentLaunchGeneration || record.agentNativeIdentity)) result.push(record);
   }
   return result;
@@ -81,5 +85,39 @@ export function createSessionStateWriter<T>(current: () => T, write: (snapshot: 
     const next = pending.catch(() => undefined).then(() => write(structuredClone(current())));
     pending = next;
     return next;
+  };
+}
+
+/** Watcher reads and writes share one queue and a durable merge baseline.
+ * Comparing only with memory at read start loses mutations made before that
+ * read but still waiting for the debounced write. Failed I/O never advances
+ * the baseline; memory changes made during I/O remain pending as well. */
+export function createSessionStatePersistence<S extends { sessions: Array<SessionLaunchState & { sessionId: string }> }>(
+  current: () => S,
+  read: () => Promise<S | null>,
+  write: (snapshot: S) => Promise<void>,
+  apply: (state: S) => void,
+) {
+  let baseline: S['sessions'] = [];
+  let pending: Promise<unknown> = Promise.resolve();
+  function enqueue<T>(operation: () => Promise<T>): Promise<T> {
+    const next = pending.catch(() => undefined).then(operation);
+    pending = next;
+    return next;
+  }
+  return {
+    load: (reload = true) => enqueue(async () => {
+      const disk = await read();
+      if (!disk) return false;
+      const sessions = reload ? mergeReloadedSessionState(disk.sessions, baseline, current().sessions) : disk.sessions;
+      apply({ ...disk, sessions });
+      baseline = structuredClone(disk.sessions);
+      return true;
+    }),
+    write: () => enqueue(async () => {
+      const snapshot = structuredClone(current());
+      await write(snapshot);
+      baseline = snapshot.sessions;
+    }),
   };
 }

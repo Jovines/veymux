@@ -1,5 +1,5 @@
 import { useTouchScrollBoundary } from '../../hooks/useTouchScrollBoundary';
-import { getKeyboardPanelStyles } from '../layout/keyboardPanelLayout';
+import { getKeyboardPanelStyles, KeyboardPanelLayoutOwnedContext } from '../layout/keyboardPanelLayout';
 import { usesNativeKeyboardLayout } from '../../hooks/nativeKeyboardLayout';
 import { InteractiveOutput } from '../../terminal/interactiveOutput';
 import { isKeyboardLayerOpen, useKeyboardLayerOpen } from '../../hooks/useKeyboardLayer';
@@ -2634,8 +2634,9 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   const isKeyboardVisible = !suppressKeyboard && (isMobile || toolbarPreset.id === 'default' || toolbarPreset.showOnDesktop === true);
   const isKeyboardInteractive = isActive;
 
+  const ancestorOwnsKeyboardLayout = React.useContext(KeyboardPanelLayoutOwnedContext);
   const { rootStyle: wrapperStyle, contentStyle: keyboardShrinkStyle } =
-    getKeyboardPanelStyles(isMobile && !sharedMobileKeyboardLayout);
+    getKeyboardPanelStyles(isMobile && !sharedMobileKeyboardLayout && !ancestorOwnsKeyboardLayout);
 
   const keyboardToolbar = (
     <MobileKeyboard

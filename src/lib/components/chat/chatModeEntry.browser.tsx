@@ -12,6 +12,30 @@ import { useTerminalStore } from '../../stores/useTerminalStore';
 let root: Root | undefined;
 const launches: string[] = [];
 afterEach(() => { root?.unmount(); launches.splice(0).forEach(finishSessionChatStartup); useTerminalStore.getState().clearAllTerminalSessions(); document.body.replaceChildren(); localStorage.clear(); vi.unstubAllGlobals(); });
+it.each([390, 1280])('retries plugin recognition and switches both mode entries at width %i', async width => {
+  await page.viewport(width, 844);
+  const id = `plugin-mode-${width}-${Date.now()}`;
+  let mode = 'terminal', fail = true;
+  vi.stubGlobal('fetch', vi.fn(async (url, init?: RequestInit) => {
+    if (String(url).includes('chatEligibility') && fail) return Response.json({ code: 'CHAT_PROGRAM_UNAVAILABLE' }, { status: 503 });
+    if (init?.body) mode = JSON.parse(String(init.body)).mode;
+    return Response.json({ mode, chatEligibility: { allowed: true, program: 'customagent-cli', agent: { slug: 'customagent-fixture', displayName: 'CustomAgent' } } });
+  }));
+  const host = document.createElement('div'); host.className = 'p-4'; document.body.append(host); root = createRoot(host);
+  root.render(<><SessionModeSwitch sessionId={id} /><SessionViewActions sessionId={id} onDone={() => {}} /></>);
+  await page.getByRole('button', { name: '切换到对话' }).click();
+  await expect.element(page.getByRole('alert')).toHaveTextContent('当前程序识别失败（503）');
+  expect(mode).toBe('terminal');
+  await page.getByRole('button', { name: '关闭', exact: true }).click();
+  fail = false;
+  await page.getByRole('button', { name: '普通对话', exact: true }).click();
+  await expect.element(page.getByRole('button', { name: '切换到终端' })).toBeVisible();
+  await expect.poll(() => mode).toBe('chat');
+  await expect.element(page.getByRole('dialog')).not.toBeInTheDocument();
+  await page.getByRole('button', { name: '切换到终端' }).click();
+  await page.getByRole('button', { name: '切换到对话' }).click();
+  await expect.element(page.getByRole('button', { name: '切换到终端' })).toBeVisible();
+});
 it.each([390, 1280])('configures an unknown program in place and retains both entry points at width %i', async width => {
   await page.viewport(width, 844); resetCsrfTokenCache();
   const id = `mode-browser-${width}-${Date.now()}`;

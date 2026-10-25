@@ -81,12 +81,12 @@ export function resolveAccessRequest(method: string, path: string): ResolvedAcce
   const chatViewed = /^([^/]+)\/chat\/viewed$/.exec(route);
   if (method === 'POST' && chatViewed && !reservedSessionIds.has(chatViewed[1].toLowerCase())) return { action: 'session.view', sessionId: chatViewed[1] };
   if (method === 'PUT' && chatState && !reservedSessionIds.has(chatState[1].toLowerCase())) return { action: 'session.input', sessionId: chatState[1] };
-  const session = /^([^/]+)(?:\/(health|attach|stream|input|resize|tmux|restart|agent-resume|chat|view-mode))?$/.exec(route);
+  const session = /^([^/]+)(?:\/(health|attach|stream|input|input-check|resize|tmux|restart|agent-resume|chat|view-mode))?$/.exec(route);
   if (session && !reservedSessionIds.has(session[1].toLowerCase())) {
     const sessionId = session[1]; const op = session[2];
     if (read && ['health', 'attach', 'stream', 'agent-resume', 'chat', 'view-mode'].includes(op)) return { action: 'session.view', sessionId };
     if (method === 'PUT' && op === 'view-mode') return { action: 'session.view', sessionId };
-    if (method === 'POST' && (op === 'input' || op === 'chat')) return { action: 'session.input', sessionId };
+    if (method === 'POST' && (op === 'input' || op === 'input-check' || op === 'chat')) return { action: 'session.input', sessionId };
     if (method === 'POST' && op === 'resize') return { action: 'session.resize', sessionId };
     if (method === 'DELETE' && !op) return { action: 'session.terminate', sessionId };
     // tmux switch-session can reach other backends; restart/agent-resume accept

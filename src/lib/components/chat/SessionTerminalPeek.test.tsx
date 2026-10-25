@@ -46,6 +46,7 @@ it('closes when the workspace becomes inactive and never grants shared input fro
   fireEvent.click(screen.getByRole('button', { name: '查看会话终端' }));
   fireEvent.pointerDown(screen.getByLabelText('terminal'));
   expect(view.container.querySelector('[data-interactive]')?.textContent).toBe('false');
+  expect(screen.queryByRole('button', { name: '返回对话' })).toBeNull();
   view.rerender(<SessionCapabilitiesContext.Provider value={sharedSessionCapabilities({ canWrite: false })}><Harness enabled={false} /></SessionCapabilitiesContext.Provider>);
   expect(screen.queryByRole('dialog')).toBeNull();
   expect(screen.queryByRole('button', { name: '查看会话终端' })).toBeNull();

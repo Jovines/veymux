@@ -322,12 +322,13 @@ it.each([390, 1280])('keeps reply loading in the conversation and the terminal e
   expect(dock.contains(card)).toBe(true);
   expect(card.closest('.session-chat-scroll')).toBeNull();
   expect(card.getBoundingClientRect().bottom).toBeLessThanOrEqual(form.getBoundingClientRect().top);
-  expect(dock.querySelector('[data-chat-terminal-access]')?.textContent).toContain('详情');
+  expect(dock.querySelector('[data-chat-terminal-access]')?.textContent).toBe('发送中…');
   expect(document.activeElement).toBe(input);
   messages.push({ id: 'sent-author', role: 'user', content: '检查本次构建', createdAt: Date.now(), status: 'delivered' });
   acknowledge(Response.json({ id: 'sent-author', status: 'delivered' }));
   await expect.element(page.getByRole('status', { name: 'Codex发送中' })).not.toBeInTheDocument();
-  await expect.element(page.getByRole('status', { name: 'Codex等待回复' })).toBeVisible();
+  await expect.element(page.getByRole('status', { name: 'Codex处理中' })).not.toBeInTheDocument();
+  expect(dock.querySelector('[data-chat-terminal-access]')?.textContent).toBe('详情');
 
   const store = useTerminalStore.getState();
   store.setTerminalSession('browser-composer', { sessionId: 'backend-composer', cols: 80, rows: 24 });
@@ -337,7 +338,8 @@ it.each([390, 1280])('keeps reply loading in the conversation and the terminal e
   expect(document.querySelector('[data-chat-reply-status]')?.textContent).toContain('处理中…');
 
   store.setTerminalOutputActivity('browser-composer', false);
-  await expect.element(page.getByRole('status', { name: 'Codex等待回复' })).toBeVisible();
+  await expect.element(page.getByRole('status', { name: 'Codex处理中' })).not.toBeInTheDocument();
+  expect(dock.querySelector('[data-chat-terminal-access]')?.textContent).toBe('详情');
 
   store.setTerminalOutputActivity('browser-composer', true);
   await page.screenshot({ path: `/tmp/termdock-agent-waiting-${width}.png` });

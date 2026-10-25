@@ -12,6 +12,7 @@ export class TerminalOutputActivity {
   private deadline = 0;
   private timer: ReturnType<typeof setTimeout> | undefined;
   private disposed = false;
+  private diagnostic: { first?: number; last?: number } | undefined;
 
   constructor(private readonly publish: (active: boolean) => void, private readonly now = () => performance.now()) {}
 
@@ -23,6 +24,10 @@ export class TerminalOutputActivity {
 
   record(): void {
     if (this.disposed) return;
+    if (this.diagnostic) {
+      this.diagnostic.first ??= this.now(); this.diagnostic.last = this.now();
+      return;
+    }
     // Expire the previous window before accepting a packet after a long stall.
     this.settle();
     this.lastOutput = this.now();
@@ -35,6 +40,27 @@ export class TerminalOutputActivity {
       this.settle();
     }
     // Active/pending windows retain one timer; packets only update this number.
+  }
+
+  /** Quarantine this bounded edit's output until its rendered effect is known.
+   * Only verified echo + full restoration may discard it. Other output keeps
+   * its original timestamps and still qualifies as genuine recent output. */
+  beginInputDiagnostic(): (echoOnly: boolean) => void {
+    if (this.diagnostic) throw new Error('INPUT_CHECK_IN_PROGRESS');
+    const diagnostic = this.diagnostic = {} as { first?: number; last?: number };
+    return echoOnly => {
+      if (this.diagnostic !== diagnostic) return;
+      this.diagnostic = undefined;
+      if (this.disposed || echoOnly || diagnostic.first === undefined || diagnostic.last === undefined) return;
+      this.settle();
+      if (this.phase === 'idle') {
+        this.phase = 'pending'; this.firstOutput = diagnostic.first;
+        this.deadline = this.firstOutput + OUTPUT_START_DELAY_MS;
+        this.schedule(this.deadline);
+      }
+      this.lastOutput = diagnostic.last;
+      this.settle();
+    };
   }
 
   dispose(notify = false): void {

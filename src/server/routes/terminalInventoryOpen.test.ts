@@ -10,6 +10,32 @@ const names = new Set(['getSessionInventorySnapshot', 'openInventorySession', 'g
 const functions = ast.statements.filter(node => ts.isFunctionDeclaration(node) && names.has(node.name?.text ?? ''))
   .map(node => node.getText(ast)).join('\n');
 
+it('shares a new scan for concurrent refreshes that arrive during an older scan', async () => {
+  let sessions = ['existing'];
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const build = vi.fn(async () => {
+    const clientSessions = [...sessions];
+    if (build.mock.calls.length === 1) await gate;
+    return { clientSessions };
+  });
+  const context = vm.createContext({ Date, buildSessionInventory: build });
+  vm.runInContext(ts.transpileModule(`
+    let sessionInventoryBuildPromise = null, latestSessionInventory = null, latestSessionInventoryAt = 0;
+    const SESSION_INVENTORY_CACHE_TTL_MS = 1500;
+    ${functions}
+  `, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, context);
+  const old = context.getSessionInventorySnapshot();
+  sessions = ['existing', 'created'];
+  const refreshes = Array.from({ length: 8 }, () => context.getSessionInventorySnapshot({ refresh: true }));
+  release();
+  expect((await old).clientSessions).toEqual(['existing']);
+  for (const inventory of await Promise.all(refreshes)) {
+    expect(inventory.clientSessions).toEqual(['existing', 'created']);
+  }
+  expect(build).toHaveBeenCalledTimes(2);
+});
+
 it.each([false, true])('waits for a current directory after an older shared scan, without creating twice (reopen=%s)', async reopen => {
   const state = { sessions: reopen ? [{ sessionId: 'frontend', backendSessionId: 'old-backend', mode: 'shell' }] : [] };
   let release!: () => void;

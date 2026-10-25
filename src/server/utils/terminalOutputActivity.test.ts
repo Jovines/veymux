@@ -1,6 +1,18 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { TerminalOutputActivity } from './terminalOutputActivity.js';
 const trackers: TerminalOutputActivity[] = [];
+it('excludes verified probe echo and cleanup, but retains the timing of unrelated output', () => {
+  const { tracker, publish } = monitor();
+  const finish = tracker.beginInputDiagnostic();
+  tracker.record(); vi.advanceTimersByTime(400); tracker.record(); vi.advanceTimersByTime(400);
+  expect(tracker.active).toBe(false); finish(true);
+  expect(publish).not.toHaveBeenCalled();
+  const finishReal = tracker.beginInputDiagnostic();
+  tracker.record(); vi.advanceTimersByTime(400); tracker.record(); vi.advanceTimersByTime(400);
+  finishReal(false); expect(tracker.active).toBe(true);
+  vi.advanceTimersByTime(2600); expect(tracker.active).toBe(false);
+  expect(publish.mock.calls).toEqual([[true], [false]]);
+});
 function monitor() { const publish = vi.fn(); const tracker = new TerminalOutputActivity(publish); trackers.push(tracker); return { tracker, publish }; }
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => { trackers.forEach(tracker => tracker.dispose()); trackers.length = 0; vi.useRealTimers(); });

@@ -1,4 +1,5 @@
 import { sessionNeedsReview } from './lib/utils/agentAttention';
+import { switchToAttentionSession } from './lib/utils/sessionAttentionNavigation';
 import { useAppFeedback } from './lib/components/ui/AppFeedback';
 import { observeDragLifetime } from './lib/gesture/dragLifetime';
 import { DragDropContext } from './lib/components/DragDropContext';
@@ -2667,7 +2668,7 @@ function App() {
     const next = attentionSessionIds.find((id) => sessions.findIndex((s) => s.id === id) > fromIndex)
       ?? attentionSessionIds[0];
     if (next) {
-      window.dispatchEvent(new CustomEvent('switch-terminal-session', { detail: next }));
+      switchToAttentionSession(next);
     }
   }, [attentionSessionIds, sessions, activeSessionId]);
 
@@ -2678,7 +2679,7 @@ function App() {
     const previous = [...attentionSessionIds].reverse()
       .find((id) => sessions.findIndex((s) => s.id === id) < fromIndex)
       ?? attentionSessionIds[attentionSessionIds.length - 1];
-    if (previous) window.dispatchEvent(new CustomEvent('switch-terminal-session', { detail: previous }));
+    if (previous) switchToAttentionSession(previous);
   }, [attentionSessionIds, sessions, activeSessionId]);
 
   useEffect(() => {

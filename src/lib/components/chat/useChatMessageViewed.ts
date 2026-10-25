@@ -1,16 +1,19 @@
 import { useEffect, type RefObject } from 'react';
 import { getTermdockDesktopBridge } from '../../desktop/nativeBridge';
-import { isWorkspaceActive, WORKSPACE_VISIBILITY_EVENT } from '../../services/workspaceHost';
-import { isFocusTargetAvailable } from '../../utils/focusOwnership';
+import { WORKSPACE_VISIBILITY_EVENT } from '../../services/workspaceHost';
+import { isKeyboardLayerSource, useKeyboardLayerOpen } from '../../hooks/useKeyboardLayer';
 /** Only actual viewport exposure counts. Overscan, preload, and background
  * rendering never acknowledge a message. This is local viewing, not a receipt. */
 export function useChatMessageViewed(node: RefObject<HTMLElement>, root: RefObject<HTMLDivElement> | undefined, enabled: boolean, onViewed: () => void) {
+  // Portaled previews do not change intersection geometry. Shared layer changes
+  // cancel partial exposure and start a fresh interval when the preview closes.
+  const keyboardLayerOpen = useKeyboardLayerOpen();
   useEffect(() => {
     const element = node.current, container = root?.current;
     if (!enabled || !element || !container || typeof IntersectionObserver === 'undefined') return;
     let timer: ReturnType<typeof setTimeout> | undefined, exposed = false, finished = false;
     const cancel = () => { clearTimeout(timer); timer = undefined; };
-    const available = () => !document.hidden && isWorkspaceActive() && isFocusTargetAvailable(element)
+    const available = () => !document.hidden && isKeyboardLayerSource(element)
       && (!getTermdockDesktopBridge() || document.hasFocus());
     const check = () => {
       if (!exposed || !available()) { cancel(); return; }
@@ -33,5 +36,5 @@ export function useChatMessageViewed(node: RefObject<HTMLElement>, root: RefObje
       window.removeEventListener('focus', check); window.removeEventListener('blur', cancel);
       window.removeEventListener(WORKSPACE_VISIBILITY_EVENT, check);
     };
-  }, [node, root, enabled, onViewed]);
+  }, [node, root, enabled, onViewed, keyboardLayerOpen]);
 }

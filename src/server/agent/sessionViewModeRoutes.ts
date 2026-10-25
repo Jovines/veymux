@@ -33,12 +33,15 @@ export function sessionViewModeRoutes(store: SessionViewModeStore, resolve: (id:
   const router = Router();
   router.route('/:sessionId/view-mode').get(async (req, res) => {
     const id = encryptedRequestSubject(req) && resolve(req.params.sessionId);
-    if (!id) { res.status(404).json({ error: '会话不可用' }); return; }
+    if (!id) { res.status(404).json({ code: 'SESSION_UNAVAILABLE', error: '会话不可用' }); return; }
     try {
       const chatEligibility = req.query.chatEligibility === '1' && eligibility
         ? await eligibility(id, typeof req.query.command === 'string' ? req.query.command.slice(0, 8192) : undefined) : undefined;
       res.setHeader('Cache-Control', 'no-store'); res.json({ ...(store.get(id) || { mode: null, updatedAt: 0 }), ...(chatEligibility ? { chatEligibility } : {}) });
-    } catch { res.status(503).json({ error: '暂时无法识别当前程序，请重试' }); }
+    } catch (error) {
+      console.warn('[session-view-mode] Program recognition failed', error);
+      res.status(503).json({ code: 'CHAT_PROGRAM_UNAVAILABLE', error: '暂时无法识别当前程序，请重试' });
+    }
   }).put(async (req, res) => {
     const id = encryptedRequestSubject(req) && resolve(req.params.sessionId);
     if (!id) { res.status(404).json({ error: '会话不可用' }); return; }

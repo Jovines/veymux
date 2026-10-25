@@ -7,6 +7,7 @@ import { useSessionViewMode } from './sessionViewMode';
 import { sharedSessionContextMenu, useSessionCapabilities } from '../../federation/ShareAccessContext';
 import { TerminalPeekContext, useSessionTerminalPeek } from './SessionTerminalPeek';
 import { useTerminalStore } from '../../stores/useTerminalStore';
+import { KeyboardPanelLayoutOwnedContext } from '../layout/keyboardPanelLayout';
 const loadChat = () => import('./SessionChatView').then(m => ({ default: m.SessionChatView }));
 const Chat = lazy(loadChat);
 /** The existing session menu owns view actions; the terminal keeps its full canvas. */
@@ -55,7 +56,7 @@ export function SessionWorkspace({ sessionId, name, active, visible = active, te
     }}>
     <TerminalModeHint sessionId={sessionId} active={active && mode === 'terminal'} ready={terminalReady && !terminalStartupPending} />
     <div ref={peek.attachNormal} aria-hidden={preparingTerminal || undefined} className={`min-h-0 flex-1 ${mode === 'terminal' ? '' : preparingTerminal ? 'pointer-events-none invisible absolute inset-0' : 'hidden'}`} />
-    {createPortal(children(mode === 'terminal' || peek.open || preparingTerminal, mode === 'terminal' || peek.interactive), peek.host)}
+    {createPortal(<KeyboardPanelLayoutOwnedContext.Provider value={peek.open}>{children(mode === 'terminal' || peek.open || preparingTerminal, mode === 'terminal' || peek.interactive)}</KeyboardPanelLayoutOwnedContext.Provider>, peek.host)}
     {mountedChat && <div className={`min-h-0 flex-1 ${mode === 'chat' ? '' : 'hidden'}`}><Suspense fallback={<div className="h-full bg-[var(--chrome-bg)] px-4 sm:px-8"><div className="mx-auto max-w-screen-2xl py-5 sm:py-8"><ChatLoading /></div></div>}><Chat sessionId={sessionId} name={name} active={active && mode === 'chat'} visible={visible && mode === 'chat'} terminalLink={false} onKeyboardChange={onKeyboardChange} onReadyChange={setChatReady} onTerminal={() => setMode('terminal')} /></Suspense></div>}
   </div></TerminalPeekContext.Provider>;
 }

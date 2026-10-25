@@ -1,10 +1,12 @@
 import { createContext, useCallback, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal, flushSync } from 'react-dom';
-import { SquareArrowOutUpRight, TerminalSquare, X } from 'lucide-react';
+import { ArrowLeft, SquareArrowOutUpRight, TerminalSquare, X } from 'lucide-react';
 import { useSessionCapabilities } from '../../federation/ShareAccessContext';
-import { restoreFocusIfUnclaimed } from '../../utils/focusOwnership';
+import { isFocusTargetAvailable, restoreFocusIfUnclaimed } from '../../utils/focusOwnership';
 import { usesTouchTerminalLayout } from '../../utils/touchTerminalLayout';
 import { useTerminalPeekIdleClose } from './useTerminalPeekIdleClose';
+import { focusKeyboardInput, measureNativePagePan, usesNativeKeyboardLayout } from '../../hooks/nativeKeyboardLayout';
+import { useViewportKeyboardState } from '../../hooks/useViewportKeyboardState';
 
 interface PeekContext {
   open: boolean; id: string;
@@ -80,7 +82,11 @@ function readPeekBounds(probe: HTMLElement): PeekBounds {
   // Portals bypass #root's padding. Resolve the same shared CSS as the other
   // previews, including env(), max(), native title bars and PWA fallbacks.
   if (!probe.isConnected) document.body.append(probe);
-  const style = getComputedStyle(probe), viewport = window.visualViewport;
+  const style = getComputedStyle(probe);
+  // Native focus scrolls the document to reveal the portal's input. Its DOM
+  // anchor already includes that displacement; visualViewport offsets are in
+  // a different coordinate space and may remain stale during the animation.
+  const viewport = usesNativeKeyboardLayout() ? null : window.visualViewport;
   const inset = (value: string) => Math.max(0, Number.parseFloat(value) || 0);
   // Intersect the visual viewport with layout-viewport safe edges. Adding the
   // insets to visualViewport offsets would count them twice during page pan.
@@ -107,6 +113,22 @@ function resizeSize(position: PeekOrigin, width: number, height: number, bounds:
   return { width: Math.max(0, Math.min(Math.max(320, width), right - position.left)), height: Math.max(0, Math.min(Math.max(200, height), bottom - position.top - position.paddingTop - position.paddingBottom)) };
 }
 
+function positionForInput(anchor: HTMLElement, bounds: PeekBounds) {
+  const workspace = anchor.closest('[data-session-workspace]')?.getBoundingClientRect();
+  const native = usesNativeKeyboardLayout();
+  const pan = native ? Math.max(0, measureNativePagePan()) : 0;
+  const left = bounds.left, right = bounds.left + bounds.width;
+  // Keep the workspace header stable while native focus moves the footer.
+  // The chat composer remains mounted underneath; none of its height is
+  // reserved by this temporary terminal input surface.
+  const top = Math.max(bounds.top, workspace ? workspace.top + pan : bounds.top);
+  // Native input placement follows the real workspace footer, even when
+  // innerHeight reports a shorter viewport during keyboard animation. Capping
+  // it to that API leaves the underlying composer exposed below the terminal.
+  const bottom = native && workspace ? workspace.bottom : Math.min(bounds.top + bounds.height, workspace?.bottom ?? innerHeight);
+  return { left, top, width: Math.max(0, right - left), height: Math.max(0, bottom - top), paddingTop: 0, paddingBottom: 0 };
+}
+
 export function useSessionTerminalPeek({ enabled, name, expand }: { enabled: boolean; name: string; expand: () => void }) {
   const capabilities = useSessionCapabilities();
   const available = enabled && capabilities.has('session.view');
@@ -119,6 +141,7 @@ export function useSessionTerminalPeek({ enabled, name, expand }: { enabled: boo
   });
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const [engaged, setEngaged] = useState(false);
+  const [inputExpanded, setInputExpanded] = useState(false);
   const [touchOpened, setTouchOpened] = useState(false);
   const [position, setPosition] = useState<ReturnType<typeof terminalPeekPosition> | null>(null);
   const [preferredSize, setPreferredSize] = useState(readPeekSize);
@@ -132,10 +155,24 @@ export function useSessionTerminalPeek({ enabled, name, expand }: { enabled: boo
   const previousFocus = useRef<HTMLElement | null>(null);
   const open = available && !!anchor;
   const openRef = useRef(open); openRef.current = open;
+  const keyboard = useViewportKeyboardState({ enabled: open && usesTouchTerminalLayout() });
+  const keyboardWasOpen = useRef(false);
+  useLayoutEffect(() => {
+    if (!open) { keyboardWasOpen.current = false; return; }
+    if (keyboard.isOpen) {
+      keyboardWasOpen.current = true;
+      if (host.contains(document.activeElement) && capabilities.has('session.input')) setInputExpanded(true);
+    } else if (keyboardWasOpen.current) {
+      // OS keyboard dismissal can leave DOM focus on the very same input.
+      // Restore only the bubble geometry; never blur, refocus or reconnect.
+      keyboardWasOpen.current = false;
+      setInputExpanded(false);
+    }
+  }, [open, keyboard.isOpen, host, capabilities]);
   const close = useCallback((restore = true) => {
     const focused = document.activeElement;
     const restoreTarget = restore && focused instanceof Node && host.contains(focused) ? previousFocus.current : null;
-    setAnchor(null); setEngaged(false);
+    setAnchor(null); setEngaged(false); setInputExpanded(false);
     if (restoreTarget?.isConnected) requestAnimationFrame(() => {
       restoreFocusIfUnclaimed(restoreTarget, host);
     });
@@ -150,6 +187,7 @@ export function useSessionTerminalPeek({ enabled, name, expand }: { enabled: boo
       setPreferredSize(size);
       previousFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
       setEngaged(false);
+      setInputExpanded(false);
     }
     setPosition(positionForAnchor(source, size, resizeOrigin.current, readPeekBounds(safeAreaProbe)));
     setAnchor(source);
@@ -158,7 +196,7 @@ export function useSessionTerminalPeek({ enabled, name, expand }: { enabled: boo
     if (openRef.current && anchor === source) close(); else { show(source); setTouchOpened(autoClose); }
   }, [anchor, close, show]);
   const inside = useCallback((target: EventTarget | null) => target instanceof Node && (!!anchor?.contains(target) || !!panel.current?.contains(target)), [anchor]);
-  const leave = useCallback((target: EventTarget | null) => { if (!resizing.current && !inside(target)) close(); }, [inside, close]);
+  const leave = useCallback((target: EventTarget | null) => { if (!inputExpanded && !resizing.current && !inside(target)) close(); }, [inputExpanded, inside, close]);
   const attachNormal = useCallback((node: HTMLDivElement | null) => { normalSlot.current = node; if (node && !openRef.current) node.append(host); }, [host]);
   const attachPeek = useCallback((node: HTMLDivElement | null) => {
     // The preview must measure its final toolbar height on its first frame.
@@ -166,6 +204,13 @@ export function useSessionTerminalPeek({ enabled, name, expand }: { enabled: boo
     if (node) node.append(host); else normalSlot.current?.append(host);
   }, [host]);
   const expandTerminal = () => { close(false); expand(); };
+  const returnToChat = () => {
+    const editor = anchor?.closest('[data-session-workspace]')?.querySelector<HTMLElement>('[data-session-chat] [role="textbox"]');
+    // This explicit action restores the native editing session in the same
+    // gesture, after revealing the original editor with its draft intact.
+    flushSync(() => close(false));
+    if (isFocusTargetAvailable(editor)) focusKeyboardInput(editor);
+  };
   useEffect(() => { if (!available) close(false); }, [available, close]);
   useLayoutEffect(() => () => { host.remove(); safeAreaProbe.remove(); }, [host, safeAreaProbe]);
   useLayoutEffect(() => {
@@ -173,8 +218,9 @@ export function useSessionTerminalPeek({ enabled, name, expand }: { enabled: boo
     const positionAtAnchor = () => {
       if (!anchor.isConnected) return;
       const rect = anchor.getBoundingClientRect();
-      if (rect.bottom <= 0 || rect.top >= window.innerHeight || rect.right <= 0 || rect.left >= window.innerWidth) { close(); return; }
-      const next = positionForAnchor(anchor, preferredSize, resizeOrigin.current, readPeekBounds(safeAreaProbe));
+      if (!inputExpanded && !host.contains(document.activeElement) && (rect.bottom <= 0 || rect.top >= window.innerHeight || rect.right <= 0 || rect.left >= window.innerWidth)) { close(); return; }
+      const bounds = readPeekBounds(safeAreaProbe);
+      const next = inputExpanded ? positionForInput(anchor, bounds) : positionForAnchor(anchor, preferredSize, resizeOrigin.current, bounds);
       setPosition(current => current && Object.keys(next).every(key => current[key as keyof typeof next] === next[key as keyof typeof next]) ? current : next);
     };
     positionAtAnchor();
@@ -188,10 +234,10 @@ export function useSessionTerminalPeek({ enabled, name, expand }: { enabled: boo
     window.visualViewport?.addEventListener('scroll', positionAtAnchor);
     document.addEventListener('scroll', positionAtAnchor, true);
     return () => { observer.disconnect(); safeAreaChanges.disconnect(); window.removeEventListener('resize', positionAtAnchor); window.visualViewport?.removeEventListener('resize', positionAtAnchor); window.visualViewport?.removeEventListener('scroll', positionAtAnchor); document.removeEventListener('scroll', positionAtAnchor, true); };
-  }, [open, anchor, close, preferredSize, safeAreaProbe]);
+  }, [open, anchor, close, preferredSize, safeAreaProbe, host, inputExpanded]);
   useEffect(() => {
     if (!open) return;
-    const move = (event: PointerEvent) => { if (!resizing.current && event.pointerType === 'mouse' && !inside(event.target)) close(); };
+    const move = (event: PointerEvent) => { if (!inputExpanded && !resizing.current && event.pointerType === 'mouse' && !inside(event.target)) close(); };
     const outside = (event: PointerEvent) => { if (!resizing.current && !inside(event.target)) close(); };
     // Touch release emits pointerout/leave with no related target; only a
     // mouse leaving the window should dismiss an open preview.
@@ -200,15 +246,22 @@ export function useSessionTerminalPeek({ enabled, name, expand }: { enabled: boo
     document.addEventListener('pointermove', move, true); document.addEventListener('pointerdown', outside, true); document.addEventListener('pointerout', windowLeave);
     window.addEventListener('blur', blur);
     return () => { document.removeEventListener('pointermove', move, true); document.removeEventListener('pointerdown', outside, true); document.removeEventListener('pointerout', windowLeave); window.removeEventListener('blur', blur); };
-  }, [open, inside, close]);
+  }, [open, inside, close, inputExpanded]);
   // Hover only reveals the canvas. Explicit terminal interaction enables its
   // existing input gate synchronously, before that very pointer/wheel event.
-  const engage = () => { if (!engaged && capabilities.has('session.input')) flushSync(() => setEngaged(true)); };
+  const engage = (event: Event) => {
+    if (!capabilities.has('session.input')) return;
+    const expandInput = usesTouchTerminalLayout() && (event.type === 'pointerdown' || event.type === 'focusin');
+    if (!engaged || expandInput && !inputExpanded) flushSync(() => {
+      setEngaged(true);
+      if (expandInput) setInputExpanded(true);
+    });
+  };
   useLayoutEffect(() => {
     if (!open) return;
     // The terminal's stable portal keeps its React ancestry in the workspace;
     // use its DOM host for capture when it has moved into the popover.
-    const interact = () => { if (openRef.current) engage(); };
+    const interact = (event: Event) => { if (openRef.current) engage(event); };
     host.addEventListener('pointerdown', interact, true); host.addEventListener('wheel', interact, true); host.addEventListener('focusin', interact, true);
     return () => { host.removeEventListener('pointerdown', interact, true); host.removeEventListener('wheel', interact, true); host.removeEventListener('focusin', interact, true); };
   });
@@ -217,19 +270,19 @@ export function useSessionTerminalPeek({ enabled, name, expand }: { enabled: boo
     open,
     interactive: open && engaged && capabilities.has('session.input'),
     context: available ? { open, id, show, toggle, leave, expand: expandTerminal } : null,
-    popover: open && position ? createPortal(<div ref={panel} style={position} data-terminal-peek id={id} role="dialog" aria-label="会话终端预览" aria-modal="false"
-      className="fixed z-menu-panel box-border" onPointerLeave={event => { if (event.pointerType === 'mouse') leave(event.relatedTarget); }}>
-      <section className="relative z-10 flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-[var(--chrome-bg)] text-foreground shadow-2xl">
-        <header className="terminal-peek-header flex h-9 shrink-0 items-center gap-2 border-b border-border/60 pl-3 pr-1.5 text-[11px] text-muted-foreground"><TerminalSquare size={13} /><span className="min-w-0 flex-1 truncate" title={name}>{name}</span>
+    popover: open && position ? createPortal(<div ref={panel} style={usesNativeKeyboardLayout() ? { ...position, left: position.left + window.scrollX, top: position.top + window.scrollY } : position} data-terminal-peek data-terminal-peek-input-expanded={inputExpanded || undefined} id={id} role="dialog" aria-label="会话终端预览" aria-modal="false"
+      className={`${usesNativeKeyboardLayout() ? 'absolute' : 'fixed'} z-menu-panel box-border`} onPointerLeave={event => { if (event.pointerType === 'mouse') leave(event.relatedTarget); }}>
+      <section className={`relative z-10 flex h-full min-h-0 flex-col overflow-hidden bg-[var(--chrome-bg)] text-foreground ${inputExpanded ? '' : 'rounded-xl border border-border shadow-2xl'}`}>
+        <header className={`flex shrink-0 items-center gap-2 border-b border-border/60 text-[11px] text-muted-foreground ${inputExpanded ? 'h-8 px-1.5' : 'terminal-peek-header h-9 pl-3 pr-1.5'}`}>{!inputExpanded && <><TerminalSquare size={13} /><span className="min-w-0 flex-1 truncate" title={name}>{name}</span></>}
           {idleSeconds !== null && <span data-terminal-peek-countdown={idleSeconds} title="操作后保持展开，可手动收起" className="inline-flex h-6 shrink-0 items-center rounded-md border border-[rgb(var(--warning-rgb)/0.4)] bg-[rgb(var(--warning-rgb)/0.15)] px-1.5 text-[11px] font-medium tabular-nums text-[var(--warning)]">{idleSeconds} 秒后收起</span>}
-          <div className="flex shrink-0 items-center gap-0.5">
-            <button type="button" aria-label="在完整会话中打开终端" title="在完整会话中打开终端" className="terminal-peek-action inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-surface-2 hover:text-foreground" onClick={expandTerminal}><SquareArrowOutUpRight size={14} /></button>
-            <button type="button" aria-label="关闭终端预览" title="关闭预览" className="terminal-peek-action inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-surface-2 hover:text-foreground" onClick={() => close()}><X size={14} /></button>
+          <div className={`flex shrink-0 items-center gap-0.5 ${inputExpanded ? 'w-full justify-between' : ''}`}>
+            <button type="button" aria-label="在完整会话中打开终端" title="在完整会话中打开终端" className={`terminal-peek-action inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-surface-2 hover:text-foreground ${inputExpanded ? 'order-last' : ''}`} onClick={expandTerminal}><SquareArrowOutUpRight size={14} /></button>
+            <button type="button" aria-label={inputExpanded ? '返回对话' : '关闭终端预览'} title={inputExpanded ? '返回对话' : '关闭预览'} className={`inline-flex shrink-0 items-center justify-center gap-1 rounded-md hover:bg-surface-2 hover:text-foreground ${inputExpanded ? 'h-8 whitespace-nowrap px-2' : 'terminal-peek-action h-7 w-7'}`} onPointerDown={event => event.preventDefault()} onClick={() => inputExpanded ? returnToChat() : close()}>{inputExpanded ? <><ArrowLeft size={14} /><span>返回对话</span></> : <X size={14} />}</button>
           </div>
         </header>
         <div ref={attachPeek} className="min-h-0 flex-1" />
       </section>
-      <button type="button" aria-label="调整终端预览大小" title="拖动调整大小，方向键微调" style={{ bottom: position.paddingBottom + 1 }} className="absolute right-0.5 z-20 flex h-5 w-5 touch-none cursor-nwse-resize items-end justify-end p-1 text-muted-foreground/50 hover:text-foreground focus-visible:text-foreground"
+      {!inputExpanded && <button type="button" aria-label="调整终端预览大小" title="拖动调整大小，方向键微调" style={{ bottom: position.paddingBottom + 1 }} className="absolute right-0.5 z-20 flex h-5 w-5 touch-none cursor-nwse-resize items-end justify-end p-1 text-muted-foreground/50 hover:text-foreground focus-visible:text-foreground"
         onPointerDown={event => {
           event.preventDefault(); event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId);
           resizeOrigin.current = { left: position.left, top: position.top, paddingTop: position.paddingTop, paddingBottom: position.paddingBottom };
@@ -253,7 +306,7 @@ export function useSessionTerminalPeek({ enabled, name, expand }: { enabled: boo
           resizeOrigin.current = { left: position.left, top: position.top, paddingTop: position.paddingTop, paddingBottom: position.paddingBottom };
           const next = resizeSize(resizeOrigin.current, position.width + (event.key === 'ArrowRight' ? 24 : event.key === 'ArrowLeft' ? -24 : 0), position.height - 8 + (event.key === 'ArrowDown' ? 24 : event.key === 'ArrowUp' ? -24 : 0), readPeekBounds(safeAreaProbe));
           setPreferredSize(next); try { localStorage.setItem(sizeKey, JSON.stringify(next)); } catch { /* In-memory preference. */ }
-        }}><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" aria-hidden="true"><path d="m3 13 10-10m-5 10 5-5m-1 5 1-1" /></svg></button>
+        }}><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" aria-hidden="true"><path d="m3 13 10-10m-5 10 5-5m-1 5 1-1" /></svg></button>}
     </div>, document.body) : null,
   };
 }

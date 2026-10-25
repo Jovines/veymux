@@ -242,6 +242,7 @@ it('observes terminal output independently of progress and final replies', async
   const { container } = render(<SessionChatView sessionId="waiting" onTerminal={() => {}} />);
   await screen.findByText('帮我整理');
   expect(screen.queryByText('处理中…')).toBeNull();
+  expect(container.querySelector('[data-chat-reply-phase="idle"]')).toBeTruthy();
   liveOutput('waiting');
   await screen.findByText('处理中…');
   expect(screen.getByRole('status', { name: 'Codex处理中' })).toBeTruthy();
@@ -454,7 +455,7 @@ it('immediately appends an Agent reply placeholder after sending and merges it i
   messages = [{ id: 'sent', role: 'user', content: '检查结果', createdAt: 1, status: 'delivered' }];
   await act(async () => acknowledge(Response.json({ id: 'sent', status: 'delivered' })));
   expect(screen.queryByRole('status', { name: 'Codex处理中' })).toBeNull();
-  expect(screen.getByRole('status', { name: 'Codex等待回复' }).querySelector('.td-loading-spinner')).toBeTruthy();
+  expect(view.container.querySelector('[data-chat-terminal-access]')?.textContent).toBe('详情');
   liveOutput('instant-author');
   await screen.findByRole('status', { name: 'Codex处理中' });
   expect(screen.getAllByText('Codex')).toHaveLength(1);
@@ -482,7 +483,8 @@ it('keeps waving for the current question when an older answer arrives late, the
   fireEvent(window, new Event('online')); await screen.findByText('开始处理当前问题');
   expect(view.container.querySelector('[data-chat-agent-awaiting]')).toBeNull();
   expect(view.container.querySelector('[data-chat-reply-feedback]')).toBeNull();
-  expect(screen.getByRole('status', { name: 'Codex等待回复' }).closest('[data-chat-terminal-dock]')).toBeTruthy();
+  expect(screen.queryByRole('status', { name: 'Codex处理中' })).toBeNull();
+  expect(view.container.querySelector('[data-chat-terminal-access]')?.textContent).toBe('详情');
 });
 
 it('removes optimistic agent feedback when sending fails', async () => {
@@ -519,6 +521,23 @@ it('does not let a failed chat submission hide actual terminal output', async ()
   expect(screen.getByText('处理中…')).toBeTruthy();
 });
 
+it.each([true, false])('never treats replyPending=%s as working evidence', async replyPending => {
+  const sessionId = `working-proof-${replyPending}`;
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json({ agentAvailable: true, agent: { displayName: 'Agent' }, replyPending,
+    messages: [{ id: 'proof-u', role: 'user', content: '仅有消息记录', createdAt: 1, status: 'delivered' }] })));
+  const view = render(<SessionChatView sessionId={sessionId} onTerminal={() => {}} />);
+  await screen.findByText('仅有消息记录');
+  expect(screen.queryByRole('status', { name: 'Agent处理中' })).toBeNull();
+  act(() => {
+    useTerminalStore.getState().setTerminalSession(sessionId, { sessionId: `backend-${sessionId}`, cols: 80, rows: 24 });
+    useTerminalStore.getState().setSessionAgentStatus(sessionId, { agentStatus: 'working' });
+  });
+  expect(screen.getByRole('status', { name: 'Agent处理中' })).toBeTruthy();
+  act(() => useTerminalStore.getState().setSessionAgentStatus(sessionId, { agentStatus: 'idle' }));
+  expect(view.container.querySelector('[data-chat-reply-status]')).toBeNull();
+  expect(view.container.querySelector('[data-chat-terminal-access]')?.textContent).toBe('详情');
+});
+
 it('keeps one terminal entry above the composer through silence, activity and replies', async () => {
   const messages: ChatMessage[] = [{ id: 'u-stable', role: 'user', content: '跑完整验证再回复', createdAt: 1, status: 'delivered' }];
   vi.stubGlobal('fetch', vi.fn(async () => Response.json({ agentAvailable: true, agent: { displayName: 'Codex' }, messages, replyPending: true })));
@@ -526,16 +545,18 @@ it('keeps one terminal entry above the composer through silence, activity and re
   await screen.findByText('跑完整验证再回复');
   const entry = view.container.querySelector('[data-chat-terminal-access]')!;
   const dock = entry.parentElement;
-  expect(entry.textContent).toContain('详情');
-  expect(screen.getByRole('status', { name: 'Codex等待回复' })).toBe(entry);
+  expect(entry.textContent).toBe('详情');
+  expect(screen.queryByRole('status', { name: 'Codex处理中' })).toBeNull();
   expect(entry.closest('.session-chat-composer')).not.toBeNull();
-  expect(view.container.querySelector('[data-chat-reply-status]')?.getAttribute('data-chat-reply-phase')).toBe('quiet');
+  expect(entry.getAttribute('data-chat-reply-phase')).toBe('idle');
   liveOutput('stable-reply'); expect(screen.getByRole('status', { name: 'Codex处理中' })).toBe(entry);
+  expect(entry.textContent).toBe('处理中…');
   act(() => useTerminalStore.getState().setTerminalOutputActivity('stable-reply', false));
   expect(view.container.querySelector('[data-chat-terminal-access]')).toBe(entry);
-  expect(entry.textContent).toContain('详情');
+  expect(entry.textContent).toBe('详情');
   messages.push({ id: 'a-stable', role: 'assistant', content: '验证仍在继续', createdAt: 2, status: 'stored', responseKind: 'progress' });
   fireEvent(window, new Event('online')); await screen.findByText('验证仍在继续');
+  expect(entry.textContent).toBe('详情');
   act(() => useTerminalStore.getState().setSessionAgentStatus('stable-reply', { type: 'agent-status', agentStatus: 'working' } as never));
   expect(screen.getByRole('status', { name: 'Codex处理中' })).toBe(entry);
   expect(entry.parentElement).toBe(dock);
@@ -554,7 +575,8 @@ it('keeps processing from the native terminal status when Codex animations produ
   expect(screen.getByRole('status', { name: 'Codex处理中' })).toBeTruthy();
   expect(screen.getByRole('status', { name: 'Codex处理中' }).querySelector('.td-loading-spinner')).toBeTruthy();
   act(() => useTerminalStore.getState().setSessionTuiProgress('native-silent', null));
-  expect(view.container.querySelector('[data-chat-reply-status]')?.getAttribute('data-chat-reply-phase')).toBe('quiet');
+  expect(view.container.querySelector('[data-chat-reply-status]')).toBeNull();
+  expect(view.container.querySelector('[data-chat-terminal-access]')?.textContent).toBe('详情');
 });
 
 it.each(['claude', 'gemini', 'custom-plugin'])('uses %s plugin working phases throughout silent terminal output', async slug => {
@@ -583,6 +605,54 @@ it('allows a new native working report after the previous plugin turn was acknow
     store.setSessionTuiProgress('plugin-native-next', { source: 'osc7501', state: 'indeterminate', progress: null });
   });
   expect(screen.getByRole('status', { name: 'Plugin Agent处理中' })).toBeTruthy();
+});
+
+it.each(['claude', 'codex', 'custom-plugin'])('gives an explicit %s input request priority over pending replies and terminal output', async slug => {
+  const sessionId = `input-${slug}`;
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json({ agentAvailable: true, agent: { slug, displayName: 'Agent' },
+    messages: [{ id: 'u-input', role: 'user', content: '请继续', createdAt: 1, status: 'delivered' }], replyPending: true })));
+  const view = render(<SessionChatView sessionId={sessionId} onTerminal={() => {}} />);
+  await screen.findByText('请继续');
+  liveOutput(sessionId);
+  act(() => useTerminalStore.getState().setSessionAgentStatus(sessionId, { agentStatus: 'waiting' }));
+  const status = screen.getByRole('status', { name: 'Agent等你处理' });
+  expect(status.textContent).toBe('等你处理');
+  expect(status.querySelector('.td-loading-spinner')).toBeNull();
+  expect(status.getAttribute('title')).toBe('查看终端中的详细输出');
+  expect(view.container.querySelector('[data-chat-reply-feedback]')).toBeNull();
+  act(() => useTerminalStore.getState().setSessionAgentStatus(sessionId, { agentStatus: 'working' }));
+  expect(screen.getByRole('status', { name: 'Agent处理中' })).toBe(status);
+});
+
+it.each([['question', '待回答'], ['permission', '待确认'], ['auth', '需要登录'], [undefined, '等你处理']] as const)(
+  'uses only an explicit terminal block kind %s to show %s', async (kind, label) => {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ agentAvailable: true, agent: { displayName: 'Agent' }, messages: [], replyPending: false })));
+    render(<SessionChatView sessionId="typed-input" onTerminal={() => {}} />);
+    await screen.findByText('想一起完成什么？');
+    act(() => {
+      useTerminalStore.getState().setTerminalSession('typed-input', { sessionId: 'typed-backend', cols: 80, rows: 24 });
+      useTerminalStore.getState().setSessionTuiProgress('typed-input', { source: 'osc7501', state: 'blocked', progress: null, kind });
+    });
+    const status = screen.getByRole('status', { name: `Agent${label}` });
+    expect(status.querySelector('.td-loading-spinner')).toBeNull();
+    act(() => useTerminalStore.getState().setSessionTuiProgress('typed-input', null));
+    expect(screen.queryByRole('status', { name: `Agent${label}` })).toBeNull();
+  });
+
+it('does not keep a pending chat spinner after an explicit Agent completion without a chat result', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json({ agentAvailable: true, agent: { displayName: 'Agent' },
+    messages: [{ id: 'u-done', role: 'user', content: '检查结束状态', createdAt: 1, status: 'delivered' }], replyPending: true })));
+  const view = render(<SessionChatView sessionId="observed-completion" onTerminal={() => {}} />);
+  await screen.findByText('检查结束状态');
+  expect(screen.queryByRole('status', { name: 'Agent处理中' })).toBeNull();
+  liveOutput('observed-completion');
+  expect(screen.getByRole('status', { name: 'Agent处理中' })).toBeTruthy();
+  act(() => {
+    useTerminalStore.getState().setTerminalSession('observed-completion', { sessionId: 'done-backend', cols: 80, rows: 24 });
+    useTerminalStore.getState().setSessionAgentStatus('observed-completion', { agentStatus: 'done', reviewed: true });
+  });
+  expect(view.container.querySelector('[data-chat-reply-status]')).toBeNull();
+  expect(view.container.querySelector('[data-chat-terminal-access]')?.textContent).toBe('详情');
 });
 
 it('shows the quiet terminal switch only in the real empty state and retains it while drafting', async () => {

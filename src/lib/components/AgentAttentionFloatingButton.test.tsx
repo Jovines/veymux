@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { AgentFloatingSessionButtons } from './AgentIndicators';
 import { useTerminalStore } from '../stores/useTerminalStore';
+import { readSessionViewMode } from './chat/sessionViewMode';
 const keyboard = vi.hoisted(() => ({ open: false }));
 vi.mock('../hooks/useViewportKeyboardState', () => ({ useViewportKeyboardState: () => ({ isOpen: keyboard.open }) }));
 import { useSidebarStore } from '../stores/useSidebarStore';
@@ -62,6 +63,39 @@ afterEach(() => {
 });
 
 describe('AgentFloatingSessionButtons', () => {
+  it.each([true, false])('opens unread chat before selecting its session (already active: %s)', alreadyActive => {
+    const store = useTerminalStore.getState();
+    const sessionId = `unread-chat-${alreadyActive}`;
+    store.setTerminalSession(sessionId, { sessionId: 'backend-chat', cols: 80, rows: 24 });
+    store.setSessionChatIndex(sessionId, { conversationId: 'conversation', messageIds: ['reply'], viewedMessageIds: [] });
+    store.setActiveSessionId(alreadyActive ? sessionId : 'other');
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ mode: 'chat' })));
+    const onSwitch = vi.fn((event: Event) => {
+      expect((event as CustomEvent).detail).toBe(sessionId);
+      expect(readSessionViewMode(sessionId)).toBe('chat');
+      expect(useTerminalStore.getState().sessions.get(sessionId)?.chatAttention?.unreadIds).toEqual(['reply']);
+    });
+    window.addEventListener('switch-terminal-session', onSwitch);
+    try {
+      render(<AgentFloatingSessionButtons reviewCount={1} runningSessions={[]} activeSessionId={alreadyActive ? sessionId : 'other'} runningButtonEnabled={false} isDesktopLayout containerElement={createTerminalArea()} />);
+      expect(readSessionViewMode(sessionId)).toBe('terminal');
+      fireEvent.click(screen.getByRole('button', { name: 'Jump to next session needing attention: 1' }));
+      expect(onSwitch).toHaveBeenCalledOnce();
+    } finally {
+      window.removeEventListener('switch-terminal-session', onSwitch);
+    }
+  });
+
+  it('preserves terminal mode for attention without unread chat', () => {
+    const store = useTerminalStore.getState();
+    store.setTerminalSession('waiting-terminal', { sessionId: 'backend', cols: 80, rows: 24 });
+    store.setSessionAgentStatus('waiting-terminal', { agentStatus: 'waiting' });
+    store.setActiveSessionId('waiting-terminal');
+    render(<AgentFloatingSessionButtons reviewCount={1} runningSessions={[]} activeSessionId="waiting-terminal" runningButtonEnabled={false} isDesktopLayout containerElement={createTerminalArea()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Jump to next session needing attention: 1' }));
+    expect(readSessionViewMode('waiting-terminal')).toBe('terminal');
+  });
+
   it('starts on the lower-right side of the terminal area', () => {
     const terminalArea = createTerminalArea();
     const bounds = terminalArea.getBoundingClientRect();
