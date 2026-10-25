@@ -3284,7 +3284,9 @@ function getTmuxBinary(): string {
 }
 
 async function runTmux(args: string[], options?: { maxBuffer: number }): Promise<string> {
-  const { stdout } = await execFileAsync(getTmuxBinary(), args, {
+  // Non-UTF-8 clients on newer tmux sanitize control delimiters to underscores.
+  // Services launched without a locale must preserve machine-readable output.
+  const { stdout } = await execFileAsync(getTmuxBinary(), ['-u', ...args], {
     timeout: 5000,
     maxBuffer: options?.maxBuffer ?? 2 * 1024 * 1024,
     env: buildInteractiveColorEnvironment(process.env),
@@ -3296,7 +3298,7 @@ async function runTmux(args: string[], options?: { maxBuffer: number }): Promise
  *  content to `load-buffer -`. Kept separate from runTmux so the many callers
  *  that never pipe anything are untouched. */
 async function runTmuxStdin(args: string[], input: string): Promise<string> {
-  const child = execFile(getTmuxBinary(), args, {
+  const child = execFile(getTmuxBinary(), ['-u', ...args], {
     timeout: 5000,
     maxBuffer: 2 * 1024 * 1024,
     env: buildInteractiveColorEnvironment(process.env),
@@ -3782,10 +3784,17 @@ async function listLiveTmuxInventorySessions(): Promise<TmuxInventoryMeta[]> {
     const raw = await runTmux(['list-sessions', '-F', format]);
     return raw
       .split('\n')
-      .map((line) => line.trim())
+      .map((line) => line.replace(/\r$/, ''))
       .filter(Boolean)
-      .map((line) => parseDelimitedRow(line, 15))
-      .filter((row): row is string[] => row !== null)
+      .map((line) => {
+        const row = parseDelimitedRow(line, 15);
+        // A partial or malformed scan is unknown, never proof of session loss.
+        // Reject the entire scan so recovery/reconcile cannot delete records.
+        if (!row || !/^\d+$/.test(row[1]) || !/^\d+$/.test(row[2])) {
+          throw new Error('Invalid tmux session inventory row');
+        }
+        return row;
+      })
       .map(([
         name,
         windowsRaw,
