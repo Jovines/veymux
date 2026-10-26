@@ -6,6 +6,7 @@ import type { PromptWriteProgress } from './terminalInput.js';
 export interface CollaborationRoute {
   state: CollaborationRouteState;
   isShell?: boolean;
+  agentSlug?: string | null;
   reason?: string;
   diagnostics?: CollaborationRouteIdentity;
   write?: (messages: CollaborationMessage[], progress?: PromptWriteProgress) => Promise<void>;
@@ -32,6 +33,7 @@ export class CollaborationDeliveryWorker {
     isLocal: (id: string) => boolean;
     resolve: (id: string) => Promise<CollaborationRoute>;
     onError: (error: unknown) => void;
+    authorizeMessage?: (message: CollaborationMessage) => boolean | undefined;
     /** Optional delay before the best-effort post-write terminal snapshot.
      *  Snapshot content never determines delivery or triggers input. */
     snapshotDelayMs?: number;
@@ -171,6 +173,10 @@ export class CollaborationDeliveryWorker {
       return;
     }
     const message = pending[0]!;
+    if (message.metadata?.chatOnly === true && (this.options.authorizeMessage?.(message) === false || route.isShell || !route.agentSlug)) {
+      store.fail(message.id, 'SHARED_CHAT_ACCESS_OR_AGENT_UNAVAILABLE');
+      return;
+    }
     if (route.isShell && message.shellConfirmed !== true) {
       if (route.capture && !message.direct) {
         try { store.setSnapshot(message.id, await route.capture()); } catch { /* best effort */ }

@@ -131,7 +131,7 @@ function positionForInput(anchor: HTMLElement, bounds: PeekBounds) {
 
 export function useSessionTerminalPeek({ enabled, name, expand }: { enabled: boolean; name: string; expand: () => void }) {
   const capabilities = useSessionCapabilities();
-  const available = enabled && capabilities.has('session.view');
+  const available = enabled && capabilities.has('session.terminal-view');
   const id = useId();
   const [safeAreaProbe] = useState(() => {
     const node = document.createElement('div'); node.className = 'preview-safe-area';

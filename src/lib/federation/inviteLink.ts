@@ -9,7 +9,7 @@ export function createInviteLink(descriptor: InviteDescriptor): string {
   entry.hash = PREFIX.slice(1) + btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   return entry.href;
 }
-/** Setup changes only the landing page; the authenticated connection remains HTTPS. */
+/** Browser landing pages may choose HTTP Noise; native consumers retain HTTPS. */
 export function createOnboardingInviteLink(invite: string, onboardingUrl: string): string {
   parseInviteLink(invite);
   const target = new URL(invite), setup = new URL(onboardingUrl);
@@ -45,6 +45,7 @@ export function parseInviteLink(value: string, options: { httpTransport?: boolea
   }
   // Desktop callers keep the original HTTPS destination for native one-click
   // certificate trust. Only an HTTP landing page chooses its same-origin Noise endpoint.
-  const httpEntry = options.httpTransport && setupLink && (!data.entryServiceId || data.entryServiceId === data.serviceId);
-  return { viewMode: data.viewMode, viewLayout: data.viewLayout, url: httpEntry ? link.origin : entry.origin, targetPeerId: data.serviceId, pairingCode: data.code, ...(data.routeOnly === true ? { routeOnly: true } : {}), serviceOrigin: httpEntry ? link.origin : serviceOrigin, ...(httpEntry ? { certificateUrl: link.origin + '/certificates' + link.hash } : {}), serviceName: typeof data.name === 'string' ? data.name.slice(0, 120) : undefined, entryServiceId: data.entryServiceId, routeCode: data.routeCode };
+  const httpEntry = options.httpTransport && setupLink;
+  const relayed = !!data.entryServiceId && data.entryServiceId !== data.serviceId;
+  return { viewMode: data.viewMode, viewLayout: data.viewLayout, url: httpEntry ? link.origin : entry.origin, targetPeerId: data.serviceId, pairingCode: data.code, ...(data.routeOnly === true ? { routeOnly: true } : {}), serviceOrigin: httpEntry && !relayed ? link.origin : serviceOrigin, ...(httpEntry ? { certificateUrl: link.origin + '/certificates' + link.hash } : {}), serviceName: typeof data.name === 'string' ? data.name.slice(0, 120) : undefined, entryServiceId: data.entryServiceId, routeCode: data.routeCode };
 }

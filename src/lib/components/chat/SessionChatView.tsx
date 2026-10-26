@@ -68,7 +68,7 @@ function SessionChatContent({ sessionId, name = '当前会话', canWrite: reques
   const keyboardChanged = useRef(onKeyboardChange); keyboardChanged.current = onKeyboardChange;
   useEffect(() => { keyboardChanged.current?.(active && keyboard.isOpen); }, [active, keyboard.isOpen]);
   const capabilities = useSessionCapabilities();
-  const canWrite = requestedWrite && capabilities.has('session.input');
+  const canWrite = requestedWrite && capabilities.has('session.chat-send');
   const [mediaSettingsOpen, setMediaSettingsOpen] = useState(false);
   useEffect(() => setMediaSettingsOpen(false), [sessionId, active, canWrite]);
   // The chat shell owns its loading/error UI. Showing it must not depend on
@@ -102,7 +102,8 @@ function SessionChatContent({ sessionId, name = '当前会话', canWrite: reques
   const [pending, setPending] = useState<Pending | null>(() => { try { return JSON.parse(sessionStorage.getItem(`${storageKey}:pending`) || 'null'); } catch { return null; } });
   const [messages, setMessages] = useState<ChatMessage[]>(snapshot?.messages ?? []);
   const [displayCutoff, setDisplayCutoff] = useState(() => readChatDisplayCutoff(storageKey));
-  const displayMessages = visibleChatMessages(messages, displayCutoff);
+  const canClearDisplay = capabilities.has('session.chat-clear');
+  const displayMessages = visibleChatMessages(messages, canClearDisplay ? displayCutoff : null);
   const clearDisplay = () => {
     const cutoff = chatDisplayCutoff(messages);
     if (!cutoff) return;
@@ -637,7 +638,7 @@ function SessionChatContent({ sessionId, name = '当前会话', canWrite: reques
   const waitingForFirstReply = (sendingReply || !reportedStopped && (waitingForReply || replyPhase === 'output')) && !inputRequestLabel && !error && !deliveryNotice && (!!pending || !!latestQuestion && !['failed', 'expired', 'cancelled'].includes(latestQuestion.status) && !hasReplyToLatestMessage(messages));
   const replyFeedback = waitingForFirstReply ? <span className="sr-only">尚未收到回复</span> : null;
   const replyLabel = inputRequestLabel ?? '处理中…';
-  const inputUnconfirmed = useChatTerminalInputCheck(sessionId, replyPhase, active && visible && hasChatMessages && canWrite && agentAvailable === true && !sending && !pending, active && visible && hasChatMessages);
+  const inputUnconfirmed = useChatTerminalInputCheck(sessionId, replyPhase, active && visible && hasChatMessages && canWrite && capabilities.has('session.input') && agentAvailable === true && !sending && !pending, active && visible && hasChatMessages && capabilities.has('session.input'));
   const terminalAccess = <div data-chat-terminal-access data-chat-reply-status={!!replyPhase || undefined} data-chat-reply-phase={replyPhase ?? 'idle'} role={replyPhase ? 'status' : undefined} aria-label={replyPhase ? `${agentName}${replyLabel.replace('…', '')}` : undefined} aria-live="polite" title="查看终端中的详细输出" className="pointer-events-auto w-fit max-w-full shrink-0">
     <TerminalPeekTrigger label={inputUnconfirmed ? '输入响应未确认，查看终端' : '查看终端详情'} className={`${floatingButton} text-foreground/80`}>
       {replyPhase === 'input' ? <MessageCircle size={11} aria-hidden="true" className="shrink-0 text-primary" /> : replyPhase ? <LoadingSpinner size={11} className="shrink-0 text-primary" /> : <TerminalSquare size={11} aria-hidden="true" />}
@@ -647,13 +648,13 @@ function SessionChatContent({ sessionId, name = '当前会话', canWrite: reques
   const unavailableNotice = <div role="status" data-chat-unavailable className="mx-auto w-full max-w-md rounded-2xl border [border-color:rgb(var(--warning-rgb)/0.4)] bg-surface p-6 text-center">
     <TerminalSquare size={28} aria-hidden="true" className="mx-auto mb-4 text-[var(--warning)]" />
     <h2 className="text-lg font-semibold text-foreground">当前对话暂不可用</h2>
-    <p className="mt-2 text-sm leading-6 text-muted-foreground">请在终端中启动或检查 Agent，再回来继续对话。</p>
+    <p className="mt-2 text-sm leading-6 text-muted-foreground">{capabilities.has('session.terminal-view') ? '请在终端中启动或检查 Agent，再回来继续对话。' : '请联系会话所有者启动或检查 Agent，再回来继续对话。'}</p>
     {replyPhase && <p className="mt-2 text-xs text-muted-foreground">{replyLabel}</p>}
-    <button type="button" className={`${button} mt-5 bg-primary text-primary-foreground hover:bg-primary/90`} onClick={onTerminal}><TerminalSquare size={16} aria-hidden="true" />打开终端</button>
+    {capabilities.has('session.terminal-view') && <button type="button" className={`${button} mt-5 bg-primary text-primary-foreground hover:bg-primary/90`} onClick={onTerminal}><TerminalSquare size={16} aria-hidden="true" />打开终端</button>}
   </div>;
   const tooLong = new TextEncoder().encode(composeChatContent(composeChatDraft(draft, attachments, mentions), reference)).byteLength > 32000;
   return <section ref={section} style={keyboardLayout.rootStyle} data-session-chat onDragEnter={event => { if (event.dataTransfer.types.includes('Files')) { event.preventDefault(); dragDepth.current++; if (canWrite) setDragging(true); } }} onDragOver={event => { if (event.dataTransfer.types.includes('Files')) { event.preventDefault(); event.dataTransfer.dropEffect = canWrite ? 'copy' : 'none'; } }} onDragLeave={event => { if (event.dataTransfer.types.includes('Files')) { dragDepth.current = Math.max(0, dragDepth.current - 1); if (!dragDepth.current) setDragging(false); } }} onDrop={event => { let draggedReference: string | null; try { draggedReference = readFileReferenceDrag(event.dataTransfer); } catch (error) { event.preventDefault(); setError(error instanceof Error ? error.message : '文件引用无效'); return; } if (draggedReference && active && canWrite) { event.preventDefault(); event.stopPropagation(); insertReference(draggedReference, readContextReferenceDrag(event.dataTransfer)); return; } const files = Array.from(event.dataTransfer.files); if (files.length) { event.preventDefault(); event.stopPropagation(); setDragging(false); dragDepth.current = 0; transfer.addFiles(files); } else if (canWrite && (event.target as Element).closest('[data-chat-composer]')) { const text = event.dataTransfer.getData('text/plain'); if (text) { event.preventDefault(); insertText(text); } } }} onKeyDown={e => e.stopPropagation()} className="session-chat relative flex h-full min-h-0 flex-col overflow-hidden bg-[var(--chrome-bg)] text-foreground" aria-label={`${name}对话`}>
-    <div className="flex shrink-0 items-center justify-end gap-2 px-4 text-xs text-muted-foreground">{displayCutoff && <button type="button" className="min-h-11 rounded-lg px-2 hover:bg-surface-2" onClick={restoreDisplay}>恢复旧记录</button>}<button type="button" className="min-h-11 rounded-lg px-2 hover:bg-surface-2 disabled:opacity-40" disabled={!displayMessages.length} title="仅清空当前设备的显示，保留记录和 Agent 上下文" onClick={clearDisplay}>清空显示</button></div>
+    {canClearDisplay && <div className="flex shrink-0 items-center justify-end gap-2 px-4 text-xs text-muted-foreground">{displayCutoff && <button type="button" className="min-h-11 rounded-lg px-2 hover:bg-surface-2" onClick={restoreDisplay}>恢复旧记录</button>}<button type="button" className="min-h-11 rounded-lg px-2 hover:bg-surface-2 disabled:opacity-40" disabled={!displayMessages.length} title="仅清空当前设备的显示，保留记录和 Agent 上下文" onClick={clearDisplay}>清空显示</button></div>}
     {mediaSettingsOpen && active && canWrite && <ChatMediaSettingsDialog close={() => setMediaSettingsOpen(false)} />}
     <MediaUploadToast result={active ? transfer.mediaResult : null} onDismiss={transfer.dismissMediaResult} />
     <div ref={scroll} style={keyboardLayout.contentStyle} className="session-chat-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 [overflow-anchor:none] sm:px-8" onScroll={() => { const el = scroll.current!; if (!active || !el.clientHeight) return; scrollPosition.current = el.scrollTop; captureAnchor(); const programmed = programmaticScrollTop.current; programmaticScrollTop.current = undefined; if (programmed !== undefined && Math.abs(el.scrollTop - programmed) < 1) return; nearBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 96; setUnseen(!nearBottom.current || pageState.current.hasNewer); if (el.scrollTop < el.clientHeight) void loadOlder(); }}>
@@ -719,7 +720,7 @@ function SessionChatContent({ sessionId, name = '当前会话', canWrite: reques
         </div>
       </form>
       {tooLong ? <p className="mt-2 px-1 text-xs text-destructive">消息过长，请缩短后发送。</p> : !canWrite ? <p className="mt-2 px-1 text-[11px] text-muted-foreground">仅查看</p> : null}
-      {terminalLink && <div className="mt-1 flex justify-end"><button type="button" className={`${button} min-h-9 px-2 text-xs text-muted-foreground`} onClick={onTerminal}><TerminalSquare size={13} />查看终端</button></div>}</div>
+      {terminalLink && capabilities.has('session.terminal-view') && <div className="mt-1 flex justify-end"><button type="button" className={`${button} min-h-9 px-2 text-xs text-muted-foreground`} onClick={onTerminal}><TerminalSquare size={13} />查看终端</button></div>}</div>
     </div>
   </section>;
 }

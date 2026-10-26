@@ -31,6 +31,14 @@ describe('background collaboration delivery', () => {
   function send(target = 'b', expiresAt?: number) {
     return store.send({ groupId, fromSessionId: 'a', toSessionIds: [target], kind: 'message', content: 'Please verify', expiresAt })[0]!;
   }
+  it.each(['shell', 'unknown-agent', 'revoked'] as const)('never writes restricted chat to %s even if shell delivery was manually confirmed', async scenario => {
+    const message = store.send({ groupId, fromSessionId: 'a', toSessionIds: ['b'], kind: 'ask', content: 'ordinary text', metadata: { chatOnly: true, chatSubject: 'device' } })[0]!;
+    store.confirmShell(message.id);
+    resolve.mockResolvedValue({ state: 'ready', isShell: scenario === 'shell', agentSlug: scenario === 'unknown-agent' ? null : 'codex', write });
+    worker = new CollaborationDeliveryWorker({ store, peers: () => ['b'], isLocal: () => true, resolve, authorizeMessage: () => scenario !== 'revoked', onError: () => undefined });
+    await worker.run('b');
+    expect(write).not.toHaveBeenCalled(); expect(store.getMessage(message.id)?.status).toBe('failed');
+  });
 
   it('retains failed probe guidance across restart and blocks replay of the header and later messages', async () => {
     const message = send(); send();

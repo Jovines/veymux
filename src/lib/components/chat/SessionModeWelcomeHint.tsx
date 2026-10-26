@@ -5,7 +5,7 @@ import { acknowledgeSessionModes } from './sessionModeOnboarding';
 /** Part of the chat empty state, never frequency-capped or persisted. */
 export function SessionModeWelcomeHint({ onTerminal }: { onTerminal: () => void }) {
   const capabilities = useSessionCapabilities();
-  if (!capabilities.has('session.view')) return null;
+  if (!capabilities.has('session.terminal-view')) return null;
   return <div data-session-mode-welcome className="mt-2 text-xs leading-6 text-muted-foreground">
     <p>更习惯命令行？<button type="button" className="inline-flex min-h-11 items-center gap-1 rounded px-1 text-xs text-muted-foreground hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       onPointerDown={event => event.preventDefault()} onClick={() => {

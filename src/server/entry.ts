@@ -37,7 +37,7 @@ import cookieParser from 'cookie-parser';
 import { type SecureContextOptions } from 'tls';
 import { fileURLToPath } from 'url';
 import { WebSocketServer } from 'ws';
-import terminalRoutes, { handleTerminalWebSocket, handleControlWebSocket, resolveStableFederationSessionId } from './routes/terminal.js';
+import terminalRoutes, { handleTerminalWebSocket, handleControlWebSocket, resolveStableFederationSessionId, configureSharedChatAccess } from './routes/terminal.js';
 import androidRoutes, { handleAndroidWebSocket } from './routes/android.js';
 import computerRoutes, { handleComputerWebSocket, stopComputerBridges } from './routes/computer.js';
 import { exitWithStartupFailure } from './utils/startupFailure.js';
@@ -647,9 +647,9 @@ export function startServer(options: ServerOptions = {}): StartServerResult {
     },
     issueSelfRelayTicket: (serviceId: string, metadata?: unknown) => routeAccess.issueSelfRelayTicket(serviceId, metadata),
     hasRouteGrant: (subjectId: string, serviceId: string) => routeInvitations?.allows(subjectId, serviceId) === true || collaborationTransport?.canRoute(subjectId, serviceId) === true || collaborationService?.canRoute(subjectId, serviceId) === true,
-    createRouteInvitation: (issuerId: string, serviceId: string) => {
+    createRouteInvitation: (issuerId: string, serviceId: string, settings) => {
       if (!routeInvitations) throw new Error('ROUTE_NOT_AVAILABLE');
-      return routeInvitations.create(issuerId, serviceId);
+      return routeInvitations.create(issuerId, serviceId, settings);
     },
     consumeRouteInvitation: (code: string, subjectId: string) => {
       if (!routeInvitations) throw new Error('ROUTE_NOT_AVAILABLE');
@@ -657,6 +657,8 @@ export function startServer(options: ServerOptions = {}): StartServerResult {
     },
   });
   void federation.then(async runtime => {
+    configureSharedChatAccess((subjectId, sessionId) => runtime.store.authorize({ subjectId, serviceId: runtime.serviceId, action: 'session.chat-send', sessionId: resolveStableFederationSessionId(sessionId) || sessionId }).allowed);
+    onServerClose(() => configureSharedChatAccess(undefined));
     federationServiceId = runtime.serviceId; setPushTargetPeerId(runtime.serviceId); refreshDirectTargets();
     app.locals.passwordRuntime = runtime;
     const receiveCollaboration = (subjectId: string, packet: import('./federation/packets.js').Packet) => {

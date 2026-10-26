@@ -499,11 +499,11 @@ export function SecureAccessGate({ children }: { children: ReactNode }) {
     const { includeBackup = true, entryAddress, viewMode, viewLayout, ...grantInput } = input;
     const selected = savedConnection();
     const backups = selected ? connectionRoutes(selected) : [];
-    let backup: { url: string; targetPeerId: string; routeCode: string } | undefined;
+    let backup: { url: string; targetPeerId: string; routeCode: string; onboarding?: { url: string; fingerprint: string } } | undefined;
     if (includeBackup && backups.length) {
       for (const route of backups) try {
-        const invitation = await createEntryInvitation({ ...selected!, targetPeerId: client.targetPeerId }, route);
-        backup = { ...route, routeCode: invitation.routeCode }; break;
+        const invitation = await createEntryInvitation({ ...selected!, targetPeerId: client.targetPeerId }, route, { ...(input.reusable ? { reusable: true } : {}), ...(input.linkExpiresAt === undefined ? {} : { linkExpiresAt: input.linkExpiresAt }) });
+        backup = { ...route, routeCode: invitation.routeCode, onboarding: invitation.onboarding }; break;
       } catch { /* Only an entry administrator can delegate that entry. */ }
       if (!backup) throw new Error('无法分享备用连接：需要入口管理员授权。也可以关闭此选项，生成直接连接邀请。');
     }
@@ -518,7 +518,7 @@ export function SecureAccessGate({ children }: { children: ReactNode }) {
       }
     }
     const result = await client.request({ type: 'invite-create', ...grantInput });
-    if (typeof result.code !== 'string' || typeof result.expiresAt !== 'number') throw new Error('暂时无法生成邀请。');
+    if (typeof result.code !== 'string' || typeof result.expiresAt !== 'number' && result.expiresAt !== null) throw new Error('暂时无法生成邀请。');
     window.dispatchEvent(new Event('termdock:sharing-changed'));
     await refresh();
     let url = createInviteLink({ viewMode, viewLayout, v: 1, serviceId: client.targetPeerId, code: result.code, entryUrl: backup?.url || targetUrl, serviceUrl: targetUrl, name: serviceName, entryServiceId: backup?.targetPeerId, routeCode: backup?.routeCode });
@@ -529,7 +529,9 @@ export function SecureAccessGate({ children }: { children: ReactNode }) {
       try { url = createOnboardingInviteLink(url, setup.url); }
       catch { throw new Error('证书引导地址暂不可用，请重新打开分享后重试。'); }
     }
-    return { id: typeof result.invitationId === 'string' ? result.invitationId : undefined, url, ...(url.startsWith('http:') && setup ? { certificateFingerprint: setup.fingerprint } : {}), expiresAt: result.expiresAt };
+    if (backup?.onboarding) url = createOnboardingInviteLink(url, backup.onboarding.url);
+    const certificate = backup?.onboarding?.fingerprint || setup?.fingerprint;
+    return { id: typeof result.invitationId === 'string' ? result.invitationId : undefined, url, ...(url.startsWith('http:') && certificate ? { certificateFingerprint: certificate } : {}), expiresAt: result.expiresAt };
   };
   const recoverAccess = async (expectedTarget = savedConnection()?.targetPeerId) => {
     if (expectedTarget !== savedConnection()?.targetPeerId) throw new Error('SERVICE_SELECTION_CHANGED');

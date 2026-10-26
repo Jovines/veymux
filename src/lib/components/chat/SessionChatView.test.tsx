@@ -8,6 +8,8 @@ import { readChatEditor, setChatEditorCaret } from './ChatRichEditor';
 const markdownRender = vi.hoisted(() => vi.fn());
 import type { ChatMessage } from './chatMessages';
 import { SessionChatView } from './SessionChatView';
+import { SessionCapabilitiesContext } from '../../federation/ShareAccessContext';
+import { sharedSessionCapabilities } from '../../federation/sessionCapabilities';
 import { useTerminalStore } from '../../stores/useTerminalStore';
 function liveOutput(id: string) { act(() => { const store = useTerminalStore.getState(); store.setTerminalSession(id, { sessionId: `backend-${id}`, cols: 80, rows: 24 }); store.setTerminalOutputActivity(id, true); }); }
 vi.mock('../markdown/Markdown', () => ({ Markdown: ({ content }: { content: string }) => { markdownRender(content); return <p data-testid="chat-markdown">{content}</p>; } }));
@@ -24,6 +26,26 @@ function pagedHistory(url: unknown, all: ChatMessage[]) {
   const start = after ? at + 1 : Math.max(0, end - 30);
   return Response.json({ agentAvailable: true, messages: all.slice(start, end), updates: after ? all.slice(Math.max(0, at - 29), at + 1) : undefined, page: { hasOlder: start > 0, hasNewer: end < all.length, mode: before ? 'before' : after ? 'after' : 'latest' } });
 }
+
+it('makes local display clearing an independent shared permission without granting terminal access', async () => {
+  const messages = [{ id: 'clear-shared', role: 'assistant', content: '仍然保留的记录', createdAt: 1, status: 'stored' }];
+  const fetcher = vi.fn(async (_url: unknown, _init?: RequestInit) => Response.json({ agentAvailable: true, messages }));
+  vi.stubGlobal('fetch', fetcher);
+  const capability = (clear: boolean) => sharedSessionCapabilities({ canViewChat: true, canViewTerminal: false, canSendChat: false, canWrite: false, canResize: false, canClearChat: clear });
+  const tree = (clear: boolean) => <SessionCapabilitiesContext.Provider value={capability(clear)}><SessionChatView sessionId="shared-clear-option" onTerminal={() => { throw Error('terminal must be unavailable'); }} /></SessionCapabilitiesContext.Provider>;
+  const view = render(tree(false));
+  await screen.findByText('仍然保留的记录');
+  expect(screen.queryByRole('button', { name: '清空显示' })).toBeNull();
+  expect(screen.queryByRole('button', { name: /查看终端|切换到终端/ })).toBeNull();
+  view.rerender(tree(true));
+  fireEvent.click(screen.getByRole('button', { name: '清空显示' }));
+  expect(screen.queryByText('仍然保留的记录')).toBeNull();
+  expect(screen.getByRole('button', { name: '恢复旧记录' })).toBeTruthy();
+  expect(fetcher.mock.calls.every(([url, init]) => !init?.method || init.method === 'GET' || String(url).endsWith('/viewed'))).toBe(true);
+  view.rerender(tree(false));
+  await screen.findByText('仍然保留的记录');
+  expect(screen.queryByRole('button', { name: '恢复旧记录' })).toBeNull();
+});
 
 it('shows blocked delivery with an actionable terminal entry and clears it after a real write', async () => {
   const terminal = vi.fn();
@@ -257,8 +279,8 @@ it('observes terminal output independently of progress and final replies', async
   const bodies = container.querySelectorAll('[data-chat-turn="assistant"] [data-chat-message]');
   expect(bodies).toHaveLength(2);
   expect(container.querySelector('[data-chat-continuation]')).toBeNull();
-  expect(bodies[0].querySelector('time')?.getAttribute('datetime')).toBe(new Date(2).toISOString());
-  expect(bodies[1].querySelector('time')?.getAttribute('datetime')).toBe(new Date(3).toISOString());
+  expect(bodies[0].querySelector('[data-chat-message-actions] time')?.getAttribute('datetime')).toBe(new Date(2).toISOString());
+  expect(bodies[1].querySelector('[data-chat-message-actions] time')?.getAttribute('datetime')).toBe(new Date(3).toISOString());
   expect(screen.getAllByRole('button', { name: '复制回复' })).toHaveLength(2);
   for (const body of bodies) expect(body.querySelector('[data-chat-message-actions] button[aria-label="引用消息"]')).toBeTruthy();
 });

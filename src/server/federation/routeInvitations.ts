@@ -13,11 +13,15 @@ interface RouteInvitation {
   issuerId: string;
   targetServiceId: string;
   createdAt: number;
-  expiresAt: number;
+  expiresAt: number | null;
+  reusable?: boolean;
+  linkExpiresAt?: number | null;
+  parentInvitationId?: string;
   subjectId?: string;
   consumedAt?: number;
   revokedAt?: number;
 }
+export interface RouteInvitationSettings { reusable?: boolean; linkExpiresAt?: number | null }
 export interface RouteInvitationOptions {
   filePath: string;
   /** Entry B's cryptographic identity, binding the store and code hashes to this service. */
@@ -55,13 +59,16 @@ export class RouteInvitationStore {
       && data.version === 1 && data.serviceId === this.options.serviceId && Array.isArray(data.invitations) && data.invitations.length <= MAX_RECORDS);
     const hashes = new Set<string>();
     for (const item of data.invitations) {
-      valid(object(item) && Object.keys(item).every(key => ['hash', 'issuerId', 'targetServiceId', 'createdAt', 'expiresAt', 'subjectId', 'consumedAt', 'revokedAt'].includes(key)));
+      valid(object(item) && Object.keys(item).every(key => ['hash', 'issuerId', 'targetServiceId', 'createdAt', 'expiresAt', 'subjectId', 'consumedAt', 'revokedAt', 'reusable', 'linkExpiresAt', 'parentInvitationId'].includes(key)));
       valid(typeof item.hash === 'string' && /^[a-f0-9]{64}$/.test(item.hash) && !hashes.has(item.hash)); hashes.add(item.hash);
-      valid(validIdentity(item.issuerId) && validIdentity(item.targetServiceId) && timestamp(item.createdAt) && timestamp(item.expiresAt)
-        && item.expiresAt === item.createdAt + INVITATION_TTL_MS);
+      valid(validIdentity(item.issuerId) && validIdentity(item.targetServiceId) && timestamp(item.createdAt) && (item.expiresAt === null ? item.linkExpiresAt === null : timestamp(item.expiresAt)
+        && item.expiresAt === (item.linkExpiresAt ?? item.createdAt + INVITATION_TTL_MS)));
+      valid(item.reusable === undefined || typeof item.reusable === 'boolean');
+      valid(item.linkExpiresAt === undefined || item.linkExpiresAt === null || timestamp(item.linkExpiresAt));
+      valid(item.parentInvitationId === undefined || typeof item.parentInvitationId === 'string' && /^[a-f0-9]{64}$/.test(item.parentInvitationId));
       valid(item.revokedAt === undefined || timestamp(item.revokedAt));
       valid((item.subjectId === undefined && item.consumedAt === undefined)
-        || (validIdentity(item.subjectId) && timestamp(item.consumedAt) && item.consumedAt >= item.createdAt && item.consumedAt < item.expiresAt));
+        || (validIdentity(item.subjectId) && timestamp(item.consumedAt) && item.consumedAt >= item.createdAt && (item.expiresAt === null || item.consumedAt < Number(item.expiresAt))));
     }
     return data.invitations as unknown as RouteInvitation[];
   }
@@ -79,36 +86,55 @@ export class RouteInvitationStore {
       try { unlinkSync(temporary); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
     }
   }
-  create(issuerId: string, targetServiceId: string): { routeCode: string; expiresAt: number } {
+  create(issuerId: string, targetServiceId: string): { routeCode: string; expiresAt: number; invitationId: string };
+  create(issuerId: string, targetServiceId: string, settings: RouteInvitationSettings | undefined): { routeCode: string; expiresAt: number | null; reusable?: boolean; invitationId: string };
+  create(issuerId: string, targetServiceId: string, settings: RouteInvitationSettings = {}): { routeCode: string; expiresAt: number | null; reusable?: boolean; invitationId: string } {
+    if (!object(settings) || Object.keys(settings).some(k => !['reusable', 'linkExpiresAt'].includes(k)) || settings.reusable !== undefined && typeof settings.reusable !== 'boolean' || settings.linkExpiresAt !== undefined && settings.linkExpiresAt !== null && (!timestamp(settings.linkExpiresAt) || settings.linkExpiresAt <= this.now())) throw new Error('INVALID_ROUTE_INVITATION_SETTINGS');
     if (!validIdentity(issuerId) || !validIdentity(targetServiceId) || !this.available(issuerId, targetServiceId)) throw new Error('ROUTE_INVITATION_DENIED');
     const now = this.now();
-    const current = this.read().filter(item => item.subjectId !== undefined || item.expiresAt > now);
+    const current = this.read().filter(item => item.subjectId !== undefined || item.reusable || item.expiresAt === null || item.expiresAt > now);
     if (current.length >= MAX_RECORDS || current.filter(item => item.subjectId === undefined).length >= MAX_PENDING) throw new Error('ROUTE_INVITATION_LIMIT');
     const routeCode = randomBytes(32).toString('base64url');
-    const expiresAt = now + INVITATION_TTL_MS;
-    current.push({ hash: this.hash(routeCode), issuerId, targetServiceId, createdAt: now, expiresAt });
+    const expiresAt = settings.linkExpiresAt === undefined ? now + INVITATION_TTL_MS : settings.linkExpiresAt;
+    current.push({ hash: this.hash(routeCode), issuerId, targetServiceId, createdAt: now, expiresAt, ...settings });
     this.save(current);
-    return { routeCode, expiresAt };
+    return { routeCode, expiresAt, invitationId: this.hash(routeCode), ...(settings.reusable ? { reusable: true } : {}) };
   }
   consume(routeCode: string, actualSubjectId: string): { serviceId: string } {
     if (typeof routeCode !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(routeCode) || !validIdentity(actualSubjectId)) throw new Error('ROUTE_PAIRING_DENIED');
     const hash = this.hash(routeCode), current = this.read(), now = this.now();
     const invitation = current.find(item => item.hash === hash);
+    if (invitation?.parentInvitationId) throw new Error('ROUTE_PAIRING_DENIED');
+    if (invitation?.reusable) {
+      if (invitation.revokedAt !== undefined || !this.available(invitation.issuerId, invitation.targetServiceId)) throw new Error('ROUTE_PAIRING_DENIED');
+      const previous = current.find(item => item.parentInvitationId === hash && item.subjectId === actualSubjectId);
+      if (previous?.revokedAt !== undefined) throw new Error('ROUTE_INVITATION_DEVICE_REVOKED');
+      if (previous) return { serviceId: invitation.targetServiceId };
+      if (invitation.expiresAt !== null && invitation.expiresAt <= now) throw new Error('ROUTE_INVITATION_EXPIRED');
+      if (current.length >= MAX_RECORDS) throw new Error('ROUTE_INVITATION_LIMIT');
+      current.push({ ...invitation, hash: randomBytes(32).toString('hex'), reusable: undefined, parentInvitationId: hash, subjectId: actualSubjectId, consumedAt: now });
+      this.save(current); return { serviceId: invitation.targetServiceId };
+    }
     if (invitation?.subjectId === actualSubjectId && invitation.revokedAt === undefined && this.available(invitation.issuerId, invitation.targetServiceId)) return { serviceId: invitation.targetServiceId };
     if (!invitation || invitation.revokedAt !== undefined || invitation.createdAt > now
       || !this.available(invitation.issuerId, invitation.targetServiceId)) throw new Error('ROUTE_PAIRING_DENIED');
     if (invitation.subjectId !== undefined) throw new Error('ROUTE_INVITATION_USED');
-    if (invitation.expiresAt <= now) throw new Error('ROUTE_INVITATION_EXPIRED');
+    if (invitation.expiresAt !== null && invitation.expiresAt <= now) throw new Error('ROUTE_INVITATION_EXPIRED');
     invitation.subjectId = actualSubjectId; invitation.consumedAt = now;
     this.save(current);
     return { serviceId: invitation.targetServiceId };
   }
+  private active(item: RouteInvitation, current: RouteInvitation[]): boolean {
+    const parent = item.parentInvitationId ? current.find(p => p.hash === item.parentInvitationId && p.reusable) : undefined;
+    return item.revokedAt === undefined && (!item.parentInvitationId || !!parent && parent.revokedAt === undefined) && this.available(item.issuerId, item.targetServiceId);
+  }
   list() {
-    return this.read().filter(item => item.subjectId !== undefined).map(item => ({
+    const current = this.read();
+    return current.filter(item => item.subjectId !== undefined).map(item => ({
       id: item.hash, subjectId: item.subjectId!, targetServiceId: item.targetServiceId,
       issuerId: item.issuerId, createdAt: item.consumedAt!,
       ...(item.revokedAt !== undefined ? { revokedAt: item.revokedAt } : {}),
-      active: item.revokedAt === undefined && this.available(item.issuerId, item.targetServiceId),
+      active: this.active(item, current),
     }));
   }
   grant(issuerId: string, targetServiceId: string, subjectId: string) {
@@ -129,8 +155,9 @@ export class RouteInvitationStore {
   allows(subjectId: string, targetServiceId: string): boolean {
     if (!validIdentity(subjectId) || !validIdentity(targetServiceId)) return false;
     try {
-      return this.read().some(item => item.subjectId === subjectId && item.targetServiceId === targetServiceId
-        && item.revokedAt === undefined && item.consumedAt !== undefined && item.consumedAt <= this.now() && this.available(item.issuerId, targetServiceId));
+      const current = this.read();
+      return current.some(item => item.subjectId === subjectId && item.targetServiceId === targetServiceId
+        && this.active(item, current) && item.consumedAt !== undefined && item.consumedAt <= this.now() && this.available(item.issuerId, targetServiceId));
     } catch { return false; }
   }
 }

@@ -13,7 +13,8 @@ import { useChatAttachmentPreview } from './useChatAttachmentPreview';
 import { ChatInlineContent } from './ChatInlineContent';
 import { TerminalPeekTrigger } from './SessionTerminalPeek';
 import { chatReplyExcerpt } from '../../../server/shared/chatReplyContext';
-export const chatTime = (at: number) => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+import { ChatTime } from './ChatTime';
+export { chatTime } from './ChatTime';
 const builtInIcons = new Set(['amp', 'claude', 'codex', 'copilot', 'cursor', 'droid', 'gemini', 'goose', 'grok', 'kimi', 'opencode']);
 export function ChatAgentLabel({ name, slug, waiting = false }: { name: string; slug?: string; waiting?: boolean }) {
   const icon = slug && builtInIcons.has(slug) ? `url(/icons/agents/${slug}.svg) center / contain no-repeat` : undefined;
@@ -39,7 +40,7 @@ export function ChatUserMessage({ content, createdAt, status, messageId, actions
   return <article data-chat-turn="user" data-chat-message={messageId} data-actions-open={actionsOpen || undefined} className="ml-auto flex w-fit max-w-[88%] flex-col items-end sm:max-w-[85%]">
     <div data-chat-user-bubble data-chat-message-content className="termdock-native-select w-fit max-w-full rounded-2xl bg-surface-2 px-4 py-3"><ChatUserContent content={content} /></div>
     <div data-chat-message-actions className="chat-user-meta mt-1 flex min-h-8 flex-wrap items-center justify-end gap-2 text-[10px] text-muted-foreground">
-      <span>{status}</span><time dateTime={new Date(createdAt).toISOString()} title={new Date(createdAt).toLocaleString()} className="opacity-60">{chatTime(createdAt)}</time>{children}
+      <span>{status}</span><ChatTime at={createdAt} className="opacity-60" />{children}
     </div>
   </article>;
 }
@@ -49,7 +50,7 @@ function ChatReplyTarget({ message, original, onJump, loading }: { message: Chat
     : original?.role === 'user' ? { id: original.id, text: chatReplyExcerpt(original.content), createdAt: original.createdAt } : null;
   if (!context) return null;
   const className = 'mb-1 flex min-w-0 items-center gap-1.5 text-left text-[11px] leading-5 text-muted-foreground/70';
-  const label = <>{loading ? <LoadingSpinner size={12} className="shrink-0" /> : <CornerUpLeft size={12} aria-hidden="true" className="shrink-0 opacity-70" />}<span className="shrink-0">回复 {chatTime(context.createdAt)}</span><span aria-hidden="true">·</span><span className="min-w-0 truncate">{context.text}</span></>;
+  const label = <>{loading ? <LoadingSpinner size={12} className="shrink-0" /> : <CornerUpLeft size={12} aria-hidden="true" className="shrink-0 opacity-70" />}<span className="shrink-0">回复 <ChatTime at={context.createdAt} /></span><span aria-hidden="true">·</span><span className="min-w-0 truncate">{context.text}</span></>;
   return onJump ? <button type="button" data-chat-reply-context={context.id} aria-label={`查看原消息：${context.text}`} aria-busy={loading || undefined} title={`点击定位原消息：${context.text}`} className={`${className} w-full rounded transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`} onPointerDown={event => event.preventDefault()} onClick={() => onJump(context.id, message.id)}>{label}</button>
     : <div data-chat-reply-context={context.id} title={`回复你的消息：${context.text}`} className={className}>{label}</div>;
 }
@@ -114,7 +115,7 @@ export const ChatTimeline = memo(function ChatTimeline({ messages, agentName, ag
             {index < turn.messages.length - 1 && <span aria-hidden="true" className="chat-reply-divider min-w-0 flex-1" />}
           </div>
           <span className="chat-message-tools shrink-0">{quote(message)}<button type="button" className={action} aria-label="复制回复" title="复制" onClick={() => onCopy(message.content, message.id)}>{copied === message.id ? <Check size={13} /> : <Copy size={13} />}{copied === message.id && <span className="text-[10px]">已复制</span>}</button></span>
-          <time className="shrink-0 text-[11px] tabular-nums text-muted-foreground/60" dateTime={new Date(message.createdAt).toISOString()} title={new Date(message.createdAt).toLocaleString()}>{chatTime(message.createdAt)}</time>
+          <ChatTime at={message.createdAt} className="shrink-0 text-[11px] tabular-nums text-muted-foreground/60" />
         </div>
       </div></ChatMessageViewport>)}</div>
     </article>;

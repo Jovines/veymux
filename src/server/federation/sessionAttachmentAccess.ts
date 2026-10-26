@@ -33,7 +33,7 @@ export function attachmentReadRoot(directory: string | undefined, grants: Author
   const [hash, ...file] = relative.split(path.sep);
   if (!/^[a-f0-9]{64}$/.test(hash) || !file.length) return;
   const root = path.join(base, hash);
-  if (!grants.some(grant => (grant.actions.includes('session.view') || grant.actions.includes('service:*'))
+  if (!grants.some(grant => (grant.actions.some(action => ['session.view', 'session.chat-view', 'session.terminal-view', 'service:*'].includes(action)))
     && (grant.scope.kind === 'service' || grant.scope.sessionIds.some(id => sessionAttachmentRoot(base, normalize(id)) === root)))) return;
   return resourceHttpAllowed({ directories: [{ path: root, access: 'read' }] }, method, requestPath) ? root : undefined;
 }

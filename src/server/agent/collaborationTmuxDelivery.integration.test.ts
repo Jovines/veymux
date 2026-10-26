@@ -5,6 +5,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { captureTmuxPaneText, sendTmuxPaneKey, writeCollaborationTmuxPane } from './collaborationTmuxDelivery.js';
+import { validateSharedChatTarget } from './sharedChatTarget.js';
+import { serializeTerminalInput } from './terminalInput.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -24,6 +26,34 @@ function stdinFor(socket: string) {
 }
 
 describe.skipIf(process.platform === 'win32')('collaboration tmux transport', () => {
+  it.each(['agent-exit', 'revoke-queued', 'revoke-before-submit'])('fences shared chat in the real tmux input queue: %s', async change => {
+    const directory = await mkdtemp(join(tmpdir(), 'td-shared-guard-')), out = join(directory, 'submitted');
+    const socket = `td-shared-${process.pid}-${Date.now()}`;
+    const run = async (args: string[]) => (await execFileAsync('tmux', ['-L', socket, ...args], { timeout: 5000 })).stdout;
+    let release!: () => void, allowed = true;
+    try {
+      await run(['new-session', '-d', '-s', 'peer', 'sh -i']);
+      await run(['send-keys', '-t', 'peer', '-l', `cat > ${out}`]);
+      await run(['send-keys', '-t', 'peer', 'Enter']);
+      const command = async () => (await run(['display-message', '-p', '-t', 'peer', '#{pane_current_command}'])).trim();
+      const waitCommand = async (expected: string) => { for (let i = 0; i < 100; i++) { if (await command() === expected) return; await new Promise(done => setTimeout(done, 20)); } throw Error('fixture did not enter ' + expected); };
+      await waitCommand('cat');
+      const parts = (await run(['display-message', '-p', '-t', 'peer', '#{pid}:#{session_id}:#{pane_id}:#{pane_pid}'])).trim().split(':');
+      const pane = { serverPid: Number(parts[0]), sessionId: parts[1]!, paneId: parts[2]!, panePid: Number(parts[3]), agentSlug: 'fixture-agent', nativeSessionId: null };
+      const key = `${pane.serverPid}:${pane.sessionId}:${pane.paneId}:${pane.panePid}`;
+      const blocked = serializeTerminalInput(key, () => new Promise<void>(done => { release = done; }));
+      await new Promise(done => setTimeout(done, 0));
+      const validate = () => validateSharedChatTarget(pane, () => allowed, async () => ({ state: 'ready', pane: { ...pane, isShell: await command() !== 'cat' } }));
+      const writing = writeCollaborationTmuxPane(run, pane, 'SHARED-MUST-NOT-SUBMIT', stdinFor(socket), undefined,
+        stage => { if (change === 'revoke-before-submit' && stage === 'paste_written') allowed = false; }, validate);
+      const rejection = expect(writing).rejects.toThrow(change === 'agent-exit' ? 'SHARED_CHAT_AGENT_UNAVAILABLE' : 'SHARED_CHAT_AUTHORIZATION_UNAVAILABLE');
+      if (change === 'agent-exit') { await run(['send-keys', '-t', pane.paneId, 'C-d']); await waitCommand('sh'); }
+      else if (change === 'revoke-queued') allowed = false;
+      release(); await blocked; await rejection;
+      expect(await readFile(out, 'utf8')).toBe('');
+      if (change !== 'revoke-before-submit') expect(await run(['capture-pane', '-p', '-t', pane.paneId])).not.toContain('SHARED-MUST-NOT-SUBMIT');
+    } finally { release?.(); await run(['kill-server']).catch(() => undefined); await rm(directory, { recursive: true, force: true }); }
+  }, 15000);
   it.each([true, false])('checks real application echo (%s), preserving one submit and stopping before body on failure', async echo => {
     const directory = await mkdtemp(join(tmpdir(), 'td-input-echo-'));
     const out = join(directory, 'input');

@@ -29,13 +29,15 @@ it('publishes the port and host of a real ephemeral loopback listener', async ()
       process: { env: { TERMDOCK_QUIC: '0' } },
       server, port: 0, host: 'localhost', scheme: 'https', options: { httpsCaPath: '/test/ca.pem' },
       localAccessManager: { start }, startOnboardingServer: onboarding, console: { log: vi.fn(), warn: vi.fn() },
+      app: { locals: { runtimeClientPath: '/test/client' } },
     });
     vm.runInContext(ts.transpileModule(`let latestLocalAccessState, latestOnboardingUrl; (${listener!.getText(ast)})();`, {
       compilerOptions: { target: ts.ScriptTarget.ES2022 },
     }).outputText, context);
     await Promise.resolve();
     expect(start).toHaveBeenCalledWith({ host: '127.0.0.1', port: address.port, scheme: 'https', caCertPath: '/test/ca.pem', onboardingPort: address.port });
-    expect(onboarding).toHaveBeenCalledWith({ httpsPort: address.port, caCertPath: '/test/ca.pem' });
+    expect(onboarding).toHaveBeenCalledWith({ httpsPort: address.port, caCertPath: '/test/ca.pem', clientPath: '/test/client',
+      acceptEncrypted: expect.any(Function), relayPrincipal: expect.any(Function), acceptRelay: expect.any(Function) });
     expect(vm.runInContext('latestOnboardingUrl', context)).toBeNull();
     expect(vm.runInContext('latestLocalAccessState', context)).toBe(state);
   } finally {

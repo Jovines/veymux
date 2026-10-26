@@ -17,7 +17,7 @@ async function fixture(existingFile?: string) {
   const store = new CollaborationStore(filePath), deliver = vi.fn(), recover = vi.fn(async (_id: string) => {});
   const app = express(); app.use(express.json());
   // Test-only authentication boundary; never mounted by the product.
-  app.use((req, _res, next) => { markEncryptedRequest(req, String(req.headers['test-subject'] || 'alice'), req.headers['test-access'] !== 'scoped'); next(); });
+  app.use((req, _res, next) => { markEncryptedRequest(req, String(req.headers['test-subject'] || 'alice'), req.headers['test-access'] !== 'scoped', undefined, req.headers['test-chat-only'] === '1'); next(); });
   app.use(sessionChatRoutes({ store, deliver, recover, resolve: id => id === 'agent' ? { sessionId: id, agent: { slug: 'test' } } : id === 'shell' ? { sessionId: id } : undefined }));
   app.use(collaborationGroupRoutes({ store, sessions: () => [{ sessionId: 'agent' }, { sessionId: 'peer' }] }));
   app.use('/collab', collaborationRoutes({ store, resolveSession: () => 'agent', deliver }));
@@ -27,6 +27,15 @@ async function fixture(existingFile?: string) {
   const read = (subject = 'alice', scoped = false) => fetch(`${base}/agent/chat`, { headers: { 'test-subject': subject, ...(scoped ? { 'test-access': 'scoped', 'x-termdock-full-service': '1' } : {}) } }).then(r => r.json());
   return { store, deliver, recover, base, post, read, filePath };
 }
+it('accepts only ordinary restricted-chat messages, rejects control bytes and slash commands, and binds queued delivery to the real subject', async () => {
+  const f = await fixture();
+  const post = (content: string, requestId: string) => fetch(`${f.base}/agent/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'test-access': 'scoped', 'test-chat-only': '1', 'test-subject': 'restricted-user' }, body: JSON.stringify({ content, requestId }) });
+  for (const content of ['/exit', '\u0003exit', '\u001b[200~exit', '\u0004']) expect((await post(content, 'rejected-command-00001')).status).toBe(403);
+  expect(f.deliver).not.toHaveBeenCalled();
+  const sent = await (await post('请解释当前工作\n第二行', 'ordinary-message-00001')).json();
+  expect(f.store.getMessage(sent.id)?.metadata).toEqual({ chatOnly: true, chatSubject: 'restricted-user' });
+  expect(f.deliver).toHaveBeenCalledWith('agent');
+});
 it('persists messages once and shares existing Session history across full-service clients and service reloads', async () => {
   const f = await fixture();
   expect((await fetch(`${f.base}/agent/chat`).then(r => r.json())).messages).toEqual([]);

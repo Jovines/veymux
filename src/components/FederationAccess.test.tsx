@@ -11,6 +11,28 @@ function more() { const button = screen.getByRole('button', { name: /更多选�
 function allWhenEmpty() { if (screen.queryByRole('button', { name: /已选 [1-9]/ })) return; fireEvent.click(screen.getByRole('radio', { name: '全部终端' })); }
 afterEach(() => { cleanup(); localStorage.clear(); Reflect.deleteProperty(navigator, 'clipboard'); document.documentElement.style.removeProperty('--background'); document.documentElement.style.removeProperty('--foreground'); });
 describe('FederationAccess invitation flow', () => {
+  it('adds reusable unlimited chat sharing with a separate clear-display permission', async () => {
+    const onCreateInvite = vi.fn().mockResolvedValue({ url: inviteUrl, expiresAt: null });
+    render(<FederationAccess paired initialShareSessionId="one" sessions={[{ sessionId: 'one', name: '构建任务' }]} onConnect={() => {}} onClose={() => {}} onCreateInvite={onCreateInvite} />);
+    fireEvent.click(screen.getByRole('radio', { name: /仅对话/ }));
+    expect((screen.getByRole('button', { name: '终端' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByRole('combobox', { name: '链接使用' }), { target: { value: 'multiple' } });
+    fireEvent.change(screen.getByRole('combobox', { name: '链接有效期' }), { target: { value: 'never' } });
+    more(); fireEvent.click(screen.getByRole('checkbox', { name: '允许接收者清空自己的聊天显示' }));
+    fireEvent.click(screen.getByRole('button', { name: '生成并复制链接' }));
+    await waitFor(() => expect(onCreateInvite).toHaveBeenCalledWith({ scope: { kind: 'sessions', sessionIds: ['one'] }, actions: ['session.chat-view', 'session.chat-send', 'session.chat-clear'], reusable: true, linkExpiresAt: null, viewMode: 'chat' }));
+    expect(await screen.findByText('可重复使用 · 直到撤销有效')).toBeTruthy();
+    expect(screen.queryByText('邀请链接已过期')).toBeNull();
+  });
+  it('configures chat read-only and a terminal preview independently from terminal control', async () => {
+    const onCreateInvite = vi.fn().mockResolvedValue({ url: inviteUrl, expiresAt: Date.now() + 600000 });
+    render(<FederationAccess paired initialShareSessionId="one" sessions={[{ sessionId: 'one', name: '构建任务' }]} onConnect={() => {}} onClose={() => {}} onCreateInvite={onCreateInvite} />);
+    fireEvent.click(screen.getByRole('button', { name: '按功能自定义权限' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: '发送对话消息' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: '查看终端预览（未授权控制时只读）' }));
+    fireEvent.click(screen.getByRole('button', { name: '生成并复制链接' }));
+    await waitFor(() => expect(onCreateInvite).toHaveBeenCalledWith(expect.objectContaining({ actions: ['session.chat-view', 'session.terminal-view'] })));
+  });
   it('keeps the selected stable session and its appearance through backend replacement and an empty reconnect snapshot', async () => {
     const onCreateInvite = vi.fn().mockResolvedValue({ url: inviteUrl, expiresAt: Date.now() + 600000 });
     const props = { paired: true, initialShareSessionId: 'stable', onConnect: () => {}, onClose: () => {}, onCreateInvite };

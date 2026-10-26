@@ -1,4 +1,5 @@
 import { prepareCodexThread, codexColdLaunchArgv, codexPreparedResumeCommand } from '../agent/codexLaunchPreparation.js';
+import { validateSharedChatTarget } from '../agent/sharedChatTarget.js';
 import { normalizeAgentLaunchAttempt, replayAgentLaunchAttempt, type AgentLaunchAttempt } from '../agent/agentLaunchAttempt.js';
 import { shouldAutomaticallyRecoverTmuxIncident } from '../utils/tmuxRecovery.js';
 import { isSharedCodexDaemon } from '../utils/codexSharedDaemon.js';
@@ -273,11 +274,18 @@ const todoStore = new TodoStore(`${TERMDOCK_DIR}/todos.json`);
 export const collaborationTaskStore = new CollaborationTaskStore(`${TERMDOCK_DIR}/collaboration-tasks.json`);
 export const collaborationStore = new CollaborationStore(`${TERMDOCK_DIR}/collaboration-groups.json`);
 const collaborationRouting = new CollaborationRoutingStore(`${TERMDOCK_DIR}/collaboration-routing.json`);
+let sharedChatAccessCheck: ((subjectId: string, sessionId: string) => boolean) | undefined;
+export function configureSharedChatAccess(check: typeof sharedChatAccessCheck): void { sharedChatAccessCheck = check; }
+function sharedChatMessageAllowed(message: CollaborationMessage): boolean | undefined {
+  if (message.metadata?.chatOnly !== true) return true;
+  return typeof message.metadata.chatSubject === 'string' ? sharedChatAccessCheck?.(message.metadata.chatSubject, message.toSessionId) : false;
+}
 const collaborationDeliveryWorker = new CollaborationDeliveryWorker({
   store: collaborationStore,
   peers: () => collaborationStore.list().filter((group) => !group.deleted).flatMap((group) => group.sessionIds),
   isLocal: (id) => !id.startsWith('remote:'),
   resolve: resolveCollaborationRoute,
+  authorizeMessage: sharedChatMessageAllowed,
   onError: (error) => console.warn('[collaboration] background delivery failed:', getErrorMessage(error)),
 });
 const sessionSearchStore = new SessionSearchStore(`${TERMDOCK_DIR}/session-search`);
@@ -2584,14 +2592,18 @@ async function resolveCollaborationRoute(frontendSessionId: string): Promise<Col
         throw new Error('ROUTE_NATIVE_IDENTITY_CHANGED_BEFORE_WRITE');
       }
     } : undefined;
-    const writeText = async (prompt: string, progress?: PromptWriteProgress) => {
+    const writeText = async (prompt: string, progress?: PromptWriteProgress, messages: CollaborationMessage[] = []) => {
       progress?.('queue_wait');
       if (!globalSessionState.sessions.some((candidate) => candidate.sessionId === frontendSessionId)) throw new Error('SESSION_REMOVED');
-      await writeCollaborationTmuxPane(runTmux, pinned, prompt, runTmuxStdin, () => { assertGeneration(); assertCurrent(); }, progress, validateRecoveredTarget, !!pinned.agentSlug && !pane.isShell);
+      const restricted = messages.filter(message => message.metadata?.chatOnly === true);
+      const validateTarget = restricted.length ? () => validateSharedChatTarget(pinned,
+        () => restricted.every(message => sharedChatMessageAllowed(message) === true),
+        () => inspectCollaborationTmux(binding, null, false, false, true, true), validateRecoveredTarget) : validateRecoveredTarget;
+      await writeCollaborationTmuxPane(runTmux, pinned, prompt, runTmuxStdin, () => { assertGeneration(); assertCurrent(); }, progress, validateTarget, !!pinned.agentSlug && !pane.isShell);
       backend!.lastActivity = Date.now();
     };
-    return { state: 'ready', tracksWriteProgress: true, isShell: pane.isShell, capture: async () => captureTmuxPaneText(runTmux, pinned), writeText,
-      write: (messages, progress) => writeText(formatLocalCollaborationMessages(frontendSessionId, messages), progress) };
+    return { state: 'ready', tracksWriteProgress: true, isShell: pane.isShell, agentSlug: pinned.agentSlug, capture: async () => captureTmuxPaneText(runTmux, pinned), writeText,
+      write: (messages, progress) => writeText(formatLocalCollaborationMessages(frontendSessionId, messages), progress, messages) };
   }
   if (!backend || !binding.backendSessionId) return { state: 'offline', reason: 'SHELL_BACKEND_NOT_RUNNING' };
   await refreshCollaborationAgentIdentity(binding.backendSessionId, backend, Boolean(record.agentLaunchCheck));
@@ -2614,10 +2626,13 @@ async function resolveCollaborationRoute(frontendSessionId: string): Promise<Col
     }, progress, canDeliverPromptToAgent(target) ? () => target.autoTitleTerminal.snapshot(true) : undefined);
     target.lastActivity = Date.now();
   };
-  return { state: 'ready', tracksWriteProgress: true,
+  return { state: 'ready', tracksWriteProgress: true, agentSlug: binding.agentSlug,
     isShell: backend.activeProgram?.source !== 'unknown' && shellNamesBackend.has(backend.activeProgram?.command?.toLowerCase() ?? ''),
     capture: async () => target.autoTitleContext, writeText,
-    write: (messages, progress) => writeText(formatLocalCollaborationMessages(frontendSessionId, messages), progress) };
+    write: (messages, progress) => {
+      if (messages.some(message => message.metadata?.chatOnly === true)) throw new Error('SHARED_CHAT_REQUIRES_TMUX');
+      return writeText(formatLocalCollaborationMessages(frontendSessionId, messages), progress);
+    } };
 }
 
 

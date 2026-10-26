@@ -23,6 +23,16 @@ vi.mock('../terminal/api', async original => ({ ...await original<typeof import(
 beforeEach(() => { mocks.osc.length = 0; mocks.selection = ''; mocks.upload.mockReset(); mocks.upload.mockResolvedValue({ files: [{ path: '/attachments/photo.png' }] }); mocks.fontsReady = Promise.resolve(); mocks.dimensions = { cols: 120, rows: 40 }; });
 afterEach(() => { cleanup(); mocks.writes.length = 0; vi.clearAllMocks(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 describe('scoped encrypted terminal viewer', () => {
+  it('forces chat-only grants into chat without mounting xterm, raw input probes or a terminal switch', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ agentAvailable: true, messages: [] })));
+    const connection = { targetPeerId: 'chat-only', request: vi.fn(async () => ({ items: [{ sessionId: 'backend', sourceSessionId: 'stable-chat', name: 'Chat', live: true, canWrite: false, canResize: false, canViewChat: true, canSendChat: true, canViewTerminal: false, canClearChat: false }] })), openSocket: vi.fn() };
+    render(<SessionAccessView client={connection as unknown as SecureClient} initialViewMode="terminal" />);
+    await screen.findByText('想一起完成什么？');
+    expect(connection.openSocket).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: /^终端$|切换到终端|查看终端|清空显示/ })).toBeNull();
+    const requests = vi.mocked(fetch).mock.calls;
+    expect(requests.some(([url]) => String(url).includes('/input-check') || String(url).includes('/view-mode'))).toBe(false);
+  });
   it('sends resize only when its measured grid differs from the connected or pending grid', async () => {
     let notify = () => {};
     vi.stubGlobal('ResizeObserver', class { constructor(callback: () => void) { notify = callback; } observe() {} disconnect() {} });

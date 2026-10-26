@@ -21,6 +21,13 @@ describe('trusted invitation links', () => {
 });
 
 describe('HTTP certificate setup invitation', () => {
+  it('preserves separate target and entry identities over HTTP relay while native addition keeps HTTPS', () => {
+    const entryServiceId = '12D3KooWGwMiyMZXjv7EC8evYS2adcki2u9N7W5Ri8pQG5zjgeRx';
+    const original = createInviteLink({ v: 1, serviceId, code, entryServiceId, routeCode: 'b'.repeat(43), entryUrl: 'https://192.168.1.20:9834', serviceUrl: 'https://192.168.1.30:9834' });
+    const link = createOnboardingInviteLink(original, 'http://192.168.1.20:21000/connect');
+    expect(parseInviteLink(link)).toMatchObject({ url: 'https://192.168.1.20:9834', serviceOrigin: 'https://192.168.1.30:9834', entryServiceId });
+    expect(parseInviteLink(link, { httpTransport: true })).toMatchObject({ url: 'http://192.168.1.20:21000', serviceOrigin: 'https://192.168.1.30:9834', entryServiceId, targetPeerId: serviceId, certificateUrl: expect.stringContaining('/certificates#') });
+  });
   it('uses the same-origin HTTP Noise transport only when requested by the browser landing page', () => {
     const original = createInviteLink({ v: 1, serviceId, code, entryUrl: 'https://192.168.1.20:9834' });
     const link = createOnboardingInviteLink(original, 'http://192.168.1.20:21000/connect');

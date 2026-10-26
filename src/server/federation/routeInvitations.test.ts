@@ -18,6 +18,29 @@ function fixture() {
   return { store, filePath, options, directory, now: (value: number) => { now = value; }, revoke: () => { issuerAllowed = false; }, withdraw: () => { targetAvailable = false; } };
 }
 describe('minimal entry route invitations', () => {
+  it('supports repeatable routing with independent device revocation and parent-link revocation', () => {
+    const f = fixture(), invite = f.store.create('owner-B', 'C', { reusable: true, linkExpiresAt: null });
+    expect(invite).toMatchObject({ expiresAt: null, reusable: true });
+    f.store.consume(invite.routeCode, 'alice'); f.store.consume(invite.routeCode, 'bob'); f.store.consume(invite.routeCode, 'alice');
+    expect(f.store.list()).toHaveLength(2);
+    f.now(365 * 86400000);
+    const restarted = new RouteInvitationStore(f.options);
+    expect(restarted.allows('alice', 'C')).toBe(true);
+    expect(restarted.allows('alice', 'D')).toBe(false);
+    restarted.revoke(restarted.list().find(item => item.subjectId === 'alice')!.id);
+    expect(() => restarted.consume(invite.routeCode, 'alice')).toThrow('ROUTE_INVITATION_DEVICE_REVOKED');
+    expect(restarted.allows('bob', 'C')).toBe(true);
+    restarted.revoke(invite.invitationId);
+    expect(restarted.allows('bob', 'C')).toBe(false);
+    expect(() => restarted.consume(invite.routeCode, 'charlie')).toThrow('ROUTE_PAIRING_DENIED');
+  });
+  it('expires new route acceptance without invalidating previously accepted routing', () => {
+    const f = fixture(), invite = f.store.create('owner-B', 'C', { reusable: true, linkExpiresAt: 2000 });
+    f.store.consume(invite.routeCode, 'alice'); f.now(2000);
+    expect(f.store.allows('alice', 'C')).toBe(true);
+    expect(() => f.store.consume(invite.routeCode, 'bob')).toThrow('ROUTE_INVITATION_EXPIRED');
+    expect(() => f.store.create('owner-B', 'C', { reusable: 'yes' as unknown as boolean })).toThrow('INVALID_ROUTE_INVITATION_SETTINGS');
+  });
   it('grants and revokes one explicit route without changing the owner or another device', () => {
     const f = fixture();
     const first = f.store.grant('owner-B', 'C', 'phone');

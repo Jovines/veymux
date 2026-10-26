@@ -29,7 +29,7 @@ it('shares a canonical Session preference across clients and reloads, without af
   expect(mirror).toHaveBeenLastCalledWith('stable', 'terminal');
   expect((await save('invalid')).status).toBe(400); expect((await fetch(`${base}/unknown/view-mode`)).status).toBe(404);
   expect(mirror).toHaveBeenCalledTimes(2);
-  expect(resolveAccessRequest('GET', '/api/terminal/frontend/view-mode')).toEqual({ action: 'session.view', sessionId: 'frontend' });
+  expect(resolveAccessRequest('GET', '/api/terminal/frontend/view-mode')).toEqual({ action: 'session.metadata', sessionId: 'frontend' });
   expect(resolveAccessRequest('PUT', '/api/terminal/frontend/view-mode')).toEqual({ action: 'session.view', sessionId: 'frontend' });
 });
 it('checks live and proposed commands without changing the preference, and keeps the endpoint encrypted', async () => {

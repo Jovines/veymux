@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { isBusinessApiPath, resolveAccessRequest, terminalMessageAction } from './accessPolicy.js';
 describe('encrypted tunnel access policy', () => {
   it('maps backend Session operations to separate capabilities', () => {
-    for (const op of ['health', 'attach', 'stream', 'agent-resume']) expect(resolveAccessRequest('GET', `/api/terminal/s1/${op}?since=1`)).toEqual({ action: 'session.view', sessionId: 's1' });
+    for (const op of ['health', 'attach', 'stream', 'agent-resume']) expect(resolveAccessRequest('GET', `/api/terminal/s1/${op}?since=1`)).toEqual({ action: 'session.terminal-view', sessionId: 's1' });
     expect(resolveAccessRequest('POST', '/api/terminal/s1/input')).toEqual({ action: 'session.input', sessionId: 's1' });
     expect(resolveAccessRequest('POST', '/api/terminal/s1/input-check')).toEqual({ action: 'session.input', sessionId: 's1' });
     expect(resolveAccessRequest('GET', '/api/terminal/s1/input-check')).toBeNull();
-    expect(resolveAccessRequest('PUT', '/api/terminal/s1/chat/msg/state')).toEqual({ action: 'session.input', sessionId: 's1' });
+    expect(resolveAccessRequest('PUT', '/api/terminal/s1/chat/msg/state')).toEqual({ action: 'session.chat-send', sessionId: 's1' });
     expect(resolveAccessRequest('PUT', '/api/terminal/settings/chat/msg/state')).toBeNull();
     expect(resolveAccessRequest('POST', '/api/terminal/s1/resize')).toEqual({ action: 'session.resize', sessionId: 's1' });
     expect(resolveAccessRequest('DELETE', '/api/terminal/s1')).toEqual({ action: 'session.terminate', sessionId: 's1' });
@@ -58,12 +58,12 @@ describe('encrypted tunnel access policy', () => {
 });
 
 it('permits only the session-bound selection read while retaining owner authority for other tmux actions', () => {
-  expect(terminalMessageAction('tmux', 'copy-selection')).toBe('session.view');
+  expect(terminalMessageAction('tmux', 'copy-selection')).toBe('session.terminal-view');
   for (const action of ['split-pane', 'switch-session', 'select-pane', 'copy-mode', 'future-action', null, {}, undefined]) expect(terminalMessageAction('tmux', action)).toBe('service.configure');
 });
 
 it('allows UI viewing acknowledgement only within the authenticated session view grant', () => {
-  expect(resolveAccessRequest('POST', '/api/terminal/one/chat/viewed')).toEqual({ action: 'session.view', sessionId: 'one' });
+  expect(resolveAccessRequest('POST', '/api/terminal/one/chat/viewed')).toEqual({ action: 'session.chat-view', sessionId: 'one' });
   expect(resolveAccessRequest('POST', '/api/terminal/settings/chat/viewed')).toBeNull();
   expect(resolveAccessRequest('POST', '/api/terminal/one/chat/unknown')).toBeNull();
 });

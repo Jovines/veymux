@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { Router } from 'express';
 import type { CollaborationMessage, CollaborationStore } from './collaborationStore.js';
-import { encryptedRequestSubject, hasEncryptedServiceAccess } from '../federation/requestContext.js';
+import { encryptedRequestSubject, hasEncryptedServiceAccess, isRestrictedChatRequest } from '../federation/requestContext.js';
 import { chatPresentation } from '../shared/chatPresentation.js';
 import { chatReplyExcerpt } from '../shared/chatReplyContext.js';
 import { CollaborationError, hasUnconfirmedTerminalWrite } from './collaborationProtocol.js';
@@ -141,8 +141,11 @@ export function sessionChatRoutes(options: {
           throw new CollaborationError('SESSION_SCOPE_DENIED', '无权提及该会话；分享入口不开放协作发现与联系', 403);
         }
       }
+      const restricted = isRestrictedChatRequest(req);
+      const content = body.content.replace(/\r\n?/g, '\n').trim();
+      if (restricted && (/[\x00-\x08\x0b-\x1f\x7f-\x9f]/.test(content) || content.startsWith('/'))) throw new CollaborationError('SHARED_CHAT_TEXT_REQUIRED', '此分享仅允许普通消息，不支持终端按键或 Agent 命令', 403);
       const group = options.store.ensureSessionChat(ctx.session.sessionId);
-      const [message] = options.store.send({ groupId: group.id, fromSessionId: null, toSessionIds: [ctx.session.sessionId], kind: 'ask', content: body.content.trim(), integrationOrigin: { integrationId: ctx.principal, source: 'session-chat' }, idempotencyKey: body.requestId, threadId: ctx.principal });
+      const [message] = options.store.send({ groupId: group.id, fromSessionId: null, toSessionIds: [ctx.session.sessionId], kind: 'ask', content, ...(restricted ? { metadata: { chatOnly: true, chatSubject: encryptedRequestSubject(req) } } : {}), integrationOrigin: { integrationId: ctx.principal, source: 'session-chat' }, idempotencyKey: body.requestId, threadId: ctx.principal });
       options.deliver(ctx.session.sessionId);
       res.json({ id: message.id, status: message.status, createdAt: message.createdAt });
     } catch (error) { res.status(error instanceof CollaborationError ? error.httpStatus : 409).json({ error: error instanceof Error ? error.message : '发送失败，草稿已保留', ...(error instanceof CollaborationError ? { code: error.code } : {}) }); }

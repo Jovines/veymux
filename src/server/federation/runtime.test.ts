@@ -12,6 +12,7 @@ import { socketDuplex } from './socketDuplex.js';
 import { PacketChannel, fromBase64, toBase64, type Packet } from './packets.js';
 import { collaborationTaskRoutes } from '../agent/collaborationTaskRoutes.js';
 import type { CollaborationStore } from '../agent/collaborationStore.js';
+import { isRestrictedChatRequest } from './requestContext.js';
 
 const cleanup: Array<() => void> = [];
 afterEach(() => { for (const close of cleanup.splice(0).reverse()) close(); });
@@ -39,6 +40,8 @@ async function fixture(runtimeOptions: FederationRuntimeOptions = {}, allowOpenA
   app.get('/api/terminal/session-inventory', (_req, res) => res.json(inventory));
   app.get('/api/terminal/:session/health', (req, res) => res.json({ output: 'private-terminal-output', session: req.params.session }));
   app.post('/api/terminal/:session/input', (req, res) => { input(req.body); res.json({ success: true }); });
+  app.get('/api/terminal/:session/chat', (_req, res) => res.json({ messages: [] }));
+  app.post('/api/terminal/:session/chat', (req, res) => res.json({ restricted: isRestrictedChatRequest(req) }));
   let terminal: WebSocket | undefined, computer: WebSocket | undefined, android: WebSocket | undefined;
   const computerOptions = vi.fn();
   const terminalOptions = vi.fn();
@@ -99,6 +102,59 @@ async function fixture(runtimeOptions: FederationRuntimeOptions = {}, allowOpenA
 }
 
 describe('federation runtime over real encrypted WebSocket', () => {
+  it('enforces chat-only grants over Noise and prevents forged unrestricted chat headers', async () => {
+    const f = await fixture(), guest = await f.connect();
+    f.runtime.store.grant({ subjectId: guest.identity.peerId, scope: { kind: 'sessions', sessionIds: ['source-one'] }, actions: ['session.chat-view', 'session.chat-send'] });
+    guest.channel.send({ type: 'session-list', id: 'chat-directory' });
+    expect(await guest.take('chat-directory')).toMatchObject({ items: [{ sessionId: 'one', canViewChat: true, canViewTerminal: false, canSendChat: true, canWrite: false, canResize: false, canClearChat: false }] });
+    expect((await guest.http('chat-read', 'GET', '/api/terminal/one/chat'))[0]).toMatchObject({ type: 'head', status: 200 });
+    guest.channel.send({ type: 'http', id: 'forged-chat', method: 'POST', path: '/api/terminal/one/chat', headers: { 'x-termdock-chat-only': '0', 'x-termdock-full-service': '1' } });
+    guest.channel.send({ type: 'upload-end', id: 'forged-chat' });
+    await guest.take('forged-chat', 'head');
+    const body = await guest.take('forged-chat', 'chunk');
+    expect(JSON.parse(Buffer.from(fromBase64(String(body.data))).toString())).toEqual({ restricted: true });
+    guest.channel.send({ type: 'ack', id: 'forged-chat' }); await guest.take('forged-chat', 'end');
+    for (const [method, path] of [['GET', '/health'], ['POST', '/input'], ['POST', '/input-check'], ['GET', '/attach'], ['PUT', '/view-mode']]) {
+      expect((await guest.http(`deny-${path}`, method, '/api/terminal/one' + path))[0]).toMatchObject({ type: 'error', error: 'AUTHORIZATION_DENIED' });
+    }
+    guest.channel.send({ type: 'ws-open', id: 'chat-terminal-denied', path: '/api/terminal/one/ws' });
+    expect(await guest.take('chat-terminal-denied')).toMatchObject({ type: 'error', error: 'AUTHORIZATION_DENIED' });
+    expect(f.terminalOptions).not.toHaveBeenCalled(); expect(f.input).not.toHaveBeenCalled();
+  });
+  it('retains read-only terminal previews without granting keyboard or chat sends', async () => {
+    const f = await fixture(), guest = await f.connect();
+    f.runtime.store.grant({ subjectId: guest.identity.peerId, scope: { kind: 'sessions', sessionIds: ['source-one'] }, actions: ['session.chat-view', 'session.terminal-view', 'session.chat-clear'] });
+    guest.channel.send({ type: 'session-list', id: 'preview-directory' });
+    expect(await guest.take('preview-directory')).toMatchObject({ items: [{ canViewChat: true, canViewTerminal: true, canSendChat: false, canWrite: false, canClearChat: true }] });
+    guest.channel.send({ type: 'ws-open', id: 'preview', path: '/api/terminal/one/ws' });
+    await guest.take('preview', 'ws-ready'); await guest.take('preview', 'ws-data');
+    guest.channel.send({ type: 'ws-data', id: 'preview', data: JSON.stringify({ type: 'input', data: '\u0003exit\n' }) });
+    expect(await guest.take('preview')).toMatchObject({ type: 'error', error: 'AUTHORIZATION_DENIED' });
+    expect((await guest.http('no-chat-send', 'POST', '/api/terminal/one/chat'))[0]).toMatchObject({ type: 'error', error: 'AUTHORIZATION_DENIED' });
+    expect(f.received).not.toHaveBeenCalled();
+  });
+  it('deduplicates reusable acceptance, preserves individual revocation and revokes all issued access with the link', async () => {
+    const f = await fixture(), owner = await f.connect(); await owner.pair();
+    owner.channel.send({ type: 'invite-create', id: 'reusable', scope: { kind: 'sessions', sessionIds: ['one'] }, actions: ['session.chat-view'], reusable: true, linkExpiresAt: null });
+    const invite = await owner.take('reusable'); expect(invite).toMatchObject({ type: 'result', expiresAt: null });
+    const alice = await f.connect(), bob = await f.connect();
+    for (const [i, guest] of [alice, bob, alice].entries()) {
+      guest.channel.send({ type: 'pair', id: `repeat-${i}`, code: invite.code });
+      expect(await guest.take(`repeat-${i}`)).toMatchObject({ type: 'result' });
+    }
+    const issued = f.runtime.store.list().filter(g => g.invitationId === invite.invitationId);
+    expect(issued).toHaveLength(2);
+    const aliceGrant = issued.find(g => g.subjectId === alice.identity.peerId)!;
+    owner.channel.send({ type: 'revoke', id: 'individual', grantId: aliceGrant.id }); await owner.take('individual');
+    alice.channel.send({ type: 'pair', id: 'reaccept-revoked', code: invite.code });
+    expect(await alice.take('reaccept-revoked')).toMatchObject({ type: 'error', error: 'INVITATION_DEVICE_REVOKED' });
+    expect((await bob.http('bob-still-readable', 'GET', '/api/terminal/one/chat'))[0]).toMatchObject({ type: 'head', status: 200 });
+    owner.channel.send({ type: 'invite-revoke', id: 'revoke-link', invitationId: invite.invitationId });
+    expect(await owner.take('revoke-link')).toMatchObject({ revoked: true });
+    expect((await bob.http('bob-now-denied', 'GET', '/api/terminal/one/chat'))[0]).toMatchObject({ type: 'error', error: 'AUTHORIZATION_DENIED' });
+    const newcomer = await f.connect(); newcomer.channel.send({ type: 'pair', id: 'dead-link', code: invite.code });
+    expect(await newcomer.take('dead-link')).toMatchObject({ type: 'error', error: 'PAIRING_DENIED' });
+  });
   it('accepts display metadata only for the authenticated publisher identity over Noise', async () => {
     const issue = vi.fn(() => ({ selfRelayToken: 'x'.repeat(43), expiresAt: Date.now() + 30_000 }));
     const f = await fixture({ issueSelfRelayTicket: issue }), client = await f.connect();
@@ -499,7 +555,7 @@ describe('federation runtime over real encrypted WebSocket', () => {
     const revoked = f.runtime.store.grant({ subjectId: client.identity.peerId, scope: { kind: 'service' }, actions: ['service:*'] });
     f.runtime.store.revoke(revoked.id);
     client.channel.send({ type: 'session-list', id: 'sessions' });
-    expect(await client.take('sessions')).toEqual({ type: 'result', id: 'sessions', items: [{ sessionId: 'one', sourceSessionId: 'source-one', name: 'Allowed', live: true, canWrite: false, canResize: false }] });
+    expect(await client.take('sessions')).toEqual({ type: 'result', id: 'sessions', items: [{ sessionId: 'one', sourceSessionId: 'source-one', name: 'Allowed', live: true, canWrite: false, canResize: false, canViewChat: true, canViewTerminal: true, canSendChat: false, canClearChat: false }] });
     client.channel.send({ type: 'permissions', id: 'permissions' });
     expect(await client.take('permissions')).toMatchObject({ fullService: false, grants: [grant] });
   });

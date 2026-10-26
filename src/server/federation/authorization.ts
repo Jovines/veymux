@@ -10,6 +10,7 @@ export interface GrantInput {
   subjectId: string;
   resources?: ShareResources;
   sessionAppearance?: SessionAppearances;
+  invitationId?: string;
   scope: AuthorizationScope;
   actions: string[];
   expiresAt?: number;
@@ -47,6 +48,7 @@ function validateInput(v: unknown): asserts v is GrantInput {
   else { assert(v.scope.kind === 'sessions' && ids(v.scope.sessionIds), 'session scope'); keys(v.scope, ['kind', 'sessionIds']); }
   assert(v.resources === undefined || validShareResources(v.resources), 'shared resources');
   assert(v.sessionAppearance === undefined || validSessionAppearances(v.sessionAppearance, v.scope), 'session appearance');
+  assert(v.invitationId === undefined || (typeof v.invitationId === 'string' && /^[a-f0-9]{64}$/.test(v.invitationId)), 'invitation identity');
   assert(Array.isArray(v.actions) && v.actions.length > 0 && v.actions.length <= 256 && v.actions.every(action) && new Set(v.actions).size === v.actions.length, 'actions');
   if (v.scope.kind === 'sessions') assert(v.actions.every(a => a.startsWith('session.')), 'session scope cannot grant service or file capabilities');
   assert(v.expiresAt === undefined || (Number.isSafeInteger(v.expiresAt) && Number(v.expiresAt) > 0), 'expiry');
@@ -67,13 +69,14 @@ function isSubset(child: AuthorizationGrant, parent: AuthorizationGrant): boolea
   }
   return true;
 }
-function active(g: AuthorizationGrant, grants: AuthorizationGrant[], now: number, seen = new Set<string>(), passwordCredential?: string | null): boolean {
+function active(g: AuthorizationGrant, grants: AuthorizationGrant[], now: number, seen = new Set<string>(), passwordCredential?: string | null, invitationActive?: (id: string) => boolean): boolean {
   if (seen.has(g.id) || g.createdAt > now || g.revokedAt !== undefined || (g.expiresAt !== undefined && g.expiresAt <= now)) return false;
   if (g.passwordCredential && g.passwordCredential !== passwordCredential) return false;
+  if (g.invitationId && invitationActive?.(g.invitationId) !== true) return false;
   seen.add(g.id);
   if (!g.parentGrantId) return true;
   const parent = grants.find(p => p.id === g.parentGrantId);
-  return !!parent && isSubset(g, parent) && active(parent, grants, now, seen, passwordCredential);
+  return !!parent && isSubset(g, parent) && active(parent, grants, now, seen, passwordCredential, invitationActive);
 }
 
 /** Target-service authority. Root mutations must only be exposed to authenticated administrators.
@@ -81,7 +84,7 @@ function active(g: AuthorizationGrant, grants: AuthorizationGrant[], now: number
  * Do not share this file between concurrently writing processes. */
 export class AuthorizationStore {
   private readonly now: () => number;
-  constructor(private readonly options: { filePath: string; serviceId: string; now?: () => number; passwordCredential?: () => string | null }) {
+  constructor(private readonly options: { filePath: string; serviceId: string; now?: () => number; passwordCredential?: () => string | null; invitationActive?: (id: string) => boolean }) {
     assert(id(options.serviceId), 'service identity'); this.now = options.now ?? Date.now;
     this.read();
   }
@@ -95,7 +98,7 @@ export class AuthorizationStore {
     const grants: AuthorizationGrant[] = [];
     for (const value of data.grants) {
       validateInput(value); const g = value as AuthorizationGrant;
-      keys(g as unknown as Record<string, unknown>, ['id', 'serviceId', 'createdAt', 'parentGrantId', 'revokedAt', 'subjectId', 'scope', 'actions', 'expiresAt', 'canDelegate', 'conditions', 'passwordCredential', 'resources', 'sessionAppearance']);
+      keys(g as unknown as Record<string, unknown>, ['id', 'serviceId', 'createdAt', 'parentGrantId', 'revokedAt', 'subjectId', 'scope', 'actions', 'expiresAt', 'canDelegate', 'conditions', 'passwordCredential', 'resources', 'sessionAppearance', 'invitationId']);
       assert(id(g.id) && g.serviceId === this.options.serviceId && Number.isSafeInteger(g.createdAt) && g.createdAt >= 0, 'grant metadata');
       assert(g.parentGrantId === undefined || id(g.parentGrantId), 'parent identity');
       assert(g.revokedAt === undefined || (Number.isSafeInteger(g.revokedAt) && g.revokedAt >= 0), 'revocation');
@@ -105,6 +108,7 @@ export class AuthorizationStore {
     return grants;
   }
   private save(grants: AuthorizationGrant[]) {
+    assert(grants.length <= 10000, 'grant capacity');
     mkdirSync(dirname(this.options.filePath), { recursive: true, mode: 0o700 });
     const temp = `${this.options.filePath}.${randomUUID()}.tmp`;
     let fd: number | undefined;
@@ -119,7 +123,7 @@ export class AuthorizationStore {
   }
   private create(input: GrantInput): AuthorizationGrant {
     validateInput(input);
-    keys(input as unknown as Record<string, unknown>, ['subjectId', 'scope', 'actions', 'expiresAt', 'canDelegate', 'conditions', 'resources', 'sessionAppearance']);
+    keys(input as unknown as Record<string, unknown>, ['subjectId', 'scope', 'actions', 'expiresAt', 'canDelegate', 'conditions', 'resources', 'sessionAppearance', 'invitationId']);
     const now = this.now(); assert(input.expiresAt === undefined || input.expiresAt > now, 'already expired');
     return { ...structuredClone(input), id: randomUUID(), serviceId: this.options.serviceId, createdAt: now };
   }
@@ -138,7 +142,7 @@ export class AuthorizationStore {
   }
   delegate(parentGrantId: string, authenticatedSubjectId: string, input: GrantInput): AuthorizationGrant {
     const grants = this.read(); const parent = grants.find(g => g.id === parentGrantId);
-    assert(parent && parent.subjectId === authenticatedSubjectId && active(parent, grants, this.now(), new Set(), this.options.passwordCredential?.()), 'inactive or unowned parent');
+    assert(parent && parent.subjectId === authenticatedSubjectId && active(parent, grants, this.now(), new Set(), this.options.passwordCredential?.(), this.options.invitationActive), 'inactive or unowned parent');
     const child = { ...this.create(input), parentGrantId };
     assert(isSubset(child, parent), 'delegation exceeds parent'); grants.push(child); this.save(grants); return structuredClone(child);
   }
@@ -149,7 +153,13 @@ export class AuthorizationStore {
     grant.revokedAt = this.now(); this.save(grants); return true;
   }
   list(): AuthorizationGrant[] { return this.read(); }
-  listActive(): AuthorizationGrant[] { const grants = this.read(); return grants.filter(grant => active(grant, grants, this.now(), new Set(), this.options.passwordCredential?.())); }
+  revokeInvitation(invitationId: string): number {
+    const grants = this.read(); let count = 0;
+    for (const grant of grants) if (grant.invitationId === invitationId && grant.revokedAt === undefined) { grant.revokedAt = this.now(); count++; }
+    if (count) this.save(grants);
+    return count;
+  }
+  listActive(): AuthorizationGrant[] { const grants = this.read(); return grants.filter(grant => active(grant, grants, this.now(), new Set(), this.options.passwordCredential?.(), this.options.invitationActive)); }
   /** Narrow only this Session, preserving sibling Session grants and descendant checks. */
   revokeSession(sessionId: string, normalize: (id: string) => string = id => id): number {
     const grants = this.read(); let changed = 0;
@@ -166,7 +176,7 @@ export class AuthorizationStore {
     let grants: AuthorizationGrant[];
     try { grants = this.read(); } catch { return []; }
     const now = this.now();
-    return grants.filter(g => g.subjectId === request.subjectId && active(g, grants, now, new Set(), this.options.passwordCredential?.())
+    return grants.filter(g => g.subjectId === request.subjectId && active(g, grants, now, new Set(), this.options.passwordCredential?.(), this.options.invitationActive)
       && (!g.conditions?.entryServiceIds || (!!request.entryServiceId && g.conditions.entryServiceIds.includes(request.entryServiceId)))
       && (!g.conditions?.relayIds || (!!request.relayId && g.conditions.relayIds.includes(request.relayId))));
   }
@@ -185,8 +195,14 @@ export class AuthorizationStore {
     try { grants = this.read(); } catch { return deny; }
     const now = this.now();
     const grantIds = grants.filter(g => {
-      if (g.subjectId !== request.subjectId || !active(g, grants, now, new Set(), this.options.passwordCredential?.())) return false;
-      if (!g.actions.includes('service:*') && !g.actions.includes(request.action)) return false;
+      if (g.subjectId !== request.subjectId || !active(g, grants, now, new Set(), this.options.passwordCredential?.(), this.options.invitationActive)) return false;
+      // Existing view/input grants retain their full original behavior. New
+      // grants can independently allow chat, terminal preview and chat sends.
+      const legacy = ['session.chat-view', 'session.terminal-view'].includes(request.action) ? 'session.view'
+        : ['session.chat-send', 'session.terminal-input'].includes(request.action) ? 'session.input'
+          : request.action === 'session.input' ? 'session.terminal-input' : undefined;
+      const metadata = request.action === 'session.metadata' && g.actions.some(a => ['session.view', 'session.chat-view', 'session.terminal-view'].includes(a));
+      if (!g.actions.includes('service:*') && !g.actions.includes(request.action) && !(legacy && g.actions.includes(legacy)) && !metadata) return false;
       if (g.scope.kind === 'sessions' && (!request.action.startsWith('session.') || !request.sessionId || !g.scope.sessionIds.includes(request.sessionId))) return false;
       if (g.conditions?.entryServiceIds && (!request.entryServiceId || !g.conditions.entryServiceIds.includes(request.entryServiceId))) return false;
       if (g.conditions?.relayIds && (!request.relayId || !g.conditions.relayIds.includes(request.relayId))) return false;

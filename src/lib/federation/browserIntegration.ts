@@ -755,13 +755,22 @@ export async function revokeEntryRoute(targetServiceId: string, route: ServiceRo
     for (const grant of grants) await entry.request({ type: 'route-revoke', grantId: grant.id });
   } finally { lease.release(); }
 }
-export async function createEntryInvitation(target: ConnectionIntent, route: ServiceRoute): Promise<{ routeCode: string; expiresAt: number }> {
+export async function createEntryInvitation(target: ConnectionIntent, route: ServiceRoute, settings: { reusable?: boolean; linkExpiresAt?: number | null } = {}): Promise<{ routeCode: string; expiresAt: number | null; onboarding?: { url: string; fingerprint: string } }> {
   assertRelayTarget(route.targetPeerId, target.targetPeerId);
   const lease = await acquireEntryClient(route), entry = lease.client;
   try {
-    const result = await entry.request({ type: 'route-invite-create', serviceId: target.targetPeerId });
-    if (typeof result.routeCode !== 'string' || typeof result.expiresAt !== 'number') throw new Error('暂时无法生成备用连接邀请。');
-    return { routeCode: result.routeCode, expiresAt: result.expiresAt };
+    const result = await entry.request({ type: 'route-invite-create', serviceId: target.targetPeerId, ...settings });
+    if (typeof result.routeCode !== 'string' || typeof result.expiresAt !== 'number' && result.expiresAt !== null) throw new Error('暂时无法生成备用连接邀请。');
+    if (settings.reusable && result.reusable !== true || settings.linkExpiresAt !== undefined && result.expiresAt !== settings.linkExpiresAt) throw new Error('入口服务需要更新后才能使用所选的链接有效期和重复使用设置。');
+    let onboarding: { url: string; fingerprint: string } | undefined;
+    try {
+      const response = await entry.fetch('/api/terminal/settings');
+      if (response.ok) {
+        const local = (await response.json()).localAccess;
+        if (local?.status !== 'loopback-only' && typeof local?.onboardingUrl === 'string' && typeof local?.caFingerprint === 'string' && new URL(local.onboardingUrl).protocol === 'http:') onboarding = { url: local.onboardingUrl, fingerprint: local.caFingerprint };
+      }
+    } catch { /* Older entries keep their existing HTTPS sharing path. */ }
+    return { routeCode: result.routeCode, expiresAt: result.expiresAt, ...(onboarding ? { onboarding } : {}) };
   } finally { lease.release(); }
 }
 export async function saveServiceRoutes(service: import('../services/serviceDirectory').ServiceConnection, routes: ServiceRoute[]): Promise<void> {

@@ -76,17 +76,20 @@ export function resolveAccessRequest(method: string, path: string): ResolvedAcce
   if (read && route === 'directory-suggestions') return { action: 'file.read' };
   if (method === 'POST' && route === 'create') return { action: 'service.create-session' };
   const attachment = /^([^/]+)\/chat\/attachments(?:\/recording)?$/.exec(route);
-  if (method === 'POST' && attachment && !reservedSessionIds.has(attachment[1].toLowerCase())) return { action: 'session.input', sessionId: attachment[1] };
+  if (method === 'POST' && attachment && !reservedSessionIds.has(attachment[1].toLowerCase())) return { action: 'session.chat-send', sessionId: attachment[1] };
   const chatState = /^([^/]+)\/chat\/[^/]+\/state$/.exec(route);
   const chatViewed = /^([^/]+)\/chat\/viewed$/.exec(route);
-  if (method === 'POST' && chatViewed && !reservedSessionIds.has(chatViewed[1].toLowerCase())) return { action: 'session.view', sessionId: chatViewed[1] };
-  if (method === 'PUT' && chatState && !reservedSessionIds.has(chatState[1].toLowerCase())) return { action: 'session.input', sessionId: chatState[1] };
+  if (method === 'POST' && chatViewed && !reservedSessionIds.has(chatViewed[1].toLowerCase())) return { action: 'session.chat-view', sessionId: chatViewed[1] };
+  if (method === 'PUT' && chatState && !reservedSessionIds.has(chatState[1].toLowerCase())) return { action: 'session.chat-send', sessionId: chatState[1] };
   const session = /^([^/]+)(?:\/(health|attach|stream|input|input-check|resize|tmux|restart|agent-resume|chat|view-mode))?$/.exec(route);
   if (session && !reservedSessionIds.has(session[1].toLowerCase())) {
     const sessionId = session[1]; const op = session[2];
-    if (read && ['health', 'attach', 'stream', 'agent-resume', 'chat', 'view-mode'].includes(op)) return { action: 'session.view', sessionId };
+    if (read && op === 'chat') return { action: 'session.chat-view', sessionId };
+    if (read && op === 'view-mode') return { action: 'session.metadata', sessionId };
+    if (read && ['health', 'attach', 'stream', 'agent-resume'].includes(op)) return { action: 'session.terminal-view', sessionId };
     if (method === 'PUT' && op === 'view-mode') return { action: 'session.view', sessionId };
-    if (method === 'POST' && (op === 'input' || op === 'input-check' || op === 'chat')) return { action: 'session.input', sessionId };
+    if (method === 'POST' && op === 'chat') return { action: 'session.chat-send', sessionId };
+    if (method === 'POST' && (op === 'input' || op === 'input-check')) return { action: 'session.input', sessionId };
     if (method === 'POST' && op === 'resize') return { action: 'session.resize', sessionId };
     if (method === 'DELETE' && !op) return { action: 'session.terminate', sessionId };
     // tmux switch-session can reach other backends; restart/agent-resume accept
@@ -102,8 +105,8 @@ export function terminalMessageAction(type: string, action?: unknown): string | 
   switch (type) {
     case 'input': case 'focus': case 'agent-review-ack': return 'session.input';
     case 'resize': return 'session.resize';
-    case 'tmux': return action === 'copy-selection' ? 'session.view' : 'service.configure';
-    case 'ping': case 'viewing': case 'output-subscription': case 'output-ack': return 'session.view';
+    case 'tmux': return action === 'copy-selection' ? 'session.terminal-view' : 'service.configure';
+    case 'ping': case 'viewing': case 'output-subscription': case 'output-ack': return 'session.terminal-view';
     // Legacy flow-control can pause the shared PTY; grant only to controllers.
     case 'flow-control': return 'session.input';
     default: return null;

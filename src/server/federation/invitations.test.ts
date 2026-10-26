@@ -12,6 +12,36 @@ function fixture() {
   const options = { filePath, serviceId: 'service-C', now: () => now };
   return { filePath, store: new InvitationStore(options), reload: () => new InvitationStore(options), advance: (ms: number) => { now += ms; } };
 }
+it('supports repeated acceptance until revocation and makes issued access fail closed even across an interrupted revoke', () => {
+  const f = fixture();
+  const invite = f.store.create('admin', { scope: { kind: 'sessions', sessionIds: ['one'] }, actions: ['session.chat-view', 'session.chat-send'], reusable: true, linkExpiresAt: null });
+  expect(invite.expiresAt).toBeNull(); f.advance(365 * 86400000);
+  const store = f.reload();
+  const a = store.consume(invite.code, 'alice', () => true), b = store.consume(invite.code, 'bob', () => true);
+  expect(store.consume(invite.code, 'alice', () => true)).toEqual(a);
+  expect(store.listPending()).toEqual([expect.objectContaining({ id: invite.invitationId, reusable: true, invitationExpiresAt: null })]);
+  const authority = new AuthorizationStore({ filePath: f.filePath + '.grants', serviceId: 'service-C', invitationActive: id => store.hasGrantAuthority(id) });
+  authority.grant(a); authority.grant(b);
+  const request = { subjectId: 'alice', serviceId: 'service-C', sessionId: 'one', action: 'session.chat-send' };
+  expect(authority.authorize(request).allowed).toBe(true);
+  expect(authority.authorize({ ...request, action: 'session.input' }).allowed).toBe(false);
+  expect(store.revoke(invite.invitationId)).toBe(true);
+  expect(authority.authorize(request).allowed).toBe(false);
+  expect(authority.authorize({ ...request, subjectId: 'bob' }).allowed).toBe(false);
+  expect(() => store.consume(invite.code, 'new-device', () => true)).toThrow('PAIRING_DENIED');
+  expect(f.reload().listPending()).toEqual([]);
+});
+it('keeps accepted access after reusable-link expiry, while leaving the link available for explicit access revocation', () => {
+  const f = fixture();
+  const invitation = f.store.create('admin', { scope: { kind: 'sessions', sessionIds: ['one'] }, actions: ['session.chat-view'], reusable: true, linkExpiresAt: 2000 });
+  const grant = f.store.consume(invitation.code, 'alice', () => true);
+  f.advance(1001);
+  expect(() => f.store.consume(invitation.code, 'bob', () => true)).toThrow('INVITATION_EXPIRED');
+  expect(f.store.hasGrantAuthority(grant.invitationId!)).toBe(true);
+  expect(f.store.listPending()).toEqual([expect.objectContaining({ id: invitation.invitationId })]);
+  expect(f.store.revoke(invitation.invitationId)).toBe(true);
+  expect(f.store.hasGrantAuthority(grant.invitationId!)).toBe(false);
+});
 it('persists scoped display names and icons through redemption and prunes revoked siblings', () => {
   const f = fixture(), scope = { kind: 'sessions' as const, sessionIds: ['one', 'two'] };
   const sessionAppearance = { one: { name: '研究工作台', icon: '🎙️' }, two: { icon: 'code' } };

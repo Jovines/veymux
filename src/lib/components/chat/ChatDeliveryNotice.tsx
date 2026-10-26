@@ -1,3 +1,4 @@
+import { useSessionCapabilities } from '../../federation/ShareAccessContext';
 import type { ChatMessage } from './chatMessages';
 import { useEffect, useRef, useState } from 'react';
 import { currentSecureClient } from '../../federation/browserIntegration';
@@ -5,6 +6,7 @@ import { currentSecureClient } from '../../federation/browserIntegration';
 export function ChatDeliveryNotice({ message, sessionId, canWrite, onTerminal, onRecovered }: {
   message: ChatMessage; sessionId: string; canWrite: boolean; onTerminal: () => void; onRecovered: () => void;
 }) {
+  const canViewTerminal = useSessionCapabilities().has('session.terminal-view');
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
   const request = useRef<AbortController | null>(null);
   useEffect(() => { setBusy(false); setError(''); return () => { request.current?.abort(); request.current = null; }; }, [sessionId, message.id]);
@@ -34,7 +36,7 @@ export function ChatDeliveryNotice({ message, sessionId, canWrite, onTerminal, o
     'outcome-unknown': '上次投递结果待确认，已暂停自动重试。请查看终端，避免重复发送。',
   }[delivery.state];
   return <div role="status" data-chat-delivery-notice className="mb-2 rounded-xl border border-border bg-surface px-3 py-2 text-xs leading-5 text-muted-foreground">
-    <div className="flex flex-wrap items-center gap-x-3"><span className="min-w-0 flex-1">{text}</span>{delivery.canReconnect && canWrite && <button type="button" disabled={busy} aria-busy={busy} className="min-h-11 shrink-0 text-primary disabled:opacity-50" onClick={() => void recover()}>{busy ? '连接中…' : '重新连接'}</button>}<button type="button" className="min-h-11 shrink-0 text-primary" onClick={onTerminal}>查看终端</button></div>
+    <div className="flex flex-wrap items-center gap-x-3"><span className="min-w-0 flex-1">{text}</span>{delivery.canReconnect && canWrite && <button type="button" disabled={busy} aria-busy={busy} className="min-h-11 shrink-0 text-primary disabled:opacity-50" onClick={() => void recover()}>{busy ? '连接中…' : '重新连接'}</button>}{canViewTerminal && <button type="button" className="min-h-11 shrink-0 text-primary" onClick={onTerminal}>查看终端</button>}</div>
     {(delivery.blockedBy || delivery.state === 'outcome-unknown' && delivery.attemptCount) && canWrite && <div className="flex flex-wrap justify-end gap-x-3"><button type="button" disabled={busy} className="min-h-11 text-muted-foreground disabled:opacity-50" onClick={() => void recover('cancel')}>{delivery.blockedBy ? '停止阻塞的投递' : '停止这条投递'}</button><button type="button" disabled={busy} className="min-h-11 text-primary disabled:opacity-50" onClick={() => void recover('retry')}>{delivery.inputCheckFailed ? '已检查并清理，重新投递' : '确认未发送，重新投递'}</button></div>}
     {error && <p role="alert">{error}</p>}
   </div>;

@@ -85,7 +85,7 @@ export interface FederationRuntimeOptions {
   listRouteAccess?: () => Array<{ id: string; subjectId: string; targetServiceId: string; active: boolean; revokedAt?: number }>;
   grantRouteAccess?: (issuerId: string, targetServiceId: string, subjectId: string, url?: string) => unknown;
   revokeRouteAccess?: (id: string) => boolean;
-  createRouteInvitation?: (issuerId: string, targetServiceId: string) => { routeCode: string; expiresAt: number };
+  createRouteInvitation?: (issuerId: string, targetServiceId: string, settings?: import('./routeInvitations.js').RouteInvitationSettings) => { routeCode: string; expiresAt: number | null; reusable?: boolean; invitationId?: string };
   consumeRouteInvitation?: (code: string, subjectId: string) => { serviceId: string };
   hasRouteGrant?: (subjectId: string, targetServiceId: string) => boolean;
   issueRouteTicket?: (subjectId: string, targetServiceId: string) => { routeToken: string; expiresAt: number };
@@ -111,11 +111,12 @@ export async function createFederationRuntime(app: express.Express, directory: s
   const passwordBootstrap = new PasswordBootstrapServer({ getPasswordHash: getPasswordVerifier, serverIdentity: serviceId });
   let passwordComputing = 0; const passwordStarts: number[] = [];
   const passwordAttempts = new Map<string, string>();
-  const store = new AuthorizationStore({ serviceId, filePath: join(directory, 'grants.json'), passwordCredential: getPasswordCredentialFingerprint });
+  let invitations: InvitationStore;
+  const store = new AuthorizationStore({ serviceId, filePath: join(directory, 'grants.json'), passwordCredential: getPasswordCredentialFingerprint, invitationActive: id => invitations?.hasGrantAuthority(id) === true });
   const sharingPresence = new SessionSharingPresence();
   const deviceProfiles = new DeviceProfiles(join(directory, 'device-profiles.json'));
   const deviceNames = new DeviceNames(join(directory, 'device-names.json'));
-  const invitations = new InvitationStore({ serviceId, filePath: join(directory, 'invitations.json') });
+  invitations = new InvitationStore({ serviceId, filePath: join(directory, 'invitations.json') });
   let pairingCode = randomBytes(32).toString('base64url');
   const savePairing = () => {
     const path = join(directory, 'pairing.json');
@@ -131,7 +132,8 @@ export async function createFederationRuntime(app: express.Express, directory: s
     const fullService = request.headers['x-termdock-full-service'] === '1';
     delete request.headers['x-termdock-full-service'];
     const resourcesHeader = request.headers['x-termdock-resources']; delete request.headers['x-termdock-resources'];
-    markEncryptedRequest(request, typeof subject === 'string' ? subject : undefined, fullService, typeof resourcesHeader === 'string' ? JSON.parse(resourcesHeader) : undefined); app(request, response);
+    const chatOnly = request.headers['x-termdock-chat-only'] === '1'; delete request.headers['x-termdock-chat-only'];
+    markEncryptedRequest(request, typeof subject === 'string' ? subject : undefined, fullService, typeof resourcesHeader === 'string' ? JSON.parse(resourcesHeader) : undefined, chatOnly); app(request, response);
   });
   // The outer encrypted consumer can apply backpressure long after a local
   // response was written. Expiring this private keepalive socket while Undici
@@ -210,6 +212,8 @@ export async function createFederationRuntime(app: express.Express, directory: s
           const requestResources = mergeShareResources([resources(subjectId), attachment ? { directories: [{ path: attachment, access: 'read' }] } : undefined]);
           const headers = new Headers({ 'x-termdock-inner': internalToken, 'x-termdock-device': subjectId,
             'x-termdock-full-service': full(subjectId) ? '1' : '0', 'x-termdock-resources': JSON.stringify(requestResources) });
+          const policy = resolveAccessRequest(String(operation.head.method), String(operation.head.path));
+          if (policy?.action === 'session.chat-send' && !full(subjectId) && !allowed(subjectId, 'session.input', policy.sessionId)) headers.set('x-termdock-chat-only', '1');
           const supplied = operation.head.headers;
           if (supplied && typeof supplied === 'object') for (const [name, value] of Object.entries(supplied)) {
             if (['content-type', 'accept', 'range', 'if-none-match', 'if-modified-since'].includes(name.toLowerCase()) && typeof value === 'string') headers.set(name, value);
@@ -255,7 +259,7 @@ export async function createFederationRuntime(app: express.Express, directory: s
         if (context.relayed && !relayPasswordConfigured()) { duplex.close?.(new Error('TARGET_PASSWORD_REQUIRED')); return; }
         for (const { socket: logical, sessionId, android, computer, computerTarget, computerControl } of sockets.values()) {
           if (android || computer) { if (android ? !androidAllowed(subjectId, android) : !computerTarget || !computerAllowed(subjectId, computerTarget) || (computerControl && !full(subjectId) && !resources(subjectId).computers?.some(c => c.host.toLowerCase() === computerTarget.host.toLowerCase() && c.protocol === computerTarget.protocol && c.port === computerTarget.port && c.access === 'control'))) logical.close(4003, 'Authorization revoked'); continue; }
-          if (!allowed(subjectId, sessionId ? 'session.view' : 'service.view', sessionId)) logical.close(4003, 'Authorization revoked');
+          if (!allowed(subjectId, sessionId ? 'session.terminal-view' : 'service.view', sessionId)) logical.close(4003, 'Authorization revoked');
         }
         for (const [id, operation] of operations) try {
           httpAllowed(operation.head);
@@ -330,7 +334,9 @@ export async function createFederationRuntime(app: express.Express, directory: s
               store.grant({ subjectId, scope: { kind: 'service' }, actions: ['service:*'], canDelegate: true });
             } else {
               const grant = invitations.consume(typeof packet.code === 'string' ? packet.code : '', subjectId, issuer => allowed(issuer, 'authorization.manage'));
-              store.grant(grant);
+              const existing = grant.invitationId ? store.list().filter(item => item.invitationId === grant.invitationId && item.subjectId === subjectId) : [];
+              if (existing.some(item => item.revokedAt !== undefined)) throw new Error('INVITATION_DEVICE_REVOKED');
+              if (!existing.length) store.grant(grant);
             }
             send({ type: 'result', id: packet.id, serviceId, subjectId });
           } else if (packet.type === 'logout') {
@@ -344,16 +350,16 @@ export async function createFederationRuntime(app: express.Express, directory: s
             if (options.restoreSharedSession && !full(subjectId)) {
               let restored = false;
               for (const session of inventory) {
-                if (session.backendSessionId || typeof session.sessionId !== 'string' || !allowed(subjectId, 'session.view', session.sessionId)) continue;
+                if (session.backendSessionId || typeof session.sessionId !== 'string' || !allowed(subjectId, 'session.metadata', session.sessionId)) continue;
                 restored = await options.restoreSharedSession(session.sessionId).catch(() => false) || restored;
               }
               if (restored) inventory = await sessionInventory();
             }
-            const displayGrants = store.listEffective({ subjectId, serviceId }).filter(grant => grant.actions.includes('session.view')).reverse().sort((a, b) => b.createdAt - a.createdAt);
+            const displayGrants = store.listEffective({ subjectId, serviceId }).filter(grant => grant.actions.some(action => ['session.view', 'session.chat-view', 'session.terminal-view'].includes(action))).reverse().sort((a, b) => b.createdAt - a.createdAt);
             const seen = new Set<string>();
             const items = inventory.flatMap(session => {
               const sessionId = session.backendSessionId;
-              if (typeof sessionId !== 'string' || !sessionId || seen.has(sessionId) || !allowed(subjectId, 'session.view', sessionId)) return [];
+              if (typeof sessionId !== 'string' || !sessionId || seen.has(sessionId) || !allowed(subjectId, 'session.metadata', sessionId)) return [];
               seen.add(sessionId);
               const matches = (id: string) => id === session.sessionId || id === sessionId || stableSessionId(id) === session.sessionId;
               const displayGrant = displayGrants.find(grant => grant.scope.kind === 'service' || grant.scope.sessionIds.some(matches));
@@ -361,7 +367,9 @@ export async function createFederationRuntime(app: express.Express, directory: s
               return [{ sessionId, ...(typeof session.sessionId === 'string' ? { sourceSessionId: session.sessionId } : {}),
                 ...(options.sessionAttachmentDirectory ? { attachmentRoot: sessionAttachmentRoot(options.sessionAttachmentDirectory, typeof session.sessionId === 'string' ? session.sessionId : options.resolveSessionId?.(sessionId) || sessionId) } : {}),
                 name: appearance?.name || collaborationSessionDisplayName({ ...session, name: typeof session.name === 'string' ? session.name : sessionId } as Parameters<typeof collaborationSessionDisplayName>[0]), ...(appearance?.icon ? { icon: appearance.icon } : {}), live: session.live === true,
-                canWrite: allowed(subjectId, 'session.input', sessionId), canResize: allowed(subjectId, 'session.resize', sessionId) }];
+                canWrite: allowed(subjectId, 'session.input', sessionId), canResize: allowed(subjectId, 'session.resize', sessionId),
+                canViewChat: allowed(subjectId, 'session.chat-view', sessionId), canViewTerminal: allowed(subjectId, 'session.terminal-view', sessionId),
+                canSendChat: allowed(subjectId, 'session.chat-send', sessionId), canClearChat: allowed(subjectId, 'session.chat-clear', sessionId) }];
             });
             send({ type: 'result', id: packet.id, items });
           } else if (packet.type === 'session-sharing-status') {
@@ -383,7 +391,9 @@ export async function createFederationRuntime(app: express.Express, directory: s
             if (packet.serviceId === serviceId) throw new Error('RELAY_SELF_TARGET');
             check('authorization.manage');
             if (!options.createRouteInvitation || typeof packet.serviceId !== 'string' || !packet.serviceId || packet.serviceId.length > 512) throw new Error('ROUTE_NOT_AVAILABLE');
-            send({ type: 'result', id: packet.id, ...options.createRouteInvitation(subjectId, packet.serviceId) });
+            const settings = { ...(packet.reusable === undefined ? {} : { reusable: packet.reusable as boolean }), ...(packet.linkExpiresAt === undefined ? {} : { linkExpiresAt: packet.linkExpiresAt as number | null }) };
+            const invitation = Object.keys(settings).length ? options.createRouteInvitation(subjectId, packet.serviceId, settings) : options.createRouteInvitation(subjectId, packet.serviceId);
+            send({ type: 'result', id: packet.id, ...invitation });
           } else if (packet.type === 'route-pair') {
             if (!options.consumeRouteInvitation || typeof packet.code !== 'string') throw new Error('PAIRING_DENIED');
             send({ type: 'result', id: packet.id, ...options.consumeRouteInvitation(packet.code, subjectId) });
@@ -414,6 +424,7 @@ export async function createFederationRuntime(app: express.Express, directory: s
           } else if (packet.type === 'invite-create') {
             check('authorization.manage');
             const invitation = { scope: packet.scope, actions: packet.actions, ...(packet.resources === undefined ? {} : { resources: packet.resources }),
+              ...(packet.reusable === undefined ? {} : { reusable: packet.reusable }), ...(packet.linkExpiresAt === undefined ? {} : { linkExpiresAt: packet.linkExpiresAt }),
               ...(packet.sessionAppearance === undefined ? {} : { sessionAppearance: packet.sessionAppearance }),
               ...(packet.label === undefined ? {} : { label: packet.label }),
               ...(packet.expiresAt === undefined ? {} : { expiresAt: packet.expiresAt }) };
@@ -450,7 +461,9 @@ export async function createFederationRuntime(app: express.Express, directory: s
             check('authorization.manage'); send({ type: 'result', id: packet.id, grants: store.list(), invitations: invitations.listPending(), deviceProfiles: deviceProfiles.list(), subjectLabels: { ...invitations.subjectLabels(), ...deviceNames.list() } });
           } else if (packet.type === 'invite-revoke') {
             check('authorization.manage');
-            send({ type: 'result', id: packet.id, revoked: typeof packet.invitationId === 'string' && invitations.revoke(packet.invitationId) });
+            const revoked = typeof packet.invitationId === 'string' && invitations.revoke(packet.invitationId);
+            const revokedGrants = revoked ? store.revokeInvitation(String(packet.invitationId)) : 0;
+            send({ type: 'result', id: packet.id, revoked, revokedGrants });
           } else if (packet.type === 'grant') {
             check('authorization.manage'); send({ type: 'result', id: packet.id, grant: store.grant(packet.grant as GrantInput) });
           } else if (packet.type === 'revoke') {
@@ -495,8 +508,8 @@ export async function createFederationRuntime(app: express.Express, directory: s
             const androidMatch = /^\/api\/android\/([^/%]+)\/ws$/.exec(url.pathname);
             const computer = url.pathname === '/api/computer/ws';
             const computerTarget = { host: url.searchParams.get('host') ?? '', protocol: url.searchParams.get('protocol') ?? 'vnc', port: Number(url.searchParams.get('port') ?? (url.searchParams.get('protocol') === 'rdp' ? '3389' : '5900')) };
-            const canView = () => androidMatch ? androidAllowed(subjectId, androidMatch[1]) : computer ? computerAllowed(subjectId, computerTarget) : allowed(subjectId, match ? 'session.view' : 'service.view', match?.[1]);
-            if (match) { check('session.view', match[1]); if (!full(subjectId)) sharingPresence.visit(presenceKey, subjectId, stableSessionId(match[1]) || match[1]); }
+            const canView = () => androidMatch ? androidAllowed(subjectId, androidMatch[1]) : computer ? computerAllowed(subjectId, computerTarget) : allowed(subjectId, match ? 'session.terminal-view' : 'service.view', match?.[1]);
+            if (match) { check('session.terminal-view', match[1]); if (!full(subjectId)) sharingPresence.visit(presenceKey, subjectId, stableSessionId(match[1]) || match[1]); }
             else if (url.pathname === '/api/control/ws') check('service.view');
             else if (androidMatch || computer) { if (!canView()) throw new Error('API_NOT_ALLOWED'); }
             else throw new Error('API_NOT_ALLOWED');

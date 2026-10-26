@@ -7,11 +7,14 @@ export function encryptedRequestResources(request: object): ShareResources | und
 const verified = new WeakSet<object>();
 const subjects = new WeakMap<object, string>();
 const serviceAccess = new WeakSet<object>();
-export function markEncryptedRequest(request: object, subjectId?: string, fullService = false, shared?: ShareResources): void {
+const restrictedChat = new WeakSet<object>();
+export function isRestrictedChatRequest(request: object): boolean { return restrictedChat.has(request); }
+export function markEncryptedRequest(request: object, subjectId?: string, fullService = false, shared?: ShareResources, chatOnly = false): void {
   verified.add(request);
   if (shared) resources.set(request, shared);
   if (subjectId) subjects.set(request, subjectId);
   if (fullService) serviceAccess.add(request);
+  if (chatOnly) restrictedChat.add(request);
 }
 export function isEncryptedRequest(request: Request): boolean { return verified.has(request); }
 export function encryptedRequestSubject(request: object): string | undefined { return subjects.get(request); }
