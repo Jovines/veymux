@@ -7,6 +7,7 @@ import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { createRequire } from 'node:module';
 import { afterAll, beforeAll, expect, it, vi } from 'vitest';
+import WebSocket from 'ws';
 
 // jsdom is provided by the test environment; keep its small fixture boundary
 // typed without adding a production dependency on DOM emulation typings.
@@ -27,11 +28,31 @@ beforeAll(() => {
   execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1', '-subj', '/CN=Termdock Setup Test', '-keyout', path.join(fixture.dir, 'key.pem'), '-out', caPath], { stdio: 'ignore' });
 });
 afterAll(() => { stopOnboardingServer(); fs.rmSync(fixture.dir, { recursive: true, force: true }); });
-async function start() {
-  server = startOnboardingServer({ httpsPort: 19876, caCertPath: caPath }).server!;
+async function start(extra: Partial<import('./onboardingServer.js').OnboardingServerOptions> = {}) {
+  server = startOnboardingServer({ httpsPort: 19876, caCertPath: caPath, ...extra }).server!;
   await new Promise<void>(resolve => server!.once('listening', resolve));
   return `http://127.0.0.1:${(server!.address() as AddressInfo).port}`;
 }
+
+it('serves the invitation application on HTTP, keeps CA setup optional, and never exposes raw business APIs', async () => {
+  const publicDir = path.join(fixture.dir, 'public'); fs.mkdirSync(publicDir);
+  fs.writeFileSync(path.join(publicDir, 'index.html'), '<html>invitation application</html>');
+  const accept = vi.fn((ws: WebSocket) => { ws.send('noise-test-only'); });
+  const origin = await start({ clientPath: publicDir, acceptEncrypted: accept });
+  let peerClosed: Promise<void> | undefined;
+  try {
+    expect(await (await fetch(origin + '/connect', { headers: { Connection: 'close' } })).text()).toContain('invitation application');
+    expect(await (await fetch(origin + '/certificates', { headers: { Connection: 'close' } })).text()).toContain('下载证书');
+    expect((await fetch(origin + '/api/terminal/one/input', { method: 'POST', headers: { Connection: 'close' }, body: 'do not execute' })).status).toBe(403);
+    const ws = new WebSocket(origin.replace('http:', 'ws:') + '/api/federation/secure', { origin });
+    peerClosed = new Promise<void>(resolve => ws.once('close', () => resolve()));
+    const first = await new Promise<string>((resolve, reject) => { ws.once('message', data => resolve(String(data))); ws.once('error', reject); });
+    expect(first).toBe('noise-test-only');
+    const rejected = new WebSocket(origin.replace('http:', 'ws:') + '/api/federation/secure', { origin: 'http://attacker.example' });
+    await new Promise<void>(resolve => rejected.once('error', () => resolve()));
+    expect(accept).toHaveBeenCalledTimes(1);
+  } finally { await stop(); await peerClosed; }
+});
 async function stop() {
   const closed = new Promise<void>(resolve => server!.once('close', resolve));
   stopOnboardingServer(); await closed;

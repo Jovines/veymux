@@ -28,11 +28,12 @@ describe('shared service connection contract', () => {
     const other = { url: 'https://b-alternate.example', targetPeerId: 'B' };
     expect(relayConnectionRoutes({ url: 'https://a.example', targetPeerId: 'A', routes: [entry, { ...entry, url: entry.url + '/' }, other] })).toEqual([entry, other]);
   });
-  it('rejects self entries, credentials, queries and remote plaintext uniformly', () => {
+  it('rejects self entries, credentials and ambiguous URLs, while allowing explicit HTTP Noise endpoints', () => {
     expect(() => canonicalConnectionRouting({ url: entry.url, targetPeerId: 'B', entryServiceId: 'B' })).toThrow();
-    for (const url of ['http://b.example', 'https://user:secret@b.example', 'https://b.example/?token=secret', 'https://b.example/path']) {
+    for (const url of ['https://user:secret@b.example', 'https://b.example/?token=secret', 'https://b.example/path']) {
       expect(() => normalizeServiceAddress(url)).toThrow(); expect(() => serviceEndpoint(url)).toThrow();
     }
+    expect(serviceEndpoint('http://b.example').href).toBe('ws://b.example/api/federation/secure');
     expect(serviceEndpoint('ws://127.0.0.1:9834').href).toBe('ws://127.0.0.1:9834/api/federation/secure');
   });
 });

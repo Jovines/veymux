@@ -31,7 +31,7 @@ import { pauseConnectionAccess, resumeConnectionAccess, retryConnectionAccess, c
 // Keep the invitation in memory and remove its secret from browser history immediately.
 const initialInvitation = (() => {
   if (!location.hash.startsWith('#termdock-invite=')) return undefined;
-  try { return parseInviteLink(location.href); }
+  try { return parseInviteLink(location.href, { httpTransport: location.protocol === 'http:' && !window.termdockDesktop?.openServiceConnection }); }
   catch { return undefined; }
   finally { history.replaceState(null, '', location.pathname + location.search); }
 })();
@@ -483,7 +483,10 @@ export function SecureAccessGate({ children }: { children: ReactNode }) {
       setOpen(false); return;
     }
     if (input.includes('#termdock-invite=')) {
-      const connection = parseInviteLink(input);
+      if (new URL(input).protocol === 'http:' && new URL(input).origin !== location.origin) {
+        location.assign(input); return;
+      }
+      const connection = parseInviteLink(input, { httpTransport: location.protocol === 'http:' });
       if (password !== undefined && connection.routeOnly) { await authenticateKnownConnection(connection, password); await readPermissions(); setOpen(false); return; }
       try { await connect(connection); } catch (error) { if (connection.routeOnly && error instanceof DeviceAuthorizationRequired) return { passwordRequired: true }; throw error; }
       return;

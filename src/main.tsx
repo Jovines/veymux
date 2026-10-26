@@ -1,3 +1,4 @@
+import './lib/utils/browserCrypto';
 import './lib/federation/scopeBootstrap';
 import { AppFeedbackHost } from './lib/components/ui/AppFeedback';
 import { installCollaborationEnrollment } from './lib/collaboration/connectionEnrollment';

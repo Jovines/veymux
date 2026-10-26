@@ -21,6 +21,13 @@ describe('trusted invitation links', () => {
 });
 
 describe('HTTP certificate setup invitation', () => {
+  it('uses the same-origin HTTP Noise transport only when requested by the browser landing page', () => {
+    const original = createInviteLink({ v: 1, serviceId, code, entryUrl: 'https://192.168.1.20:9834' });
+    const link = createOnboardingInviteLink(original, 'http://192.168.1.20:21000/connect');
+    expect(parseInviteLink(link)).toMatchObject({ url: 'https://192.168.1.20:9834', serviceOrigin: 'https://192.168.1.20:9834' });
+    expect(parseInviteLink(link, { httpTransport: true })).toMatchObject({ url: 'http://192.168.1.20:21000', serviceOrigin: 'http://192.168.1.20:21000', targetPeerId: serviceId, pairingCode: code, certificateUrl: expect.stringContaining('/certificates#termdock-invite=') });
+    expect(() => parseInviteLink(link.replace('192.168.1.20:21000', '192.168.1.21:21000'), { httpTransport: true })).toThrow();
+  });
   it('keeps the secret in the fragment and connects only to the original HTTPS service', () => {
     const original = createInviteLink({ v: 1, serviceId, code, entryUrl: 'https://192.168.1.20:9834', viewMode: 'chat', viewLayout: 'split' });
     const setup = createOnboardingInviteLink(original, 'http://192.168.1.10:21000/ca');

@@ -894,7 +894,12 @@ export function startServer(options: ServerOptions = {}): StartServerResult {
       }).catch(error => console.warn('[quic] Encrypted WebSocket remains available:', error instanceof Error ? error.message : 'Transport unavailable'));
     }
     const onboardingServerState = scheme === 'https'
-      ? startOnboardingServer({ httpsPort: listeningPort, caCertPath: options.httpsCaPath })
+      ? startOnboardingServer({ httpsPort: listeningPort, caCertPath: options.httpsCaPath,
+        clientPath: app.locals.runtimeClientPath,
+        acceptEncrypted: ws => { void federation.then(runtime => runtime.accept(ws, { allowOpenAccess: false })).catch(() => ws.close(1011, 'Encrypted access unavailable')); },
+        relayPrincipal: token => routeAccess.authenticate(undefined, token),
+        acceptRelay: (ws, principal) => relayRouter.attach(ws, principal),
+      })
       : { server: null, url: null };
     void localAccessManager.start({ host: listeningHost, port: listeningPort, scheme, caCertPath: options.httpsCaPath, onboardingPort: options.onboardingPort ?? listeningPort }).then((state) => {
       const publishState = () => {

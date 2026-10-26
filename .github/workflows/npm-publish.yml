@@ -56,6 +56,10 @@ jobs:
       - name: Verify terminal copy and encrypted transport
         run: >-
           npx vitest run --maxWorkers=2
+          src/server/onboardingServer.test.ts
+          src/server/routes/gitBundleNestedSymlinks.test.ts
+          src/lib/utils/browserCrypto.test.ts
+          src/lib/components/chat/localChatDisplay.test.ts
           src/lib/federation
           src/lib/components/chat
           src/components/services

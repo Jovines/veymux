@@ -499,7 +499,8 @@ export class SecureClient {
 export async function connect(options: SecureClientOptions): Promise<SecureClient> {
   const url = new URL(options.url);
   if (!['wss:', 'ws:'].includes(url.protocol)) throw new Error('A WebSocket endpoint is required');
-  if (url.protocol === 'ws:' && !['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)) throw new Error('Remote secure channels require WSS');
+  const sameHttpPage = typeof location !== 'undefined' && location.protocol === 'http:' && location.host === url.host;
+  if (url.protocol === 'ws:' && !['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) && !sameHttpPage) throw new Error('Remote WS requires its explicit same-origin HTTP page');
   const identity = options.identity ?? await createIdentity();
   const started = performance.now();
   const socket = (options.socketFactory ?? (value => new WebSocket(value)))(url.href);

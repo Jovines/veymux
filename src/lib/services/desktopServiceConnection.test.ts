@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createInviteLink } from '../federation/inviteLink';
+import { createInviteLink, createOnboardingInviteLink } from '../federation/inviteLink';
 import type { TermdockDesktopBridge } from '../desktop/nativeBridge';
 import { addDesktopService, desktopCertificateTrust, desktopConnectionIntent, openDesktopService, serviceConnectionInput } from './desktopServiceConnection';
 import { parseInviteLink } from '../federation/inviteLink';
@@ -12,6 +12,13 @@ function bridge() {
   return { openServiceConnection: vi.fn().mockResolvedValue({ ok: true }), reviewServiceConnection: vi.fn().mockResolvedValue(undefined) } as unknown as TermdockDesktopBridge;
 }
 describe('shared desktop connection actions', () => {
+  it('keeps HTTPS and native certificate review when pasting an HTTP share landing link', async () => {
+    const original = createInviteLink({ v: 1, serviceId: target, entryUrl: 'https://192.168.1.20:9834', code: 'c'.repeat(43) });
+    const invitation = createOnboardingInviteLink(original, 'http://192.168.1.20:21000/connect');
+    const native = bridge(); await addDesktopService(native, invitation);
+    expect(native.reviewServiceConnection).toHaveBeenCalledWith(expect.objectContaining({ url: 'https://192.168.1.20:9834', targetPeerId: target }), invitation);
+    expect(native.openServiceConnection).not.toHaveBeenCalled();
+  });
   it('delegates a new workspace address to the center before discovery or certificate failure', async () => {
     const native = bridge();
     await addDesktopService(native, 'computer.example:9834');

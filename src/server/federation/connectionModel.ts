@@ -17,8 +17,7 @@ export function normalizeServiceAddress(value: string): string {
   const url = new URL(/^[a-z][a-z\d+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`);
   if (url.protocol === 'wss:') url.protocol = 'https:';
   if (url.protocol === 'ws:') url.protocol = 'http:';
-  const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
-  if (!['https:', 'http:'].includes(url.protocol) || url.protocol === 'http:' && !loopback) throw new Error('请使用 HTTPS 服务地址。');
+  if (!['https:', 'http:'].includes(url.protocol)) throw new Error('请使用 HTTP 或 HTTPS 服务地址。');
   if (url.username || url.password || url.search || url.hash || !['/', '/api/federation/secure'].includes(url.pathname)) throw new Error('请输入服务首页地址，不要包含账号或额外参数。');
   return url.origin;
 }

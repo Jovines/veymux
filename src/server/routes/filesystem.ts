@@ -2953,6 +2953,7 @@ async function getDirectoryTarget(candidate: string, entry: Dirent): Promise<str
 async function discoverNestedGitRoots(workspaceRoot: string, signal?: AbortSignal): Promise<{ repositories: DiscoveredGitRepository[]; truncated: boolean }> {
   const repositories: DiscoveredGitRepository[] = [];
   const seen = new Set<string>([workspaceRoot]);
+  const visitedDirectories = new Set<string>();
   const deadline = Date.now() + NESTED_GIT_DISCOVERY_TIMEOUT_MS;
   let truncated = false;
 
@@ -2965,12 +2966,17 @@ async function discoverNestedGitRoots(workspaceRoot: string, signal?: AbortSigna
     }
     let entries: Dirent[];
     try {
+      // Follow directory links, but walk each physical directory only once so
+      // aliases and links back to ancestors cannot cause repeated scans.
+      const realDirectory = await fs.promises.realpath(dir);
+      if (visitedDirectories.has(realDirectory)) return;
+      visitedDirectories.add(realDirectory);
       entries = await fs.promises.readdir(dir, { withFileTypes: true });
     } catch {
       return;
     }
 
-    const childDirectories: Array<{ entry: Dirent; target: string }> = [];
+    const childDirectories: string[] = [];
     for (const entry of entries) {
       if (signal) throwIfAborted(signal, 'git.bundle');
       if (truncated) return;
@@ -2997,13 +3003,15 @@ async function discoverNestedGitRoots(workspaceRoot: string, signal?: AbortSigna
         }
         continue;
       }
-      if (!entry.isSymbolicLink()) childDirectories.push({ entry, target });
+      // Keep the lexical path for display and workspace membership checks,
+      // even when a container points outside the workspace through a link.
+      childDirectories.push(candidate);
     }
 
     for (const child of childDirectories) {
       if (signal) throwIfAborted(signal, 'git.bundle');
       if (truncated) return;
-      await visit(child.target);
+      await visit(child);
     }
   }
 

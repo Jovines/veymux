@@ -358,7 +358,7 @@ it('preselects all requested stable Session identities and preserves split prese
   render(<FederationAccess paired initialShareSessionIds={['stable-one', 'stable-two']} initialViewLayout="split" sessions={[{ sessionId: 'backend-one', sourceSessionId: 'stable-one', name: 'One' }, { sessionId: 'backend-two', sourceSessionId: 'stable-two', name: 'Two' }]} onConnect={() => {}} onClose={() => {}} onCreateInvite={onCreateInvite} />);
   fireEvent.click(screen.getByRole('button', { name: '生成并复制链接' }));
   await waitFor(() => expect(onCreateInvite).toHaveBeenCalledWith(expect.objectContaining({ scope: { kind: 'sessions', sessionIds: ['stable-one', 'stable-two'] }, viewLayout: 'split' })));
-  expect(await screen.findByText(/浏览器须信任/)).toBeTruthy();
+  expect(await screen.findByText(/HTTP 入口无需安装证书/)).toBeTruthy();
 });
 it('does not silently omit unavailable or remote members from a group share', () => {
   const onCreateInvite = vi.fn();
@@ -413,7 +413,7 @@ it('explains certificate setup and exposes the fingerprint to the sharer', async
   const onCreateInvite = vi.fn().mockResolvedValue({ url: inviteUrl, expiresAt: Date.now() + 600000, certificateFingerprint: 'AA:BB:CC' });
   render(<FederationAccess paired initialShareSessionId="one" sessions={[{ sessionId: 'one', name: '演示会话' }]} onConnect={() => {}} onClose={() => {}} onCreateInvite={onCreateInvite} />);
   fireEvent.click(screen.getByRole('button', { name: '生成并复制链接' }));
-  expect(await screen.findByText(/接收方会先看到证书安装引导/)).toBeTruthy();
+  expect(await screen.findByText(/接收方可直接接受邀请/)).toBeTruthy();
   expect(screen.getByText('向接收方核对证书指纹')).toBeTruthy();
   expect(screen.getByText('AA:BB:CC')).toBeTruthy();
 });
