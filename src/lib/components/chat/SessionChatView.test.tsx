@@ -309,7 +309,7 @@ it('requests only the recent page, prefetches older messages on scroll, and pres
   expect(container.querySelectorAll('[data-chat-message]')).toHaveLength(30);
   expect(screen.queryByText('历史消息 99')).toBeNull();
   expect(new URL(String(fetch.mock.calls[0][0]), location.origin).searchParams.get('limit')).toBe('30');
-  const scroller = container.querySelector('.session-chat > div') as HTMLElement;
+  const scroller = container.querySelector('.session-chat-scroll') as HTMLElement;
   Object.defineProperty(scroller, 'clientHeight', { value: 500 });
   Object.defineProperty(scroller, 'scrollHeight', { get: () => container.querySelectorAll('[data-chat-message]').length * 100 });
   // Model real layout: the anchor moves with inserted rows and live scrolling.
@@ -335,7 +335,7 @@ it('restores a recently unmounted conversation and reading position while revali
   vi.stubGlobal('fetch', vi.fn(async () => Response.json({ agentAvailable: true, messages: [{ id: 'kept', role: 'assistant', content: '返回时保留这段对话', createdAt: 1, status: 'stored' }] })));
   const first = render(<SessionChatView sessionId="restore-history" onTerminal={() => {}} />);
   await screen.findByTestId('chat-markdown');
-  const scroller = first.container.querySelector('.session-chat > div') as HTMLElement;
+  const scroller = first.container.querySelector('.session-chat-scroll') as HTMLElement;
   Object.defineProperty(scroller, 'clientHeight', { value: 500 });
   Object.defineProperty(scroller, 'scrollHeight', { value: 2000 });
   scroller.scrollTop = 320; fireEvent.scroll(scroller); first.unmount();
@@ -343,7 +343,7 @@ it('restores a recently unmounted conversation and reading position while revali
   const second = render(<SessionChatView sessionId="restore-history" onTerminal={() => {}} />);
   expect(screen.getByText('返回时保留这段对话')).toBeTruthy();
   expect(screen.queryByText('正在读取对话…')).toBeNull();
-  expect((second.container.querySelector('.session-chat > div') as HTMLElement).scrollTop).toBe(320);
+  expect((second.container.querySelector('.session-chat-scroll') as HTMLElement).scrollTop).toBe(320);
 });
 
 it('does not show the welcome state when the first history request fails', async () => {
@@ -399,7 +399,7 @@ it('keeps the first visible row when new replies arrive during history reading',
   vi.stubGlobal('fetch', vi.fn(async (url: unknown) => pagedHistory(url, messages)));
   const { container } = render(<SessionChatView sessionId="live-reading" onTerminal={() => {}} />);
   await screen.findByText('持续对话 79');
-  const scroller = container.querySelector('.session-chat > div') as HTMLElement;
+  const scroller = container.querySelector('.session-chat-scroll') as HTMLElement;
   Object.defineProperty(scroller, 'clientHeight', { value: 500 });
   Object.defineProperty(scroller, 'scrollHeight', { value: 5000 });
   scroller.scrollTop = 900; fireEvent.scroll(scroller);

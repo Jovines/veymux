@@ -780,6 +780,8 @@ export async function addServiceAddress(service: import('../services/serviceDire
   let address: string;
   try { address = normalizeServiceAddress(input); }
   catch { throw new Error('请输入有效的 HTTPS 地址，例如 https://电脑地址:9834。'); }
+  const parsed = new URL(address);
+  if (parsed.protocol !== 'https:' && !['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname)) throw new Error('备用地址需要 HTTPS，请使用服务的 HTTPS 地址。');
   const latestService = async () => (await listServiceConnections()).find(item => item.targetPeerId === targetPeerId) || service;
   const nextRoutes = (current: typeof service) => {
     const existing = current.routes ?? connectionRoutes({ ...current, targetPeerId });

@@ -44,6 +44,7 @@ export async function serviceTlsOptions(address: string, trust: ServiceTlsTrust 
  * entry's ready frame. No business bytes are sent during TLS pin inspection. */
 export async function createServiceSocket(address: string, trust: ServiceTlsTrust = {}, options: SocketOptions = {}): Promise<WebSocket> {
   const url = new URL(address);
+  if (url.protocol === 'ws:' && !['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)) throw new Error('Remote service transport requires HTTPS');
   const origin = normalizeServiceAddress(url.origin.replace(/^wss:/, 'https:').replace(/^ws:/, 'http:'));
   if (!['wss:', 'ws:'].includes(url.protocol) || url.username || url.password || url.hash
     || !['/api/federation/secure', '/api/federation/relay', '/api/federation/relay-target'].includes(url.pathname)
