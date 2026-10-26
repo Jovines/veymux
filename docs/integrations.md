@@ -1543,6 +1543,27 @@ and routing to the right service. Browser disconnect/revocation does not close t
 Agent. Session creation, restoration and close keep their existing idempotency and
 exact native-process ownership checks.
 
+Detect `session_access_readers` to enable simultaneous observers. The private
+`/capabilities` response also includes `service_id` when the runtime knows its
+federation identity; verify it before registering a target in an external portal.
+`POST /sessions/:id/access-readers` accepts `{fence, leases}`. This revision is
+independent from the writer fence. Supply a complete snapshot of up to 32 reader
+leases using the same lease fields and 125-second maximum lifetime. Increment
+the reader revision for every changed snapshot; stale revisions are rejected.
+An empty snapshot revokes all readers without affecting the writer or Agent.
+Request a reader ticket with `{deviceId, readerId}` at the existing access-ticket
+endpoint. Reader tickets permit only session metadata, chat viewing and terminal
+viewing; input, resize, chat sending, management and resharing remain denied even
+when the device has a separate full-service grant. Writer handoff preserves
+observers. Removing and re-adding a reader creates a new generation so an old
+channel cannot regain access. Membership changes are the integrator's
+responsibility and must result in a new authorized reader snapshot.
+
+These endpoints remain restricted to sessions owned by that integration
+principal. A local terminal's existence or a browser's input permission does not
+authorize lending it to someone else. Existing-terminal adoption requires a
+separate, explicit administrator delegation design; it is not enabled here.
+
 To remove a recovery descriptor after an explicit close, detect `session_forget`,
 then grant `session.forget` and call `DELETE /sessions/:id` with the current
 `{generation}`. It rejects running, ambiguously closed or foreign sessions. Repeats

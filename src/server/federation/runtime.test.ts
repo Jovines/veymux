@@ -104,6 +104,21 @@ async function fixture(runtimeOptions: FederationRuntimeOptions = {}, allowOpenA
 }
 
 describe('federation runtime over real encrypted WebSocket', () => {
+  it('restricts integration reader tickets over Noise even when the device previously had full service access',async()=>{
+    let access:SessionAccessStore|undefined;const f=await fixture({sessionAccess:()=>access}),guest=await f.connect();await guest.pair();
+    access=new SessionAccessStore(join(f.directory,'readers.json'),()=>true);
+    const lease={id:randomUUID(),userId:'viewer@example.test',deviceId:guest.identity.peerId,expiresAt:Date.now()+60000};
+    access.updateReaders('source-one','integration',{fence:1,leases:[lease]});
+    guest.channel.send({type:'session-auth',id:'reader-auth',ticket:access.ticket('source-one','integration',guest.identity.peerId,lease.id)});
+    expect(await guest.take('reader-auth')).toMatchObject({type:'result'});
+    guest.channel.send({type:'session-list',id:'reader-list'});expect(await guest.take('reader-list')).toMatchObject({items:[{canWrite:false,canResize:false,canSendChat:false}]});
+    expect((await guest.http('reader-input','POST','/api/terminal/one/input'))[0]).toMatchObject({type:'error',error:'AUTHORIZATION_DENIED'});
+    guest.channel.send({type:'ws-open',id:'reader-terminal',path:'/api/terminal/one/ws'});await guest.take('reader-terminal','ws-ready');await guest.take('reader-terminal','ws-data');
+    for(const type of ['input','resize']){guest.channel.send({type:'ws-data',id:'reader-terminal',data:JSON.stringify({type,data:'forbidden',cols:1,rows:1})});expect(await guest.take('reader-terminal')).toMatchObject({type:'error',error:'AUTHORIZATION_DENIED'});}
+    expect(f.received).not.toHaveBeenCalled();expect(f.input).not.toHaveBeenCalled();
+    access.updateReaders('source-one','integration',{fence:2,leases:[]});
+    expect((await guest.http('reader-revoked','GET','/api/terminal/one/health'))[0]).toMatchObject({type:'error'});
+  });
   it('uses integration tickets over Noise and keeps existing service grants outside the scoped connection', async () => {
     let access: SessionAccessStore | undefined;
     const f=await fixture({sessionAccess:()=>access}),guest=await f.connect();

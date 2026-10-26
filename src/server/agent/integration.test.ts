@@ -179,7 +179,7 @@ async function runtimeFixture(sessionAdapter?: IntegrationSessionAdapter) {
   const taskStore = new CollaborationTaskStore(path.join(dir, 'tasks.json'));
   const peers = { descriptor: () => ({ serviceId }), taskMember: (sessionId: string) => ({ serviceId, sessionId }), taskSession: (m: typeof worker) => m.sessionId } as unknown as CollaborationService;
   const tasks = new CollaborationTaskService(taskStore, messages, peers, () => {});
-  const options = { directory: dir, socketPath: path.join(dir, 'api.sock'), adminToken: 'local-admin', messages, taskStore, tasks, peers, sessions: sessionAdapter ?? adapter().api };
+  const options = { directory: dir, socketPath: path.join(dir, 'api.sock'), adminToken: 'local-admin',serviceId, messages, taskStore, tasks, peers, sessions: sessionAdapter ?? adapter().api };
   const runtime = new IntegrationRuntime(options); await runtime.listen(); resources.push(() => runtime.close());
   const issued = runtime.store.provision(policy(group.id));
   const headers = { 'x-termdock-integration-protocol': '1', 'x-termdock-integration-id': 'bridge', authorization: `Bearer ${issued.token}`, 'Content-Type': 'application/json' };
@@ -1063,6 +1063,15 @@ it('scoped management grants require no empty terminal; close retains messages a
   expect(await f.request('POST', `/sessions/${id}/access`, { fence: 1, lease })).toMatchObject({ status: 200 });
   const ticket = await f.request('POST', `/sessions/${id}/access-ticket`, { deviceId: 'device' });
   expect(ticket).toMatchObject({ status: 200, body: { ticket: expect.stringMatching(/^session\./) } });
+  const reader={...lease,id:randomUUID(),deviceId:'reader111111111111'};
+  expect(await f.request('GET','/capabilities')).toMatchObject({status:200,body:{service_id:serviceId,session_access_readers:true}});
+  expect(await f.request('POST',`/sessions/${id}/access-readers`,{fence:1,leases:[reader]})).toMatchObject({status:200});
+  const readTicket=await f.request('POST',`/sessions/${id}/access-ticket`,{deviceId:reader.deviceId,readerId:reader.id});
+  const readClaims=f.runtime.sessionAccess.consume(readTicket.body.ticket,reader.deviceId);
+  expect(readClaims).toMatchObject({readOnly:true,sessionId:id});
+  expect(f.runtime.sessionAccess.allows(readClaims,reader.deviceId,'session.input',id)).toBe(false);
+  const otherPrincipal=f.runtime.store.authenticate('other',foreign.token);otherPrincipal.permissions.push('session.access');f.runtime.store.update(otherPrincipal);
+  expect(await f.request('POST',`/sessions/${id}/access-readers`,{fence:2,leases:[]},{'Content-Type':'application/json',authorization:`Bearer ${foreign.token}`,'x-termdock-integration-id':'other','x-termdock-integration-protocol':'1'})).toMatchObject({status:404});
   grant.permissions = grant.permissions.filter(p => p !== 'session.forget'); f.runtime.store.update(grant);
   expect(await f.request('POST', `/sessions/${id}/close`, { ...close, generation: '2' })).toMatchObject({ status: 409, body: { code: 'INVALID_SESSION_GENERATION' } });
   const closed = await f.request('POST', `/sessions/${id}/close`, close);

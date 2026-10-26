@@ -26,6 +26,7 @@ export function integrationSocketPath(port: number, home = homedir()): string {
 }
 export interface IntegrationRuntimeOptions {
   directory: string; socketPath: string; adminToken?: string;
+  serviceId?: string;
   messages: CollaborationStore; taskStore: CollaborationTaskStore;
   tasks: CollaborationTaskService; peers: CollaborationService; sessions: IntegrationSessionAdapter;
 }
@@ -228,10 +229,15 @@ export class IntegrationRuntime {
       await this.sessions.get(p, req.params.id);
       return this.sessionAccess.update(req.params.id, p.id, req.body);
     }));
+    app.post('/sessions/:id/access-readers', run(async req => {
+      const p=principal(req);this.authorize(p,'session.access');
+      await this.sessions.get(p,req.params.id);
+      return this.sessionAccess.updateReaders(req.params.id,p.id,req.body);
+    }));
     app.post('/sessions/:id/access-ticket', run(async req => {
       const p = principal(req); this.authorize(p, 'session.access');
       await this.sessions.get(p, req.params.id);
-      return { ticket: this.sessionAccess.ticket(req.params.id, p.id, req.body?.deviceId) };
+      return { ticket: this.sessionAccess.ticket(req.params.id, p.id, req.body?.deviceId,req.body?.readerId) };
     }));
     app.post('/sessions/:id/restore', run(async req => { const p = principal(req); this.authorize(p, 'session.restore'); const session = await this.sessions.restore(p, req.params.id, req.body?.idempotency_key); this.sync(); return { session: publicIntegrationSession(session) }; }));
     app.post('/sessions/:id/retry-cold', run(async req => { const p = principal(req); this.authorize(p, 'session.create'); const session = await this.sessions.retryCold(p, req.params.id, req.body?.generation, req.body?.idempotency_key); this.sync(); return { session: publicIntegrationSession(session) }; }));
@@ -264,8 +270,8 @@ export class IntegrationRuntime {
     this.server = createServer(app);
   }
   capabilities() {
-    return { integration_protocol: INTEGRATION_PROTOCOL, server_version: getTermdockVersion(), local_only: true,
-      integration_principal: true, group_scoped_permissions: true, durable_event_push: true, session_access_tickets: true,
+    return { integration_protocol: INTEGRATION_PROTOCOL, server_version: getTermdockVersion(), service_id:this.options.serviceId, local_only: true,
+      integration_principal: true, group_scoped_permissions: true, durable_event_push: true, session_access_tickets: true, session_access_readers:true,
       event_ack_semantics: 'durable_received', correlated_task_responses: true, accepted_task_comments: true,
       idempotent_session_create: true, exact_session_restore: true, external_validation: false,
       startup_input_conditions: true, session_runtime_release: true, stable_session_identity: true, session_lifecycle_generation: true,

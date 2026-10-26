@@ -730,6 +730,7 @@ export function startServer(options: ServerOptions = {}): StartServerResult {
       try {
         const port = options.port ?? DEFAULT_PORT;
         integration = new IntegrationRuntime({ directory: path.join(homedir(), '.termdock', 'integration-state', String(port)), socketPath: integrationSocketPath(port), adminToken: options.localApiToken,
+          serviceId:federationServiceId,
           messages: collaborationStore, taskStore: collaborationTaskStore, tasks: collaborationTasks, peers: collaborationService, sessions: integrationSessionAdapter });
         await integration.listen(); app.locals.integrationRuntime = integration;
         onServerClose(() => { void integration?.close(); });

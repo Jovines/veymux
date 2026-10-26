@@ -4,8 +4,10 @@ import path from 'node:path';
 import { CollaborationError } from '../agent/collaborationProtocol.js';
 
 export interface SessionAccessLease { id: string; userId: string; deviceId: string; expiresAt: number }
-export interface SessionAccessClaims { aud: 'termdock-session-access'; sessionId: string; principalId: string; leaseId: string; deviceId: string; fence: number; exp: number; jti: string }
-interface AccessState { principalId: string; fence: number; lease: SessionAccessLease | null }
+export interface SessionAccessClaims { aud: 'termdock-session-access'; sessionId: string; principalId: string; leaseId: string; deviceId: string; fence: number; exp: number; jti: string; readOnly?: boolean }
+interface AccessState { principalId: string; fence: number; lease: SessionAccessLease | null; readers?: { fence: number; leases: SessionAccessLease[]; generations: Record<string,number> } }
+const readActions = ['session.view','session.chat-view','session.terminal-view','session.metadata'];
+const writeActions = [...readActions,'session.chat-send','session.input','session.resize'];
 /** Local integrations may lend access to their own sessions without lending their
  * credential. The encrypted peer must prove the device identity in the ticket. */
 export class SessionAccessStore {
@@ -43,15 +45,33 @@ export class SessionAccessStore {
       || !Number.isSafeInteger(lease.expiresAt) || lease.expiresAt <= now || lease.expiresAt > now + 125000)) throw new CollaborationError('SESSION_ACCESS_INVALID_LEASE', 'SESSION_ACCESS_INVALID_LEASE', 409);
     if (old && input.fence === old.fence && (old.lease?.id !== lease?.id || old.lease?.userId !== lease?.userId
       || old.lease?.deviceId && old.lease.deviceId !== lease?.deviceId || old.lease && lease && lease.expiresAt < old.lease.expiresAt)) throw new CollaborationError('SESSION_ACCESS_CONFLICT', 'SESSION_ACCESS_CONFLICT', 409);
-    this.save({ ...this.states, [sessionId]: { principalId, fence: input.fence, lease } });
+    this.save({ ...this.states, [sessionId]: { ...old, principalId, fence: input.fence, lease } });
     return { accepted: true, fence: input.fence };
   }
-  ticket(sessionId: string, principalId: string, deviceId: string) {
+  /** Readers have an independent revision: renewing or releasing the writer must
+   * not resize, disconnect or upgrade an observer. The caller owns membership. */
+  updateReaders(sessionId: string, principalId: string, input: { fence: number; leases: SessionAccessLease[] }) {
+    const old=this.states[sessionId], now=this.now();
+    if (!this.authorized(sessionId,principalId) || old && old.principalId!==principalId || !Number.isSafeInteger(input?.fence) || input.fence<1
+      || !Array.isArray(input.leases) || input.leases.length>32 || old?.readers && input.fence<old.readers.fence) throw new CollaborationError('SESSION_ACCESS_STALE','SESSION_ACCESS_STALE',409);
+    const ids=new Set<string>();
+    for(const lease of input.leases) {
+      if(!lease || !/^[a-zA-Z0-9-]{16,80}$/.test(lease.id) || ids.has(lease.id) || typeof lease.userId!=='string' || !lease.userId || lease.userId.length>256
+        || typeof lease.deviceId!=='string' || !/^[a-zA-Z0-9]{0,160}$/.test(lease.deviceId) || !Number.isSafeInteger(lease.expiresAt) || lease.expiresAt<=now || lease.expiresAt>now+125000) throw new CollaborationError('SESSION_ACCESS_INVALID_LEASE','SESSION_ACCESS_INVALID_LEASE',409);
+      ids.add(lease.id);
+    }
+    if(old?.readers && input.fence===old.readers.fence && JSON.stringify(old.readers.leases)!==JSON.stringify(input.leases)) throw new CollaborationError('SESSION_ACCESS_CONFLICT','SESSION_ACCESS_CONFLICT',409);
+    const generations=Object.fromEntries(input.leases.map(x=>[x.id,old?.readers?.generations[x.id] || input.fence]));
+    this.save({...this.states,[sessionId]:{principalId,fence:old?.fence || 0,lease:old?.lease || null,readers:{fence:input.fence,leases:input.leases,generations}}});
+    return {accepted:true,fence:input.fence};
+  }
+  ticket(sessionId: string, principalId: string, deviceId: string, readerId?: string) {
     const state = this.states[sessionId];
-    if (!state?.lease || state.principalId !== principalId || state.lease.deviceId !== deviceId || !deviceId || state.lease.expiresAt <= this.now()
+    const lease=readerId ? state?.readers?.leases.find(x=>x.id===readerId) : state?.lease;
+    if (!lease || state.principalId !== principalId || lease.deviceId !== deviceId || !deviceId || lease.expiresAt <= this.now()
       || !this.authorized(sessionId, principalId)) throw new CollaborationError('SESSION_ACCESS_DENIED', 'SESSION_ACCESS_DENIED', 409);
-    const claims: SessionAccessClaims = { aud: 'termdock-session-access', sessionId, principalId, deviceId, leaseId: state.lease.id,
-      fence: state.fence, exp: Math.min(state.lease.expiresAt, this.now() + 30000), jti: randomUUID() };
+    const claims: SessionAccessClaims = { aud: 'termdock-session-access', sessionId, principalId, deviceId, leaseId: lease.id,
+      fence: readerId ? state.readers!.generations[readerId]! : state.fence, ...(readerId?{readOnly:true}:{}), exp: Math.min(lease.expiresAt, this.now() + 30000), jti: randomUUID() };
     const body = Buffer.from(JSON.stringify(claims)).toString('base64url');
     return `session.${body}.${createHmac('sha256', this.key).update(body).digest('base64url')}`;
   }
@@ -69,14 +89,15 @@ export class SessionAccessStore {
   }
   valid(claims: SessionAccessClaims, subjectId: string) {
     const state = this.states[claims.sessionId];
-    return !!state?.lease && claims.deviceId === subjectId && state.lease.deviceId === subjectId && state.lease.id === claims.leaseId
-      && state.fence === claims.fence && state.principalId === claims.principalId && state.lease.expiresAt > this.now() && this.authorized(claims.sessionId, claims.principalId);
+    const lease=claims.readOnly===true ? state?.readers?.leases.find(x=>x.id===claims.leaseId) : state?.lease;
+    return !!lease && claims.deviceId === subjectId && lease.deviceId === subjectId && lease.id === claims.leaseId
+      && (claims.readOnly===true ? state.readers!.generations[claims.leaseId]===claims.fence : state.fence === claims.fence) && state.principalId === claims.principalId && lease.expiresAt > this.now() && this.authorized(claims.sessionId, claims.principalId);
   }
   allows(claims: SessionAccessClaims, subjectId: string, action: string, sessionId?: string) {
-    return this.valid(claims, subjectId) && sessionId === claims.sessionId && ['session.metadata','session.view','session.chat-view','session.chat-send','session.terminal-view','session.input','session.resize'].includes(action);
+    return this.valid(claims, subjectId) && sessionId === claims.sessionId && (claims.readOnly===true?readActions:writeActions).includes(action);
   }
   grant(claims: SessionAccessClaims, subjectId: string) {
     return this.valid(claims, subjectId) ? [{ id: claims.leaseId, subjectId, scope: { kind: 'sessions' as const, sessionIds: [claims.sessionId] },
-      actions: ['session.view','session.chat-view','session.chat-send','session.terminal-view','session.metadata','session.input','session.resize'], expiresAt: this.states[claims.sessionId].lease!.expiresAt }] : [];
+      actions: claims.readOnly===true?readActions:writeActions, expiresAt: (claims.readOnly===true ? this.states[claims.sessionId].readers!.leases.find(x=>x.id===claims.leaseId)! : this.states[claims.sessionId].lease!).expiresAt }] : [];
   }
 }
