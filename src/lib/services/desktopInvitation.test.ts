@@ -4,16 +4,29 @@ import { createInviteLink, createOnboardingInviteLink, parseInviteLink } from '.
 import { canOpenDesktopInvitation, desktopInvitationUrl, reusableInvitationGrant, stageDesktopInvitation, takeDesktopInvitation } from './desktopInvitation';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
+import { scopedStorageKey } from '../federation/clientScope';
 const serviceId='12D3KooW'+'a'.repeat(44), entryId='12D3KooW'+'b'.repeat(44), code='c'.repeat(43);
 afterEach(()=>{vi.unstubAllGlobals();sessionStorage.clear();});
 it('carries an accepted invite across one scope reload, then removes its code before use',()=>{
   vi.stubGlobal('navigator',{platform:'MacIntel',maxTouchPoints:0});
   const intent=parseInviteLink(createInviteLink({v:1,serviceId,code,entryUrl:'https://entry.example'}));
   stageDesktopInvitation(intent);
+  const key = Object.keys(sessionStorage)[0];
+  expect(scopedStorageKey(key, 'unpaired')).toBe(key);
+  expect(scopedStorageKey(key, serviceId)).toBe(key);
+  expect(takeDesktopInvitation(entryId)).toBeUndefined();
+  expect(sessionStorage.length).toBe(1);
   expect(takeDesktopInvitation()).toMatchObject({targetPeerId:serviceId,pairingCode:code});
   expect(takeDesktopInvitation()).toBeUndefined();expect(sessionStorage.length).toBe(0);
   // A carried single-use link still fails the authenticated reusable-grant check.
   expect(reusableInvitationGrant(intent,[{}])).toBe(false);
+});
+it('removes retired scoped handoff records without touching drafts or consuming unrelated invitations',()=>{
+  const key='termdock-service:unpaired:termdock-desktop-invitation-handoff-v1';
+  sessionStorage[key]=JSON.stringify({at:Date.now(),invitation:'old secret'});
+  sessionStorage['termdock-service:other:chat-draft']='keep';
+  expect(takeDesktopInvitation()).toBeUndefined();expect(sessionStorage[key]).toBeUndefined();
+  expect(sessionStorage['termdock-service:other:chat-draft']).toBe('keep');
 });
 it('clears a failed or cancelled handoff and refuses expired or malformed storage',()=>{
   vi.stubGlobal('navigator',{platform:'MacIntel',maxTouchPoints:0});

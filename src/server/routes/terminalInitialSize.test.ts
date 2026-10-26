@@ -73,7 +73,8 @@ it('retains the window throughout refresh and presents the measured grid without
     const getProvider = vi.fn(async () => provider);
     let io = Promise.resolve<unknown>(undefined);
     const context = vm.createContext({
-      Date, Buffer, performance, setTimeout, clearTimeout, console, process, os,
+      Date, Buffer, performance, setTimeout, clearTimeout, console, process, os, shuttingDown: false,
+      tmuxClientReaper: { trackPty: (pty: unknown) => pty, stop: (pty: { kill(): void }) => pty.kill() },
       TerminalClientAttachment, TerminalInputQueue, serializeTerminalInput, TerminalPasteBuffer, TmuxInitialScreen, TmuxDisplayGeometry,
       TerminalOutputDelivery, resolveTerminalReplayCursor, buildTmuxAttachArgs, claimTmuxSize: claimSize, redrawTmuxClient: redraw, PtySpawnDeferredError,
       terminalSessions: new Map([['backend', session]]), wsClients, tmuxAttachments, globalSessionState: { sessions: [] },

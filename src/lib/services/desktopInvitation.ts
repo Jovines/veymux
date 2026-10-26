@@ -4,7 +4,9 @@ import type { ConnectionIntent } from '../federation/browserIntegration';
 import { desktopConnectionIntent } from './desktopServiceConnection';
 import { parseInviteLink } from '../federation/inviteLink';
 
-const pendingKey = 'termdock-desktop-invitation-handoff-v1';
+// This record crosses the boot service boundary; ordinary storage keys are
+// scoped to "unpaired" before pairing and cannot be read after that reload.
+const pendingKey = 'termdock-secure-desktop-invitation-handoff-v1';
 
 /** One-use bridge across the service-scope reload after explicit acceptance.
  * The next document removes it before use and still verifies the exact grant. */
@@ -19,16 +21,22 @@ export function stageDesktopInvitation(intent: ConnectionIntent): () => void {
   } catch { return () => {}; }
 }
 
-export function takeDesktopInvitation(): ConnectionIntent | undefined {
+export function takeDesktopInvitation(expectedTargetPeerId?: string): ConnectionIntent | undefined {
   try {
+    // 1.4.378 scoped the temporary record by mistake. Remove only that retired
+    // handoff key, using the native named-property operation to avoid rescoping.
+    for (const key of Object.keys(sessionStorage)) {
+      if (key.startsWith('termdock-service:') && key.endsWith(':termdock-desktop-invitation-handoff-v1')) delete sessionStorage[key];
+    }
     const raw = sessionStorage.getItem(pendingKey);
-    sessionStorage.removeItem(pendingKey);
     if (!raw || raw.length > 12000) return;
     const record = JSON.parse(raw);
-    if (typeof record.at !== 'number' || Date.now() - record.at < 0 || Date.now() - record.at > 120000 || typeof record.invitation !== 'string') return;
+    if (typeof record.at !== 'number' || Date.now() - record.at < 0 || Date.now() - record.at > 120000 || typeof record.invitation !== 'string') { sessionStorage.removeItem(pendingKey); return; }
     const intent = parseInviteLink(record.invitation);
+    if (expectedTargetPeerId && intent.targetPeerId !== expectedTargetPeerId) return;
+    sessionStorage.removeItem(pendingKey);
     return new URL(intent.url).protocol === 'https:' ? intent : undefined;
-  } catch { return; }
+  } catch { try { sessionStorage.removeItem(pendingKey); } catch { /* Storage unavailable. */ } return; }
 }
 
 export function canOpenDesktopInvitation(): boolean {

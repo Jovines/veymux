@@ -46,19 +46,23 @@ export function hasAgentCommandSelection(slug: string): boolean {
 /** Explicit per-Agent presets count as configured Agent launchers; shell presets do not. */
 export function isConfiguredAgentCommand(command: string): boolean {
   const exact = command.trim();
-  return Object.values(readAll()).some(value => value.presets.some(preset => preset.command.trim() === exact))
-    || Object.entries(readLegacyLaunchCommands()).some(([key, value]) => !key.startsWith('__') && value.trim() === exact);
+  return configuredAgentCommands().some(value => value.trim() === exact);
+}
+function configuredAgentCommands(): string[] {
+  const stored = readAll();
+  return [...Object.values(stored).flatMap(value => value.presets.map(preset => preset.command)),
+    ...Object.entries(readLegacyLaunchCommands()).filter(([key]) => !key.startsWith('__') && !Object.hasOwn(stored, key)).map(([, value]) => value)];
 }
 export function isConfiguredAgentProgram(program: string): boolean {
-  const commands = [...Object.values(readAll()).flatMap(value => value.presets.map(preset => preset.command)),
-    ...Object.entries(readLegacyLaunchCommands()).filter(([key]) => !key.startsWith('__')).map(([, value]) => value)];
-  return commands.some(command => chatProgramName(command) === program);
+  return configuredAgentCommands().some(command => chatProgramName(command) === program);
 }
 function write(slug: string, state: AgentCommands, defaultCommand: string) {
   // Keep the legacy per-Agent override current without disturbing standalone shell commands.
   const legacy = { ...readLegacyLaunchCommands(), [slug]: state.presets.find(p => p.id === state.selectedId)?.command ?? defaultCommand };
-  localStorage.setItem(LEGACY_COMMANDS_KEY, JSON.stringify(legacy));
   localStorage.setItem(KEY, JSON.stringify({ ...readAll(), [slug]: state }));
+  // The preset document is authoritative. A failed compatibility mirror must
+  // neither corrupt an old-only installation nor hide a successful mutation.
+  try { localStorage.setItem(LEGACY_COMMANDS_KEY, JSON.stringify(legacy)); } catch { /* Older clients may not receive this optional mirror. */ }
   window.dispatchEvent(new Event(CHANGED));
 }
 export function selectAgentCommand(slug: string, defaultCommand: string, id: string | null) {
@@ -70,7 +74,8 @@ export function saveAgentCommand(slug: string, defaultCommand: string, input: { 
   const command = input.command.trim();
   if (!command) throw new Error('Command required');
   const state = readAgentCommandPresets(slug, defaultCommand);
-  const preset = { id: input.id && state.presets.some(p => p.id === input.id) ? input.id : crypto.randomUUID(), name: input.name.trim() || command, command };
+  if (input.id && !state.presets.some(p => p.id === input.id)) throw new Error('Command preset was deleted; reopen the editor');
+  const preset = { id: input.id || crypto.randomUUID(), name: input.name.trim() || command, command };
   const presets = state.presets.filter(p => p.id !== preset.id);
   write(slug, { presets: [...presets, preset], selectedId: preset.id }, defaultCommand);
   return preset;

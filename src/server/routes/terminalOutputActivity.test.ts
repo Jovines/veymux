@@ -15,6 +15,7 @@ function pipeline(mode: 'shell' | 'tmux' = 'shell') {
   const sessions = new Map([['backend', session]]);
   const context = vm.createContext({
     Date, process, TerminalOutputActivity, terminalSessions: sessions, broadcastEvent,
+    wsClients: new Map(), tmuxAttachments: new WeakMap(), tmuxClientReaper: { stop: (pty: { kill(): void }) => pty.kill() },
     updateFocusTrackingFromOutput() {}, sniffOsc: () => ({ agentEvents: [] }), terminalProgramStatus: () => ({ feed: () => ({}), exit: () => ({ changed: false }) }),
     appendAutoTitleContext() {}, searchMetadataForBackend: () => null, broadcastJsonWs() {},
     terminalSamplers: new Map(), cancelLongRunningAutoTitle() {}, lastAgentStatusSnapshots: new Map(), lastGitStatusSnapshots: new Map(),

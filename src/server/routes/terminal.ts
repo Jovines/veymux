@@ -41,6 +41,7 @@ import { SharedSessionSampler, SharedSnapshotCache, type SampleEvent } from '../
 import { batchTmuxOptions, TmuxMetadataWriter } from '../utils/tmuxMetadataWriter.js';
 import { batchTmuxCommands, batchTmuxConfiguration } from '../utils/tmuxConfigurationBatch.js';
 import { TmuxDisplayGeometry } from '../utils/tmuxDisplayGeometry.js';
+import { TmuxClientReaper } from '../utils/tmuxClientReaper.js';
 import { TmuxInitialScreen } from '../utils/tmuxInitialScreen.js';
 import { readTmuxObserverSize } from '../utils/tmuxObserverSize.js';
 import { TerminalOutputDelivery, resolveTerminalReplayCursor, type OutputFrame } from '../utils/terminalOutputDelivery.js';
@@ -347,6 +348,8 @@ const wsClients = new Map<string, Map<string, WebSocket>>();
 const outputDeliveries = new WeakMap<WebSocket, TerminalOutputDelivery>();
 const independentTmuxClients = new WeakSet<WebSocket>();
 const tmuxAttachments = new WeakMap<WebSocket, TerminalClientAttachment>();
+const tmuxClientReaper = new TmuxClientReaper();
+process.once('exit', () => tmuxClientReaper.killOnExit());
 const independentTmuxReplays = new WeakMap<WebSocket, () => Promise<void>>();
 const TERMINAL_STREAM_EPOCH = crypto.randomUUID();
 
@@ -1142,7 +1145,7 @@ const shutdownWithRecordings = async () => {
   void persistToolbarPresetsNow();
   caffeinateManager.shutdown();
   // Give the MP4 muxer a chance to write its trailer before the service exits.
-  try { await androidRecordings.stopAll(); }
+  try { await Promise.all([androidRecordings.stopAll(), tmuxClientReaper.shutdown()]); }
   finally { process.exit(0); }
 };
 process.on('SIGTERM', () => { void shutdownWithRecordings(); });
@@ -1151,6 +1154,18 @@ process.on('SIGINT', () => { void shutdownWithRecordings(); });
 // 服务启动时从磁盘加载（带去重，防止历史累积的重复条目复活）
 void (async () => {
   await Promise.all([loadGlobalSessionStateFromDisk(), loadTmuxRecoveryStateFromDisk()]);
+  await tmuxClientReaper.startMaintenance(async () => {
+    const persisted = new Set(globalSessionState.sessions.flatMap(session => session.tmuxSessionName ? [session.tmuxSessionName] : []));
+    try {
+      const rows = await runTmux(['list-sessions', '-F', '#{session_id}\t#{session_name}\t#{@termdock-version}']);
+      const targets = new Set<string>();
+      for (const row of rows.trim().split('\n')) {
+        const [id, name, version] = row.split('\t');
+        if (name && (version || persisted.has(name))) { targets.add(name); targets.add(id); }
+      }
+      return targets;
+    } catch (error) { if (isTmuxServerMissingMessage(getErrorMessage(error))) return new Set<string>(); throw error; }
+  }, message => console.warn(message));
   await sampleTmuxRecoveryHealth();
   tmuxRecoveryHealthTimer = setInterval(() => void sampleTmuxRecoveryHealth(), 15_000);
   tmuxRecoveryHealthTimer.unref?.();
@@ -3346,9 +3361,9 @@ const TMUX_CONTROL_ENABLED = false;
 const TMUX_CONTROL_COMMAND_TIMEOUT_MS = 2000;
 
 function spawnTmuxControl(sessionName: string): TmuxControl {
-  const process = spawn(getTmuxBinary(), ['-C', 'attach', '-t', sessionName], {
+  const process = tmuxClientReaper.trackControl(spawn(getTmuxBinary(), ['-u', '-C', 'attach', '-t', sessionName], {
     stdio: ['pipe', 'pipe', 'pipe'],
-  });
+  }));
 
   const control: TmuxControl = {
     process,
@@ -3502,7 +3517,7 @@ function destroyTmuxControl(control: TmuxControl | undefined): void {
   }
   control.pending.clear();
   try {
-    control.process.kill();
+    tmuxClientReaper.stop(control.process);
   } catch {
     // Process may already be dead
   }
@@ -6286,10 +6301,16 @@ function cleanupSession(sessionId: string, options: { killProcess: boolean; clea
 
   if (options.killProcess) {
     try {
-      session.ptyProcess.kill();
+      if (session.mode === 'tmux') tmuxClientReaper.stop(session.ptyProcess);
+      else session.ptyProcess.kill();
     } catch {
       // ignore
     }
+  }
+
+  for (const client of wsClients.get(sessionId)?.values() ?? []) {
+    tmuxAttachments.get(client)?.close();
+    client.close(1012, 'Terminal backend closed');
   }
 
   for (const client of session.clients.values()) {
@@ -6912,6 +6933,7 @@ async function spawnTerminalSessionUnlocked(req: express.Request, input: SpawnTe
   if (!ptyProcess) {
     throw new Error("终端启动失败：PTY 进程创建返回空值，请检查 node-pty 安装");
   }
+  if (mode === 'tmux') tmuxClientReaper.trackPty(ptyProcess);
 
   const session: TerminalSession = {
     ptyProcess,
@@ -10532,6 +10554,7 @@ export function handleTerminalWebSocket(
   options: { sinceSeq?: number; pushClientId?: string; streamEpoch?: string; flowControl?: boolean; independentTmux?: boolean; outputActive?: boolean } = {},
   initialDimensions?: { cols: number; rows: number },
 ): void {
+  if (shuttingDown) { ws.close(1012, 'Service is restarting'); return; }
   const session = terminalSessions.get(sessionId);
   if (!session) {
     ws.close(4001, 'Session not found');
@@ -10573,10 +10596,10 @@ export function handleTerminalWebSocket(
       const env = buildInteractiveColorEnvironment({ ...process.env, PATH: buildAugmentedPath() });
       delete env.TMUX;
       delete env.TMUX_PANE;
-      return attachmentSpawnBackoff.spawn(() => provider.spawn(tmuxBinary, buildTmuxAttachArgs(session.tmuxSessionName!, supportsFeatures), {
+      return tmuxClientReaper.trackPty(attachmentSpawnBackoff.spawn(() => provider.spawn(tmuxBinary, buildTmuxAttachArgs(session.tmuxSessionName!, supportsFeatures), {
         name: 'xterm-256color', cols, rows, cwd: session.cwd || os.homedir(),
         env: { ...env, TERM: 'xterm-256color', COLORTERM: 'truecolor' },
-      }));
+      })));
     },
     (data) => {
       if (ws.readyState !== ws.OPEN) return;
@@ -10588,6 +10611,7 @@ export function handleTerminalWebSocket(
       if (liveData) delivery.enqueue({ type: 'data', data: liveData });
     },
     () => { if (ws.readyState === ws.OPEN) ws.close(1012, 'Tmux display client detached'); },
+    child => tmuxClientReaper.stop(child),
   ) : null;
   if (attachment) tmuxAttachments.set(ws, attachment);
 
@@ -10598,7 +10622,12 @@ export function handleTerminalWebSocket(
     clients = new Map();
     wsClients.set(sessionId, clients);
   }
+  const previousClient = clients.get(clientId);
   clients.set(clientId, ws);
+  if (previousClient && previousClient !== ws) {
+    tmuxAttachments.get(previousClient)?.close();
+    previousClient.close(1012, 'Terminal observer replaced');
+  }
   session.lastActivity = Date.now();
   syncClientCountToTmux(sessionId);
   if (updateGlobalBindingForBackendSession(sessionId, { cwd: session.cwd, lastActivity: session.lastActivity })) {
@@ -10996,17 +11025,18 @@ export function handleTerminalWebSocket(
     attachment?.close();
     stopSampling();
     const clients = wsClients.get(sessionId);
-    if (clients) {
+    const ownsRegistration = clients?.get(clientId) === ws;
+    if (ownsRegistration) {
       clients.delete(clientId);
       if (clients.size === 0) {
         wsClients.delete(sessionId);
       }
     }
-    if (!attachment) removeClientFocus(sessionId, session, clientId);
-    if (options.pushClientId) {
+    if (ownsRegistration && !attachment) removeClientFocus(sessionId, session, clientId);
+    if (ownsRegistration && options.pushClientId) {
       setClientViewingSession(options.pushClientId, sessionId, false);
     }
-    removeClientFlowPaused(sessionId, session, clientId, 'client-disconnect');
+    if (ownsRegistration) removeClientFlowPaused(sessionId, session, clientId, 'client-disconnect');
     syncClientCountToTmux(sessionId);
     broadcastClientState();
   });

@@ -37,7 +37,7 @@ const initialInvitation = (() => {
   finally { history.replaceState(null, '', location.pathname + location.search); }
 })();
 const OPEN_SESSION_KEY = 'termdock-secure-open-session';
-const initialDesktopInvitation = takeDesktopInvitation();
+const initialDesktopInvitation = takeDesktopInvitation(savedConnection()?.targetPeerId ?? 'unpaired');
 let localPairing: Promise<unknown> | undefined;
 function pendingSession(): string | undefined {
   try { const value = JSON.parse(sessionStorage.getItem(OPEN_SESSION_KEY) ?? 'null'); return value?.serviceId === savedConnection()?.targetPeerId ? value.sessionId : undefined; } catch { return undefined; }

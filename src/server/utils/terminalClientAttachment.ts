@@ -1,7 +1,7 @@
 export interface AttachedPty {
   pid?: number;
   onData(handler: (data: string) => void): { dispose(): void };
-  onExit(handler: (event: { exitCode: number; signal: number | null }) => void): { dispose(): void };
+  onExit(handler: (event: { exitCode: number; signal?: number | null }) => void): { dispose(): void };
   write(data: string): void;
   resize(cols: number, rows: number): void;
   kill(): void;
@@ -19,6 +19,7 @@ export class TerminalClientAttachment {
     private readonly spawn: (cols: number, rows: number) => Promise<AttachedPty>,
     private readonly onData: (data: string) => void,
     private readonly onExit: () => void,
+    private readonly stop: (process: AttachedPty) => void = process => process.kill(),
   ) {}
 
   get pid(): number | undefined { return this.process?.pid; }
@@ -29,7 +30,7 @@ export class TerminalClientAttachment {
     const epoch = this.epoch;
     const process = await this.spawn(cols, rows);
     if (epoch !== this.epoch) {
-      process.kill();
+      this.stop(process);
       return false;
     }
     this.process = process;
@@ -58,7 +59,7 @@ export class TerminalClientAttachment {
     const process = this.process;
     this.process = null;
     // This is the attached tmux CLI process, never a pane or tmux server.
-    if (process) process.kill();
+    if (process) this.stop(process);
   }
 
   private disposeSubscriptions(): void {

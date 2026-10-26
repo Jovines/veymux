@@ -137,6 +137,8 @@ it('keeps the real WS handler PTYs through flow pauses, while unsubscribe/reconn
     TmuxDisplayGeometry, SharedSessionSampler, TerminalClientAttachment, TerminalInputQueue, serializeTerminalInput, TerminalPasteBuffer, TmuxInitialScreen, TerminalOutputDelivery, resolveTerminalReplayCursor,
     terminalSessions: new Map([['backend', session]]), wsClients: new Map(),
     tmuxAttachments: new WeakMap(),
+    shuttingDown: false,
+    tmuxClientReaper: { trackPty: (pty: unknown) => pty, stop: (pty: { kill(): void }) => pty.kill() },
     outputDeliveries: new WeakMap(), independentTmuxClients: new WeakSet(), independentTmuxReplays: new WeakMap(),
     TERMINAL_STREAM_EPOCH: 'test', attachmentSpawnBackoff: { check: () => {}, spawn: (fn: () => unknown) => fn() },
     getPtyProvider: async () => ({ spawn }), getTmuxBinary: () => 'tmux', supportsTmuxClientFeatures: async () => true,
@@ -200,8 +202,16 @@ it('keeps the real WS handler PTYs through flow pauses, while unsubscribe/reconn
   expect(spawn).toHaveBeenCalledTimes(27);
   expect(reconnect.send.mock.calls.some(([data]) => JSON.parse(data).type === 'connected')).toBe(true);
   expect(reconnect.send.mock.calls.map(([data]) => JSON.parse(data))).toContainEqual(expect.objectContaining({ type: 'connected', terminalOutputActive: true }));
+  const replacement = new Socket();
+  context.handleTerminalWebSocket(replacement, 'backend', 'reconnect', { flowControl: true, independentTmux: true });
+  await vi.advanceTimersByTimeAsync(0);
+  expect(reconnect.readyState).not.toBe(reconnect.OPEN);
+  expect(context.wsClients.get('backend').get('reconnect')).toBe(replacement);
+  reconnect.emit('close'); // A delayed callback cannot unregister its replacement.
+  expect(context.wsClients.get('backend').get('reconnect')).toBe(replacement);
   outputActivity.dispose();
   reconnect.close();
+  replacement.close();
   request.emit('close');
   expect(vi.getTimerCount()).toBe(0);
 });

@@ -20,7 +20,7 @@ const pagerSettled = () => expect.poll(() => (document.querySelector('[data-test
 const quota = (usagePercent: number): QuotaResult => ({ slug: 'codex', displayName: 'Codex', usagePercent, entitlement: 100, remaining: 100 - usagePercent, windows: [], fetchedAt: Date.now() });
 afterEach(() => { root?.unmount(); root = undefined; document.body.replaceChildren(); document.documentElement.style.removeProperty('--safe-top-inset'); vi.unstubAllGlobals(); localStorage.clear(); sessionStorage.clear(); });
 const sessions = [{ id: 'codex-first', name: '回复用户问候 | web-terminal', codex: true }, { id: 'claude-second', name: 'Claude 检查终端连接', codex: false }, { id: 'codex-last', name: '核对长会话名称与 Agent 用量并确认顶部按钮不会被挤出屏幕的工作区', codex: true }];
-async function mount(width: number, delayedQuota?: Promise<Response>) {
+async function mount(width: number, delayedQuota?: Promise<Response>, workspaceWidth?: number) {
   await page.viewport(width, 844);
   let todos = 7;
   vi.stubGlobal('fetch', vi.fn(async (url: unknown) => String(url).endsWith('/quota') ? delayedQuota ?? Response.json({ providers: [quota(30)], updatedAt: Date.now() }) : String(url).endsWith('/todos/summary') ? Response.json({ count: todos }) : Response.json({ mode: 'chat', chatEligibility: { allowed: true }, locale: 'zh' })));
@@ -30,7 +30,7 @@ async function mount(width: number, delayedQuota?: Promise<Response>) {
     const [active, setActive] = useState(0), swiper = useRef<SwiperInstance>();
     const session = sessions[active], mobile = width < 1024;
     change = index => { setActive(index); swiper.current?.slideTo(index, 0); };
-    return <div className="flex h-full flex-col"><header data-test-current-header className={`relative flex h-11 shrink-0 items-center gap-1 px-1 lg:h-10 ${mobile ? '' : 'justify-end'}`}>
+    return <div className="flex h-full flex-col" style={{ width: workspaceWidth }}><header data-test-current-header className={`relative flex h-11 shrink-0 items-center gap-1 px-1 lg:h-10 ${mobile ? '' : 'justify-end'}`}>
       {mobile && <SidebarVisibilityButton side="left" expanded={false} onClick={() => {}} className="relative h-8 w-8"><AgentCompactStatusOverlay runningCount={2} reviewCount={3} className="sm:hidden" /></SidebarVisibilityButton>}
       <SessionCurrentTitle sessionId={session.id} name={session.name} mobile={mobile} icon={<AgentTabIcon sessionMode="shell" state={{ agent: { slug: session.codex ? 'codex' : 'claude', displayName: 'Agent', accentColor: 'var(--primary)', icon: null }, agentStatus: 'waiting' }} />}
         quota={session.codex && <CodexQuotaBadge compact={mobile} onOpen={openQuota} />} status={<span aria-label="Agent 工作中" className="shrink-0">◌</span>} />
@@ -71,6 +71,28 @@ it.each([320, 390, 844, 1280])('shows one current name and desktop quota without
   expect(document.querySelector('[data-test-pager]')!.getBoundingClientRect().top).toBe(before);
   if (width < 1024) expect(document.querySelector('[data-session-current-quota]')!.getBoundingClientRect().bottom).toBeLessThanOrEqual(header.getBoundingClientRect().bottom + 1);
   await page.screenshot({ path: `/tmp/termdock-current-title-${width}.png` });
+});
+it.each([480, 680, 900])('keeps the long title, status and full quota inside a %i px desktop workspace', async workspaceWidth => {
+  const f = await mount(1440, undefined, workspaceWidth);
+  f.change(2);
+  await expect.poll(() => document.querySelector('[data-session-current-title]')?.getAttribute('data-session-current-title')).toBe(sessions[2].id);
+  await expect.poll(() => document.querySelector('[data-session-current-quota]')?.textContent).toContain('70%');
+  const title = document.querySelector<HTMLElement>('[data-session-current-title]')!;
+  const label = document.querySelector<HTMLElement>('[data-session-current-label]')!;
+  const quota = document.querySelector<HTMLElement>('[data-session-current-quota]')!;
+  const bounds = title.getBoundingClientRect();
+  for (const element of [label, ...label.children, quota, ...quota.querySelectorAll('button, button > span')]) {
+    const rect = element.getBoundingClientRect();
+    expect(rect.left).toBeGreaterThanOrEqual(bounds.left - 1);
+    expect(rect.right).toBeLessThanOrEqual(bounds.right + 1);
+  }
+  expect(label.getBoundingClientRect().right).toBeLessThanOrEqual(quota.getBoundingClientRect().left);
+  const text = label.querySelector<HTMLElement>('span.truncate')!;
+  expect(text.clientWidth).toBeGreaterThan(12);
+  expect(text.scrollWidth).toBeGreaterThan(text.clientWidth);
+  await page.getByRole('button', { name: /^Codex ·/ }).click();
+  expect(f.openQuota).toHaveBeenCalledOnce();
+  await page.screenshot({ path: `/tmp/termdock-current-title-desktop-${workspaceWidth}.png` });
 });
 it('updates the sole title and quota availability with real left/right Session swipes', async () => {
   await mount(390);

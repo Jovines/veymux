@@ -100,3 +100,15 @@ it('launches the current shared non-default Agent command when another editor ch
   expect(launch).toHaveBeenLastCalledWith(claude, 'claude');
   expect(readAgentCommandPresets('claude', 'claude').presets.map(p => p.name)).toEqual(['Old']);
 });
+
+it('keeps a deleted non-default Agent preset deleted when a stale editor submits', () => {
+  const preset = saveAgentCommand('claude', 'claude', { name: 'Old', command: 'claude --verbose' });
+  session();
+  fireEvent.click(screen.getByRole('radio', { name: 'Claude Code' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Change startup command' }));
+  act(() => deleteAgentCommand('claude', 'claude', preset.id));
+  fireEvent.click(screen.getByRole('button', { name: 'Save command' }));
+  expect(screen.getByRole('dialog')).toBeTruthy();
+  expect(screen.getByRole('alert')).toBeTruthy();
+  expect(readAgentCommandPresets('claude', 'claude').presets).toEqual([]);
+});
