@@ -1,3 +1,4 @@
+import { dailyScheduleLabel } from '../../../server/shared/dailySchedule';
 import { SidebarVisibilityButton } from '../sidebar/SidebarVisibilityButton';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Inbox, Pencil, Plus, Search, Settings2, Sparkles, Trash2, X } from 'lucide-react';
@@ -273,7 +274,7 @@ function CollectorCard({ collector: c, runs, busy, onRun, onEdit, onRemove, onOp
   const [removing, setRemoving] = useState(false), latest = runs.at(-1);
   return <article className="rounded-xl border border-border/30 bg-surface p-4 sm:p-5">
     <div className="flex items-center gap-2"><h2 className="min-w-0 flex-1 break-words text-base font-semibold">{c.name}</h2><button type="button" className={ghost} aria-label={`编辑 ${c.name}`} disabled={busy} onClick={onEdit}><Pencil size={16} /></button><button type="button" className={ghost} aria-label={`删除 ${c.name}`} title="删除收集方向" disabled={busy} onClick={() => setRemoving(true)}><Trash2 size={16} /></button></div>
-    <p className="mt-1 text-xs leading-6 text-muted-foreground">{c.config.agentSlug} · {!c.enabled ? '已停用' : !c.schedule ? '手动运行' : c.schedule.kind === 'interval' ? `每 ${c.schedule.everyMinutes} 分钟` : `每天 ${c.schedule.time}`}</p>
+    <p className="mt-1 text-xs leading-6 text-muted-foreground">{c.config.agentSlug} · {!c.enabled ? '已停用' : !c.schedule ? '手动运行' : c.schedule.kind === 'interval' ? `每 ${c.schedule.everyMinutes} 分钟` : dailyScheduleLabel(c.schedule)}</p>
     <p className="mt-1 text-xs leading-6 text-muted-foreground">{c.session?.mode === 'reuse' ? '复用会话' : '每次新建'} · {c.session?.targetSessionId ? '现有会话不自动回收' : (c.session?.idleMinutes ?? 10) ? `无输出 ${c.session?.idleMinutes ?? 10} 分钟后回收` : '不自动回收'}</p>
     <p className="mt-1 text-xs leading-6 text-muted-foreground">{c.processing?.mode === 'new' ? '新待办自动新建 Agent 处理' : c.processing?.mode === 'existing' ? '新待办自动发送到现有 Agent' : '仅收集，支持按来源领取'}{c.webhook?.enabled ? ' · Webhook' : ''}</p>
     <p className="my-3 line-clamp-3 whitespace-pre-wrap text-sm leading-7 text-muted-foreground">{c.config.prompt}</p>

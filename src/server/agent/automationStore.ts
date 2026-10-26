@@ -1,10 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { ALL_WEEKDAYS, nextDailyRunAt, normalizeDailyTimes, type DailySchedule } from '../shared/dailySchedule.js';
 
 export type AutomationSchedule =
   | { kind: 'interval'; everyMinutes: number }
-  | { kind: 'daily'; time: string; weekdays: number[] };
+  | ({ kind: 'daily' } & DailySchedule);
 
 export interface AgentAutomation {
   id: string;
@@ -43,10 +44,6 @@ interface AutomationDocument {
 
 const MAX_RUNS = 100;
 
-function isTime(value: unknown): value is string {
-  return typeof value === 'string' && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
-}
-
 export function normalizeAutomationSchedule(value: unknown): AutomationSchedule | null {
   if (!value || typeof value !== 'object') return null;
   const candidate = value as Record<string, unknown>;
@@ -55,11 +52,14 @@ export function normalizeAutomationSchedule(value: unknown): AutomationSchedule 
     if (!Number.isFinite(everyMinutes) || everyMinutes < 1 || everyMinutes > 43_200) return null;
     return { kind: 'interval', everyMinutes: Math.floor(everyMinutes) };
   }
-  if (candidate.kind === 'daily' && isTime(candidate.time)) {
+  if (candidate.kind === 'daily') {
+    const times = normalizeDailyTimes(candidate.times === undefined ? [candidate.time] : candidate.times);
+    if (!times) return null;
+    if (candidate.weekdays !== undefined && (!Array.isArray(candidate.weekdays) || candidate.weekdays.length === 0 || !candidate.weekdays.every(day => Number.isInteger(day) && day >= 0 && day <= 6))) return null;
     const weekdays = Array.isArray(candidate.weekdays)
       ? Array.from(new Set(candidate.weekdays.map(Number).filter((day) => Number.isInteger(day) && day >= 0 && day <= 6)))
       : [];
-    return { kind: 'daily', time: candidate.time, weekdays: weekdays.length > 0 ? weekdays : [0, 1, 2, 3, 4, 5, 6] };
+    return { kind: 'daily', time: times[0], ...(times.length > 1 ? { times } : {}), weekdays: weekdays.length > 0 ? weekdays : [...ALL_WEEKDAYS] };
   }
   return null;
 }
@@ -70,16 +70,7 @@ export function nextAutomationRunAt(schedule: AutomationSchedule, now = Date.now
     const elapsed = Math.max(0, now - createdAt);
     return createdAt + (Math.floor(elapsed / intervalMs) + 1) * intervalMs;
   }
-  const [hours, minutes] = schedule.time.split(':').map(Number);
-  const candidate = new Date(now);
-  candidate.setSeconds(0, 0);
-  for (let offset = 0; offset <= 7; offset += 1) {
-    const date = new Date(candidate);
-    date.setDate(candidate.getDate() + offset);
-    date.setHours(hours, minutes, 0, 0);
-    if (date.getTime() > now && schedule.weekdays.includes(date.getDay())) return date.getTime();
-  }
-  return now + 24 * 60 * 60_000;
+  return nextDailyRunAt(schedule, now);
 }
 
 export class AutomationStore {

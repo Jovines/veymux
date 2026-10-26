@@ -1,7 +1,7 @@
 import { useId, useRef, useState, type ReactNode } from 'react';
 import { writeClipboardText } from '../../utils/clipboard';
 import { createPortal } from 'react-dom';
-import { Bot, CalendarClock, Check, ChevronDown, Clock, FolderOpen, ListTodo, Monitor, MousePointer2, Play, Send, X } from 'lucide-react';
+import { Bot, CalendarClock, Check, ChevronDown, Clock, FolderOpen, ListTodo, Monitor, MousePointer2, Play, Plus, Send, X } from 'lucide-react';
 import { useKeyboardLayer } from '../../hooks/useKeyboardLayer';
 import type { AgentLauncherInfo } from '../../terminal/api';
 import type { TodoCollector, TodoItem, TodoLaunchConfig } from '../../todos/api';
@@ -13,6 +13,7 @@ import { AgentCommandPicker } from '../AgentCommandPicker';
 import { AgentChoices } from '../settings/AgentChoices';
 import { ConfigurationChoices } from '../settings/ConfigurationChoices';
 import { getAgentLaunchCommand } from '../../terminal/launchCommands';
+import { ALL_WEEKDAYS, WORKDAYS, WEEKEND, WEEKDAY_LABELS, dailyScheduleLabel, dailyScheduleTimes, normalizeDailyTimes } from '../../../server/shared/dailySchedule';
 
 export const todoButton = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-3 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40';
 export const todoPrimary = `${todoButton} bg-primary text-primary-foreground hover:opacity-90`;
@@ -84,12 +85,15 @@ const templates = [
 ];
 export function CollectorEditor({ workspace, collector, config, agents, loading, service, directories, currentCwd, busy, onSave, onCancel }: { workspace: string; collector?: TodoCollector; config: TodoLaunchConfig; agents: AgentLauncherInfo[]; loading: boolean; service: string; directories: string[]; currentCwd: string; busy: boolean; onSave: (input: Partial<TodoCollector> & { name: string; config: TodoLaunchConfig }, start: boolean) => void; onCancel: () => void }) {
   const sessions = useSessionDirectory();
-  const [draft, setDraft] = useTodoDraft(workspace, `collector:${collector?.id ?? 'new'}`, { processing: collector?.processing ?? { mode: 'manual' as const, sessionId: null, config: null, note: '' }, webhook: collector?.webhook ?? { enabled: false, secret: '' }, session: collector?.session ?? { mode: 'new' as 'new' | 'reuse', targetSessionId: null as string | null, beforePrompt: '', idleMinutes: 10 }, name: collector?.name ?? '', config: collector?.config ?? { ...config, prompt: '' }, enabled: collector?.enabled ?? true, schedule: collector?.schedule?.kind ?? 'manual', minutes: collector?.schedule?.kind === 'interval' ? collector.schedule.everyMinutes : 60, daily: collector?.schedule?.kind === 'daily' ? collector.schedule.time : '09:00' });
+  const [draft, setDraft] = useTodoDraft(workspace, `collector:${collector?.id ?? 'new'}`, { processing: collector?.processing ?? { mode: 'manual' as const, sessionId: null, config: null, note: '' }, webhook: collector?.webhook ?? { enabled: false, secret: '' }, session: collector?.session ?? { mode: 'new' as 'new' | 'reuse', targetSessionId: null as string | null, beforePrompt: '', idleMinutes: 10 }, name: collector?.name ?? '', config: collector?.config ?? { ...config, prompt: '' }, enabled: collector?.enabled ?? true, schedule: collector?.schedule?.kind ?? 'manual', minutes: collector?.schedule?.kind === 'interval' ? collector.schedule.everyMinutes : 60, daily: collector?.schedule?.kind === 'daily' ? collector.schedule.time : '09:00', times: (collector?.schedule?.kind === 'daily' ? dailyScheduleTimes(collector.schedule) : ['09:00']) as string[] | undefined, weekdays: (collector?.schedule?.kind === 'daily' ? collector.schedule.weekdays : [...ALL_WEEKDAYS]) as number[] | undefined });
   const chosen = draft.config.agentSlug ? draft.config : { ...resolveTodoConfig(draft.config, agents, config.agentSlug, config.cwd), prompt: draft.config.prompt };
+  const times = draft.times ?? [draft.daily], weekdays = draft.weekdays ?? (collector?.schedule?.kind === 'daily' ? collector.schedule.weekdays : ALL_WEEKDAYS);
+  const normalizedTimes = normalizeDailyTimes(times);
+  const scheduleReady = draft.schedule === 'manual' || (draft.schedule === 'interval' ? Number.isInteger(draft.minutes) && draft.minutes >= 1 && draft.minutes <= 43200 : !!normalizedTimes && weekdays.length > 0);
   const processing = draft.processing;
   const processingReady = !processing || processing.mode === 'manual' || (processing.mode === 'existing' ? sessions.some(s => s.sessionId === processing.sessionId && s.agent) : agents.some(a => a.slug === (processing.config?.agentSlug || chosen.agentSlug)));
-  const valid = draft.name.trim() && chosen.prompt.trim() && !loading && agents.some(a => a.slug === chosen.agentSlug) && processingReady;
-  const submit = (start: boolean) => { if (busy || !valid) return; onSave({ id: collector?.id, revision: collector?.revision, name: draft.name.trim(), config: chosen, processing: draft.processing?.mode === 'new' ? { ...draft.processing, config: draft.processing.config ?? { ...chosen, prompt: '' } } : draft.processing, webhook: draft.webhook, session: draft.session ?? { mode: 'new', targetSessionId: null, beforePrompt: '', idleMinutes: 10 }, enabled: draft.enabled, schedule: draft.schedule === 'manual' ? null : draft.schedule === 'interval' ? { kind: 'interval', everyMinutes: draft.minutes } : { kind: 'daily', time: draft.daily, weekdays: collector?.schedule?.kind === 'daily' ? collector.schedule.weekdays : [0, 1, 2, 3, 4, 5, 6] } }, start); };
+  const valid = draft.name.trim() && chosen.prompt.trim() && !loading && agents.some(a => a.slug === chosen.agentSlug) && processingReady && scheduleReady;
+  const submit = (start: boolean) => { if (busy || !valid) return; onSave({ id: collector?.id, revision: collector?.revision, name: draft.name.trim(), config: chosen, processing: draft.processing?.mode === 'new' ? { ...draft.processing, config: draft.processing.config ?? { ...chosen, prompt: '' } } : draft.processing, webhook: draft.webhook, session: draft.session ?? { mode: 'new', targetSessionId: null, beforePrompt: '', idleMinutes: 10 }, enabled: draft.enabled, schedule: draft.schedule === 'manual' ? null : draft.schedule === 'interval' ? { kind: 'interval', everyMinutes: draft.minutes } : { kind: 'daily', time: normalizedTimes![0], ...(normalizedTimes!.length > 1 ? { times: normalizedTimes! } : {}), weekdays: [...weekdays].sort() } }, start); };
   return <form className="flex min-h-0 flex-1 flex-col" onSubmit={e => { e.preventDefault(); submit(true); }}>
     <FormBody><fieldset disabled={busy} className="min-w-0 space-y-5">
       {!collector && <div className="flex flex-wrap gap-2">{templates.map(t => <button key={t.name} type="button" className={todoSecondary} onClick={() => setDraft({ ...draft, name: t.name, config: { ...draft.config, prompt: t.prompt } })}>{t.name}</button>)}</div>}
@@ -98,14 +102,26 @@ export function CollectorEditor({ workspace, collector, config, agents, loading,
       <CollectorProcessingFields processing={draft.processing ?? { mode: 'manual', sessionId: null, config: null, note: '' }} config={chosen} agents={agents} sessions={sessions} onChange={processing => setDraft({ ...draft, processing })} />
       <CollectorWebhookFields collectorId={collector?.id} webhook={draft.webhook ?? { enabled: false, secret: '' }} onChange={webhook => setDraft({ ...draft, webhook })} />
       <CollectorSessionFields session={draft.session ?? { mode: 'new', targetSessionId: null, beforePrompt: '', idleMinutes: 10 }} sessions={sessions} onChange={session => setDraft({ ...draft, session })} />
-      <details className="rounded-lg border border-border/20 px-3 text-sm text-muted-foreground"><summary className="cursor-pointer py-3">定时与启用 · {draft.schedule === 'manual' ? '手动运行' : draft.schedule === 'interval' ? `每 ${draft.minutes} 分钟` : `每天 ${draft.daily}`}</summary><div className="space-y-4 pb-3">
+      <details className="rounded-lg border border-border/20 px-3 text-sm text-muted-foreground"><summary className="cursor-pointer py-3">定时与启用 · {draft.schedule === 'manual' ? '手动运行' : draft.schedule === 'interval' ? `每 ${draft.minutes} 分钟` : dailyScheduleLabel({ time: times[0], times, weekdays })}</summary><div className="space-y-4 pb-3">
         <ConfigurationChoices label="运行频率" value={draft.schedule} onChange={schedule => setDraft({ ...draft, schedule })} options={[
           { value: 'manual', label: '手动', icon: <MousePointer2 size={18} /> },
           { value: 'interval', label: '按间隔', icon: <Clock size={18} /> },
-          { value: 'daily', label: '每天', icon: <CalendarClock size={18} /> },
+          { value: 'daily', label: '定时', icon: <CalendarClock size={18} /> },
         ]} />
         {draft.schedule === 'interval' && <label className={label}>间隔（分钟）<input className={input} required type="number" min={1} max={43200} step={1} value={draft.minutes} onChange={e => setDraft({ ...draft, minutes: Number(e.target.value) })} /></label>}
-        {draft.schedule === 'daily' && <label className={label}>时间（服务所在时区）<input className={input} required type="time" value={draft.daily} onChange={e => setDraft({ ...draft, daily: e.target.value })} /></label>}
+        {draft.schedule === 'daily' && <>
+          <fieldset className="min-w-0 space-y-2"><legend className="mb-2 text-sm">重复日期</legend>
+            <div className="flex flex-wrap gap-2">{[{ name: '每天', days: ALL_WEEKDAYS }, { name: '工作日', days: WORKDAYS }, { name: '周末', days: WEEKEND }].map(preset => <button key={preset.name} type="button" className={`${todoGhost} ${[...weekdays].sort().join() === preset.days.join() ? 'bg-surface-2 text-primary' : ''}`} aria-pressed={[...weekdays].sort().join() === preset.days.join()} onClick={() => setDraft({ ...draft, weekdays: [...preset.days] })}>{preset.name}</button>)}</div>
+            <div className="grid grid-cols-7 gap-1">{[1, 2, 3, 4, 5, 6, 0].map(day => <button key={day} type="button" aria-label={WEEKDAY_LABELS[day]} aria-pressed={weekdays.includes(day)} className={`min-h-11 min-w-0 rounded-lg border text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${weekdays.includes(day) ? 'border-primary bg-surface-2 text-primary' : 'border-border/30 hover:bg-surface-2'}`} onClick={() => setDraft({ ...draft, weekdays: weekdays.includes(day) ? weekdays.filter(value => value !== day) : [...weekdays, day] })}>{WEEKDAY_LABELS[day].slice(1)}</button>)}</div>
+            {!weekdays.length && <p role="alert" className="text-xs text-destructive">至少选择一天</p>}
+          </fieldset>
+          <fieldset className="min-w-0 space-y-2"><legend className="mb-2 text-sm">时间点（服务所在时区）</legend>
+            <div className="space-y-2">{times.map((time, index) => <div key={index} className="flex min-w-0 items-center gap-2"><input className={`${input} flex-1`} aria-label={`时间 ${index + 1}`} required type="time" value={time} onChange={e => setDraft({ ...draft, times: times.map((value, i) => i === index ? e.target.value : value) })} /><button type="button" className={todoGhost} aria-label={`删除时间 ${index + 1}`} title="删除时间" disabled={times.length === 1} onClick={() => setDraft({ ...draft, times: times.filter((_, i) => i !== index) })}><X size={16} /></button></div>)}</div>
+            <button type="button" className={todoGhost} disabled={times.includes('')} onClick={() => setDraft({ ...draft, times: [...times, ''] })}><Plus size={16} />添加时间</button>
+            {!normalizedTimes && <p role="alert" className="text-xs text-destructive">请补全时间，或删除空白时间点</p>}
+            {normalizedTimes && normalizedTimes.length < times.length && <p role="status" className="text-xs">相同时间只运行一次</p>}
+          </fieldset>
+        </>}
         <label className="flex items-center gap-3 text-sm"><input type="checkbox" checked={draft.enabled} onChange={e => setDraft({ ...draft, enabled: e.target.checked })} />启用此方向，参与全部收集和定时运行</label>
       </div></details>
     </fieldset></FormBody>

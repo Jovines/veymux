@@ -24,6 +24,29 @@ describe('AutomationStore', () => {
     expect(nextAutomationRunAt({ kind: 'interval', everyMinutes: 5 }, 610_000, 10_000)).toBe(910_000);
   });
 
+  it('normalizes multiple daily times while retaining single-time compatibility', () => {
+    expect(normalizeAutomationSchedule({ kind: 'daily', time: '09:00' })).toEqual({ kind: 'daily', time: '09:00', weekdays: [0, 1, 2, 3, 4, 5, 6] });
+    expect(normalizeAutomationSchedule({ kind: 'daily', times: ['20:00', '09:00', '14:00', '09:00'], weekdays: [1, 3, 5] })).toEqual({ kind: 'daily', time: '09:00', times: ['09:00', '14:00', '20:00'], weekdays: [1, 3, 5] });
+    for (const times of [[], ['09:00', ''], ['24:00'], '09:00', [null]]) {
+      expect(normalizeAutomationSchedule({ kind: 'daily', time: '09:00', times })).toBeNull();
+    }
+    for (const weekdays of [[], [7], [-1], ['1']]) {
+      expect(normalizeAutomationSchedule({ kind: 'daily', time: '09:00', weekdays })).toBeNull();
+    }
+  });
+
+  it('finds remaining times today, skips exact boundaries and unselected days', () => {
+    const schedule = { kind: 'daily' as const, time: '09:00', times: ['20:00', '09:00', '14:00'], weekdays: [1, 3, 5] };
+    const at = (day: number, hours: number, minutes = 0) => new Date(2026, 9, day, hours, minutes).getTime();
+    expect(nextAutomationRunAt(schedule, at(26, 8))).toBe(at(26, 9));
+    expect(nextAutomationRunAt(schedule, at(26, 9))).toBe(at(26, 14));
+    expect(nextAutomationRunAt(schedule, at(26, 14))).toBe(at(26, 20));
+    expect(nextAutomationRunAt(schedule, at(26, 20))).toBe(at(28, 9));
+    expect(nextAutomationRunAt(schedule, at(27, 8))).toBe(at(28, 9));
+    expect(nextAutomationRunAt(schedule, at(30, 21))).toBe(new Date(2026, 10, 2, 9).getTime());
+    expect(nextAutomationRunAt({ kind: 'daily', time: '09:00', weekdays: [1] }, at(26, 9))).toBe(at(33, 9));
+  });
+
   it('keeps interval timing anchored to creation when a task is edited', () => {
     vi.useFakeTimers();
     vi.setSystemTime(10_000);

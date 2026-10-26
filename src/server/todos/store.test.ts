@@ -53,6 +53,28 @@ it('does not blindly replay an unconfirmed launch after restart and preserves it
   expect(store.run(run.id)).toMatchObject({ status: 'failed', sessionId: 'surviving' });
   expect(store.begin('execute', todo.id, config, 'launch')).toMatchObject({ fresh: false, run: { id: run.id, status: 'failed' } });
 });
+it('persists multi-time schedules and triggers each selected time once through the scheduler', async () => {
+  const at = (day: number, hours: number, minutes = 0) => new Date(2026, 9, day, hours, minutes).getTime();
+  const clock = vi.spyOn(Date, 'now').mockReturnValue(at(26, 8));
+  try {
+    const collector = store.saveCollector({ name: '早晚巡检', config, schedule: { kind: 'daily', time: '20:00', times: ['20:00', '09:00', '09:00'], weekdays: [1, 3, 5] } });
+    store = new TodoStore(file);
+    expect(store.collector(collector.id).schedule).toEqual({ kind: 'daily', time: '09:00', times: ['09:00', '20:00'], weekdays: [1, 3, 5] });
+    const runtime: TodoRuntime = { validate: vi.fn(async c => c), launch: vi.fn(async (_run, _prompt, created) => { created('fixture-terminal'); }) };
+    const runner = new TodoRunner(store, runtime);
+    for (const [day, hours, expectedCalls, next] of [[26, 9, 1, at(26, 20)], [26, 20, 2, at(28, 9)], [27, 9, 2, at(28, 9)], [28, 9, 3, at(28, 20)]]) {
+      clock.mockReturnValue(at(day, hours));
+      await runner.tick(); await runner.tick();
+      await vi.waitFor(() => expect(runtime.launch).toHaveBeenCalledTimes(expectedCalls));
+      expect(store.collector(collector.id).nextRunAt).toBe(next);
+    }
+    const current = store.collector(collector.id);
+    store.saveCollector({ ...current, enabled: false });
+    clock.mockReturnValue(at(28, 20)); await runner.tick();
+    expect(runtime.launch).toHaveBeenCalledTimes(3);
+    expect(new TodoStore(file).collector(collector.id).nextRunAt).toBeNull();
+  } finally { clock.mockRestore(); }
+});
 it('runs multiple scheduled directions independently, advances schedules and injects actionable CLI guidance', async () => {
   vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-23T00:00:00Z'));
   const a = store.saveCollector({ name: '项目巡检', config, schedule: { kind: 'interval', everyMinutes: 1 } });

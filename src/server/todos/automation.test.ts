@@ -26,6 +26,18 @@ async function post(suffix: string, body: unknown) {
   const response = await fetch(origin + '/api/terminal/operations/todos' + suffix, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   return { status: response.status, data: await response.json() };
 }
+it('saves multiple collection times through the API and rejects incomplete schedules without launching', async () => {
+  const saved = await post('/collectors', { name: '早晚收集', config, schedule: { kind: 'daily', times: ['20:00', '09:00', '09:00'], weekdays: [1, 3, 5] } });
+  expect(saved.status).toBe(200);
+  const schedule = { kind: 'daily', time: '09:00', times: ['09:00', '20:00'], weekdays: [1, 3, 5] };
+  expect(saved.data.collector.schedule).toEqual(schedule);
+  expect(new TodoStore(path.join(directory, 'todos.json')).collector(saved.data.collector.id).schedule).toEqual(schedule);
+  for (const invalid of [{ times: [] }, { times: ['09:00', ''] }, { times: ['09:00'], weekdays: [] }]) {
+    expect((await post('/collectors', { ...saved.data.collector, schedule: { ...schedule, ...invalid } })).status).toBe(400);
+  }
+  expect(store.collector(saved.data.collector.id).schedule).toEqual(schedule);
+  expect(runtime.launch).not.toHaveBeenCalled();
+});
 it('keeps collection manual by default and only dispatches new todos after explicit source configuration', async () => {
   const c = (await post('/collectors', { name: '代码', config })).data.collector;
   const old = (await post('', { title: '旧事项', collectorId: c.id })).data.todo;

@@ -41,6 +41,11 @@ const loaded = async () => { await screen.findByText('检查移动端输入'); a
 const more = (name: string) => { fireEvent.click(screen.getByRole('button', { name: '待办菜单' })); fireEvent.click(screen.getByRole('menuitem', { name })); };
 
 
+it('shows selected weekdays and every configured time in the collection directory', async () => {
+  data.collectors = [{ id: 'multi', name: '早晚收集', config: data.defaults, enabled: true, schedule: { kind: 'daily', time: '09:00', times: ['09:00', '20:00'], weekdays: [1, 3, 5] }, nextRunAt: null, revision: 1, createdAt: 1, updatedAt: 1 }];
+  setup(); await loaded(); fireEvent.click(screen.getByRole('button', { name: '管理收集方向' }));
+  expect(screen.getByText('codex · 周一、周三、周五 09:00、20:00')).toBeTruthy();
+});
 it('keeps the default list minimal and exposes handoff directly instead of execution settings', async () => {
   setup(); await loaded();
   expect(screen.getByRole('button', { name: '交给会话 检查移动端输入' })).toBeTruthy();

@@ -1,3 +1,5 @@
+import { TerminalVersionReplies } from './terminalVersionReplies.js';
+
 export interface AttachedPty {
   pid?: number;
   onData(handler: (data: string) => void): { dispose(): void };
@@ -14,6 +16,7 @@ export class TerminalClientAttachment {
   private epoch = 0;
   private process: AttachedPty | null = null;
   private subscriptions: Array<{ dispose(): void }> = [];
+  private versionReplies = new TerminalVersionReplies();
 
   constructor(
     private readonly spawn: (cols: number, rows: number) => Promise<AttachedPty>,
@@ -35,7 +38,11 @@ export class TerminalClientAttachment {
     }
     this.process = process;
     this.subscriptions = [
-      process.onData(data => { if (epoch === this.epoch) this.onData(data); }),
+      process.onData(data => {
+        if (epoch !== this.epoch) return;
+        this.versionReplies.observe(data);
+        this.onData(data);
+      }),
       process.onExit(() => {
         if (epoch !== this.epoch) return;
         this.process = null;
@@ -46,7 +53,10 @@ export class TerminalClientAttachment {
     return true;
   }
 
-  write(data: string): void { this.process?.write(data); }
+  write(data: string): void {
+    const input = this.versionReplies.filter(data);
+    if (input) this.process?.write(input);
+  }
   resize(cols: number, rows: number): boolean {
     if (!this.process) return false;
     this.process.resize(cols, rows);
@@ -55,6 +65,7 @@ export class TerminalClientAttachment {
 
   close(): void {
     this.epoch += 1;
+    this.versionReplies = new TerminalVersionReplies();
     this.disposeSubscriptions();
     const process = this.process;
     this.process = null;

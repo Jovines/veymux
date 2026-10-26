@@ -63,3 +63,27 @@ it('replaces a stream on resubscription without accepting stale callbacks', asyn
   expect(client.pid).toBe(2);
   client.close();
 });
+
+it('drops replayed version replies and renews query ownership on reconnect', async () => {
+  const first = fakePty(1), second = fakePty(2);
+  const spawn = vi.fn().mockResolvedValueOnce(first).mockResolvedValueOnce(second);
+  const client = new TerminalClientAttachment(spawn, vi.fn(), vi.fn());
+  const reply = '\x1bP>|xterm.js(6.1.0-beta.315)\x1b\\';
+  await client.open(80, 24);
+  first.emit('\x1b[>'); first.emit('q');
+  client.write(reply); client.write(reply);
+  expect(first.write.mock.calls).toEqual([[reply]]);
+  // An unanswered query on the obsolete display must not authorize input on
+  // its replacement. Each observer owns only its current PTY's queries.
+  first.emit('\x1b[>q');
+  await client.open(80, 24);
+  client.write(reply);
+  expect(second.write).not.toHaveBeenCalled();
+  first.emit('\x1b[>q');
+  client.write(reply);
+  expect(second.write).not.toHaveBeenCalled();
+  second.emit('\x1b[>q');
+  client.write(reply); client.write(reply); client.write('typed');
+  expect(second.write.mock.calls).toEqual([[reply], ['typed']]);
+  client.close();
+});

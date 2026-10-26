@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { normalizeDailyTimes } from '../shared/dailySchedule.js';
 import { canClaimTodo } from './claimEligibility.js';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -49,7 +50,7 @@ an installed Agent. Base the collection requirements on the conversation: source
 selection criteria, context, source links and stable external IDs to avoid duplicates.
 --command defaults to the selected Agent's launch command; --cwd defaults to the CLI directory.
 No schedule means manual collection. --every uses whole minutes (1–43200); --at uses the server
-timezone; weekdays: 0=Sunday through 6=Saturday (default: every day). Scheduled collectors repeat
+timezone (e.g. --at 09:00,14:00,20:00); weekdays: 0=Sunday through 6=Saturday (default: every day). Scheduled collectors repeat
 while enabled and the service runs, even with the browser closed. Creation saves configuration;
 it does not immediately collect. Follow the user's requested frequency; if unspecified, save as manual.
 Example: td todo collector create --name '项目巡检' --agent codex --every 1440 --file collect.txt
@@ -89,9 +90,10 @@ export function parseTodoCommand(argv: string[]): TodoCommand {
       if (!Number.isInteger(minutes) || minutes < 1 || minutes > 43200) throw new Error('--every must be an integer from 1 to 43200');
       command.schedule = { kind: 'interval', everyMinutes: minutes };
     } else if (options.at) {
-      if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(String(options.at))) throw new Error('--at must be HH:MM');
+      const times = normalizeDailyTimes(String(options.at).split(',').map(time => time.trim()));
+      if (!times) throw new Error('--at must be HH:MM or comma-separated times');
       if (options.weekdays && !/^[0-6](,[0-6])*$/.test(String(options.weekdays))) throw new Error('--weekdays must be comma-separated numbers 0–6');
-      command.schedule = { kind: 'daily', time: String(options.at), weekdays: options.weekdays ? [...new Set(String(options.weekdays).split(',').map(Number))] : [0, 1, 2, 3, 4, 5, 6] };
+      command.schedule = { kind: 'daily', time: times[0], ...(times.length > 1 ? { times } : {}), weekdays: options.weekdays ? [...new Set(String(options.weekdays).split(',').map(Number))] : [0, 1, 2, 3, 4, 5, 6] };
     }
     return command;
   }

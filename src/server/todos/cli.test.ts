@@ -14,6 +14,10 @@ it('targets a specific run for reporting and never retries an uncertain write', 
 it('shows help without a running service', async () => { const io = { request: vi.fn(), stdin: vi.fn(), write: vi.fn() }; expect(await executeTodoCommand(parseTodoCommand(['--help']), io)).toBe(0); expect(io.request).not.toHaveBeenCalled(); });
 
 const collectorArgs = ['collector', 'create', '--name', '社区渠道', '--agent', 'codex', '--prompt', '筛选可执行事项，附上来源，避免重复，只收集不执行'];
+it('accepts sorted unique multiple collection times with explicit weekdays', () => {
+  expect(parseTodoCommand([...collectorArgs, '--at', '20:00,09:00,09:00', '--weekdays', '1,3,5']).schedule).toEqual({ kind: 'daily', time: '09:00', times: ['09:00', '20:00'], weekdays: [1, 3, 5] });
+  for (const at of ['09:00,', '09:00,25:00', '09:00,,20:00']) expect(() => parseTodoCommand([...collectorArgs, '--at', at])).toThrow('--at');
+});
 it.each([
   ['collector'], ['collector', 'list', '--disabled'], ['collector', 'create', '--name', '渠道'],
   [...collectorArgs, '--stdin'], [...collectorArgs, '--every', '0'], [...collectorArgs, '--every', '1.5'],
