@@ -38,7 +38,10 @@ function SharedSessionPane({ client, initialSessionId, initialViewMode, sessions
   const [invitedMode] = useState(() => { try { return sessionStorage.getItem(`termdock:shared-view:${client.targetPeerId}`); } catch { return null; } });
   const defaultMode = initialViewMode || (invitedMode === 'chat' ? 'chat' : invitedMode === 'terminal' ? 'terminal' : savedConnection()?.viewMode) || 'terminal';
   const allowTerminal = selected?.canViewTerminal !== false, allowChat = selected?.canViewChat !== false;
-  const [storedMode, saveMode, modeError] = useSessionViewMode(selected?.sourceSessionId || selected?.sessionId || '', allowTerminal && allowChat, defaultMode, !!(initialViewMode || invitedMode || savedConnection()?.viewMode));
+  // Explicit shared capabilities choose a local view; switching a preview
+  // must not require permission to modify the owner's global preference.
+  const localView = selected?.canViewChat !== undefined || selected?.canViewTerminal !== undefined;
+  const [storedMode, saveMode, modeError] = useSessionViewMode(selected?.sourceSessionId || selected?.sessionId || '', !localView && allowTerminal && allowChat, defaultMode, !!(initialViewMode || invitedMode || savedConnection()?.viewMode));
   const mode = !allowTerminal ? 'chat' : !allowChat ? 'terminal' : storedMode;
   const changeMode = (next: 'terminal' | 'chat') => { if (next === 'terminal' ? allowTerminal : allowChat) saveMode(next); };
   useLayoutEffect(() => {

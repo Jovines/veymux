@@ -23,6 +23,18 @@ vi.mock('../terminal/api', async original => ({ ...await original<typeof import(
 beforeEach(() => { mocks.osc.length = 0; mocks.keys.length = 0; mocks.selection = ''; mocks.upload.mockReset(); mocks.upload.mockResolvedValue({ files: [{ path: '/attachments/photo.png' }] }); mocks.fontsReady = Promise.resolve(); mocks.dimensions = { cols: 120, rows: 40 }; });
 afterEach(() => { cleanup(); mocks.writes.length = 0; vi.clearAllMocks(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 describe('scoped encrypted terminal viewer', () => {
+  it('switches between explicitly shared chat and terminal preview locally without changing owner preferences', async () => {
+    const fetcher = vi.fn(async (_url: unknown, _init?: RequestInit) => Response.json({ agentAvailable: true, messages: [] })); vi.stubGlobal('fetch', fetcher);
+    const socket = { readyState: 1, send: vi.fn(), close: vi.fn() };
+    const connection = { targetPeerId: 'local-preview-switch', request: vi.fn(async () => ({ items: [{ sessionId: 'backend', sourceSessionId: 'local-preview-switch', name: 'Preview', live: true, canViewChat: true, canViewTerminal: true, canSendChat: true, canWrite: false, canResize: false }] })), openSocket: vi.fn(() => socket) };
+    render(<SessionAccessView client={connection as unknown as SecureClient} initialViewMode="chat" />);
+    await screen.findByText('想一起完成什么？');
+    fireEvent.click(screen.getByRole('button', { name: /^终端$/ }));
+    await waitFor(() => expect(connection.openSocket).toHaveBeenCalledOnce());
+    expect(screen.getByRole('button', { name: '对话' })).toBeTruthy();
+    expect(mocks.options.disableStdin).toBe(true);
+    expect(fetcher.mock.calls.some(([url]) => String(url).includes('/view-mode'))).toBe(false);
+  });
   it('forces chat-only grants into chat without mounting xterm, raw input probes or a terminal switch', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => Response.json({ agentAvailable: true, messages: [] })));
     const connection = { targetPeerId: 'chat-only', request: vi.fn(async () => ({ items: [{ sessionId: 'backend', sourceSessionId: 'stable-chat', name: 'Chat', live: true, canWrite: false, canResize: false, canViewChat: true, canSendChat: true, canViewTerminal: false, canClearChat: false }] })), openSocket: vi.fn() };
