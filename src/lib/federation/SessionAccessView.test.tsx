@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { SessionAccessView } from './SessionAccessView';
 import type { SecureClient } from './secureClient';
-const mocks = vi.hoisted(() => ({ osc: [] as Array<(data: string) => boolean>, upload: vi.fn(), selection: '', writes: [] as Array<{ data: string; callback?: () => void }>, resize: vi.fn(), options: {} as Record<string, unknown>, fit: vi.fn(), fontsReady: Promise.resolve(), dimensions: { cols: 120, rows: 40 } }));
+const mocks = vi.hoisted(() => ({ osc: [] as Array<(data: string) => boolean>, keys: [] as Array<(event: KeyboardEvent) => boolean>, upload: vi.fn(), selection: '', writes: [] as Array<{ data: string; callback?: () => void }>, resize: vi.fn(), options: {} as Record<string, unknown>, fit: vi.fn(), fontsReady: Promise.resolve(), dimensions: { cols: 120, rows: 40 } }));
 vi.mock('../terminal/fontLoading', () => ({ ensureTerminalFontsReady: () => mocks.fontsReady }));
 vi.mock('@xterm/xterm', () => ({ Terminal: class {
   cols = 80; rows = 24;
@@ -12,7 +12,7 @@ vi.mock('@xterm/xterm', () => ({ Terminal: class {
   buffer = { active: { type: 'normal', baseY: 0, viewportY: 0 } };
   constructor(options: Record<string, unknown>) { mocks.options = options; this.options = options; }
   loadAddon() {} open() {} dispose() {}
-  attachCustomKeyEventHandler() {} getSelection() { return mocks.selection; } hasSelection() { return !!mocks.selection; }
+  attachCustomKeyEventHandler(handler: (event: KeyboardEvent) => boolean) { mocks.keys.push(handler); } getSelection() { return mocks.selection; } hasSelection() { return !!mocks.selection; }
   write(data: string, callback?: () => void) { mocks.writes.push({ data, callback }); }
   resize(cols: number, rows: number) { this.cols = cols; this.rows = rows; mocks.resize(cols, rows); }
   scrollToBottom() {} refresh() {}
@@ -20,7 +20,7 @@ vi.mock('@xterm/xterm', () => ({ Terminal: class {
 } }));
 vi.mock('@xterm/addon-fit', () => ({ FitAddon: class { proposeDimensions() { mocks.fit(); return mocks.dimensions; } } }));
 vi.mock('../terminal/api', async original => ({ ...await original<typeof import('../terminal/api')>(), uploadSessionAttachments: mocks.upload }));
-beforeEach(() => { mocks.osc.length = 0; mocks.selection = ''; mocks.upload.mockReset(); mocks.upload.mockResolvedValue({ files: [{ path: '/attachments/photo.png' }] }); mocks.fontsReady = Promise.resolve(); mocks.dimensions = { cols: 120, rows: 40 }; });
+beforeEach(() => { mocks.osc.length = 0; mocks.keys.length = 0; mocks.selection = ''; mocks.upload.mockReset(); mocks.upload.mockResolvedValue({ files: [{ path: '/attachments/photo.png' }] }); mocks.fontsReady = Promise.resolve(); mocks.dimensions = { cols: 120, rows: 40 }; });
 afterEach(() => { cleanup(); mocks.writes.length = 0; vi.clearAllMocks(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 describe('scoped encrypted terminal viewer', () => {
   it('forces chat-only grants into chat without mounting xterm, raw input probes or a terminal switch', async () => {
@@ -116,6 +116,10 @@ describe('shared terminal attachments and split scope', () => {
     const connection = client();
     render(<SessionAccessView client={connection as unknown as SecureClient} />);
     await waitFor(() => expect(connection.openSocket).toHaveBeenCalledOnce());
+    const shortcut = new KeyboardEvent('keydown', { key: 'v', ctrlKey: true, cancelable: true });
+    expect(mocks.keys[0](shortcut)).toBe(false);
+    expect(shortcut.defaultPrevented).toBe(false); // HTTP must still receive the OS paste event.
+    expect(mocks.upload).not.toHaveBeenCalled();
     fireEvent.paste(screen.getByLabelText('共享终端'), { clipboardData: { files: [new File(['image'], 'photo.png', { type: 'image/png' })], getData: () => '' } });
     await waitFor(() => expect(mocks.upload).toHaveBeenCalledOnce());
     expect(mocks.upload.mock.calls[0][0]).toBe('stable');

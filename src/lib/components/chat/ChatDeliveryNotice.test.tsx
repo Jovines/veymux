@@ -9,9 +9,12 @@ const message: ChatMessage = { id: 'pending', role: 'user', content: '检查构�
 it('explains failed input detection and offers owner recovery after checking and clearing the terminal', async () => {
   const request = vi.fn(async () => Response.json({ ok: true })); vi.stubGlobal('fetch', request);
   render(<ChatDeliveryNotice message={{ ...message, delivery: { state: 'outcome-unknown', inputCheckFailed: true, attemptCount: 2 } }} sessionId="original" canWrite onTerminal={() => {}} onRecovered={() => {}} />);
+  expect(screen.getByText('未发送成功')).toBeTruthy();
+  expect(screen.queryByText(/终端输入检测未通过/)).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: '详情' }));
   expect(screen.getByText(/终端输入检测未通过/)).toBeTruthy();
   expect(screen.queryByRole('button', { name: '重新连接' })).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: '已检查并清理，重新投递' }));
+  fireEvent.click(screen.getByRole('button', { name: '重试' }));
   await act(async () => {});
   expect(request).toHaveBeenCalledWith('/api/terminal/original/chat/pending/delivery', expect.objectContaining({ body: JSON.stringify({ action: 'retry', attempt: 2 }) }));
 });
@@ -20,8 +23,8 @@ it('restores manual retry for an earlier non-chat message blocking this chat, an
   const queued: ChatMessage = { ...message, delivery: { state: 'retrying', inputCheckFailed: true,
     blockedBy: { messageId: 'blocking-reply', attemptCount: 2 } } };
   const view = render(<ChatDeliveryNotice message={queued} sessionId="original" canWrite onTerminal={() => {}} onRecovered={recovered} />);
-  expect(screen.getByText(/前一条投递未确认/)).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: '已检查并清理，重新投递' }));
+  expect(screen.queryByText(/前一条投递未确认/)).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: '重试' }));
   await act(async () => {});
   expect(request).toHaveBeenCalledExactlyOnceWith('/api/terminal/original/chat/pending/delivery', expect.objectContaining({ method: 'POST',
     body: JSON.stringify({ action: 'retry', attempt: 2, blockingMessageId: 'blocking-reply' }) }));

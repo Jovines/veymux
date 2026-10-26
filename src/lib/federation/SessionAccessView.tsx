@@ -21,7 +21,7 @@ import { requestReferenceInsertion } from '../components/sidebar/requestReferenc
 import { buildBracketedPastePayload } from '../terminal/bracketedPaste';
 import { SessionIcon } from './SessionIcon';
 import { useChatInputTransfer } from '../components/chat/useChatInputTransfer';
-import { clipboardEventContent } from '../terminal/clipboardContent';
+import { canReadClipboardContent, clipboardEventContent } from '../terminal/clipboardContent';
 import { copyTmuxTerminalSelection, writeTerminalClipboardText, type RequestTmuxSelection } from '../terminal/clipboardText';
 import { createOsc52ClipboardHandler } from '../terminal/osc52Clipboard';
 import { sanitizeTerminalInput } from '../terminal/inputNormalization';
@@ -122,7 +122,10 @@ function SharedSessionPane({ client, initialSessionId, initialViewMode, sessions
       selectionText.current = () => terminal.getSelection();
       terminal.attachCustomKeyEventHandler(event => {
         if (event.type === 'keydown' && (event.ctrlKey || event.metaKey) && !event.altKey) {
-          if (event.key.toLowerCase() === 'v') { event.preventDefault(); if (canWrite) void transfer.paste(); return false; }
+          if (event.key.toLowerCase() === 'v') {
+            if (!canWrite || canReadClipboardContent()) { event.preventDefault(); if (canWrite) void transfer.paste(); }
+            return false;
+          }
           if (event.key.toLowerCase() === 'c' && (terminal.hasSelection() || event.metaKey || event.shiftKey)) { event.preventDefault(); void copy(); return false; }
         }
         return true;

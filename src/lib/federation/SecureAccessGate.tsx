@@ -508,6 +508,12 @@ export function SecureAccessGate({ children }: { children: ReactNode }) {
       if (!backup) throw new Error('无法分享备用连接：需要入口管理员授权。也可以关闭此选项，生成直接连接邀请。');
     }
     let targetUrl = selected?.serviceOrigin || selected?.url || location.origin;
+    const setup = inviteSetup.current;
+    if (!entryAddress && new URL(targetUrl).protocol === 'http:' && setup?.serviceId === client.targetPeerId) {
+      const hostname = new URL(targetUrl).hostname;
+      const secureOrigins = setup.origins.filter(origin => new URL(origin).protocol === 'https:');
+      targetUrl = secureOrigins.find(origin => new URL(origin).hostname === hostname) || secureOrigins[0] || targetUrl;
+    }
     if (entryAddress) {
       try { targetUrl = new URL(entryAddress).origin; } catch { throw new Error('邀请接入地址无效。'); }
     }
@@ -522,7 +528,6 @@ export function SecureAccessGate({ children }: { children: ReactNode }) {
     window.dispatchEvent(new Event('termdock:sharing-changed'));
     await refresh();
     let url = createInviteLink({ viewMode, viewLayout, v: 1, serviceId: client.targetPeerId, code: result.code, entryUrl: backup?.url || targetUrl, serviceUrl: targetUrl, name: serviceName, entryServiceId: backup?.targetPeerId, routeCode: backup?.routeCode });
-    const setup = inviteSetup.current;
     const hostname = new URL(targetUrl).hostname;
     const localHostname = hostname.endsWith('.local') || /^(?:192\.168\.|10\.|172\.(?:1[6-9]|2\d|3[01])\.)/.test(hostname) || hostname.startsWith('[fd') || hostname.startsWith('[fc');
     if (!backup && localHostname && setup?.serviceId === client.targetPeerId && setup.origins.includes(new URL(targetUrl).origin)) {

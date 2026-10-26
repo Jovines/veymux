@@ -3,6 +3,12 @@ import { readTerminalClipboardFiles, readTerminalClipboardImage, readTerminalCli
 
 export type ClipboardContent = { kind: 'files'; files: File[]; paths: string[] } | { kind: 'text'; text: string } | { kind: 'empty' };
 export interface ClipboardEventContent { files: File[]; text: string }
+/** Without an active reader (notably LAN HTTP), leave the browser's native
+ * paste event intact so its clipboardData can carry images and text. */
+export function canReadClipboardContent(): boolean {
+  const bridge = getTermdockDesktopBridge();
+  return !!(bridge?.readClipboardFiles || bridge?.readClipboardImage || navigator.clipboard?.read || navigator.clipboard?.readText);
+}
 /** Snapshot synchronously: browsers may clear clipboardData after the event. */
 export function clipboardEventContent(data: Pick<DataTransfer, 'files' | 'items' | 'getData'>): ClipboardEventContent {
   const files = data.files.length ? Array.from(data.files) : Array.from(data.items || [])

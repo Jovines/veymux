@@ -474,10 +474,10 @@ describe('entry recovery and invitation address contract', () => {
   });
 });
 
-it('offers local certificate guidance while keeping credentials and all business requests on HTTPS', async () => {
+it.each(['https://192.168.1.20:9834', 'http://192.168.1.20:21000'])('offers local certificate guidance and native HTTPS when sharing from %s', async sourceUrl => {
   const peer = `12D3KooW${'a'.repeat(44)}`;
   mocks.client.targetPeerId = peer;
-  mocks.saved.mockReturnValue({ url: 'https://192.168.1.20:9834', targetPeerId: peer });
+  mocks.saved.mockReturnValue({ url: sourceUrl, targetPeerId: peer });
   mocks.fetch.mockResolvedValue(Response.json({ localAccess: {
     status: 'active', url: 'https://computer.termdock.local:9834',
     interfaces: [{ url: 'https://192.168.1.20:9834' }],

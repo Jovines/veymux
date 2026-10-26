@@ -17,7 +17,7 @@ interface Options {
   mediaCompression?: boolean;
 }
 interface Prepared { prepared: File[]; results: MediaUploadResult[]; preferences: MediaCompressionPreferences }
-interface Transfer extends Partial<Prepared> { stage: 'reading' | 'compressing' | 'uploading' | 'failed' | 'cancelled'; percent?: number; files?: File[]; paths?: string[]; fileName?: string; fileIndex?: number }
+interface Transfer extends Partial<Prepared> { error?: string; stage: 'reading' | 'compressing' | 'uploading' | 'failed' | 'cancelled'; percent?: number; files?: File[]; paths?: string[]; fileName?: string; fileIndex?: number }
 export function useChatInputTransfer(options: Options) {
   const latest = useRef(options); latest.current = options;
   const [transfer, setTransfer] = useState<Transfer | null>(null);
@@ -85,7 +85,8 @@ export function useChatInputTransfer(options: Options) {
       setMediaResult(results.at(-1) ?? null); setTransfer(null); work.current = null;
     } catch (error) {
       if (!operation.current()) return;
-      state('failed'); latest.current.error(error instanceof Error ? error.message : '文件处理或上传失败，请重试');
+      const message = error instanceof Error ? error.message : '文件处理或上传失败，请重试';
+      state('failed', { error: message }); latest.current.error(message);
     }
   }, []);
   const addFiles = useCallback((files: File[]) => {
