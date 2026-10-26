@@ -1,5 +1,6 @@
 pub mod clipboard_collector;
 pub mod config;
+pub mod invitation_link;
 pub mod product;
 pub mod migration;
 pub mod collaboration_focus;

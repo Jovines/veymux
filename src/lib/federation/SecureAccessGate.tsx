@@ -1,3 +1,4 @@
+import { reusableInvitationGrant } from '../services/desktopInvitation';
 import { LoadingSpinner as LoaderCircle } from '../components/ui/Loading';
 import { Terminal } from 'lucide-react';
 import { listServiceConnections, saveServiceConnection, normalizeServiceAddress, parseSavedService, sameService, type ServiceConnection } from '../services/serviceDirectory';
@@ -49,6 +50,7 @@ export function SecureAccessGate({ children }: { children: ReactNode }) {
   useEffect(() => { const expire=()=>{pageGeneration.current++;};window.addEventListener('pagehide',expire);return()=>{expire();window.removeEventListener('pagehide',expire);}; }, []);
   const [nativeTarget, setNativeTarget] = useState<Pick<ServiceConnection, 'url' | 'serviceOrigin' | 'label' | 'targetPeerId'>>();
   const [incomingInvitation, setIncomingInvitation] = useState(initialInvitation);
+  const [desktopInvitation, setDesktopInvitation] = useState<ConnectionIntent>();
   const [ready, setReady] = useState(false);
   const [authorizedClient, setAuthorizedClient] = useState<SecureClient>();
   const [open, setOpen] = useState(!!initialInvitation);
@@ -218,6 +220,7 @@ export function SecureAccessGate({ children }: { children: ReactNode }) {
     const selected = savedConnection();
     reportWorkspace({ phase: 'ready', ...(selected ? { service: { ...selected, id: selected.targetPeerId, label: selected.serviceName || location.host } } : {}) });
     if (isWorkspaceActive()) void preferDirectConnection();
+    return permissions;
   };
   useEffect(() => {
     let stopped = false, pending = false, failures = 0;
@@ -427,6 +430,17 @@ export function SecureAccessGate({ children }: { children: ReactNode }) {
     setOpen(false);
     return true;
   };
+  useEffect(() => window.termdockDesktop?.onIncomingInvitation?.(invitation => {
+    try {
+      const intent = parseInviteLink(invitation);
+      // A permission read started before this handoff must not dismiss or
+      // acknowledge a new invitation using the window's existing grant.
+      pageGeneration.current++;
+      invitationPending.current = true;
+      nativeConnectionRef.current = window.termdockDesktop?.getServiceConnection?.();
+      setIncomingInvitation(intent); setDesktopInvitation(undefined); setOpen(true); setError(false);
+    } catch { setAccessError('邀请链接无效，请重新复制。'); setOpen(true); }
+  }), []);
   const connect = async (intent: ConnectionIntent) => {
     connectInFlight.current++;
     try {
@@ -442,7 +456,8 @@ export function SecureAccessGate({ children }: { children: ReactNode }) {
     if (intent.viewMode) try { sessionStorage.setItem(`termdock:shared-view:${intent.targetPeerId}`, intent.viewMode); } catch { /* optional display preference */ }
     setRemoteSession(undefined); sessionStorage.removeItem(OPEN_SESSION_KEY);
     setServiceName(intent.serviceName ?? new URL(intent.url).hostname);
-    await readPermissions();
+    const permissions = await readPermissions();
+    setDesktopInvitation(reusableInvitationGrant(intent, permissions.grants) ? intent : undefined);
     setAccessFailure(undefined); resumeVerification.current?.();
     if (nativeConnectionRef.current) nativeConnectionRef.current = nativeConnectionRef.current.then(value => value ? { ...value, invitation: undefined } : null);
     setIncomingInvitation(undefined);setOpen(false); setError(false);
@@ -553,7 +568,7 @@ export function SecureAccessGate({ children }: { children: ReactNode }) {
   return <>
     <div className="h-full min-h-0" style={accessFailure ? { visibility: 'hidden' } : undefined}
       ref={element => element?.toggleAttribute('inert', !!accessFailure)} aria-hidden={accessFailure ? true : undefined}>
-    {ready ? fullService && !remoteSession ? children : <SessionAccessView client={authorizedClient!} initialSessionId={remoteSession} initialViewLayout={sharedLayout || savedConnection()?.viewLayout} initialViewMode={savedConnection()?.viewMode} /> : accessFailure ? null : checking && !error && !open ? <StartupScreen
+    {ready ? fullService && !remoteSession ? children : <SessionAccessView client={authorizedClient!} desktopInvitation={desktopInvitation} initialSessionId={remoteSession} initialViewLayout={sharedLayout || savedConnection()?.viewLayout} initialViewMode={savedConnection()?.viewMode} /> : accessFailure ? null : checking && !error && !open ? <StartupScreen
       status={showConnectionDetails ? '连接时间较长，仍在等待服务…' : connectionMessage}
       detail={showConnectionDetails ? displayName : undefined}
       actionLabel={showConnectionDetails ? '管理服务' : undefined}
@@ -574,7 +589,14 @@ export function SecureAccessGate({ children }: { children: ReactNode }) {
     </div> : <><div className="fixed left-0 right-0 top-[var(--safe-top-inset)] z-chrome sm:right-auto sm:w-72"><ServiceSwitcher /></div><LoginScreen serviceOrigin={displayOrigin} onManageServices={() => setOpen(true)} focusEnabled={!open} onLoginSuccess={() => { void readPermissions().catch(() => setError(true)); }} /></>}
     </div>
     {accessFailure && <AccessRecoveryScreen key={JSON.stringify([accessFailure.code, accessFailure.context])} failure={accessFailure} target={savedConnection()} settingsOpen={open} onRecovered={() => recoverAccess(accessFailure.context.targetServiceId)} onSettings={() => setOpen(true)} />}
-    {open && <FederationAccess initialShareSessionId={shareRequest?.inviteSessionId} initialShareSessionIds={shareRequest?.inviteSessionIds} initialViewLayout={shareRequest?.viewLayout} initialViewMode={shareRequest?.viewMode} onConnect={connect} onClose={() => { setOpen(false); setShareRequest(undefined); }} onAddService={addService} onOpenService={openService} onConnectWithPassword={connectWithPassword} paired={ready || !!savedConnection()} initialInvite={incomingInvitation} initialServicePage={accessFailure && savedConnection() ? { kind: accessFailure.code === 'RELAY_AUTHORIZATION_REQUIRED' ? 'routes' : 'edit', service: { ...savedConnection()!, id: savedConnection()!.targetPeerId, label: displayName } } : undefined} currentServiceName={displayName} currentServiceId={currentSecureClient()?.targetPeerId || savedConnection()?.targetPeerId} currentServiceOrigin={displayOrigin} currentIdentity={deviceIdentity} grants={grants} sessions={sessions} loading={loadingAccess} loadError={accessError} onRetry={() => void refresh()}
+    {open && <FederationAccess initialShareSessionId={shareRequest?.inviteSessionId} initialShareSessionIds={shareRequest?.inviteSessionIds} initialViewLayout={shareRequest?.viewLayout} initialViewMode={shareRequest?.viewMode} onConnect={connect} onClose={() => {
+      if (incomingInvitation) {
+        void window.termdockDesktop?.dismissServiceInvitation?.().catch(() => {});
+        if (nativeConnectionRef.current) nativeConnectionRef.current = nativeConnectionRef.current.then(value => value ? { ...value, invitation: undefined } : value);
+        setIncomingInvitation(undefined);
+      }
+      setOpen(false); setShareRequest(undefined);
+    }} onAddService={addService} onOpenService={openService} onConnectWithPassword={connectWithPassword} paired={ready || !!savedConnection()} initialInvite={incomingInvitation} initialServicePage={accessFailure && savedConnection() ? { kind: accessFailure.code === 'RELAY_AUTHORIZATION_REQUIRED' ? 'routes' : 'edit', service: { ...savedConnection()!, id: savedConnection()!.targetPeerId, label: displayName } } : undefined} currentServiceName={displayName} currentServiceId={currentSecureClient()?.targetPeerId || savedConnection()?.targetPeerId} currentServiceOrigin={displayOrigin} currentIdentity={deviceIdentity} grants={grants} sessions={sessions} loading={loadingAccess} loadError={accessError} onRetry={() => void refresh()}
       onRename={async (subjectId, name) => { await (await getActiveClient()).request({ type: 'device-name', subjectId, name }); await refresh(); }}
       hasBackup={!!savedConnection() && connectionRoutes(savedConnection()!).length > 0} inviteAddresses={inviteAddresses} onCreateInvite={canManage ? invite : undefined}
       invitations={canManage ? invitations : []} onRevokeInvitation={canManage ? async invitationId => { try { const result = await (await getActiveClient()).request({ type: 'invite-revoke', invitationId }); if (result.revoked !== true) throw new Error('INVITATION_NOT_PENDING'); } finally { await refresh(); } } : undefined}

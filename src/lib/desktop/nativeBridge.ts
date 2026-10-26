@@ -47,6 +47,8 @@ export interface TermdockDesktopBridge extends ServiceDirectoryBridge {
   reviewServiceConnection?(connection: import('../services/serviceDirectory').ServiceConnection, invitation?: string): Promise<void>;
   takeServiceConnectionReview?(): Promise<import('../services/desktopServiceConnection').ServiceConnectionReview | null>;
   onServiceConnectionReview?(callback: () => void): () => void;
+  onIncomingInvitation?(callback: (invitation: string) => void): () => void;
+  dismissServiceInvitation?(): Promise<void>;
   certificatePins?(): Promise<Record<string, string>>;
   inspectCertificate?(origin: string): Promise<{ origin: string; fingerprint: string; trustedFingerprint?: string; receipt: string }>;
   trustCertificate?(origin: string, fingerprint: string, receipt: string): Promise<void>;

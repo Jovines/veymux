@@ -131,6 +131,19 @@ describe('transient video decoder recovery', () => {
 });
 
 describe('mirror failure diagnostics', () => {
+  it.each([false, true])('distinguishes a restricted context from a missing decoder (secure=%s)', secure => {
+    vi.stubGlobal('isSecureContext', secure); vi.stubGlobal('VideoDecoder', undefined);
+    const socket = { readyState: 1, send: vi.fn(), close: vi.fn(), onmessage: null as null | ((event: { data: string }) => void) };
+    vi.mocked(secureSocket).mockReturnValue(socket as unknown as WebSocket);
+    const onWarning = vi.fn(), onState = vi.fn();
+    const controller = new AndroidMirrorController(document.createElement('canvas'), { onState, onWarning, onHeader: vi.fn(), onStats: vi.fn() });
+    try {
+      controller.connect('test');
+      socket.onmessage?.({ data: JSON.stringify({ type: 'frame', config: true, data: 'AAAAAQ==' }) });
+      expect(onWarning).toHaveBeenLastCalledWith(expect.stringContaining(secure ? '当前浏览器未提供投屏解码器' : '当前页面不是安全上下文'));
+      expect(onState).toHaveBeenLastCalledWith('error', 'VIDEO_DECODER_UNSUPPORTED');
+    } finally { controller.disconnect(); vi.unstubAllGlobals(); }
+  });
   it.each([true, false])('preserves the server cause and includes socket close details (server error: %s)', serverError => {
     const socket = {
       readyState: 1, send: vi.fn(), close: vi.fn(),

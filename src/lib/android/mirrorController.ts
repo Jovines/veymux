@@ -391,7 +391,9 @@ export class AndroidMirrorController {
       if (typeof VideoDecoder === 'undefined') {
         if (!this.warnedUnsupported) {
           this.warnedUnsupported = true;
-          this.callbacks.onWarning('当前浏览器不支持 WebCodecs（VideoDecoder），无法解码投屏画面。');
+          this.callbacks.onWarning(globalThis.isSecureContext === false
+            ? '当前页面不是安全上下文，浏览器已禁用投屏解码。请使用受信任的 HTTPS 地址或 Mac 客户端。'
+            : '当前浏览器未提供投屏解码器（VideoDecoder）。请更新浏览器或使用 Mac 客户端。');
         }
         this.reportError('VIDEO_DECODER_UNSUPPORTED');
         return;

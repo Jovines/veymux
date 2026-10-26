@@ -18,6 +18,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 're
 import { createPortal } from 'react-dom';
 import { toDataURL } from 'qrcode';
 import { parseInviteLink } from '../lib/federation/inviteLink';
+import { DesktopInvitationButton } from './DesktopInvitationButton';
 import { ArrowLeft, Check, ChevronDown, ChevronRight, Clock3, Copy, Link2Off, MessageCircle, Monitor, Plus, Pencil, QrCode, Server, Smartphone, TerminalSquare, WifiOff, X } from 'lucide-react';
 
 export interface FederationConnection { certificateUrl?: string; url: string; targetPeerId: string; pairingCode?: string; serviceName?: string; serviceOrigin?: string; entryServiceId?: string; routeCode?: string; routeOnly?: boolean }
@@ -365,6 +366,7 @@ export function FederationAccess({ onConnect, onClose, onConnectWithPassword, on
           </div>}
           {displayedInvite.routeOnly && !inviteFailure && <p className="text-xs leading-relaxed text-muted-foreground">此邀请提供备用连接，目标服务仍会验证你的访问权限。</p>}
           {initialNeedsPassword ? <form className="space-y-3" onSubmit={async event => { event.preventDefault(); setBusy(true); setError(''); try { await onConnectWithPassword?.(displayedInvite, initialPassword); } catch (failure) { setError(failure instanceof Error ? failure.message : '暂时无法登录，请重试。'); } finally { setInitialPassword(''); setBusy(false); } }}><label className="block space-y-2 text-sm"><span>目标服务密码</span><input className={field} type="password" required autoFocus autoComplete="current-password" value={initialPassword} onChange={event => setInitialPassword(event.target.value)} /></label><button className={`${primaryButton} w-full`} disabled={busy || !initialPassword}>{busy ? '正在登录…' : '登录并连接'}</button></form> : inviteFailure && !inviteFailure.retryable ? <button type="button" className={`${primaryButton} w-full text-sm`} onClick={() => { setReplacingInvite(true); setError(''); }}>输入新的邀请链接</button> : <button type="button" className={`${primaryButton} w-full text-sm`} disabled={busy} onClick={() => void connect(displayedInvite)}>{busy ? '正在连接…' : inviteFailure ? '重试连接' : '接受邀请'}</button>}
+          {(!inviteFailure || inviteFailure.retryable) && !initialNeedsPassword && <DesktopInvitationButton invitation={displayedInvite} />}
           {displayedInvite.certificateUrl && <p className="text-xs leading-6 text-muted-foreground">直接接受邀请将通过 HTTP 打开，内容经应用加密通道传输。也可<a className="ml-1 text-primary underline underline-offset-2" href={displayedInvite.certificateUrl} target="_blank" rel="noopener noreferrer">安装本地 CA 证书，使用 HTTPS</a>。</p>}
         </section>}
         {inviting && !selectingSessions && <section>

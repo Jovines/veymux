@@ -30,6 +30,7 @@ pub(crate) struct ServiceWindow {
     proxy: ProxyHandle,
     pub(crate) activity: Value,
     pending_focus: Option<(String, String)>,
+    pending_invitation: Option<String>,
 }
 struct NativeDrop {
     owner: String,
@@ -332,14 +333,28 @@ pub(crate) async fn open_connection(
         .map(|(l, _)| l.clone());
     let label = existing.unwrap_or_else(|| connection.window_label());
     if let Some(window) = app.get_webview_window(&label) {
-        // Deliver invitations only by reloading the same verified connection;
-        // never let a stale window silently ignore a fresh authorization invite.
+        // Focus the verified connection, or hand a fresh invitation to its
+        // mailbox without replacing the document and its unsent drafts.
         if invitation.is_none() {
             window.show().map_err(|e| e.to_string())?;
             window.set_focus().map_err(|e| e.to_string())?;
             return Ok(json!({"ok":true,"url":connection.url}));
         }
-        return Err("Close this service window before opening a new invitation for it.".into());
+        let invitation = invitation.as_ref().unwrap();
+        {
+            let mut windows = shell.windows.lock().unwrap();
+            let service = windows.get_mut(&label).ok_or("Service window is no longer active")?;
+            if service.pending_invitation.as_ref().is_some_and(|pending|pending!=invitation) {
+                return Err("此窗口已有待处理的邀请，请先完成或取消后重试。".into());
+            }
+            service.pending_invitation = Some(invitation.clone());
+        }
+        // Wake only the verified window. The mailbox survives document loading
+        // and is cleared only after the page proves target authorization.
+        window.eval("window.dispatchEvent(new Event('termdock:preview-invitation'));").map_err(|e|e.to_string())?;
+        window.show().map_err(|e|e.to_string())?;
+        window.set_focus().map_err(|e|e.to_string())?;
+        return Ok(json!({"ok":true,"url":connection.url}));
     }
     let port = shell
         .config
@@ -424,6 +439,7 @@ pub(crate) async fn open_connection(
             proxy,
             activity: json!({"runningCount":0,"reviewCount":0}),
             pending_focus: None,
+            pending_invitation: None,
         },
     );
     let chrome_instance=crate::window_chrome::new_instance();
@@ -661,6 +677,21 @@ async fn preview_dispatch(
         None
     };
     match op.as_str() {
+        "getWindowInvitation" => {
+            if center { return Err("Invitation mailbox requires its workspace".into()); }
+            Ok(json!(shell.windows.lock().unwrap().get(window.label()).and_then(|service|service.pending_invitation.clone())))
+        }
+        "ackWindowInvitation" | "discardWindowInvitation" => {
+            if center { return Err("Invitation mailbox requires its workspace".into()); }
+            let fingerprint=text(&args,"fingerprint")?;
+            let mut windows=shell.windows.lock().unwrap();
+            let service=windows.get_mut(window.label()).ok_or("Service window is no longer active")?;
+            if let Some(invitation)=&service.pending_invitation {
+                if hex::encode(Sha256::digest(invitation.as_bytes()))!=fingerprint { return Err("Invitation changed before acknowledgement".into()); }
+                service.pending_invitation=None;
+            }
+            Ok(json!(true))
+        }
         "snapshot" => snapshot(&app).await,
         "desktopStatus" => Ok(desktop_ui::summary(&app, Some(window.label()))),
         "prepareLocal" => {
@@ -1633,6 +1664,28 @@ pub fn run() {
                 let _ = api;
                 let _ = code;
                 state(app).quitting.store(true, Ordering::SeqCst);
+            }
+            #[cfg(target_os = "macos")]
+            tauri::RunEvent::Opened { urls } => {
+                for url in urls {
+                    let expected=if crate::product::is_preview(){"termdock-preview"}else{"termdock"};
+                    if url.scheme()!=expected { continue; }
+                    match crate::invitation_link::parse_deep_invitation(url.as_str(),crate::product::is_preview()) {
+                        Ok(review)=>{
+                            let shell=state(app);
+                            let mut pending=shell.connection_review.lock().unwrap();
+                            let value=serde_json::to_value(review).expect("Invitation review is serializable");
+                            if pending.as_ref().is_some_and(|current|current!=&value) {
+                                drop(pending);let _=show_center(app);announce(app,"termdock:preview-error",json!("连接中心已有待处理的邀请，请先完成后重试。"));continue;
+                            }
+                            *pending=Some(value);drop(pending);
+                            let _=show_center(app);
+                            if let Some(center)=app.get_webview_window("center") {let _=center.eval("window.dispatchEvent(new Event('termdock:preview-connection-review'));");}
+                            eprintln!("Termdock invitation handoff: queued for connection review");
+                        }
+                        Err(_)=>{let _=show_center(app);announce(app,"termdock:preview-error",json!("邀请链接无效，请重新获取完整的分享链接。"));}
+                    }
+                }
             }
             #[cfg(target_os = "macos")]
             tauri::RunEvent::Reopen { .. } => {

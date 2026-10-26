@@ -8,7 +8,7 @@ export class DeviceAuthorizationRequired extends ConnectionAccessError {
 /** Only an authenticated target's permission response can invalidate a login.
  * Transport failures remain retryable and never become "wrong password". */
 type PermissionClient = { closed?: boolean; request(packet: Omit<Packet, 'id'>, options?: { timeoutMs?: number }): Promise<Packet> };
-type Permissions = { fullService: boolean; grants: { actions: string[] }[]; canManage: boolean };
+type Permissions = { fullService: boolean; grants: { actions: string[]; invitationId?: string }[]; canManage: boolean };
 const permissionsCache = new WeakMap<PermissionClient, { at: number; settled: boolean; pending: Promise<Permissions> }>();
 
 export function readDeviceAuthorization(client: PermissionClient, options: { timeoutMs?: number; maxAgeMs?: number } = {}): Promise<Permissions> {
@@ -24,7 +24,7 @@ export function readDeviceAuthorization(client: PermissionClient, options: { tim
 async function readPermissions(client: PermissionClient, timeoutMs: number): Promise<Permissions> {
   const permissions = await client.request({ type: 'permissions' }, { timeoutMs });
   if (permissions.type !== 'result' || typeof permissions.fullService !== 'boolean' || !Array.isArray(permissions.grants)) throw new Error('Invalid permission response');
-  const grants = permissions.grants as { actions: string[] }[];
+  const grants = permissions.grants as { actions: string[]; invitationId?: string }[];
   const fullService = permissions.fullService === true;
   if (!fullService && grants.length === 0) throw new DeviceAuthorizationRequired();
   return { fullService, grants, canManage: (fullService && grants.length > 0) || grants.some(grant => grant.actions.includes('authorization.manage')) };

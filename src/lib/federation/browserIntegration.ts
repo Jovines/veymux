@@ -43,7 +43,7 @@ export function resumeConnectionAccess(): void {
   const id = savedConnection()?.targetPeerId; if (id) { accessBlocks.delete(id); deniedEntries.delete(id); }
 }
 const nativeFetch = globalThis.fetch.bind(globalThis);
-export interface ConnectionIntent { certificateUrl?: string; viewLayout?: 'split'; viewMode?: 'terminal' | 'chat'; url: string; targetPeerId: string; pairingCode?: string; serviceName?: string; serviceOrigin?: string; entryServiceId?: string; routeCode?: string; routeOnly?: boolean; routes?: ServiceRoute[] }
+export interface ConnectionIntent { nativeOrigin?: string; certificateUrl?: string; viewLayout?: 'split'; viewMode?: 'terminal' | 'chat'; url: string; targetPeerId: string; pairingCode?: string; serviceName?: string; serviceOrigin?: string; entryServiceId?: string; routeCode?: string; routeOnly?: boolean; routes?: ServiceRoute[] }
 
 export function savedConnection(): ConnectionIntent | null {
   return selectedTarget();

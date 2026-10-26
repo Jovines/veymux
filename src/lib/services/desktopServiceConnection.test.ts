@@ -16,7 +16,8 @@ describe('shared desktop connection actions', () => {
     const original = createInviteLink({ v: 1, serviceId: target, entryUrl: 'https://192.168.1.20:9834', code: 'c'.repeat(43) });
     const invitation = createOnboardingInviteLink(original, 'http://192.168.1.20:21000/connect');
     const native = bridge(); await addDesktopService(native, invitation);
-    expect(native.reviewServiceConnection).toHaveBeenCalledWith(expect.objectContaining({ url: 'https://192.168.1.20:9834', targetPeerId: target }), invitation);
+    expect(native.reviewServiceConnection).toHaveBeenCalledWith(expect.objectContaining({ url: 'https://192.168.1.20:9834', targetPeerId: target }), expect.stringMatching(/^https:\/\/192\.168\.1\.20:9834\/#termdock-invite=/));
+    expect(parseInviteLink(vi.mocked(native.reviewServiceConnection!).mock.calls[0][1]!)).toMatchObject({ targetPeerId: target, pairingCode: 'c'.repeat(43) });
     expect(native.openServiceConnection).not.toHaveBeenCalled();
   });
   it('delegates a new workspace address to the center before discovery or certificate failure', async () => {

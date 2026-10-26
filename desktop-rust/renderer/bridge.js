@@ -338,7 +338,27 @@
     if(closing||!boot.invitation||typeof isCurrent!=='function'||typeof options?.targetPeerId!=='string'||options.targetPeerId!==boot.connection.targetPeerId||typeof options.fingerprint!=='string'||!/^[a-f0-9]{64}$/.test(options.fingerprint))return false;
     const fingerprint=await invitationFingerprint();
     if(closing||options.fingerprint!==fingerprint||isCurrent()!==true)return false;
-    sessionStorage.setItem(invitationMarker,JSON.stringify({window:boot.origin,targetPeerId:boot.connection.targetPeerId,fingerprint}));return true;
+    await invoke('ackWindowInvitation',{fingerprint});
+    if(closing||isCurrent()!==true||await invitationFingerprint()!==fingerprint)return false;
+    sessionStorage.setItem(invitationMarker,JSON.stringify({window:boot.origin,targetPeerId:boot.connection.targetPeerId,fingerprint}));boot.invitation=undefined;return true;
+  };
+  const dismissInvitation=async()=>{
+    const invitation=boot.invitation;if(!invitation)return;
+    const fingerprint=await invitationFingerprint();
+    if(closing||boot.invitation!==invitation)return;
+    await invoke('discardWindowInvitation',{fingerprint});
+    if(!closing&&boot.invitation===invitation)boot.invitation=undefined;
+  };
+  const onIncomingInvitation=callback=>{
+    let active=true,last;
+    const pull=()=>void invoke('getWindowInvitation').then(invitation=>{
+      if(!active||closing||typeof invitation!=='string'||invitation===last)return;
+      last=invitation;boot.invitation=invitation;
+      try{sessionStorage.removeItem(invitationMarker);}catch{/* Explicit acceptance still validates the service. */}
+      callback(invitation);
+    }).catch(()=>{});
+    const stop=subscribe('termdock:preview-invitation',()=>{if(!boot.invitation)last=undefined;pull();});pull();
+    return()=>{active=false;stop();};
   };
   let confirmation;
   const confirmInPage=options=>{
@@ -440,7 +460,7 @@
     setFloatingMetricCount: count => invoke('floatingSize', {count}),
     disableFloatingWidget: () => invoke('preferences', {preferences: {floatingWidgetEnabled: false}}).then(() => invoke('snapshot')),
     collaborationFocus: (id,targetPeerId) => invoke('collaborationFocus', {id,...(targetPeerId?{targetPeerId}:{} )}),
-    getServiceConnection:serviceConnection,acknowledgeServiceInvitation:acknowledgeInvitation,
+    getServiceConnection:serviceConnection,acknowledgeServiceInvitation:acknowledgeInvitation,onIncomingInvitation,dismissServiceInvitation:dismissInvitation,
     serviceConnections: () => invoke('connections'),
     collaborationDescriptors: () => invoke('collaborationDescriptors'),
     rememberCollaborationDescriptor: node => invoke('rememberCollaborationDescriptor', { node }),

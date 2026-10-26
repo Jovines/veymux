@@ -6,4 +6,5 @@
 <key>NSUserNotificationAlertStyle</key><string>alert</string>
 <key>NSLocalNetworkUsageDescription</key><string>Termdock connects to the existing Termdock services you select on your local network.</string>
 <key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>
+<key>CFBundleURLTypes</key><array><dict><key>CFBundleURLName</key><string>Termdock invitations</string><key>CFBundleURLSchemes</key><array><string>termdock</string></array></dict></array>
 </dict></plist>

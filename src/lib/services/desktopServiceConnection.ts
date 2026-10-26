@@ -12,15 +12,15 @@ export function desktopConnectionIntent(intent: ConnectionIntent): ServiceConnec
   // bootstrap through its reachable entry, even when the target is offline locally.
   const relay = !intent.pairingCode && !intent.routeCode && !intent.entryServiceId
     ? routes?.find(route => route.targetPeerId !== targetPeerId) : undefined;
-  const url = relay?.url || intent.url;
+  const url = relay?.url || intent.nativeOrigin || intent.url;
   const entryServiceId = relay?.targetPeerId || intent.entryServiceId;
-  const serviceOrigin = intent.serviceOrigin || (relay && intent.url !== url ? intent.url : undefined);
+  const serviceOrigin = intent.nativeOrigin && (!intent.entryServiceId || intent.entryServiceId === targetPeerId) ? intent.nativeOrigin : intent.serviceOrigin || (relay && intent.url !== url ? intent.url : undefined);
   const connection = { id: targetPeerId, url, targetPeerId, serviceOrigin, entryServiceId, routes,
     label: intent.serviceName || new URL(serviceOrigin || url).host };
   const invitation = intent.pairingCode || intent.routeCode ? createInviteLink({
     v: 1, serviceId: targetPeerId, entryUrl: url, serviceUrl: serviceOrigin,
     name: intent.serviceName, entryServiceId, code: intent.pairingCode,
-    routeCode: intent.routeCode, routeOnly: intent.routeOnly, viewMode: intent.viewMode,
+    routeCode: intent.routeCode, routeOnly: intent.routeOnly, viewMode: intent.viewMode, viewLayout: intent.viewLayout,
   }) : undefined;
   return { connection, invitation };
 }
@@ -31,7 +31,7 @@ export function serviceConnectionInput(input: string): ServiceConnectionReview {
     const parsed = parseInviteLink(input);
     const { url, targetPeerId, serviceOrigin, entryServiceId } = parsed;
     return { connection: { id: targetPeerId, url, targetPeerId, serviceOrigin, entryServiceId,
-      label: parsed.serviceName || new URL(serviceOrigin || url).host }, invitation: input };
+      label: parsed.serviceName || new URL(serviceOrigin || url).host }, invitation: new URL(input).protocol === 'http:' && url.startsWith('https:') ? desktopConnectionIntent(parsed).invitation : input };
   }
   const url = normalizeServiceAddress(input);
   return { connection: { id: url, url, label: new URL(url).host } };

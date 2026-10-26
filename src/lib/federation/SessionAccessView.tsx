@@ -1,3 +1,6 @@
+import { DesktopInvitationButton } from '../../components/DesktopInvitationButton';
+import { canOpenDesktopInvitation } from '../services/desktopInvitation';
+import type { ConnectionIntent } from './browserIntegration';
 import { useSessionViewMode } from '../components/chat/sessionViewMode';
 import { useViewportHeight } from '../hooks/useViewportHeight';
 import { lazy, Suspense } from 'react';
@@ -254,7 +257,7 @@ function SharedSessionPane({ client, initialSessionId, initialViewMode, sessions
   </div></SessionCapabilitiesContext.Provider></ShareAccessContext.Provider>;
 }
 
-export function SessionAccessView({ client, initialSessionId, initialViewMode, initialViewLayout }: { client: SecureClient; initialSessionId?: string; initialViewMode?: 'terminal' | 'chat'; initialViewLayout?: 'split' }) {
+export function SessionAccessView({ client, initialSessionId, initialViewMode, initialViewLayout, desktopInvitation }: { client: SecureClient; desktopInvitation?: ConnectionIntent; initialSessionId?: string; initialViewMode?: 'terminal' | 'chat'; initialViewLayout?: 'split' }) {
   useViewportHeight();
   const [sessions, setSessions] = useState<RemoteSession[]>([]);
   const [resources, setResources] = useState<ShareResources>({});
@@ -283,6 +286,7 @@ export function SessionAccessView({ client, initialSessionId, initialViewMode, i
   const second = sessions.find(session => session.sessionId !== first?.sessionId);
   const showSplit = split && !!second;
   return <div className="flex h-full min-h-0 flex-col bg-[var(--chrome-bg)] text-foreground">
+    {desktopInvitation && canOpenDesktopInvitation() && <div className="flex shrink-0 justify-end border-b border-border/30 px-2"><DesktopInvitationButton invitation={desktopInvitation} compact /></div>}
     {sessions.length > 1 && <div className="flex shrink-0 justify-end border-b border-border/30 px-2"><button type="button" aria-pressed={showSplit} className="inline-flex min-h-11 items-center gap-2 rounded-lg px-3 text-xs hover:bg-surface-2" onClick={() => { setSplit(!showSplit); try { sessionStorage.setItem(`termdock:shared-layout:${client.targetPeerId}`, showSplit ? 'single' : 'split'); } catch { /* Optional layout preference. */ } }}><Columns2 size={15} />{showSplit ? '单会话' : '分屏查看'}</button></div>}
     <div className={`flex min-h-0 flex-1 ${showSplit ? 'flex-col lg:flex-row' : ''}`}>
       <section className="min-h-0 min-w-0 flex-1" aria-label={showSplit ? '第一个共享会话' : '共享会话'}><SharedSessionPane client={client} initialSessionId={showSplit ? first?.sessionId : initialSessionId} initialViewMode={initialViewMode} sessions={showSplit ? sessions.filter(session => session.sessionId !== second?.sessionId) : sessions} resources={resources} directoryError={directoryError} /></section>

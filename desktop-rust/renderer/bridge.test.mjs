@@ -40,12 +40,49 @@ test('actual bridge preserves an invitation across failed/stale guards and suppr
  assert.equal(await first.window.termdockDesktop.acknowledgeServiceInvitation({targetPeerId:'target-pin',fingerprint},()=>false),false);
  assert.equal((await first.window.termdockDesktop.getServiceConnection()).invitation,invitation);
  assert.equal(await first.window.termdockDesktop.acknowledgeServiceInvitation({targetPeerId:'target-pin',fingerprint},()=>true),true);
- assert(!first.storage.get('termdock-secure-preview-invitation-v1').includes(invitation));assert.equal(first.ipc.length,0);
+ assert(!first.storage.get('termdock-secure-preview-invitation-v1').includes(invitation));assert.deepEqual(first.ipc.map(call=>call.op),['ackWindowInvitation']);
  const next=fixture({invitation,storage:first.storage});assert.equal((await next.window.termdockDesktop.getServiceConnection()).invitation,undefined);
  for(const overrides of [{invitation:'new-private-invitation'},{origin:'http://127.0.0.1:43001'},{connection:{url:'https://entry.test',serviceOrigin:'https://target.test',targetPeerId:'other',entryServiceId:'entry-pin',label:'Target'}}]){
   const other=fixture({invitation,storage:first.storage,...overrides});assert.equal((await other.window.termdockDesktop.getServiceConnection()).invitation,overrides.invitation??invitation);
  }
  const closed=fixture({invitation});closed.listeners.get('pagehide')({});assert.equal(await closed.window.termdockDesktop.acknowledgeServiceInvitation({targetPeerId:'target-pin',fingerprint},()=>true),false);
+});
+test('incoming invitations remain in the native mailbox until authorized acknowledgement, including late subscribers',async()=>{
+ let pending='controlled-new-invitation';
+ const f=fixture({invoke:async(op,args)=>{
+  if(op==='getWindowInvitation')return pending;
+  if(op==='ackWindowInvitation'){
+   const fingerprint=Buffer.from(await webcrypto.subtle.digest('SHA-256',new TextEncoder().encode(pending))).toString('hex');
+   assert.equal(args.fingerprint,fingerprint);pending=null;return true;
+  }
+ }});
+ const received=[];const stop=f.window.termdockDesktop.onIncomingInvitation(value=>received.push(value));
+ await new Promise(resolve=>setTimeout(resolve,0));
+ assert.deepEqual(received,['controlled-new-invitation']);assert.equal(pending,'controlled-new-invitation');
+ assert.equal((await f.window.termdockDesktop.getServiceConnection()).invitation,pending);
+ f.listeners.get('termdock:preview-invitation')({});await new Promise(resolve=>setTimeout(resolve,0));assert.equal(received.length,1);
+ const fingerprint=Buffer.from(await webcrypto.subtle.digest('SHA-256',new TextEncoder().encode(pending))).toString('hex');
+ assert.equal(await f.window.termdockDesktop.acknowledgeServiceInvitation({targetPeerId:'target-pin',fingerprint},()=>true),true);
+ assert.equal(pending,null);assert.equal(f.calls.length,0);assert.equal(f.socketCalls.length,0);stop();
+});
+test('an unsubscribed document cannot consume an invitation and cancellation never creates an acceptance receipt',async()=>{
+ let finish;let pending='controlled-cancelled-invitation';
+ const f=fixture({invoke:async op=>op==='getWindowInvitation'?new Promise(resolve=>finish=resolve):op==='discardWindowInvitation'?(pending=null):null});
+ const received=[];const stop=f.window.termdockDesktop.onIncomingInvitation(value=>received.push(value));stop();finish(pending);
+ await new Promise(resolve=>setTimeout(resolve,0));assert.deepEqual(received,[]);assert.equal(pending,'controlled-cancelled-invitation');
+ const f2=fixture({invitation:pending,invoke:async op=>op==='discardWindowInvitation'?(pending=null):null});
+ await f2.window.termdockDesktop.dismissServiceInvitation();
+ assert.equal(pending,null);assert.equal((await f2.window.termdockDesktop.getServiceConnection()).invitation,undefined);
+ assert.equal(f2.storage.has('termdock-secure-preview-invitation-v1'),false);assert.equal(f2.calls.length,0);
+});
+test('the same invitation can be handed off again after cancellation',async()=>{
+ let pending='controlled-repeat-invitation';
+ const f=fixture({invoke:async op=>op==='getWindowInvitation'?pending:op==='discardWindowInvitation'?(pending=null):null});
+ const received=[];const stop=f.window.termdockDesktop.onIncomingInvitation(value=>received.push(value));
+ await new Promise(resolve=>setTimeout(resolve,0));
+ await f.window.termdockDesktop.dismissServiceInvitation();pending='controlled-repeat-invitation';
+ f.listeners.get('termdock:preview-invitation')({});await new Promise(resolve=>setTimeout(resolve,0));
+ assert.deepEqual(received,['controlled-repeat-invitation','controlled-repeat-invitation']);stop();
 });
 test('Preview page confirmation waits for overlay readiness and initializes focus once; cancel never invokes native business',async()=>{
  const dom=new JSDOM('<button id="before">Before</button>',{pretendToBeVisual:true}),f=fixture({context:{document:dom.window.document}}),doc=dom.window.document;let notify,unsubscribed=false;doc.querySelector('#before').focus();

@@ -38,6 +38,52 @@ import { ConnectionAccessError } from './accessFailure';
 import { ConnectionCenterServices } from '../../components/services/ConnectionCenterServices';
 import type { ServiceConnectionReview } from '../services/desktopServiceConnection';
 const permitted = { type: 'result', id: 'permissions', fullService: true, grants: [{ actions: ['service:*'] }] };
+describe('incoming invitation in an existing native workspace', () => {
+  const peer = '12D3KooW' + 'a'.repeat(44);
+  const invitation = createInviteLink({ v: 1, serviceId: peer, code: 'c'.repeat(32), entryUrl: 'https://service.example', viewMode: 'chat' });
+  function bridge() {
+    let receive!: (invitation: string) => void;
+    let current: { url: string; targetPeerId: string; invitation?: string } = { url: 'https://service.example', targetPeerId: peer };
+    const acknowledge = vi.fn().mockResolvedValue(true), dismiss = vi.fn(async () => { current = { ...current, invitation: undefined }; });
+    window.termdockDesktop = {
+      getServiceConnection: async () => current,
+      onIncomingInvitation: (callback: typeof receive) => { receive = callback; return () => {}; },
+      acknowledgeServiceInvitation: acknowledge, dismissServiceInvitation: dismiss,
+    } as unknown as NonNullable<Window['termdockDesktop']>;
+    mocks.client.targetPeerId = peer;
+    mocks.saved.mockReturnValue({ url: 'https://service.example', targetPeerId: peer });
+    return { acknowledge, dismiss, receive: () => { current = { ...current, invitation }; receive(invitation); } };
+  }
+  it('retains a draft and requires acceptance; cancel neither redeems nor acknowledges', async () => {
+    const native = bridge(), unmounted = vi.fn();
+    function Draft() { useEffect(() => () => unmounted(), []); return <textarea aria-label="preserved draft" defaultValue="unsent text" />; }
+    render(<SecureAccessGate><Draft /></SecureAccessGate>);
+    await screen.findByLabelText('preserved draft');
+    await act(async () => native.receive());
+    await screen.findByText('Service management');
+    expect(mocks.accessProps.initialInvite).toMatchObject({ targetPeerId: peer, pairingCode: 'c'.repeat(32), viewMode: 'chat' });
+    expect(unmounted).not.toHaveBeenCalled(); expect(mocks.connect).not.toHaveBeenCalled(); expect(native.acknowledge).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText('Close management'));
+    await waitFor(() => expect(native.dismiss).toHaveBeenCalledOnce());
+    fireEvent.focus(window); await act(async () => {});
+    expect(screen.queryByText('Service management')).toBeNull();
+    expect((screen.getByLabelText('preserved draft') as HTMLTextAreaElement).value).toBe('unsent text');
+    expect(unmounted).not.toHaveBeenCalled(); expect(mocks.connect).not.toHaveBeenCalled(); expect(native.acknowledge).not.toHaveBeenCalled();
+  });
+  it('does not let a late previous permission response consume a fresh invitation', async () => {
+    const native = bridge();
+    render(<SecureAccessGate><div>Existing workspace</div></SecureAccessGate>);
+    await screen.findByText('Existing workspace');
+    let finish!: (value: typeof permitted) => void;
+    mocks.request.mockImplementation(packet => packet.type === 'permissions' ? new Promise(resolve => { finish = resolve; }) : Promise.resolve({}));
+    fireEvent.focus(window); await waitFor(() => expect(finish).toBeTypeOf('function'));
+    await act(async () => native.receive());
+    await act(async () => finish(permitted));
+    expect(screen.getByText('Service management')).toBeTruthy();
+    expect(screen.getByText('Existing workspace')).toBeTruthy();
+    expect(native.acknowledge).not.toHaveBeenCalled(); expect(mocks.connect).not.toHaveBeenCalled();
+  });
+});
 it('keeps an incoming invitation ahead of an expired saved login and enters the scoped Session after acceptance', async () => {
   vi.resetModules();
   const peer = '12D3KooW' + 'a'.repeat(44), code = 'i'.repeat(32);

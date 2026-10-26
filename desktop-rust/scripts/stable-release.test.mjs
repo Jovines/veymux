@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { releasePlan } from './stable-release.mjs';
 import { releasePlan as previewPlan, stableEndpoint } from './preview-release.mjs';
 const key = Buffer.from('untrusted comment: minisign public key\nRWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3').toString('base64');
@@ -14,5 +15,12 @@ test('stable and final Preview pin one stable trust chain while retaining distin
   assert.equal(preview.config.identifier,'com.jovines.termdock.preview');
   assert.equal(preview.environment.TERMDOCK_DESKTOP_CHANNEL,'preview');
   assert.equal(stable.environment.TERMDOCK_DESKTOP_CHANNEL,'stable');
+  assert.equal(stable.config.bundle.macOS.infoPlist,'Info.plist');
+  assert.equal(preview.config.bundle.macOS.infoPlist,'Info.preview.plist');
+  const stableInfo=fs.readFileSync(new URL('../src-tauri/Info.plist',import.meta.url),'utf8');
+  const previewInfo=fs.readFileSync(new URL('../src-tauri/Info.preview.plist',import.meta.url),'utf8');
+  assert.match(stableInfo,/<string>termdock<\/string>/);
+  assert.doesNotMatch(stableInfo,/<string>termdock-preview<\/string>/);
+  assert.match(previewInfo,/<string>termdock-preview<\/string>/);
   assert.throws(()=>releasePlan('1.4.358','invalid'));
 });
