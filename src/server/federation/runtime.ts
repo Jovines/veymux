@@ -89,7 +89,7 @@ export interface FederationRuntimeOptions {
   consumeRouteInvitation?: (code: string, subjectId: string) => { serviceId: string };
   hasRouteGrant?: (subjectId: string, targetServiceId: string) => boolean;
   issueRouteTicket?: (subjectId: string, targetServiceId: string) => { routeToken: string; expiresAt: number };
-  issueSelfRelayTicket?: (serviceId: string) => { selfRelayToken: string; expiresAt: number };
+  issueSelfRelayTicket?: (serviceId: string, metadata?: unknown) => { selfRelayToken: string; expiresAt: number };
   /** Maps any session id on the wire (client session id or transient backend
    * PTY id) to the stable client session id. Session-scoped grants are bound to
    * the stable id so a backend replacement never invalidates them. */
@@ -378,7 +378,7 @@ export async function createFederationRuntime(app: express.Express, directory: s
             send({ type: 'result', id: packet.id, revoked });
           } else if (packet.type === 'self-relay-ticket') {
             if (!options.issueSelfRelayTicket) throw new Error('SELF_RELAY_UNAVAILABLE');
-            send({ type: 'result', id: packet.id, serviceId: subjectId, ...options.issueSelfRelayTicket(subjectId) });
+            send({ type: 'result', id: packet.id, serviceId: subjectId, ...options.issueSelfRelayTicket(subjectId, packet.metadata) });
           } else if (packet.type === 'route-invite-create') {
             if (packet.serviceId === serviceId) throw new Error('RELAY_SELF_TARGET');
             check('authorization.manage');

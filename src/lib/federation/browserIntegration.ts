@@ -662,7 +662,7 @@ export function installEncryptedFetch(): void {
 }
 
 export interface EntryRouteGrant { id: string; subjectId: string; targetServiceId: string; active: boolean; revokedAt?: number }
-export interface RelayTarget { serviceId: string; label?: string; url?: string; available: boolean; authorized: boolean; error?: string }
+export interface RelayTarget { serviceId: string; label?: string; url?: string; hostname?: string; platform?: string; version?: string; available: boolean; authorized: boolean; error?: string }
 export interface RelayTargetDirectory { route: ServiceRoute; canManage: boolean; items: RelayTarget[] }
 function assertRelayTarget(entryId: string, targetId: string): void {
   if (entryId === targetId) throw new ConnectionAccessError('RELAY_SELF_TARGET', { entryServiceId: entryId, targetServiceId: targetId });

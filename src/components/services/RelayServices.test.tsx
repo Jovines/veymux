@@ -1,13 +1,15 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-const mocks = vi.hoisted(() => ({ list: vi.fn(), prepare: vi.fn(), inspect: vi.fn() }));
+const mocks = vi.hoisted(() => ({ list: vi.fn(), prepare: vi.fn(), inspect: vi.fn(), saved: vi.fn() }));
 vi.mock('../../lib/federation/browserIntegration', () => ({ listRelayTargets: mocks.list, prepareRelayConnection: mocks.prepare, inspectConnectionAccess: mocks.inspect }));
+vi.mock('../../lib/services/serviceDirectory', () => ({ listServiceConnections: mocks.saved, observeServiceConnections: () => () => {} }));
 import { DeviceAuthorizationRequired } from '../../lib/federation/deviceAuthorization';
 import { RelayServices } from './RelayServices';
 const intent = { url: 'https://c.internal', targetPeerId: 'C', serviceName: 'C', routes: [{ url: 'https://b.internal', targetPeerId: 'B' }] };
 const service = { id: 'B', targetPeerId: 'B', url: 'https://b.internal', label: 'B' };
 beforeEach(() => {
+  mocks.saved.mockResolvedValue([]);
   mocks.list.mockResolvedValue({ route: intent.routes[0], canManage: true, items: [{ serviceId: 'C', url: intent.url, available: true, authorized: false }] });
   mocks.prepare.mockResolvedValue(intent);
   mocks.inspect.mockResolvedValue('authorized');
@@ -20,7 +22,7 @@ describe('browse services through an entry', () => {
     render(<RelayServices service={service} onBusyChange={() => {}} onConnect={connect} />);
     const row = await screen.findByRole('button', { name: /服务身份与登记地址不一致/ });
     expect((row as HTMLButtonElement).disabled).toBe(true);
-    expect(row.textContent).toContain('AAAAabcdefgh');
+    expect(screen.getByText('12D3KooWAAAAabcdefgh')).toBeTruthy();
     fireEvent.click(row); expect(connect).not.toHaveBeenCalled();
   });
   it('distinguishes reverse-only services by the varying ID suffix, rather than the common ID prefix', async () => {
@@ -92,8 +94,39 @@ it('distinguishes entry access from missing device authorization before connecti
   mocks.inspect.mockResolvedValue('passwordRequired');
   const connect = vi.fn();
   render(<RelayServices service={service} onBusyChange={() => {}} onConnect={connect} onConnectWithPassword={vi.fn()} />);
-  const row = await screen.findByRole('button', { name: /此设备未获目标访问授权，请登录目标服务/ });
+  const row = await screen.findByRole('button', { name: /目标访问：待登录.*登录目标服务/ });
   fireEvent.click(row); await screen.findByLabelText('目标服务密码');
   expect(connect).not.toHaveBeenCalled();
   expect(mocks.inspect).toHaveBeenCalledWith(expect.objectContaining({ targetPeerId: 'C', entryServiceId: 'B', url: service.url }), expect.any(AbortSignal));
+});
+
+it('shows reported machine information and keeps full identity in a disclosure without granting access', async () => {
+  mocks.list.mockResolvedValue({ route: intent.routes[0], canManage: true, items: [
+    { serviceId: '12D3KooWmacIdentity', label: 'build-mac.local', hostname: 'build-mac.local', platform: 'darwin', version: '1.4.374', available: true, authorized: false },
+  ] });
+  mocks.saved.mockResolvedValue([{ id: 'mac', targetPeerId: '12D3KooWmacIdentity', label: '编译 Mac', url: 'https://b.internal', entryServiceId: 'B' }]);
+  render(<RelayServices service={service} onBusyChange={() => {}} onConnect={vi.fn()} />);
+  const row = await screen.findByRole('button', { name: /编译 Mac.*中转可用.*未提供直连地址.*中转：待授权.*目标访问：未核验/ });
+  expect(row.textContent).not.toContain('12D3KooW');
+  fireEvent.click(screen.getByLabelText('编译 Mac的服务详情'));
+  expect(screen.getByText('build-mac.local')).toBeTruthy();
+  expect(screen.getByText('macOS · Termdock 1.4.374')).toBeTruthy();
+  expect(screen.getByText('12D3KooWmacIdentity')).toBeTruthy();
+  expect(screen.getByText('目标未提供直连地址，通过入口中转连接')).toBeTruthy();
+  expect(mocks.prepare).not.toHaveBeenCalled();
+  expect(mocks.inspect).not.toHaveBeenCalled();
+});
+
+it('keeps details available for blocked targets and never renders credentials from malformed metadata', async () => {
+  mocks.list.mockResolvedValue({ route: intent.routes[0], canManage: true, items: [
+    { serviceId: 'C', label: 'Mac', url: 'https://alice:secret@mac.internal/?token=private', available: false, authorized: true, error: 'TARGET_UNREACHABLE' },
+  ] });
+  render(<RelayServices service={service} onBusyChange={() => {}} onConnect={vi.fn()} />);
+  const row = await screen.findByRole('button', { name: /Mac.*目标连接失败/ });
+  expect((row as HTMLButtonElement).disabled).toBe(true);
+  const summary = screen.getByLabelText('Mac的服务详情');
+  fireEvent.click(summary);
+  expect(summary.parentElement?.hasAttribute('open')).toBe(true);
+  expect(screen.getByText('TARGET_UNREACHABLE')).toBeTruthy();
+  expect(document.body.textContent).not.toMatch(/alice|secret|private/);
 });

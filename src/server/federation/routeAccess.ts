@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync, mkdirSync, renameSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import type { DirectTargetConfig } from './directRoutes.js';
+import { relayServiceMetadata, type RelayServiceMetadata } from './serviceMetadata.js';
 export type RoutePrincipal =
   | { kind: 'relay'; id: string; tokenHash: string }
   | { kind: 'self-relay'; serviceId: string }
@@ -12,7 +13,9 @@ const digest = (s: string) => createHash('sha256').update(s).digest();
 /** Target directory is re-read on every permission check; invalid config denies all. */
 export class RouteAccess {
   private tickets = new Map<string, { subjectId: string; serviceId: string; expiresAt: number }>();
-  private selfRelayTickets = new Map<string, { serviceId: string; expiresAt: number }>();
+  private selfRelayTickets = new Map<string, { serviceId: string; expiresAt: number; metadata: RelayServiceMetadata }>();
+  private serviceMetadata = new Map<string, RelayServiceMetadata>();
+  selfRelayMetadata(serviceId: string): RelayServiceMetadata { return { ...this.serviceMetadata.get(serviceId) }; }
   constructor(private filePath: string, private now: () => number = Date.now, private canRouteSubject: (subjectId: string, serviceId: string) => boolean = () => false,
     private additionalTargets: () => DirectTargetConfig[] = () => [], private additionalTargetIds: () => string[] = () => []) {}
   private registry(): { relays: RelayRecord[]; directTargets: DirectTargetConfig[] } {
@@ -51,13 +54,13 @@ export class RouteAccess {
   /** A Noise-authenticated service can advertise only its own identity. The
    * short-lived token merely transfers that identity onto the relay socket; it
    * grants neither route use nor target-service access. */
-  issueSelfRelayTicket(serviceId: string): { selfRelayToken: string; expiresAt: number } {
+  issueSelfRelayTicket(serviceId: string, metadata?: unknown): { selfRelayToken: string; expiresAt: number } {
     if (!validId(serviceId)) throw new Error('INVALID_SELF_RELAY_IDENTITY');
     for (const [key, value] of this.selfRelayTickets) if (value.expiresAt <= this.now()) this.selfRelayTickets.delete(key);
     if (this.selfRelayTickets.size >= 1024) throw new Error('SELF_RELAY_TICKET_LIMIT');
     const selfRelayToken = randomBytes(32).toString('base64url');
     const expiresAt = this.now() + 30_000;
-    this.selfRelayTickets.set(digest(selfRelayToken).toString('hex'), { serviceId, expiresAt });
+    this.selfRelayTickets.set(digest(selfRelayToken).toString('hex'), { serviceId, expiresAt, metadata: relayServiceMetadata(metadata) });
     return { selfRelayToken, expiresAt };
   }
   /** Single-use, fail-closed transfer from the authenticated Noise channel to
@@ -67,6 +70,11 @@ export class RouteAccess {
     const key = digest(selfRelayToken).toString('hex');
     const ticket = this.selfRelayTickets.get(key); this.selfRelayTickets.delete(key);
     if (!ticket || ticket.expiresAt <= this.now()) return null;
+    // Publish only after the single-use ticket is consumed. It is bound to the
+    // authenticated service ID, cannot authorize routes, and is never persisted.
+    this.serviceMetadata.delete(ticket.serviceId);
+    if (this.serviceMetadata.size >= 256) this.serviceMetadata.delete(this.serviceMetadata.keys().next().value!);
+    this.serviceMetadata.set(ticket.serviceId, ticket.metadata);
     return { kind: 'self-relay', serviceId: ticket.serviceId };
   }
   /** Called once before upgrading. A route ticket is consumed even if expired. */

@@ -3,7 +3,7 @@ import { createServer } from 'node:https';
 import { once } from 'node:events';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { tmpdir, hostname } from 'node:os';
 import { join } from 'node:path';
 import { X509Certificate, createHash, randomBytes } from 'node:crypto';
 import express from 'express';
@@ -20,7 +20,7 @@ import { RelaySocket } from '../../lib/federation/relaySocket.js';
 import * as authProtection from '../utils/authProtection.js';
 const cleanups: (() => void)[] = [];
 afterEach(() => { for (const close of cleanups.splice(0).reverse()) close(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
-it.each(['configured', 'preview', 'stable'] as const)('keeps A reachable through B using an A-initiated tunnel with %s configuration and no public B-to-A dial', async source => {
+it.each([['configured', false], ['preview', false], ['stable', false], ['configured', true]] as const)('keeps A reachable through B using %s configuration (legacy entry=%s) and no public B-to-A dial', async (source, legacyEntry) => {
   vi.stubEnv('TERMDOCK_PASSWORD', 'reverse-relay-password');
   vi.stubGlobal('CloseEvent', class extends Event { code: number; reason: string; constructor(type: string, init: { code: number; reason: string }) { super(type); this.code = init.code; this.reason = init.reason; } });
   const dir = mkdtempSync(join(tmpdir(), 'td-reverse-relay-')); cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
@@ -51,7 +51,7 @@ it.each(['configured', 'preview', 'stable'] as const)('keeps A reachable through
   const access = new RouteAccess(join(dir, 'routes.json'), Date.now, subject => subject === phone.peerId && !revoked,
     () => [], () => router.registeredRouteIds());
   const b = await createFederationRuntime(express(), join(dir, 'b'), handlers, {
-    issueSelfRelayTicket: id => access.issueSelfRelayTicket(id),
+    issueSelfRelayTicket: (id, metadata) => access.issueSelfRelayTicket(id, legacyEntry ? undefined : metadata),
     hasRouteGrant: subject => subject === phone.peerId && !revoked,
     issueRouteTicket: (subject, target) => access.issueRouteTicket(subject, target),
     listRouteTargets: () => access.configuredTargets().map(target => ({ ...target, available: router.hasRoute(target.serviceId), ...(router.routeError(target.serviceId) ? { error: router.routeError(target.serviceId) } : {}) })),
@@ -92,6 +92,8 @@ it.each(['configured', 'preview', 'stable'] as const)('keeps A reachable through
     localOrigin: () => localOrigin, baseDir: dir, targets: () => source !== 'configured' ? desktopServiceTargets(dir, a.serviceId, 'darwin') : [{ serviceId: b.serviceId, url: origin, caPath: 'ca.pem' }] });
   cleanups.push(() => selfRelay.close()); selfRelay.start();
   await vi.waitFor(() => expect(router.hasRoute(a.serviceId)).toBe(true), { timeout: 3000 });
+  if (legacyEntry) expect(access.selfRelayMetadata(a.serviceId)).toEqual({});
+  else expect(access.selfRelayMetadata(a.serviceId)).toMatchObject({ hostname: hostname(), platform: process.platform, version: expect.stringMatching(/^\d+\.\d+\.\d+/) });
   if (source !== 'configured') {
     await vi.waitFor(() => expect(router.providerCount(a.serviceId)).toBe(2), { timeout: 3000 });
     const first = [...providers][0]; first.terminate();

@@ -49,6 +49,22 @@
 .service-route-line { display: flex; align-items: center; gap: 12px; }
 .service-route-line .service-name { flex: 1; min-width: 0; }
 .service-full-width { width: 100%; }
+.service-relay-item { padding: 8px 0; min-width: 0; }
+.service-relay-item + .service-relay-item { border-top: 1px solid var(--border); }
+.service-relay-open { align-items: flex-start; }
+.service-relay-heading { display: flex; gap: 8px; align-items: baseline; }
+.service-relay-heading .service-name { flex: 1; white-space: normal; overflow-wrap: anywhere; }
+.service-relay-status { flex-shrink: 0; font-size: 11px; color: var(--muted-foreground); }
+.service-relay-copy, .service-relay-failure { display: block; margin-top: 5px; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; color: var(--muted-foreground); }
+.service-relay-failure { color: var(--destructive); }
+.service-relay-action { display: flex; align-items: center; gap: 4px; margin-top: 7px; font-size: 12px; color: var(--primary); }
+.service-relay-open:disabled .service-relay-action { color: var(--muted-foreground); }
+.service-relay-details { margin-left: 52px; font-size: 12px; line-height: 1.6; }
+.service-relay-details > summary { min-height: 36px; padding: 8px 0; box-sizing: border-box; cursor: pointer; color: var(--muted-foreground); }
+.service-relay-details dl { margin: 4px 0 8px; }
+.service-relay-details dt { margin-top: 10px; color: var(--muted-foreground); }
+.service-relay-details dd { margin: 2px 0 0; overflow-wrap: anywhere; }
+.service-relay-details code { font-size: 11px; }
 .service-route-address { flex: 1; min-width: 0; }
 .service-certificate-review, .service-certificate-pins { margin-top: 18px; padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2); }
 .service-certificate-review h3 { margin: 0 0 8px; font-size: 15px; }

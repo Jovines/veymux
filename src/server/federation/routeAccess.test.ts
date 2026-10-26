@@ -12,6 +12,29 @@ function setup() {
   return { access: new RouteAccess(file, () => now, () => authorized), file, config, token, revokeSubject: () => { authorized = false; }, time: (value: number) => { now = value; } };
 }
 describe('route authentication', () => {
+  it('binds public metadata to the consumed service ticket, without accepting addresses or authority fields', () => {
+    const { access, time } = setup();
+    const metadata = { hostname: 'build-mac.local', platform: 'darwin', version: '1.4.374', url: 'https://wrong.example', serviceId: 'other', authorized: true, caPath: '/private/key' };
+    const ticket = access.issueSelfRelayTicket('C', metadata);
+    expect(access.selfRelayMetadata('C')).toEqual({});
+    expect(access.authenticateSelfRelay(ticket.selfRelayToken)).toEqual({ kind: 'self-relay', serviceId: 'C' });
+    expect(access.selfRelayMetadata('C')).toEqual({ hostname: 'build-mac.local', platform: 'darwin', version: '1.4.374' });
+    expect(access.selfRelayMetadata('other')).toEqual({});
+    expect(access.authenticateSelfRelay(ticket.selfRelayToken)).toBeNull();
+    const expired = access.issueSelfRelayTicket('C', { hostname: 'stale' }); time(expired.expiresAt);
+    expect(access.authenticateSelfRelay(expired.selfRelayToken)).toBeNull();
+    expect(access.selfRelayMetadata('C').hostname).toBe('build-mac.local');
+    expect(() => access.issueRouteTicket('phone', 'other')).toThrow();
+  });
+  it('keeps legacy publishers working and drops invalid display metadata', () => {
+    const { access } = setup();
+    const ticket = access.issueSelfRelayTicket('C', { hostname: 'fake\nname', platform: '<script>', version: 'private-secret' });
+    expect(access.authenticateSelfRelay(ticket.selfRelayToken)).not.toBeNull();
+    expect(access.selfRelayMetadata('C')).toEqual({});
+    const legacy = access.issueSelfRelayTicket('C');
+    expect(access.authenticateSelfRelay(legacy.selfRelayToken)).not.toBeNull();
+    expect(access.selfRelayMetadata('C')).toEqual({});
+  });
   it('preserves desktop address families while explicit administrator targets replace that family', () => {
     const { file } = setup();
     const alternates = [{ serviceId: 'C', url: 'https://c-home.example' }, { serviceId: 'C', url: 'https://c-office.example' }];

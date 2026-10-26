@@ -1,6 +1,8 @@
 import WebSocket from 'ws';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { hostname } from 'node:os';
+import { getTermdockVersion } from '../utils/version.js';
 import type { DirectTargetConfig } from './directRoutes.js';
 import { desktopDirectTargets } from './desktopTargets.js';
 import { RelayClient } from './relay.js';
@@ -122,7 +124,7 @@ export class DesktopSelfRelay {
     const rpc = await connectCollaborationRpc(this.options.identity, peer, undefined, undefined, configuredCa, target.certificateFingerprint256, state.lifetime.signal);
     let selfRelayToken: string;
     try {
-      const result = await rpc.request({ type: 'self-relay-ticket' });
+      const result = await rpc.request({ type: 'self-relay-ticket', metadata: { hostname: hostname(), platform: process.platform, version: getTermdockVersion() } });
       if (result.serviceId !== this.options.serviceId || typeof result.selfRelayToken !== 'string'
         || !/^[A-Za-z0-9_-]{43}$/.test(result.selfRelayToken)) throw new Error('INVALID_SELF_RELAY_TICKET');
       selfRelayToken = result.selfRelayToken;

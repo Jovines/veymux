@@ -617,7 +617,11 @@ export function startServer(options: ServerOptions = {}): StartServerResult {
     },
     listRouteTargets: () => {
       refreshDirectTargets();
-      return routeAccess.configuredTargets().map(target => directTargetRegistry.describe(target));
+      return routeAccess.configuredTargets().map(target => {
+        const description = directTargetRegistry.describe(target);
+        const metadata = routeAccess.selfRelayMetadata(target.serviceId);
+        return { ...metadata, ...description, ...(description.label || metadata.hostname ? { label: description.label || metadata.hostname } : {}) };
+      });
     },
     listRouteAccess: () => routeInvitations?.list() || [],
     grantRouteAccess: async (issuerId, targetServiceId, subjectId, url) => {
@@ -641,7 +645,7 @@ export function startServer(options: ServerOptions = {}): StartServerResult {
       if (failure === 'TARGET_PASSWORD_REQUIRED' || failure === 'TARGET_SECURITY_UPGRADE_REQUIRED') throw new Error(failure);
       return routeAccess.issueRouteTicket(subjectId, serviceId);
     },
-    issueSelfRelayTicket: (serviceId: string) => routeAccess.issueSelfRelayTicket(serviceId),
+    issueSelfRelayTicket: (serviceId: string, metadata?: unknown) => routeAccess.issueSelfRelayTicket(serviceId, metadata),
     hasRouteGrant: (subjectId: string, serviceId: string) => routeInvitations?.allows(subjectId, serviceId) === true || collaborationTransport?.canRoute(subjectId, serviceId) === true || collaborationService?.canRoute(subjectId, serviceId) === true,
     createRouteInvitation: (issuerId: string, serviceId: string) => {
       if (!routeInvitations) throw new Error('ROUTE_NOT_AVAILABLE');

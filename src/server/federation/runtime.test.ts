@@ -99,6 +99,18 @@ async function fixture(runtimeOptions: FederationRuntimeOptions = {}, allowOpenA
 }
 
 describe('federation runtime over real encrypted WebSocket', () => {
+  it('accepts display metadata only for the authenticated publisher identity over Noise', async () => {
+    const issue = vi.fn(() => ({ selfRelayToken: 'x'.repeat(43), expiresAt: Date.now() + 30_000 }));
+    const f = await fixture({ issueSelfRelayTicket: issue }), client = await f.connect();
+    const metadata = { hostname: 'build-mac.local', platform: 'darwin', version: '1.4.374' };
+    client.channel.send({ type: 'self-relay-ticket', id: 'metadata', serviceId: 'forged', metadata });
+    expect(await client.take('metadata')).toMatchObject({ type: 'result', serviceId: client.identity.peerId });
+    expect(issue).toHaveBeenCalledWith(client.identity.peerId, metadata);
+    expect(Buffer.concat(client.wire.map(chunk => Buffer.from(chunk))).toString()).not.toContain(metadata.hostname);
+    client.channel.send({ type: 'self-relay-ticket', id: 'legacy' });
+    expect(await client.take('legacy')).toMatchObject({ type: 'result', serviceId: client.identity.peerId });
+    expect(issue).toHaveBeenLastCalledWith(client.identity.peerId, undefined);
+  });
   it('rejects self target grant, ticket and invitation before invoking configuration or authorization writers', async () => {
     const grant = vi.fn(), invite = vi.fn();
     const f = await fixture({ grantRouteAccess: grant, createRouteInvitation: invite, hasRouteGrant: () => true });
