@@ -11,7 +11,8 @@ export default defineConfig({
     include: ['react', 'react-dom', 'react-dom/client', 'react/jsx-runtime', 'zustand/react/shallow',
       '@xterm/xterm', '@xterm/addon-fit', '@xterm/addon-webgl', '@xterm/addon-web-links',
       '@xterm/addon-unicode11', '@xterm/addon-search', '@xterm/addon-serialize', '@xterm/addon-image',
-      '@xterm/addon-ligatures', '@xterm/addon-progress', 'browser-haptic', 'qrcode', '@dnd-kit/core', '@dnd-kit/sortable', '@dnd-kit/utilities'],
+      '@xterm/addon-ligatures', '@xterm/addon-progress', 'browser-haptic', 'qrcode', '@dnd-kit/core', '@dnd-kit/sortable', '@dnd-kit/utilities',
+      '@noble/hashes/sha2.js', '@noble/hashes/utils.js'],
   },
   test: {
     include: ['src/lib/components/chat/chatFullUI.browser.tsx', 'src/lib/components/chat/previewSafeArea.browser.tsx', 'src/lib/components/chat/chatViewport.browser.tsx', 'src/lib/components/chat/nativeChatViewport.browser.tsx', 'src/lib/components/terminal/nativeTerminalInput.browser.tsx', 'src/lib/components/terminal/desktopTerminalInput.browser.tsx', 'src/lib/components/layout/keyboardPanelLayout.browser.tsx', 'src/lib/components/layout/serviceWorkspaceLayout.browser.tsx', 'src/lib/components/layout/toolbarCustomization.browser.tsx'],
@@ -45,6 +46,9 @@ export default defineConfig({
               await context.page.waitForTimeout(16);
             }
             await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+            // Match the pointer path: let dnd-kit's post-drop click guard end
+            // before the next action is synthesized by the test driver.
+            await context.page.waitForTimeout(80);
           } finally { await session.detach(); }
         },
         async desktopTerminalPointer(context, action: 'click' | 'right-click' | 'drag' | 'wheel') {
