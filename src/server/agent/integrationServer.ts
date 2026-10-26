@@ -13,6 +13,7 @@ import type { TaskOrigin, TaskOperation, TaskCreateInput } from './collaboration
 import { IntegrationStore, INTEGRATION_PROTOCOL, INTEGRATION_OPERATIONS, atomicJson, integrationError, type IntegrationPermission, type IntegrationPrincipal, type IntegrationEvent } from './integrationStore.js';
 import { IntegrationSessions, publicIntegrationSession, type IntegrationSessionAdapter } from './integrationSessions.js';
 import { getTermdockVersion } from '../utils/version.js';
+import { SessionAccessStore } from '../federation/sessionAccess.js';
 
 export function integrationSocketPath(port: number, home = homedir()): string {
   const preferred = path.join(home, '.termdock', `integration-${port}.sock`);
@@ -43,6 +44,7 @@ function scopedId(input: string, ids: string[], type: string): string {
 export class IntegrationRuntime {
   readonly store: IntegrationStore;
   readonly sessions: IntegrationSessions;
+  readonly sessionAccess: SessionAccessStore;
   private server: Server;
   private stops: Array<() => void> = [];
   private streams = new Set<ServerResponse>();
@@ -57,6 +59,9 @@ export class IntegrationRuntime {
   constructor(private options: IntegrationRuntimeOptions) {
     this.store = new IntegrationStore(path.join(options.directory, 'integrations.json'));
     this.sessions = new IntegrationSessions(path.join(options.directory, 'integration-sessions.json'), options.sessions);
+    this.sessionAccess = new SessionAccessStore(path.join(options.directory, 'session-access.json'), (id, principalId) => {
+      return this.sessions.permitsSessionAccess(id, principalId) && this.store.permits(principalId, 'session.access');
+    });
     this.releaseBatchFile = path.join(options.directory, 'session-release-batches.json');
     try {
       const saved = JSON.parse(fs.readFileSync(this.releaseBatchFile, 'utf8')) as ReleaseBatchOperation[];
@@ -218,6 +223,16 @@ export class IntegrationRuntime {
       this.sync(); return { session: publicIntegrationSession(session) };
     }));
     app.get('/sessions/:id', run(async req => { const p = principal(req); this.authorize(p, 'session.read'); return { session: publicIntegrationSession(await this.sessions.get(p, req.params.id)) }; }));
+    app.post('/sessions/:id/access', run(async req => {
+      const p = principal(req); this.authorize(p, 'session.access');
+      await this.sessions.get(p, req.params.id);
+      return this.sessionAccess.update(req.params.id, p.id, req.body);
+    }));
+    app.post('/sessions/:id/access-ticket', run(async req => {
+      const p = principal(req); this.authorize(p, 'session.access');
+      await this.sessions.get(p, req.params.id);
+      return { ticket: this.sessionAccess.ticket(req.params.id, p.id, req.body?.deviceId) };
+    }));
     app.post('/sessions/:id/restore', run(async req => { const p = principal(req); this.authorize(p, 'session.restore'); const session = await this.sessions.restore(p, req.params.id, req.body?.idempotency_key); this.sync(); return { session: publicIntegrationSession(session) }; }));
     app.post('/sessions/:id/retry-cold', run(async req => { const p = principal(req); this.authorize(p, 'session.create'); const session = await this.sessions.retryCold(p, req.params.id, req.body?.generation, req.body?.idempotency_key); this.sync(); return { session: publicIntegrationSession(session) }; }));
     app.post('/sessions/:id/release', run(async req => { const p = principal(req); this.authorize(p, 'session.release'); const session = await this.sessions.release(p, req.params.id, req.body?.generation, req.body?.idempotency_key); this.sync(); return { session: publicIntegrationSession(session) }; }));
@@ -233,6 +248,7 @@ export class IntegrationRuntime {
     }));
     app.post('/sessions/:id/rename', run(async req => { const p = principal(req); this.authorize(p, 'session.rename'); const session = await this.sessions.rename(p, req.params.id, req.body?.generation, req.body?.name, req.body?.idempotency_key); this.sync(); return { session: publicIntegrationSession(session) }; }));
     app.post('/sessions/:id/close', run(async req => { const p = principal(req); this.authorize(p, 'session.close'); const session = await this.sessions.closeSession(p, req.params.id, req.body?.generation, req.body?.idempotency_key); this.sync(); return { session: publicIntegrationSession(session) }; }));
+    app.delete('/sessions/:id', run(async req => { const p = principal(req); this.authorize(p, 'session.forget'); await this.sessions.forget(p, req.params.id, req.body?.generation); this.sync(); return { forgotten: true }; }));
     app.get('/events', run((req, res) => {
       const p = principal(req); this.authorize(p, 'events.read', req.query.group);
       this.sync(); this.stream(p, String(req.query.consumer ?? 'default'), req, res);
@@ -249,7 +265,7 @@ export class IntegrationRuntime {
   }
   capabilities() {
     return { integration_protocol: INTEGRATION_PROTOCOL, server_version: getTermdockVersion(), local_only: true,
-      integration_principal: true, group_scoped_permissions: true, durable_event_push: true,
+      integration_principal: true, group_scoped_permissions: true, durable_event_push: true, session_access_tickets: true,
       event_ack_semantics: 'durable_received', correlated_task_responses: true, accepted_task_comments: true,
       idempotent_session_create: true, exact_session_restore: true, external_validation: false,
       startup_input_conditions: true, session_runtime_release: true, stable_session_identity: true, session_lifecycle_generation: true,
@@ -267,6 +283,7 @@ export class IntegrationRuntime {
       session_cold_retry: true, session_cold_retry_min_version: '1.4.314',
       session_rename: true, session_rename_min_version: '1.4.315',
       session_close: true, session_close_min_version: '1.4.315',
+      session_forget: true,
       session_close_diagnostics: true, session_close_diagnostics_min_version: '1.4.349',
       session_close_detached_registration: process.platform === 'linux', session_close_detached_registration_min_version: '1.4.349',
       admin_local_group_create: true, admin_local_group_create_min_version: '1.4.318',

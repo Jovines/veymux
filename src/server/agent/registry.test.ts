@@ -115,6 +115,10 @@ describe('inferResumeSessionId', () => {
     expect(inferResumeSessionId(separate, ['fixture-agent', 'threads', 'resume', 'native-id'])).toBeNull();
   });
   it('recovers ids from resumed Agent argv after Termdock reattaches', () => {
+    expect(inferResumeSessionId(agentBySlug('claude')!, ['/home/user/.local/bin/claude', '--session-id', 'new-uuid']))
+      .toBe('new-uuid');
+    expect(inferResumeSessionId(agentBySlug('claude')!, ['claude', '--session-id=inline-uuid']))
+      .toBe('inline-uuid');
     expect(inferResumeSessionId(agentBySlug('codex')!, [
       'node', '/opt/codex/bin/codex', '--dangerously-bypass-approvals-and-sandbox',
       'resume', '01a0531c-7ddb-7b51-9821-213b9b6bd735',

@@ -184,9 +184,10 @@ async function runtimeFixture(sessionAdapter?: IntegrationSessionAdapter) {
   const issued = runtime.store.provision(policy(group.id));
   const headers = { 'x-termdock-integration-protocol': '1', 'x-termdock-integration-id': 'bridge', authorization: `Bearer ${issued.token}`, 'Content-Type': 'application/json' };
   const request = (method: string, route: string, body?: unknown, requestHeaders: Record<string, string> = headers) => new Promise<{ status: number; body: any }>((resolve, reject) => {
-    const req = http.request({ socketPath: options.socketPath, method, path: route, headers: requestHeaders }, res => {
-      let raw = ''; res.on('data', chunk => { raw += chunk; }); res.once('end', () => resolve({ status: res.statusCode!, body: JSON.parse(raw) }));
-    }); req.once('error', reject); req.end(body === undefined ? undefined : JSON.stringify(body));
+    const data = body === undefined ? undefined : JSON.stringify(body);
+    const req = http.request({ socketPath: options.socketPath, method, path: route, headers: { ...requestHeaders, ...(data ? { 'Content-Length': Buffer.byteLength(data) } : {}) } }, res => {
+      let raw = ''; res.on('data', chunk => { raw += chunk; }); res.once('end', () => { try { resolve({ status: res.statusCode!, body: JSON.parse(raw) }); } catch (error) { reject(error); } });
+    }); req.once('error', reject); req.end(data);
   });
   const stream = () => {
     const events: any[] = [], waiters: Array<() => void> = [];
@@ -1056,6 +1057,13 @@ it('scoped management grants require no empty terminal; close retains messages a
   f.messages.markDelivered([original.id]);
   const audit = f.messages.storeIntegrationReply(original.id, id, 'historical result', { responseKind: 'result', idempotencyKey: 'result' });
   grant.permissions.push('session.close', 'message.send', 'message.read'); f.runtime.store.update(grant);
+  grant.permissions.push('session.forget', 'session.access'); f.runtime.store.update(grant);
+  expect(await f.request('DELETE', `/sessions/${id}`, { generation: 2 })).toMatchObject({ status: 409, body: { code: 'SESSION_NOT_CLOSED' } });
+  const lease = { id: randomUUID(), userId: 'user', deviceId: 'device', expiresAt: Date.now() + 60000 };
+  expect(await f.request('POST', `/sessions/${id}/access`, { fence: 1, lease })).toMatchObject({ status: 200 });
+  const ticket = await f.request('POST', `/sessions/${id}/access-ticket`, { deviceId: 'device' });
+  expect(ticket).toMatchObject({ status: 200, body: { ticket: expect.stringMatching(/^session\./) } });
+  grant.permissions = grant.permissions.filter(p => p !== 'session.forget'); f.runtime.store.update(grant);
   expect(await f.request('POST', `/sessions/${id}/close`, { ...close, generation: '2' })).toMatchObject({ status: 409, body: { code: 'INVALID_SESSION_GENERATION' } });
   const closed = await f.request('POST', `/sessions/${id}/close`, close);
   expect(closed).toMatchObject({ status: 200, body: { session: { state: 'closed', generation: 3, runtime_present: false, terminal_binding: null, close_pending: false } } });
@@ -1068,6 +1076,16 @@ it('scoped management grants require no empty terminal; close retains messages a
   const events = f.runtime.store.page(p, 'management').events;
   expect(events.find(e => e.kind === 'session.renamed')).toMatchObject({ payload: { name: 'Fast', generation: 2, operation_id: created.body.session.operation_id } });
   expect(events.find(e => e.kind === 'session.closed')).toMatchObject({ payload: { session: { state: 'closed', runtime_present: false } } });
+  const forget = { generation: 3 };
+  expect(await f.request('DELETE', `/sessions/${id}`, forget)).toMatchObject({ status: 403 });
+  grant.permissions.push('session.forget'); f.runtime.store.update(grant);
+  expect(await f.request('DELETE', `/sessions/${id}`, { generation: 2 })).toMatchObject({ status: 409, body: { code: 'SESSION_GENERATION_MISMATCH' } });
+  expect(await f.request('DELETE', `/sessions/${id}`, forget)).toMatchObject({ status: 200, body: { forgotten: true } });
+  expect(await f.request('DELETE', `/sessions/${id}`, forget)).toMatchObject({ status: 200, body: { forgotten: true } });
+  expect(await f.request('GET', `/sessions/${id}`)).toMatchObject({ status: 404 });
+  expect(await f.request('POST', '/sessions', { launch_profile: 'agent', cwd: dir, idempotency_key: 'create' })).toMatchObject({ status: 409, body: { code: 'SESSION_FORGOTTEN' } });
+  expect(await f.request('POST', `/sessions/${id}/close`, close)).toMatchObject({ status: 409, body: { code: 'SESSION_FORGOTTEN' } });
+  expect(api.restore).not.toHaveBeenCalled();
 });
 it('rename/close CLI validates required flags and fails closed against old capabilities', async () => {
   for (const args of [['rename', 'id', '--generation', '1'], ['close', 'id'], ['close', 'id', '--generation', '1', '--name', 'bad'], ['rename', 'id', '--generation', '0', '--name', 'bad']]) expect(() => parseCollaborationCommand(['--principal', 'bridge', 'session', ...args, '--idempotency-key', 'key'])).toThrow();

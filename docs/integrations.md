@@ -1518,3 +1518,35 @@ td integration close-diagnostics <原TD-session-id>
 回归包括真实 Noise/中转授权撤回后的错误传播、网络与授权区分、其它合法路线成功、目标拒绝不绕过、零权限写入的展示/取消、窄中转授权明确确认及写后重读、管理员拒绝、精确目标登录、原终端/草稿保留、旧 client/目标/页面晚回执、同身份多地址/重复项/同名不同身份及 self-relay 兼容。发布工作流纳入相关服务管理组件与工作空间测试。原有总路由预算测试曾在未改动 350 基线复现计时器提前触发导致多试备用 provider；本版按原绝对 deadline 重核，不放宽超时预算或修改断言。
 
 维护机浏览器在 390×844 和 1280×800 的隔离夹具复核恢复选择、取消、无管理权限、指定目标登录与成功后的界面；夹具只记录读/写计数、不连接真实业务。真实 iPhone PWA/macOS 的授权失效交互仍由现场在安全夹具或自然失败中验收，不为测试撤销已恢复手机的正式授权。全仓前端 tsc 若被既有测试文件语法阻断应单列，生产源码类型检查、完整构建和发布回归独立报告，不修改无关测试。
+
+## Session access leases and descriptor deletion
+
+A local integration can delegate a browser connection to one of its own sessions
+without sharing a service password or a long-lived integration credential. Detect
+`session_access_tickets` in `/capabilities`, and grant `session.access` explicitly.
+All calls below use the existing private Unix socket and integration headers.
+
+1. `POST /sessions/:id/access` with `{fence, lease}`. `fence` is a monotonic integer;
+   `lease` is `{id,userId,deviceId,expiresAt}` or `null` to revoke. Leases last at most
+   125 seconds. Renew the same owner/device before expiration; advance the fence
+   when ownership changes. An initially empty `deviceId` may be bound once.
+2. `POST /sessions/:id/access-ticket` with `{deviceId}` returns a ticket valid for
+   at most 30 seconds. Deliver it only to that authenticated browser.
+3. Establish the existing Noise channel and send the encrypted RPC
+   `{type:'session-auth', ticket}`. The device's Noise identity must match the lease.
+   This connection exposes only the selected session's chat and terminal capabilities,
+   even if that device also holds a full-service grant. It cannot manage or reshare
+   sessions. Revocation, principal revocation and lease expiration close live channels.
+
+The integrator remains responsible for user authentication, ACLs, lease ownership
+and routing to the right service. Browser disconnect/revocation does not close the
+Agent. Session creation, restoration and close keep their existing idempotency and
+exact native-process ownership checks.
+
+To remove a recovery descriptor after an explicit close, detect `session_forget`,
+then grant `session.forget` and call `DELETE /sessions/:id` with the current
+`{generation}`. It rejects running, ambiguously closed or foreign sessions. Repeats
+at the same final generation succeed. Creation/management keys become small durable
+tombstones: replay cannot resurrect the forgotten session. This removes the
+integration descriptor, not project files, the Agent provider's native history,
+messages or audit events. Apply separate retention policies to those stores.

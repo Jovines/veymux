@@ -7,6 +7,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { WebSocket, WebSocketServer } from 'ws';
 import { createFederationRuntime, type FederationRuntimeOptions } from './runtime.js';
+import { SessionAccessStore } from './sessionAccess.js';
+import { randomUUID } from 'node:crypto';
 import { createIdentity, secureConnection, type Identity } from './secureProtocol.js';
 import { socketDuplex } from './socketDuplex.js';
 import { PacketChannel, fromBase64, toBase64, type Packet } from './packets.js';
@@ -102,6 +104,24 @@ async function fixture(runtimeOptions: FederationRuntimeOptions = {}, allowOpenA
 }
 
 describe('federation runtime over real encrypted WebSocket', () => {
+  it('uses integration tickets over Noise and keeps existing service grants outside the scoped connection', async () => {
+    let access: SessionAccessStore | undefined;
+    const f=await fixture({sessionAccess:()=>access}),guest=await f.connect();
+    await guest.pair();
+    access=new SessionAccessStore(join(f.directory,'session-access.json'),()=>true);
+    const lease={id:randomUUID(),userId:'user@example.test',deviceId:guest.identity.peerId,expiresAt:Date.now()+60000};
+    access.update('source-one','integration',{fence:1,lease});
+    guest.channel.send({type:'session-auth',id:'scoped-auth',ticket:access.ticket('source-one','integration',guest.identity.peerId)});
+    expect(await guest.take('scoped-auth')).toMatchObject({type:'result',sessionId:'source-one'});
+    guest.channel.send({type:'permissions',id:'scoped-permissions'});
+    expect(await guest.take('scoped-permissions')).toMatchObject({fullService:false,grants:[{scope:{kind:'sessions',sessionIds:['source-one']}}]});
+    guest.channel.send({type:'collaboration-connect',id:'no-service-rpc'});
+    expect(await guest.take('no-service-rpc')).toMatchObject({type:'error',error:'AUTHORIZATION_DENIED'});
+    expect((await guest.http('own-session','GET','/api/terminal/one/health'))[0]).toMatchObject({type:'head',status:200});
+    expect((await guest.http('other-session','GET','/api/terminal/two/health'))[0]).toMatchObject({type:'error',error:'AUTHORIZATION_DENIED'});
+    access.update('source-one','integration',{fence:2,lease:null});
+    expect((await guest.http('revoked-session','GET','/api/terminal/one/health'))[0]).toMatchObject({type:'error'});
+  });
   it('enforces chat-only grants over Noise and prevents forged unrestricted chat headers', async () => {
     const f = await fixture(), guest = await f.connect();
     f.runtime.store.grant({ subjectId: guest.identity.peerId, scope: { kind: 'sessions', sessionIds: ['source-one'] }, actions: ['session.chat-view', 'session.chat-send'] });

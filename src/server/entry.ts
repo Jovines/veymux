@@ -592,6 +592,7 @@ export function startServer(options: ServerOptions = {}): StartServerResult {
     sessionAttachmentDirectory: path.join(homedir(), '.termdock', 'chat-attachments'),
     restoreSharedSession: restoreSharedFederationSession,
     resolveSessionId: resolveStableFederationSessionId,
+    sessionAccess: () => app.locals.integrationRuntime?.sessionAccess,
     collaborationConnected: (subjectId, rpc) => {
       const channels = collaborationChannels.get(subjectId) ?? new Set<CollaborationRpc>();
       channels.add(rpc); collaborationChannels.set(subjectId, channels);

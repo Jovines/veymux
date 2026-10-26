@@ -5,7 +5,7 @@ import { CollaborationError } from './collaborationProtocol.js';
 import { resolveProfileNativeIdentity, type NativeProcessIdentityConfig } from './nativeProcessIdentity.js';
 
 export const INTEGRATION_PROTOCOL = 1;
-export const INTEGRATION_OPERATIONS = ['message.send', 'message.read', 'task.read', 'task.create', 'task.configure', 'task.assign', 'task.comment', 'task.revise', 'task.answer', 'events.read', 'session.create', 'session.read', 'session.restore', 'session.release', 'session.rename', 'session.close'] as const;
+export const INTEGRATION_OPERATIONS = ['message.send', 'message.read', 'task.read', 'task.create', 'task.configure', 'task.assign', 'task.comment', 'task.revise', 'task.answer', 'events.read', 'session.create', 'session.read', 'session.restore', 'session.release', 'session.rename', 'session.close', 'session.forget', 'session.access'] as const;
 export type IntegrationPermission = typeof INTEGRATION_OPERATIONS[number];
 export interface StartupInputCondition {
   /** Literal terms in the current terminal viewport, with horizontal space folded. */
@@ -155,6 +155,7 @@ export class IntegrationStore {
   }
   subscribe(listener: () => void): () => void { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
   policies(): Omit<IntegrationPrincipal, 'tokenHash'>[] { return this.doc.principals.map(({ tokenHash: _, ...principal }) => structuredClone(principal)); }
+  permits(id: string, permission: IntegrationPermission): boolean { return this.doc.principals.some(p => p.id === id && !p.revoked && p.permissions.includes(permission)); }
   provision(policy: IntegrationPolicy): { principal: IntegrationPolicy; token: string } {
     const checked = validatePolicy(policy);
     if (this.doc.principals.some(p => p.id === checked.id)) integrationError('INTEGRATION_EXISTS', 'Use a new id; credentials cannot be silently replaced', 409);
