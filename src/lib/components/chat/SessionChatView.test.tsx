@@ -28,6 +28,7 @@ function pagedHistory(url: unknown, all: ChatMessage[]) {
 }
 
 it('makes local display clearing an independent shared permission without granting terminal access', async () => {
+  vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
   const messages = [{ id: 'clear-shared', role: 'assistant', content: '仍然保留的记录', createdAt: 1, status: 'stored' }];
   const fetcher = vi.fn(async (_url: unknown, _init?: RequestInit) => Response.json({ agentAvailable: true, messages }));
   vi.stubGlobal('fetch', fetcher);
@@ -38,13 +39,15 @@ it('makes local display clearing an independent shared permission without granti
   expect(screen.queryByRole('button', { name: '清空显示' })).toBeNull();
   expect(screen.queryByRole('button', { name: /查看终端|切换到终端/ })).toBeNull();
   view.rerender(tree(true));
-  fireEvent.click(screen.getByRole('button', { name: '清空显示' }));
+  fireEvent.click(screen.getByRole('button', { name: '更多会话操作' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: '清空显示' }));
   expect(screen.queryByText('仍然保留的记录')).toBeNull();
-  expect(screen.getByRole('button', { name: '恢复旧记录' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: '更多会话操作' }));
+  expect(screen.getByRole('menuitem', { name: '恢复旧记录' })).toBeTruthy();
   expect(fetcher.mock.calls.every(([url, init]) => !init?.method || init.method === 'GET' || String(url).endsWith('/viewed'))).toBe(true);
   view.rerender(tree(false));
   await screen.findByText('仍然保留的记录');
-  expect(screen.queryByRole('button', { name: '恢复旧记录' })).toBeNull();
+  expect(screen.queryByRole('menuitem', { name: '恢复旧记录' })).toBeNull();
 });
 
 it('shows blocked delivery with an actionable terminal entry and clears it after a real write', async () => {

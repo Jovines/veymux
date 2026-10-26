@@ -17,6 +17,17 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); useTerminalStore.getState().clearAllTerminalSessions(); });
 function mount(active = true, canWrite = true) { return render(<section data-session-chat><input aria-label="chat" /><ChatComposerActions sessionId="target" active={active} canWrite={canWrite} /></section>); }
+it('keeps display clearing independently available in a read-only share and restores from the same menu', () => {
+  const clear = vi.fn(), restore = vi.fn();
+  render(<SessionCapabilitiesContext.Provider value={sharedSessionCapabilities({ canViewChat: true, canWrite: false, canClearChat: true })}><section data-session-chat><ChatComposerActions sessionId="target" active canWrite={false} onClearDisplay={clear} onRestoreDisplay={restore} /></section></SessionCapabilitiesContext.Provider>);
+  fireEvent.click(screen.getByRole('button', { name: '更多会话操作' }));
+  expect(screen.queryByRole('menuitem', { name: '分享这个会话' })).toBeNull();
+  fireEvent.click(screen.getByRole('menuitem', { name: '清空显示' })); expect(clear).toHaveBeenCalledOnce();
+  expect(screen.queryByRole('menu')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: '更多会话操作' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: '恢复旧记录' })); expect(restore).toHaveBeenCalledOnce();
+  expect(actions.insert).not.toHaveBeenCalled(); expect(actions.copy).not.toHaveBeenCalled();
+});
 it('uses the shared prompt insertion for the exact Session, closes the menu and never submits', async () => {
   mount();
   const editor = screen.getByLabelText('chat'); editor.focus();

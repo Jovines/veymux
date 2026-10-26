@@ -63,6 +63,27 @@ it.each([390, 320, 1280])('inserts the common todo prompt at the caret with no s
   expect(vi.mocked(fetch).mock.calls.filter(([url, init]) => String(url).split('?')[0].endsWith('/chat') && init?.method === 'POST')).toHaveLength(0);
   expect(swiper?.activeIndex).toBe(0); editor.removeEventListener('blur', blur);
 });
+it.each([390, 1280])('clears and restores local history from the composer menu without losing the draft at width %i', async width => {
+  const editor = await mount(width);
+  vi.mocked(fetch).mockImplementation(async () => Response.json({ agentAvailable: true, messages: [{ id: 'old-display', role: 'assistant', content: '保留在服务端的旧记录', createdAt: 1, status: 'stored' }] }));
+  window.dispatchEvent(new Event('online'));
+  await expect.element(page.getByText('保留在服务端的旧记录', { exact: true })).toBeVisible();
+  await page.elementLocator(editor).fill('保留草稿');
+  const blur = vi.fn(); editor.addEventListener('blur', blur);
+  expect(document.querySelector('[data-session-chat] > [data-chat-clear-display]')).toBeNull();
+  await commands.composerTap('[aria-label="更多会话操作"]');
+  const clear = page.getByRole('menuitem', { name: '清空显示', exact: true }).element();
+  expect(clear.closest('[role="menu"]')).toBeTruthy();
+  await commands.composerTap('[role="menuitem"]:has-text("清空显示")');
+  await expect.element(page.getByText('保留在服务端的旧记录', { exact: true })).not.toBeInTheDocument();
+  expect(readChatEditor(editor).text).toBe('保留草稿'); expect(document.activeElement).toBe(editor); expect(blur).not.toHaveBeenCalled();
+  await commands.composerTap('[aria-label="更多会话操作"]');
+  await commands.composerTap('[role="menuitem"]:has-text("恢复旧记录")');
+  await expect.element(page.getByText('保留在服务端的旧记录', { exact: true })).toBeVisible();
+  expect(readChatEditor(editor).text).toBe('保留草稿'); expect(blur).not.toHaveBeenCalled();
+  expect(vi.mocked(fetch).mock.calls.some(([url, init]) => init?.method === 'DELETE' || init?.method === 'POST' && String(url).split('?')[0].endsWith('/chat'))).toBe(false);
+  editor.removeEventListener('blur', blur);
+});
 it('keeps a short mobile menu inside the safe area and preserves focus when dismissed outside', async () => {
   const editor = await mount(320, 500); await page.elementLocator(editor).fill('保留这段草稿');
   document.documentElement.style.setProperty('--safe-top-inset', '59px');
@@ -77,7 +98,7 @@ it('keeps a short mobile menu inside the safe area and preserves focus when dism
   await commands.composerTap('[aria-label="更多会话操作"]');
   expect(document.querySelector('[role="menu"]')).toBeNull();
   await commands.composerTap('[aria-label="更多会话操作"]');
-  await commands.composerTap('.session-chat-welcome');
+  await commands.composerTap('.session-chat-welcome h2');
   expect(document.querySelector('[role="menu"]')).toBeNull(); expect(document.activeElement).toBe(editor); expect(blur).not.toHaveBeenCalled();
   expect(readChatEditor(editor).text).toBe('保留这段草稿'); editor.removeEventListener('blur', blur);
 });

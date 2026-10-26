@@ -1,5 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
-import { Copy, ListTodo, MoreHorizontal, Share2, SlidersHorizontal } from 'lucide-react';
+import { Copy, Eraser, History, ListTodo, MoreHorizontal, Share2, SlidersHorizontal } from 'lucide-react';
 import { useSessionCapabilities } from '../../federation/ShareAccessContext';
 import { currentSecureClient } from '../../federation/browserIntegration';
 import { openSessionShare } from '../../federation/accessEvents';
@@ -12,13 +12,14 @@ import { TODO_GUIDANCE } from '../../todos/guidance';
 import { useAppFeedback, type Feedback } from '../ui/AppFeedback';
 
 /** A small nonmodal menu: pointer use preserves the chat editor and its IME. */
-export function ChatComposerActions({ sessionId, active, canWrite, onOpen, onMediaSettings, mediaBusy = false }: { sessionId: string; active: boolean; canWrite: boolean; onOpen?: () => void; onMediaSettings?: () => void; mediaBusy?: boolean }) {
+export function ChatComposerActions({ sessionId, active, canWrite, onOpen, onMediaSettings, mediaBusy = false, onClearDisplay, onRestoreDisplay, clearDisplayDisabled = false }: { sessionId: string; active: boolean; canWrite: boolean; onOpen?: () => void; onMediaSettings?: () => void; mediaBusy?: boolean; onClearDisplay?: () => void; onRestoreDisplay?: () => void; clearDisplayDisabled?: boolean }) {
   const capabilities = useSessionCapabilities();
   const canInsert = capabilities.has('todo.guidance') && canWrite;
   const canCopy = capabilities.has('session.owner-menu');
   const canShare = capabilities.has('session.share');
   const canMedia = canWrite && !!onMediaSettings;
-  const available = canInsert || canCopy || canShare || canMedia;
+  const canClear = capabilities.has('session.chat-clear') && !!onClearDisplay;
+  const available = canInsert || canCopy || canShare || canMedia || canClear;
   const cwd = useTerminalStore(state => state.sessions.get(sessionId)?.cwd);
   const owner = useRef<HTMLDivElement>(null), trigger = useRef<HTMLButtonElement>(null), menu = useRef<HTMLDivElement>(null), probe = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false), [inserting, setInserting] = useState(false), [feedback, setFeedback] = useState<Feedback | null>(null);
@@ -119,6 +120,8 @@ export function ChatComposerActions({ sessionId, active, canWrite, onOpen, onMed
         {canCopy && <button type="button" role="menuitem" className={item} disabled={!cwd} title={!cwd ? '当前目录暂不可用' : undefined} onPointerDown={event => event.preventDefault()} onClick={() => void copy()}><Copy size={15} />复制当前目录</button>}
         {canShare && <button type="button" role="menuitem" className={item} onPointerDown={event => event.preventDefault()} onClick={() => { if (active && capabilities.has('session.share')) { close(); openSessionShare({ inviteSessionId: sessionId, viewMode: 'chat' }); } }}><Share2 size={15} />分享这个会话</button>}
         {canMedia && <button type="button" role="menuitem" className={item} disabled={mediaBusy} onPointerDown={event => event.preventDefault()} onClick={() => { if (active && canWrite) { close(); onMediaSettings?.(); } }}><SlidersHorizontal size={15} />媒体压缩设置</button>}
+        {canClear && onRestoreDisplay && <button type="button" role="menuitem" className={item} onPointerDown={event => event.preventDefault()} onClick={() => { if (active && capabilities.has('session.chat-clear')) { close(); onRestoreDisplay(); } }}><History size={15} />恢复旧记录</button>}
+        {canClear && <button type="button" role="menuitem" className={item} disabled={clearDisplayDisabled} title="仅清空当前设备的显示，保留记录和 Agent 上下文" onPointerDown={event => event.preventDefault()} onClick={() => { if (active && !clearDisplayDisabled && capabilities.has('session.chat-clear')) { close(); onClearDisplay?.(); } }}><Eraser size={15} />清空显示</button>}
       </div>
     </>}
   </div>;
