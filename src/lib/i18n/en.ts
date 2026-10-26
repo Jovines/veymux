@@ -1104,7 +1104,7 @@ export const en: TranslationDictionary = {
     notificationsBothOnSummary: 'AI task finished and terminal exit enabled',
     notificationsNoEventsSummary: 'No notification events enabled',
     notificationsDenied: 'Browser notification permission is blocked. Enable it in site settings.',
-    notificationsUnsupported: 'Notifications require a secure context and service worker support.',
+    notificationsUnsupported: 'Notifications need HTTPS and browser support. You can also use the desktop app.',
     notificationsTestBody: 'Notifications are enabled. You will be notified when an AI task finishes in the background.',
     shell: 'Temporary',
     tmux: 'Keep on disconnect',

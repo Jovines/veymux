@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FederationAccess } from './FederationAccess';
-import { createInviteLink } from '../lib/federation/inviteLink';
+import { createInviteLink, createOnboardingInviteLink, parseInviteLink } from '../lib/federation/inviteLink';
 vi.mock('qrcode', () => ({ toDataURL: vi.fn().mockResolvedValue('data:image/png;base64,cXI=') }));
 const serviceId = '12D3KooW' + '1'.repeat(44);
 const code = 'secret-invite-code'.repeat(3);
@@ -11,6 +11,18 @@ function more() { const button = screen.getByRole('button', { name: /更多选�
 function allWhenEmpty() { if (screen.queryByRole('button', { name: /已选 [1-9]/ })) return; fireEvent.click(screen.getByRole('radio', { name: '全部终端' })); }
 afterEach(() => { cleanup(); localStorage.clear(); Reflect.deleteProperty(navigator, 'clipboard'); document.documentElement.style.removeProperty('--background'); document.documentElement.style.removeProperty('--foreground'); });
 describe('FederationAccess invitation flow', () => {
+  it('offers original HTTPS without installing a CA or redeeming the HTTP invitation', () => {
+    const original = createInviteLink({ v: 1, serviceId, code, entryUrl: 'https://192.168.1.20:9834', viewMode: 'chat', viewLayout: 'split' });
+    const invitation = parseInviteLink(createOnboardingInviteLink(original, 'http://192.168.1.20:21000/connect'), { httpTransport: true });
+    const onConnect = vi.fn();
+    render(<FederationAccess initialInvite={invitation} onConnect={onConnect} onClose={() => {}} />);
+    const https = screen.getByRole('link', { name: '直接使用 HTTPS' });
+    expect(parseInviteLink(https.getAttribute('href')!)).toMatchObject({ url: 'https://192.168.1.20:9834', targetPeerId: serviceId, pairingCode: code, viewMode: 'chat', viewLayout: 'split' });
+    https.addEventListener('click', event => event.preventDefault()); fireEvent.click(https);
+    expect(onConnect).not.toHaveBeenCalled();
+    expect(screen.getByRole('link', { name: '安装本地 CA 证书' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '接受邀请' })).toBeTruthy();
+  });
   it('adds reusable unlimited chat sharing with a separate clear-display permission', async () => {
     const onCreateInvite = vi.fn().mockResolvedValue({ url: inviteUrl, expiresAt: null });
     render(<FederationAccess paired initialShareSessionId="one" sessions={[{ sessionId: 'one', name: '构建任务' }]} onConnect={() => {}} onClose={() => {}} onCreateInvite={onCreateInvite} />);

@@ -32,6 +32,26 @@ it('stops an explicitly cancelled uncertain message without fabricating a termin
   expect(f.store.receipt(f.message.id)).toMatchObject({ status: 'failed', delivered_at: null, failure_reason: 'DELIVERY_CANCELLED_BY_OWNER' });
   expect(f.store.pendingCount('target')).toBe(0); expect(f.store.hasUnconfirmedDelivery('target')).toBe(false);
 });
+it('retries a cleaned input probe immediately with an attempt fence and never duplicates an active or completed write', () => {
+  const f = fixture();
+  f.store.recordTransport(f.message.id, { ...f.diagnostic, write_stage: 'not_started', last_error: 'TERMINAL_WRITE_FAILED: TERMINAL_INPUT_ECHO_UNCONFIRMED' });
+  f.store.resolveUnconfirmedDelivery(f.message.id, 'target', 'retry', 1);
+  expect(f.store.diagnostic(f.message.id)).toMatchObject({ write_stage: 'not_started', next_retry_at: null, last_error: null });
+  f.store.resolveUnconfirmedDelivery(f.message.id, 'target', 'retry', 1);
+  f.store.recordTransport(f.message.id, { ...f.diagnostic, attempt_count: 2, write_stage: 'probe_attempted', last_error: 'DELIVERY_IN_PROGRESS', checked_at: Date.now() + 1 });
+  expect(() => f.store.resolveUnconfirmedDelivery(f.message.id, 'target', 'retry', 1)).toThrow('Refresh');
+  expect(() => f.store.resolveUnconfirmedDelivery(f.message.id, 'target', 'retry', 2)).toThrow('Refresh');
+  f.store.markDelivered([f.message.id]);
+  expect(() => f.store.resolveUnconfirmedDelivery(f.message.id, 'target', 'retry', 2)).toThrow('Refresh');
+});
+it('can wake an initial route failure without starting a second message or bypassing an active writer', () => {
+  const f = fixture();
+  f.store.recordTransport(f.message.id, { ...f.diagnostic, attempt_count: 0, write_stage: undefined, last_error: 'ROUTE_RECOVERY_FAILED: TMUX_LAYOUT_UNAVAILABLE', next_retry_at: Date.now() + 30000 });
+  expect(() => f.store.resolveUnconfirmedDelivery(f.message.id, 'target', 'cancel', 0)).toThrow('observed attempt');
+  f.store.resolveUnconfirmedDelivery(f.message.id, 'target', 'retry', 0);
+  expect(f.store.diagnostic(f.message.id)).toMatchObject({ attempt_count: 0, write_stage: 'not_started', last_error: null, next_retry_at: null });
+  expect(f.store.inbox('target')).toHaveLength(1);
+});
 it('rolls back a resolution that could not be durably persisted', () => {
   const f = fixture(); vi.spyOn(fs, 'renameSync').mockImplementationOnce(() => { throw new Error('disk full'); });
   expect(() => f.store.resolveUnconfirmedDelivery(f.message.id, 'target', 'retry', 1)).toThrow('disk full');

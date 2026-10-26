@@ -1,4 +1,4 @@
-import { reusableInvitationGrant } from '../services/desktopInvitation';
+import { reusableInvitationGrant, stageDesktopInvitation, takeDesktopInvitation } from '../services/desktopInvitation';
 import { LoadingSpinner as LoaderCircle } from '../components/ui/Loading';
 import { Terminal } from 'lucide-react';
 import { listServiceConnections, saveServiceConnection, normalizeServiceAddress, parseSavedService, sameService, type ServiceConnection } from '../services/serviceDirectory';
@@ -37,6 +37,7 @@ const initialInvitation = (() => {
   finally { history.replaceState(null, '', location.pathname + location.search); }
 })();
 const OPEN_SESSION_KEY = 'termdock-secure-open-session';
+const initialDesktopInvitation = takeDesktopInvitation();
 let localPairing: Promise<unknown> | undefined;
 function pendingSession(): string | undefined {
   try { const value = JSON.parse(sessionStorage.getItem(OPEN_SESSION_KEY) ?? 'null'); return value?.serviceId === savedConnection()?.targetPeerId ? value.sessionId : undefined; } catch { return undefined; }
@@ -51,6 +52,7 @@ export function SecureAccessGate({ children }: { children: ReactNode }) {
   const [nativeTarget, setNativeTarget] = useState<Pick<ServiceConnection, 'url' | 'serviceOrigin' | 'label' | 'targetPeerId'>>();
   const [incomingInvitation, setIncomingInvitation] = useState(initialInvitation);
   const [desktopInvitation, setDesktopInvitation] = useState<ConnectionIntent>();
+  const desktopCandidate = useRef(initialInvitation ? undefined : initialDesktopInvitation);
   const [ready, setReady] = useState(false);
   const [authorizedClient, setAuthorizedClient] = useState<SecureClient>();
   const [open, setOpen] = useState(!!initialInvitation);
@@ -189,6 +191,13 @@ export function SecureAccessGate({ children }: { children: ReactNode }) {
     try { permissions = await readDeviceAuthorization(client, { timeoutMs }); }
     catch (failure) { if (!current()) throw new Error('SERVICE_SELECTION_CHANGED'); throw failure; }
     if (!current()) throw new Error('SERVICE_SELECTION_CHANGED');
+    const candidate = desktopCandidate.current;
+    if (candidate && candidate.targetPeerId === client.targetPeerId) {
+      desktopCandidate.current = undefined;
+      setDesktopInvitation(reusableInvitationGrant(candidate, permissions.grants) ? candidate : undefined);
+    } else {
+      setDesktopInvitation(previous => previous && previous.targetPeerId === client.targetPeerId && reusableInvitationGrant(previous, permissions.grants) ? previous : undefined);
+    }
     const acknowledge=window.termdockDesktop?.acknowledgeServiceInvitation,stamp=nativeConnectionRef.current;
     if(acknowledge&&stamp){
       const native=await stamp;
@@ -443,6 +452,7 @@ export function SecureAccessGate({ children }: { children: ReactNode }) {
   }), []);
   const connect = async (intent: ConnectionIntent) => {
     connectInFlight.current++;
+    const clearHandoff = stageDesktopInvitation(intent);
     try {
     if (await openOtherDesktopService(intent)) return;
     if (!intent.pairingCode && !intent.routeCode && savedConnection()?.targetPeerId !== intent.targetPeerId && getWorkspaceHost()) {
@@ -461,7 +471,7 @@ export function SecureAccessGate({ children }: { children: ReactNode }) {
     setAccessFailure(undefined); resumeVerification.current?.();
     if (nativeConnectionRef.current) nativeConnectionRef.current = nativeConnectionRef.current.then(value => value ? { ...value, invitation: undefined } : null);
     setIncomingInvitation(undefined);setOpen(false); setError(false);
-    } finally { connectInFlight.current--; }
+    } finally { clearHandoff(); connectInFlight.current--; }
   };
   const connectWithPassword = async (intent: ConnectionIntent, password: string) => {
     if (await openOtherDesktopService(intent)) return;

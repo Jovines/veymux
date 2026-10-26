@@ -6,19 +6,23 @@ export interface ChatDelivery {
   inputCheckFailed?: boolean;
   canReconnect?: boolean;
   attemptCount?: number;
+  canRetry?: boolean;
   /** Owner-only recovery for an earlier message blocking this recipient. */
   blockedBy?: { messageId: string; attemptCount: number };
 }
 
 export function chatDelivery(status: string, diagnostic: TransportDiagnostic | null, sessionId: string, fullService: boolean,
   blocker?: { messageId: string; diagnostic: TransportDiagnostic | null }): ChatDelivery | undefined {
-  const own = messageChatDelivery(status, diagnostic, sessionId, fullService);
+  let own = messageChatDelivery(status, diagnostic, sessionId, fullService);
   if (status === 'pending' && blocker?.diagnostic?.last_error && blocker.diagnostic.last_error !== 'DELIVERY_IN_PROGRESS'
     && hasUnconfirmedTerminalWrite(blocker.diagnostic)) {
     const inputCheckFailed = blocker.diagnostic.write_stage === 'probe_attempted'
       || /TERMINAL_INPUT_ECHO_UNCONFIRMED|TERMINAL_INPUT_UNAVAILABLE/.test(blocker.diagnostic.last_error);
     return { ...own ?? { state: 'retrying' }, ...(inputCheckFailed ? { inputCheckFailed: true } : {}),
       ...(fullService ? { blockedBy: { messageId: blocker.messageId, attemptCount: blocker.diagnostic.attempt_count } } : {}) };
+  }
+  if (own?.state === 'retrying' && fullService && diagnostic && !hasUnconfirmedTerminalWrite(diagnostic)) {
+    own = { ...own, canRetry: true, attemptCount: diagnostic.attempt_count };
   }
   return own;
 }
@@ -33,7 +37,7 @@ function messageChatDelivery(status: string, diagnostic: TransportDiagnostic | n
     // actions; newer clients add the specific check/cleanup guidance.
     return hasUnconfirmedTerminalWrite(diagnostic)
       ? { state: 'outcome-unknown', inputCheckFailed: true, ...(fullService ? { attemptCount: diagnostic.attempt_count } : {}) }
-      : { state: 'retrying', inputCheckFailed: true };
+      : { state: 'retrying', inputCheckFailed: true, ...(fullService && diagnostic.attempt_count > 0 ? { attemptCount: diagnostic.attempt_count } : {}) };
   }
   if (hasUnconfirmedTerminalWrite(diagnostic)) return { state: 'outcome-unknown', ...(fullService ? { attemptCount: diagnostic.attempt_count } : {}) };
   if (diagnostic.route_state === 'identity-mismatch') {

@@ -946,10 +946,13 @@ export class CollaborationStore {
   resolveUnconfirmedDelivery(id: string, recipient: string, action: unknown, attempt: unknown): void {
     const message = this.getMessage(id), diagnostic = this.diagnostic(id);
     if (!message || message.toSessionId !== recipient) throw new CollaborationError('NOT_MESSAGE_RECIPIENT', 'Only the recipient can resolve a terminal write', 403);
-    if (!['retry', 'cancel'].includes(String(action)) || !Number.isSafeInteger(attempt) || Number(attempt) < 1) throw new CollaborationError('INVALID_DELIVERY_RESOLUTION', 'A resolution requires retry/cancel and the observed attempt');
+    const safeRetry = action === 'retry' && !!diagnostic?.last_error && diagnostic.last_error !== 'DELIVERY_IN_PROGRESS'
+      && (diagnostic.write_stage === 'not_started' || diagnostic.attempt_count === 0 && !diagnostic.write_stage);
+    if (!['retry', 'cancel'].includes(String(action)) || !Number.isSafeInteger(attempt) || Number(attempt) < (safeRetry ? 0 : 1)) throw new CollaborationError('INVALID_DELIVERY_RESOLUTION', 'A resolution requires retry/cancel and the observed attempt');
     const previousResolution = diagnostic?.write_resolution;
     if (previousResolution && previousResolution.action === action && previousResolution.attempt === attempt && diagnostic?.attempt_count === attempt) return;
-    if (message.status !== 'pending' || diagnostic?.attempt_count !== attempt || !hasUnconfirmedTerminalWrite(diagnostic)) throw new CollaborationError('DELIVERY_ATTEMPT_CHANGED', 'Refresh the current delivery before resolving it', 409);
+    if (message.status !== 'pending' || diagnostic?.attempt_count !== attempt || diagnostic?.last_error === 'DELIVERY_IN_PROGRESS'
+      || !hasUnconfirmedTerminalWrite(diagnostic) && !safeRetry) throw new CollaborationError('DELIVERY_ATTEMPT_CHANGED', 'Refresh the current delivery before resolving it', 409);
     const resolution = { action: action as 'retry' | 'cancel', attempt: Number(attempt), at: Date.now() };
     if (action === 'cancel') { message.status = 'failed'; message.failureReason = 'DELIVERY_CANCELLED_BY_OWNER'; }
     this.document.transport![id] = { ...diagnostic!, write_resolution: resolution,

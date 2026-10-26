@@ -9,7 +9,7 @@ const message: ChatMessage = { id: 'pending', role: 'user', content: '检查构�
 it('explains failed input detection and offers owner recovery after checking and clearing the terminal', async () => {
   const request = vi.fn(async () => Response.json({ ok: true })); vi.stubGlobal('fetch', request);
   render(<ChatDeliveryNotice message={{ ...message, delivery: { state: 'outcome-unknown', inputCheckFailed: true, attemptCount: 2 } }} sessionId="original" canWrite onTerminal={() => {}} onRecovered={() => {}} />);
-  expect(screen.getByText('未发送成功')).toBeTruthy();
+  expect(screen.getByText('发送待确认')).toBeTruthy();
   expect(screen.queryByText(/终端输入检测未通过/)).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: '详情' }));
   expect(screen.getByText(/终端输入检测未通过/)).toBeTruthy();
@@ -17,6 +17,20 @@ it('explains failed input detection and offers owner recovery after checking and
   fireEvent.click(screen.getByRole('button', { name: '重试' }));
   await act(async () => {});
   expect(request).toHaveBeenCalledWith('/api/terminal/original/chat/pending/delivery', expect.objectContaining({ body: JSON.stringify({ action: 'retry', attempt: 2 }) }));
+});
+it('offers immediate retry for an input check that ended safely before writing the message', async () => {
+  const request = vi.fn(async () => Response.json({ ok: true })); vi.stubGlobal('fetch', request);
+  render(<ChatDeliveryNotice message={{ ...message, delivery: { state: 'retrying', inputCheckFailed: true, attemptCount: 6 } }} sessionId="original" canWrite onTerminal={() => {}} onRecovered={() => {}} />);
+  expect(screen.getByText('暂未发送')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: '重试' })); await act(async () => {});
+  expect(request).toHaveBeenCalledWith('/api/terminal/original/chat/pending/delivery', expect.objectContaining({ body: JSON.stringify({ action: 'retry', attempt: 6 }) }));
+});
+it('retries an initial route failure and refreshes a stale decision without sending another request', async () => {
+  const request = vi.fn(async () => Response.json({}, { status: 409 })), recovered = vi.fn(); vi.stubGlobal('fetch', request);
+  render(<ChatDeliveryNotice message={{ ...message, delivery: { state: 'retrying', canRetry: true, attemptCount: 0 } }} sessionId="original" canWrite onTerminal={() => {}} onRecovered={recovered} />);
+  fireEvent.click(screen.getByRole('button', { name: '重试' })); await act(async () => {});
+  expect(request).toHaveBeenCalledExactlyOnceWith('/api/terminal/original/chat/pending/delivery', expect.objectContaining({ body: JSON.stringify({ action: 'retry', attempt: 0 }) }));
+  expect(recovered).toHaveBeenCalledOnce();expect(screen.getByRole('alert').textContent).toContain('状态已变化');
 });
 it('restores manual retry for an earlier non-chat message blocking this chat, and clears the notice after recovery', async () => {
   const request = vi.fn(async () => Response.json({ ok: true })), recovered = vi.fn(); vi.stubGlobal('fetch', request);

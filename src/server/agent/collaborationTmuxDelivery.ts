@@ -42,8 +42,9 @@ async function assertSamePane(
   const identity = (await run(['display-message', '-p', '-t', pane.paneId,
     `#{pid}:#{session_id}:#{pane_id}:#{pane_pid}${requireInput ? ':#{pane_dead}:#{pane_input_off}' : ''}`])).trim();
   const expected = `${pane.serverPid}:${pane.sessionId}:${pane.paneId}:${pane.panePid}`;
-  if (!requireInput) { if (identity !== expected) throw new Error('TMUX_PANE_CHANGED'); return; }
-  if (!identity.startsWith(`${expected}:`)) throw new Error('TMUX_PANE_CHANGED');
+  const changed = () => new Error(`TMUX_PANE_CHANGED: expected ${expected}; observed ${identity.slice(0, 160) || '(empty)'}`);
+  if (!requireInput) { if (identity !== expected) throw changed(); return; }
+  if (!identity.startsWith(`${expected}:`)) throw changed();
   if (identity !== `${expected}:0:0`) throw new Error('TERMINAL_INPUT_UNAVAILABLE');
 }
 

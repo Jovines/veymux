@@ -36,12 +36,13 @@ export function ChatUserContent({ content }: { content: string }) {
   const separateFiles = draft.attachments.filter(file => !file.reference || !draft.text.includes(attachmentToken(file)));
   return <>{parsed.reference && <ChatReferenceCard reference={parsed.reference} />}<ChatAttachmentCards files={separateFiles} onPreview={onPreview} />{draft.text && <p className="whitespace-pre-wrap break-words text-base leading-7"><ChatInlineContent text={draft.text} files={draft.attachments} mentions={draft.mentions} onPreview={onPreview} /></p>}{preview}</>;
 }
-export function ChatUserMessage({ content, createdAt, status, messageId, actionsOpen, children }: { content: string; createdAt: number; status: string; messageId?: string; actionsOpen?: boolean; children?: ReactNode }) {
+export function ChatUserMessage({ content, createdAt, status, messageId, actionsOpen, children, delivery }: { content: string; createdAt: number; status: string; messageId?: string; actionsOpen?: boolean; children?: ReactNode; delivery?: ReactNode }) {
   return <article data-chat-turn="user" data-chat-message={messageId} data-actions-open={actionsOpen || undefined} className="ml-auto flex w-fit max-w-[88%] flex-col items-end sm:max-w-[85%]">
     <div data-chat-user-bubble data-chat-message-content className="termdock-native-select w-fit max-w-full rounded-2xl bg-surface-2 px-4 py-3"><ChatUserContent content={content} /></div>
     <div data-chat-message-actions className="chat-user-meta mt-1 flex min-h-8 flex-wrap items-center justify-end gap-2 text-[10px] text-muted-foreground">
       <span>{status}</span><ChatTime at={createdAt} className="opacity-60" />{children}
     </div>
+    {delivery && <div className="max-w-full">{delivery}</div>}
   </article>;
 }
 function ChatReplyTarget({ message, original, onJump, loading }: { message: ChatMessage; original?: ChatMessage; onJump?: (target: string, reply: string) => void; loading?: boolean }) {
@@ -55,11 +56,12 @@ function ChatReplyTarget({ message, original, onJump, loading }: { message: Chat
     : <div data-chat-reply-context={context.id} title={`回复你的消息：${context.text}`} className={className}>{label}</div>;
 }
 const action = 'chat-message-action inline-flex h-8 min-w-8 items-center justify-center gap-1 rounded-lg text-muted-foreground/60 transition hover:bg-surface-2 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring';
-export const ChatTimeline = memo(function ChatTimeline({ messages, agentName, agentSlug, canWrite, copied, onCopy, onReference, sessionId, uiWritable, onAction, pendingMessage, scrollRoot, nearbyIds, unreadIds, viewing, onViewed, replyStatus, replyFeedback, onJumpToReply, locatingReply, locatedMessageId }: {
+export const ChatTimeline = memo(function ChatTimeline({ messages, agentName, agentSlug, canWrite, copied, onCopy, onReference, sessionId, uiWritable, onAction, pendingMessage, scrollRoot, nearbyIds, unreadIds, viewing, onViewed, replyStatus, replyFeedback, onJumpToReply, locatingReply, locatedMessageId, renderDelivery }: {
   scrollRoot?: RefObject<HTMLDivElement>; nearbyIds?: Set<string>;
   sessionId: string; uiWritable: boolean; onAction: (content: string) => Promise<boolean>;
   messages: ChatMessage[]; agentName: string; agentSlug?: string; canWrite: boolean; copied: string;
   pendingMessage?: ReactNode; replyStatus?: ReactNode; replyFeedback?: ReactNode;
+  renderDelivery?: (message: ChatMessage) => ReactNode;
   unreadIds?: string[]; viewing?: boolean; onViewed?: (id: string) => void;
   onJumpToReply?: (target: string, reply: string) => void; locatingReply?: string; locatedMessageId?: string;
   onCopy: (text: string, id: string) => void; onReference: (message: ChatMessage, selected?: string) => void;
@@ -98,7 +100,7 @@ export const ChatTimeline = memo(function ChatTimeline({ messages, agentName, ag
     const last = turn.messages[turn.messages.length - 1], user = turn.role === 'user';
     const text = turn.messages.map(message => message.content).join('\n\n');
     const quote = (message: ChatMessage) => canWrite && <button type="button" aria-label="引用消息" title="引用这条消息" className={`${action} shrink-0`} onPointerDown={e => e.preventDefault()} onClick={() => { setOpenActions(null); onReference(message); }}><Quote size={13} /></button>;
-    if (user) return <ChatMessageViewport key={turn.id} id={turn.id} root={scrollRoot} nearby={nearbyIds} located={locatedMessageId === turn.id}><ChatUserMessage messageId={turn.id} actionsOpen={openActions === turn.id} content={text} createdAt={last.createdAt} status={chatSendStatus(last.status, last.delivery)}><span className="chat-message-tools">{quote(last)}
+    if (user) return <ChatMessageViewport key={turn.id} id={turn.id} root={scrollRoot} nearby={nearbyIds} located={locatedMessageId === turn.id}><ChatUserMessage messageId={turn.id} actionsOpen={openActions === turn.id} content={text} createdAt={last.createdAt} status={last.status === 'pending' && last.delivery?.inputCheckFailed && renderDelivery ? '' : chatSendStatus(last.status, last.delivery)} delivery={renderDelivery?.(last)}><span className="chat-message-tools">{quote(last)}
       <button type="button" className={action} aria-label="复制消息" title="复制" onClick={() => onCopy(text, turn.id)}>{copied === turn.id ? <Check size={13} /> : <Copy size={13} />}{copied === turn.id && <span className="text-[10px]">已复制</span>}</button>
     </span></ChatUserMessage></ChatMessageViewport>;
     return <article key={turn.id} data-chat-turn="assistant" className="w-full">

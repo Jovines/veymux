@@ -64,6 +64,20 @@ it('shows blocked delivery with an actionable terminal entry and clears it after
   await screen.findByText('已发送');
   expect(screen.queryByText('终端连接已变化，消息尚未投递。')).toBeNull();
 });
+it('places input retry beside the failed message and clears it after delivery', async () => {
+  const message: ChatMessage = { id: 'input-pending', role: 'user', content: '失败的这一条', createdAt: 1, status: 'pending', delivery: { state: 'retrying', inputCheckFailed: true, attemptCount: 6 } };
+  const requests = vi.fn(async (_url: unknown, init?: RequestInit) => init?.method === 'POST' ? Response.json({ ok: true }) : Response.json({ agentAvailable: true, messages: [message] }));
+  vi.stubGlobal('fetch', requests);
+  const view = render(<SessionChatView sessionId="message-retry-location" onTerminal={() => {}} />);
+  const retry = await screen.findByRole('button', { name: '重试' });
+  expect(retry.closest('[data-chat-message]')?.getAttribute('data-chat-message')).toBe(message.id);
+  expect(view.container.querySelector('[data-chat-composer]')?.parentElement?.querySelector('[data-chat-delivery-notice]')).toBeNull();
+  expect(screen.queryByText('待发送')).toBeNull();
+  fireEvent.click(retry); await waitFor(() => expect(requests.mock.calls.some(([url, init]) => String(url).endsWith('/input-pending/delivery') && init?.method === 'POST')).toBe(true));
+  message.status = 'delivered'; delete message.delivery;
+  fireEvent(window, new Event('online')); await screen.findByText('已发送');
+  expect(screen.queryByRole('button', { name: '重试' })).toBeNull();
+});
 
 it('presents its loading UI without waiting for a hidden terminal or stalled history request', () => {
   vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(() => {})));

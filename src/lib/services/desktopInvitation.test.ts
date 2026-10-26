@@ -1,11 +1,27 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
 import { createInviteLink, createOnboardingInviteLink, parseInviteLink } from '../federation/inviteLink';
-import { canOpenDesktopInvitation, desktopInvitationUrl, reusableInvitationGrant } from './desktopInvitation';
+import { canOpenDesktopInvitation, desktopInvitationUrl, reusableInvitationGrant, stageDesktopInvitation, takeDesktopInvitation } from './desktopInvitation';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
 const serviceId='12D3KooW'+'a'.repeat(44), entryId='12D3KooW'+'b'.repeat(44), code='c'.repeat(43);
-afterEach(()=>{vi.unstubAllGlobals();});
+afterEach(()=>{vi.unstubAllGlobals();sessionStorage.clear();});
+it('carries an accepted invite across one scope reload, then removes its code before use',()=>{
+  vi.stubGlobal('navigator',{platform:'MacIntel',maxTouchPoints:0});
+  const intent=parseInviteLink(createInviteLink({v:1,serviceId,code,entryUrl:'https://entry.example'}));
+  stageDesktopInvitation(intent);
+  expect(takeDesktopInvitation()).toMatchObject({targetPeerId:serviceId,pairingCode:code});
+  expect(takeDesktopInvitation()).toBeUndefined();expect(sessionStorage.length).toBe(0);
+  // A carried single-use link still fails the authenticated reusable-grant check.
+  expect(reusableInvitationGrant(intent,[{}])).toBe(false);
+});
+it('clears a failed or cancelled handoff and refuses expired or malformed storage',()=>{
+  vi.stubGlobal('navigator',{platform:'MacIntel',maxTouchPoints:0});
+  const intent=parseInviteLink(createInviteLink({v:1,serviceId,code,entryUrl:'https://entry.example'}));
+  const clear=stageDesktopInvitation(intent);clear();expect(takeDesktopInvitation()).toBeUndefined();
+  const now=Date.now();vi.spyOn(Date,'now').mockReturnValue(now-120001);stageDesktopInvitation(intent);vi.restoreAllMocks();
+  expect(takeDesktopInvitation()).toBeUndefined();expect(sessionStorage.length).toBe(0);
+});
 it('hands HTTP landing pages to native HTTPS, keeping the target, route and split presentation',()=>{
   const original=createInviteLink({v:1,serviceId,code,entryUrl:'https://192.168.1.20:9834',entryServiceId:entryId,routeCode:'r'.repeat(43),serviceUrl:'https://target.internal',viewMode:'chat',viewLayout:'split'});
   const landing=createOnboardingInviteLink(original,'http://192.168.1.20:21000/connect');

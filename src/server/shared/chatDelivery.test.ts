@@ -7,7 +7,8 @@ it('projects a failed input probe with owner-only resolution and keeps active pr
     write_stage: 'paste_attempted', last_error: 'TERMINAL_WRITE_FAILED: TERMINAL_INPUT_ECHO_UNCONFIRMED' };
   expect(chatDelivery('pending', failed, 'session', true)).toEqual({ state: 'outcome-unknown', inputCheckFailed: true, attemptCount: 1 });
   expect(chatDelivery('pending', failed, 'session', false)).toEqual({ state: 'outcome-unknown', inputCheckFailed: true });
-  expect(chatDelivery('pending', { ...failed, write_stage: 'not_started', last_error: 'TERMINAL_WRITE_FAILED: TERMINAL_INPUT_UNAVAILABLE' }, 'session', true)).toEqual({ state: 'retrying', inputCheckFailed: true });
+  expect(chatDelivery('pending', { ...failed, write_stage: 'not_started', last_error: 'TERMINAL_WRITE_FAILED: TERMINAL_INPUT_UNAVAILABLE' }, 'session', true)).toEqual({ state: 'retrying', inputCheckFailed: true, canRetry: true, attemptCount: 1 });
+  expect(chatDelivery('pending', { ...failed, write_stage: 'not_started', last_error: 'TERMINAL_WRITE_FAILED: TERMINAL_INPUT_UNAVAILABLE' }, 'session', false)).toEqual({ state: 'retrying', inputCheckFailed: true });
   expect(chatDelivery('pending', { ...failed, last_error: 'DELIVERY_IN_PROGRESS' }, 'session', true)).toBeUndefined();
 });
 
@@ -35,7 +36,7 @@ it('never recommends replaying an uncertain previous write', () => {
 it('describes only observed transport failures and launch waits', () => {
   expect(chatDelivery('pending', null, 'original', true)).toBeUndefined();
   expect(chatDelivery('pending', { ...diagnostic, route_state: 'ready', last_error: 'DELIVERY_IN_PROGRESS' }, 'original', true)).toBeUndefined();
-  expect(chatDelivery('pending', { ...diagnostic, route_state: 'offline', last_error: 'TMUX_SESSION_NOT_RUNNING' }, 'original', true)).toEqual({ state: 'retrying' });
+  expect(chatDelivery('pending', { ...diagnostic, route_state: 'offline', last_error: 'TMUX_SESSION_NOT_RUNNING' }, 'original', true)).toEqual({ state: 'retrying', canRetry: true, attemptCount: 0 });
   expect(chatDelivery('pending', { ...diagnostic, route_state: 'recovering', last_error: 'AGENT_LAUNCH_PENDING' }, 'original', true)).toEqual({ state: 'starting' });
   expect(chatDelivery('pending', { ...diagnostic, route_state: 'shell', last_error: 'SHELL_CONFIRMATION_REQUIRED: private details' }, 'original', false)).toEqual({ state: 'shell-confirmation-required' });
 });

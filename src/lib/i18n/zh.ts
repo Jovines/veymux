@@ -1104,7 +1104,7 @@ export const zh: TranslationDictionary = {
     notificationsBothOnSummary: 'AI 任务结束、终端退出通知已开启',
     notificationsNoEventsSummary: '暂无开启的通知事件',
     notificationsDenied: '浏览器通知权限已被阻止，请在站点设置中开启。',
-    notificationsUnsupported: '通知需要安全上下文和 Service Worker 支持。',
+    notificationsUnsupported: '通知需要 HTTPS 和浏览器支持，也可使用客户端。',
     notificationsTestBody: '通知已开启。后台 AI 任务结束后会提醒你。',
     shell: '临时会话',
     tmux: '断线保留',

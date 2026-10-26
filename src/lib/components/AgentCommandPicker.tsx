@@ -1,5 +1,6 @@
 import { useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { Trash2 } from 'lucide-react';
 import { useI18n } from '../i18n';
 import { useKeyboardLayer } from '../hooks/useKeyboardLayer';
 import { deleteAgentCommand, saveAgentCommand, selectAgentCommand, useAgentCommandPresets } from '../terminal/launchCommands';
@@ -28,12 +29,19 @@ export function AgentCommandPicker({ agent, value, onChange }: { agent: Pick<Age
       <label htmlFor={id} className="text-muted-foreground">{t('sidebar.commandPreset')}</label>
       <button type="button" className="min-h-9 shrink-0 px-1 text-xs text-muted-foreground hover:text-foreground" onClick={() => { setError(false); setDraft({ id: matched?.id, name: matched?.name ?? '', command: value || agent.command }); }}>{t('sidebar.changeStartupCommand')}</button>
     </div>
+    <div className="flex min-w-0 items-center gap-2">
     <select ref={selectRef} id={id} className={field} value={selection} onChange={e => choose(e.target.value)}>
       <option value="__default__">{t('sidebar.agentDefaultCommand')}</option>
       {presets.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
       {selection === '__current__' && <option value="__current__">{t('sidebar.currentAgentCommand')}</option>}
       <option value="__new__">{t('sidebar.addAgentCommand')}</option>
     </select>
+    {matched && <button type="button" aria-label={t('sidebar.deleteStartupCommand')} title={t('sidebar.deleteStartupCommand')}
+      className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-surface-2 hover:text-destructive"
+      onClick={() => {
+        try { deleteAgentCommand(agent.slug, agent.command, matched.id); onChange(agent.command); setError(false); } catch { setError(true); }
+      }}><Trash2 size={16} /></button>}
+    </div>
     {error && !draft && <p role="alert" className="text-xs text-destructive">{t('sidebar.saveStartupCommandFailed')}</p>}
     {draft && createPortal(<div data-sidebar-composer-popover="sidebar-launch-options">
       <button type="button" className="fixed inset-0 z-modal-backdrop bg-[var(--app-backdrop)] backdrop-blur-sm" onClick={close} aria-label={t('common.cancel')} />

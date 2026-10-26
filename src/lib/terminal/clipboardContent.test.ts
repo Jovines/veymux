@@ -5,6 +5,12 @@ vi.mock('./api', () => ({ uploadFiles: vi.fn() }));
 vi.mock('../federation/clientScope', () => ({ selectedTarget: () => ({ targetPeerId: 'owned' }) }));
 beforeEach(() => { delete window.termdockDesktop; });
 afterEach(() => { delete window.termdockDesktop; vi.unstubAllGlobals(); });
+it('explains restricted HTTP clipboard reads while keeping native paste events usable', async () => {
+  vi.stubGlobal('isSecureContext', false); vi.stubGlobal('navigator', { clipboard: undefined });
+  await expect(readClipboardContent()).rejects.toThrow('HTTP 页面无法主动读取剪贴板');
+  const image = new File(['png'], 'paste.png', { type: 'image/png' });
+  expect(await readClipboardContent({ files: [image], text: '' })).toEqual({ kind: 'files', files: [image], paths: [] });
+});
 it('prefers native files over cover text and reuses local paths without uploading', async () => {
   window.termdockDesktop = { readClipboardFiles: vi.fn(async () => [{ name: 'movie.mp4', path: '/local/movie.mp4' }]) } as any;
   expect(await readClipboardContent({ files: [], text: 'cover' })).toEqual({ kind: 'files', files: [], paths: ['/local/movie.mp4'] });

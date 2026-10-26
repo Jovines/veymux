@@ -1,13 +1,14 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { I18nProvider } from '../i18n';
 import { NewSessionComposer } from './sidebar/NewSessionComposer';
 import { CollectorEditor, resolveTodoConfig } from './todos/TodoForms';
-import { getAgentLaunchCommand, readAgentCommandPresets, saveAgentCommand } from '../terminal/launchCommands';
+import { deleteAgentCommand, getAgentLaunchCommand, readAgentCommandPresets, saveAgentCommand } from '../terminal/launchCommands';
 import { useTodoWorkspace } from '../todos/workspace';
 
 const codex = { slug: 'codex', displayName: 'Codex', command: 'codex', accentColor: 'var(--primary)', icon: null };
+const claude = { ...codex, slug: 'claude', displayName: 'Claude Code', command: 'claude' };
 beforeEach(() => {
   localStorage.clear(); localStorage.setItem('termdock:locale', 'en');
   useTodoWorkspace.setState({ views: {}, snapshots: {}, options: {} });
@@ -15,7 +16,7 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 function session(onLaunchAgent = vi.fn()) {
-  return render(<I18nProvider><NewSessionComposer directories={[]} tmuxAvailable options={{ mode: 'tmux', cwd: '/workspace' }} agents={[codex]} selectedAgent={codex} detecting={false}
+  return render(<I18nProvider><NewSessionComposer directories={[]} tmuxAvailable options={{ mode: 'tmux', cwd: '/workspace' }} agents={[codex, claude]} selectedAgent={codex} detecting={false}
     resumeHistory={[]} resumeHistoryLoading={false} resumeHistoryPendingId={null} resumeHistoryError={null} onRefreshAgents={vi.fn()} onSelectAgent={vi.fn()} onLaunchAgent={onLaunchAgent}
     onResumeHistory={vi.fn()} onRemoveResumeHistory={vi.fn()} onClose={vi.fn()} onOptionsChange={vi.fn()} /></I18nProvider>);
 }
@@ -64,4 +65,38 @@ it('cancels only the command editor with Escape and restores the unchanged paren
   expect(screen.getByRole('region', { name: 'Start a session' })).toBeTruthy();
   expect((screen.getByRole('combobox', { name: 'Command preset' }) as HTMLSelectElement).value).toBe(shared.id);
   expect(getAgentLaunchCommand('codex', 'codex')).toBe(shared.command);
+});
+
+it('deletes a non-default Agent preset directly and keeps it deleted after switching and remounting', () => {
+  const other = saveAgentCommand('codex', 'codex', { name: 'Codex saved', command: 'codex --model daily' });
+  const launch = vi.fn(), view = session(launch);
+  fireEvent.click(screen.getByRole('radio', { name: 'Claude Code' }));
+  add('Verbose', 'claude --verbose');
+  add('Debug', 'claude --debug');
+  fireEvent.click(screen.getByRole('button', { name: 'Delete command' }));
+  expect(readAgentCommandPresets('claude', 'claude').presets.map(p => p.name)).toEqual(['Verbose']);
+  expect((screen.getByRole('combobox', { name: 'Command preset' }) as HTMLSelectElement).value).toBe('__default__');
+  fireEvent.click(screen.getByRole('radio', { name: 'Codex Default' }));
+  fireEvent.click(screen.getByRole('radio', { name: 'Claude Code' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Start Claude Code' }));
+  expect(launch).toHaveBeenLastCalledWith(claude, 'claude');
+  expect(getAgentLaunchCommand('codex', 'codex')).toBe(other.command);
+  view.unmount(); session();
+  fireEvent.click(screen.getByRole('radio', { name: 'Claude Code' }));
+  expect(screen.queryByRole('option', { name: 'Debug' })).toBeNull();
+  expect(screen.getByRole('option', { name: 'Verbose' })).toBeTruthy();
+});
+
+it('launches the current shared non-default Agent command when another editor changes or deletes it', () => {
+  saveAgentCommand('claude', 'claude', { name: 'Old', command: 'claude --verbose' });
+  const launch = vi.fn(); session(launch);
+  fireEvent.click(screen.getByRole('radio', { name: 'Claude Code' }));
+  let changed!: ReturnType<typeof saveAgentCommand>;
+  act(() => { changed = saveAgentCommand('claude', 'claude', { name: 'New', command: 'claude --debug' }); });
+  fireEvent.click(screen.getByRole('button', { name: 'Start Claude Code' }));
+  expect(launch).toHaveBeenLastCalledWith(claude, changed.command);
+  act(() => deleteAgentCommand('claude', 'claude', changed.id));
+  fireEvent.click(screen.getByRole('button', { name: 'Start Claude Code' }));
+  expect(launch).toHaveBeenLastCalledWith(claude, 'claude');
+  expect(readAgentCommandPresets('claude', 'claude').presets.map(p => p.name)).toEqual(['Old']);
 });

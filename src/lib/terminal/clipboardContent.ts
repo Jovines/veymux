@@ -25,6 +25,9 @@ export async function readClipboardContent(event?: ClipboardEventContent, isCurr
   };
   check(null);
   const bridge = getTermdockDesktopBridge();
+  if (!event && !canReadClipboardContent() && globalThis.isSecureContext === false) {
+    throw new Error('HTTP 页面无法主动读取剪贴板。请使用 Ctrl/Cmd+V、选择文件，或切换 HTTPS / Mac 客户端。');
+  }
   let nativeError: unknown;
   if (bridge?.readClipboardFiles) {
     try {
