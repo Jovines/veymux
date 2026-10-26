@@ -26,6 +26,8 @@ export interface ServerState {
   host: string;
   port: number;
   scheme?: 'http' | 'https';
+  /** The configured public CA for local API clients, including custom HTTPS. */
+  httpsCaPath?: string;
   localUrl?: string;
   lanUrl?: string;
   onboardingUrl?: string | null;
@@ -46,6 +48,11 @@ export function isProcessRunning(pid: number): boolean {
   } catch {
     return false;
   }
+}
+
+export function readLocalApiCa(state: Pick<ServerState, 'httpsCaPath'> | null, fallbackPath: string): Buffer | undefined {
+  if (state?.httpsCaPath) return fs.readFileSync(state.httpsCaPath);
+  return fs.existsSync(fallbackPath) ? fs.readFileSync(fallbackPath) : undefined;
 }
 
 export function readJsonFile<T>(filePath: string): T | null {
