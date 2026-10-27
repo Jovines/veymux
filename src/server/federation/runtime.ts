@@ -176,6 +176,13 @@ export async function createFederationRuntime(app: express.Express, directory: s
           || !!sessionId && access.allows(sessionClaims, subjectId, action, stableSessionId(sessionId)));
       }
       if (context.relayed && !relayPasswordConfigured()) return false;
+      // Scope-only invitations cannot bypass an integration's exclusive writer.
+      // Full-service maintenance access remains independent of delegated tickets.
+      if (sessionId !== undefined && !store.hasFullServiceAccess({ subjectId, serviceId })) {
+        const access = options.sessionAccess?.(), stable = stableSessionId(sessionId);
+        if (access?.restrictsNativeWriter(sessionId, action)
+          || stable !== undefined && access?.restrictsNativeWriter(stable, action)) return false;
+      }
       if (open(action) || store.authorize({ subjectId, serviceId, action, sessionId }).allowed) return true;
       // The wire may still carry the transient backend PTY id while the grant
       // is bound to the stable client session id (or an older backend id).

@@ -5,7 +5,7 @@ import { CollaborationError } from '../agent/collaborationProtocol.js';
 
 export interface SessionAccessLease { id: string; userId: string; deviceId: string; expiresAt: number }
 export interface SessionAccessClaims { aud: 'termdock-session-access'; sessionId: string; principalId: string; leaseId: string; deviceId: string; fence: number; exp: number; jti: string; readOnly?: boolean }
-interface AccessState { principalId: string; fence: number; lease: SessionAccessLease | null; readers?: { fence: number; leases: SessionAccessLease[]; generations: Record<string,number> } }
+interface AccessState { principalId: string; fence: number; lease: SessionAccessLease | null; exclusive?: boolean; readers?: { fence: number; leases: SessionAccessLease[]; generations: Record<string,number> } }
 const readActions = ['session.view','session.chat-view','session.terminal-view','session.metadata'];
 const writeActions = [...readActions,'session.chat-send','session.input','session.resize'];
 /** Local integrations may lend access to their own sessions without lending their
@@ -36,16 +36,26 @@ export class SessionAccessStore {
     try { fs.fsyncSync(directory); } finally { fs.closeSync(directory); }
     this.states = states;
   }
-  update(sessionId: string, principalId: string, input: { fence: number; lease: SessionAccessLease | null }) {
+  /** Exclusive ownership also fences ordinary session-scoped invitations. The
+   * federation runtime preserves separately authenticated full-service admins. */
+  restrictsNativeWriter(sessionId: string, action: string): boolean {
+    const state = this.states[sessionId];
+    return state?.exclusive === true && this.authorized(sessionId, state.principalId)
+      && ['session.input', 'session.chat-send', 'session.resize'].includes(action);
+  }
+  update(sessionId: string, principalId: string, input: { fence: number; lease: SessionAccessLease | null; exclusive?: boolean }) {
     const old = this.states[sessionId], lease = input?.lease, now = this.now();
     if (!this.authorized(sessionId, principalId) || !Number.isSafeInteger(input?.fence) || input.fence < 1
+      || input.exclusive !== undefined && typeof input.exclusive !== 'boolean'
       || old && (old.principalId !== principalId || input.fence < old.fence)) throw new CollaborationError('SESSION_ACCESS_STALE', 'SESSION_ACCESS_STALE', 409);
     if (lease !== null && (!lease || !/^[a-zA-Z0-9-]{16,80}$/.test(lease.id) || typeof lease.userId !== 'string' || !lease.userId || lease.userId.length > 256
       || typeof lease.deviceId !== 'string' || lease.deviceId.length > 160 || !/^[a-zA-Z0-9]*$/.test(lease.deviceId)
       || !Number.isSafeInteger(lease.expiresAt) || lease.expiresAt <= now || lease.expiresAt > now + 125000)) throw new CollaborationError('SESSION_ACCESS_INVALID_LEASE', 'SESSION_ACCESS_INVALID_LEASE', 409);
     if (old && input.fence === old.fence && (old.lease?.id !== lease?.id || old.lease?.userId !== lease?.userId
-      || old.lease?.deviceId && old.lease.deviceId !== lease?.deviceId || old.lease && lease && lease.expiresAt < old.lease.expiresAt)) throw new CollaborationError('SESSION_ACCESS_CONFLICT', 'SESSION_ACCESS_CONFLICT', 409);
-    this.save({ ...this.states, [sessionId]: { ...old, principalId, fence: input.fence, lease } });
+      || old.lease?.deviceId && old.lease.deviceId !== lease?.deviceId || old.lease && lease && lease.expiresAt < old.lease.expiresAt
+      || input.exclusive !== undefined && input.exclusive !== (old.exclusive === true))) throw new CollaborationError('SESSION_ACCESS_CONFLICT', 'SESSION_ACCESS_CONFLICT', 409);
+    this.save({ ...this.states, [sessionId]: { ...old, principalId, fence: input.fence, lease,
+      ...(input.exclusive === undefined ? {} : { exclusive: input.exclusive }) } });
     return { accepted: true, fence: input.fence };
   }
   /** Readers have an independent revision: renewing or releasing the writer must
@@ -62,7 +72,7 @@ export class SessionAccessStore {
     }
     if(old?.readers && input.fence===old.readers.fence && JSON.stringify(old.readers.leases)!==JSON.stringify(input.leases)) throw new CollaborationError('SESSION_ACCESS_CONFLICT','SESSION_ACCESS_CONFLICT',409);
     const generations=Object.fromEntries(input.leases.map(x=>[x.id,old?.readers?.generations[x.id] || input.fence]));
-    this.save({...this.states,[sessionId]:{principalId,fence:old?.fence || 0,lease:old?.lease || null,readers:{fence:input.fence,leases:input.leases,generations}}});
+    this.save({...this.states,[sessionId]:{...old,principalId,fence:old?.fence || 0,lease:old?.lease || null,readers:{fence:input.fence,leases:input.leases,generations}}});
     return {accepted:true,fence:input.fence};
   }
   ticket(sessionId: string, principalId: string, deviceId: string, readerId?: string) {

@@ -104,6 +104,53 @@ async function fixture(runtimeOptions: FederationRuntimeOptions = {}, allowOpenA
 }
 
 describe('federation runtime over real encrypted WebSocket', () => {
+  it.each([false, true])('fences native invitations without interrupting readers or maintenance (relayed=%s)', async relayed => {
+    const previousPassword = process.env.TERMDOCK_PASSWORD;
+    process.env.TERMDOCK_PASSWORD = 'exclusive-writer-test-password';
+    cleanup.push(() => { if (previousPassword === undefined) delete process.env.TERMDOCK_PASSWORD; else process.env.TERMDOCK_PASSWORD = previousPassword; });
+    let access: SessionAccessStore | undefined;
+    const f = await fixture({ sessionAccess: () => access }, false, undefined, relayed), native = await f.connect();
+    f.runtime.store.grant({ subjectId: native.identity.peerId, scope: { kind: 'sessions', sessionIds: ['source-one', 'two'] },
+      actions: ['session.view', 'session.chat-view', 'session.terminal-view', 'session.metadata', 'session.input', 'session.resize', 'session.chat-send'] });
+    expect((await native.http('before-exclusive', 'POST', '/api/terminal/one/input'))[0]).toMatchObject({ type: 'head', status: 200 });
+    native.channel.send({ type: 'ws-open', id: 'native-terminal', path: '/api/terminal/one/ws' });
+    await native.take('native-terminal', 'ws-ready'); await native.take('native-terminal', 'ws-data');
+    const writer = await f.connect(), reader = await f.connect(), admin = await f.connect();
+    await admin.pair();
+    access = new SessionAccessStore(join(f.directory, 'exclusive.json'), () => true);
+    const lease = { id: randomUUID(), userId: 'writer@example.test', deviceId: writer.identity.peerId, expiresAt: Date.now() + 60000 };
+    const observer = { ...lease, id: randomUUID(), userId: 'reader@example.test', deviceId: reader.identity.peerId };
+    access.update('source-one', 'integration', { fence: 1, lease, exclusive: true });
+    access.updateReaders('source-one', 'integration', { fence: 1, leases: [observer] });
+    writer.channel.send({ type: 'session-auth', id: 'writer-auth', ticket: access.ticket('source-one', 'integration', writer.identity.peerId) });
+    reader.channel.send({ type: 'session-auth', id: 'observer-auth', ticket: access.ticket('source-one', 'integration', reader.identity.peerId, observer.id) });
+    expect(await writer.take('writer-auth')).toMatchObject({ type: 'result' });
+    expect(await reader.take('observer-auth')).toMatchObject({ type: 'result' });
+    f.input.mockClear();
+    for (const path of ['/api/terminal/one/input', '/api/terminal/one-new/input', '/api/terminal/one/chat']) {
+      expect((await native.http('deny-' + path, 'POST', path))[0]).toMatchObject({ type: 'error', error: 'AUTHORIZATION_DENIED' });
+    }
+    for (const type of ['input', 'resize']) {
+      native.channel.send({ type: 'ws-data', id: 'native-terminal', data: JSON.stringify({ type, data: 'forbidden', cols: 1, rows: 1 }) });
+      expect(await native.take('native-terminal')).toMatchObject({ type: 'error', error: 'AUTHORIZATION_DENIED' });
+    }
+    expect(f.input).not.toHaveBeenCalled(); expect(f.received).not.toHaveBeenCalled();
+    native.channel.send({ type: 'session-list', id: 'exclusive-directory' });
+    expect(await native.take('exclusive-directory')).toMatchObject({ items: [
+      { sessionId: 'one', canWrite: false, canResize: false, canSendChat: false }, { sessionId: 'two', canWrite: true },
+    ] });
+    expect((await native.http('unaffected', 'POST', '/api/terminal/two/input'))[0]).toMatchObject({ type: 'head', status: 200 });
+    expect((await writer.http('writer-input', 'POST', '/api/terminal/one/input'))[0]).toMatchObject({ type: 'head', status: 200 });
+    access.update('source-one', 'integration', { fence: 2, lease: { ...lease, id: randomUUID() } });
+    expect((await writer.http('old-writer', 'POST', '/api/terminal/one/input'))[0]).toMatchObject({ type: 'error' });
+    access.update('source-one', 'integration', { fence: 3, lease: null });
+    expect((await reader.http('observer-after-release', 'GET', '/api/terminal/one/health'))[0]).toMatchObject({ type: 'head', status: 200 });
+    expect((await reader.http('observer-cannot-write', 'POST', '/api/terminal/one/input'))[0]).toMatchObject({ type: 'error', error: 'AUTHORIZATION_DENIED' });
+    expect((await native.http('native-after-release', 'POST', '/api/terminal/one/input'))[0]).toMatchObject({ type: 'error', error: 'AUTHORIZATION_DENIED' });
+    expect((await admin.http('admin-maintenance', 'POST', '/api/terminal/one/input'))[0]).toMatchObject({ type: 'head', status: 200 });
+    access.update('source-one', 'integration', { fence: 4, lease: null, exclusive: false });
+    expect((await native.http('explicit-native-return', 'POST', '/api/terminal/one/input'))[0]).toMatchObject({ type: 'head', status: 200 });
+  });
   it('restricts integration reader tickets over Noise even when the device previously had full service access',async()=>{
     let access:SessionAccessStore|undefined;const f=await fixture({sessionAccess:()=>access}),guest=await f.connect();await guest.pair();
     access=new SessionAccessStore(join(f.directory,'readers.json'),()=>true);

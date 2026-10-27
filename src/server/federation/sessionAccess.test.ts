@@ -14,6 +14,29 @@ function fixture() {
   return { store,lease,file,advance:() => {now+=91000;},revoke:() => {authorized=false;} };
 }
 describe('integration session access',() => {
+  it('persists opt-in writer exclusivity across reader changes, expiry, release and restart', () => {
+    const f = fixture(), reader = { ...f.lease, id: randomUUID(), deviceId: 'reader' };
+    f.store.update('s1', 'p1', { fence: 1, lease: f.lease, exclusive: true });
+    f.store.update('s2', 'p1', { fence: 1, lease: f.lease });
+    f.store.updateReaders('s1', 'p1', { fence: 1, leases: [reader] });
+    f.store.updateReaders('s1', 'p1', { fence: 2, leases: [] });
+    for (const action of ['session.input', 'session.chat-send', 'session.resize']) {
+      expect(f.store.restrictsNativeWriter('s1', action)).toBe(true);
+      expect(f.store.restrictsNativeWriter('s2', action)).toBe(false);
+    }
+    expect(f.store.restrictsNativeWriter('s1', 'session.terminal-view')).toBe(false);
+    f.store.update('s1', 'p1', { fence: 2, lease: null });
+    f.advance();
+    expect(f.store.restrictsNativeWriter('s1', 'session.input')).toBe(true);
+    const restarted = new SessionAccessStore(f.file, () => true);
+    expect(restarted.restrictsNativeWriter('s1', 'session.input')).toBe(true);
+    expect(() => restarted.update('s1', 'p1', { fence: 2, lease: null, exclusive: false })).toThrow();
+    expect(() => restarted.update('s1', 'p1', { fence: 1, lease: null, exclusive: false })).toThrow();
+    restarted.update('s1', 'p1', { fence: 3, lease: null, exclusive: false });
+    expect(restarted.restrictsNativeWriter('s1', 'session.input')).toBe(false);
+    expect(() => restarted.update('s1', 'p1', { fence: 3, lease: null, exclusive: true })).toThrow();
+    expect(() => restarted.update('s1', 'p1', { fence: 4, lease: null, exclusive: 'true' as never })).toThrow();
+  });
   it('keeps concurrent observers read-only across writer handoff and rejects reused reader generations',()=>{
     const f=fixture(),reader={...f.lease,id:randomUUID(),deviceId:'reader111111111111'};
     f.store.update('s1','p1',{fence:1,lease:f.lease});f.store.updateReaders('s1','p1',{fence:1,leases:[reader]});
