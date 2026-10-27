@@ -2,8 +2,9 @@
 import type { Terminal } from '@xterm/xterm';
 import { Terminal as HeadlessTerminal } from '@xterm/headless';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createResizePresentation, RESIZE_PRESENTATION_TIMEOUT_MS } from './resizePresentation';
+import { createResizePresentation, RESIZE_PRESENTATION_SETTLE_MS, RESIZE_PRESENTATION_TIMEOUT_MS } from './resizePresentation';
 afterEach(() => vi.useRealTimers());
+const settle = () => new Promise(resolve => setTimeout(resolve, RESIZE_PRESENTATION_SETTLE_MS + 20));
 
 function setup() {
   const model = new HeadlessTerminal({ cols: 20, rows: 4, allowProposedApi: true });
@@ -27,6 +28,7 @@ function setup() {
   } as unknown as Terminal;
   const gate = createResizePresentation(terminal);
   const write = (data: string, generation = gate.generation) => new Promise<void>(resolve => {
+    gate.writing();
     model.write(data, () => { gate.written(generation); resolve(); });
   });
   return { model, renderer, events, gate, write };
@@ -68,6 +70,8 @@ describe('resize presentation', () => {
     await write('\x1b[?2026h\x1b[H\x1b[JNEW\x1b[?202');
     expect(events).toEqual([]);
     await write('6l');
+    expect(events).toEqual([]);
+    await settle();
     expect(events).toEqual(['size:20x2', 'paint:NEW', 'paint:NEW', 'paint:NEW']);
     gate.dispose(); model.dispose();
   });
@@ -81,6 +85,7 @@ describe('resize presentation', () => {
     await write('\x1b[?2026hOLD\x1b[?2026l', old);
     expect(events).toEqual([]);
     await write('\x1b[?2026h\x1b[HNEW\x1b[?2026l');
+    await settle();
     expect(events[0]).toBe('size:30x3');
     expect(events[1]).toBe('paint:NEW');
     gate.dispose(); model.dispose();
@@ -92,7 +97,38 @@ describe('resize presentation', () => {
     await write('\x1b[?2026hFIRST\x1b[?2026l\x1b[?2026h\x1b[HFINAL');
     expect(events).toEqual([]);
     await write('\x1b[?2026l');
+    await settle();
     expect(events[1]).toBe('paint:FINAL');
+    gate.dispose(); model.dispose();
+  });
+
+  it('does not display history from the first complete frame while the application redraws for the new size', async () => {
+    const { model, renderer, events, gate, write } = setup();
+    await write('PROMPT');
+    gate.begin(); renderer.handleResize(20, 3);
+    await write('\x1b[?2026h\x1b[HOLD HISTORY\x1b[?2026l');
+    expect(events).toEqual([]);
+    await new Promise(resolve => setTimeout(resolve, 25));
+    await write('\x1b[?2026h\x1b[2J\x1b[HREFLOW HISTORY\x1b[?2026l');
+    expect(events).toEqual([]);
+    await write('\x1b[?2026h\x1b[2J\x1b[HNEW PROMPT\x1b[?2026l');
+    expect(events).toEqual([]);
+    await settle();
+    expect(events[0]).toBe('size:20x3');
+    expect(events.slice(1).every(event => event === 'paint:NEW PROMPT')).toBe(true);
+    gate.dispose(); model.dispose();
+  });
+
+  it('cancels an already scheduled release when another write starts parsing', async () => {
+    const { model, renderer, events, gate, write } = setup();
+    gate.begin(); renderer.handleResize(20, 3);
+    await write('\x1b[?2026hOLD\x1b[?2026l');
+    gate.writing();
+    await settle();
+    expect(events).toEqual([]);
+    await write('\x1b[?2026h\x1b[2J\x1b[HNEW\x1b[?2026l');
+    await settle();
+    expect(events[1]).toBe('paint:NEW');
     gate.dispose(); model.dispose();
   });
 

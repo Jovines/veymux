@@ -79,3 +79,33 @@ it('keeps only live tmux delivery across resizing and gets a fresh screen after 
   await frame();
   expect(document.querySelector('.xterm-rows')?.textContent).toContain('AFTER_LAYOUT');
 });
+
+it.each([390, 1100])('keeps resize history redraws off the visible terminal without any scroll gesture (width %i)', async width => {
+  await page.viewport(width, 800);
+  const sessionId = 'tmux-resize-presentation';
+  useTerminalStore.getState().setTerminalSession(sessionId, { sessionId: 'tmux-backend', mode: 'tmux', cols: 80, rows: 24 });
+  const host = document.createElement('div'); host.className = 'h-screen'; document.body.append(host);
+  root = createRoot(host);
+  root.render(<TerminalView sessionId={sessionId} mode="tmux" terminalSettings={{ ...getDefaultTerminalSettings(), rendererMode: 'canvas', enableImages: false, fontLigatures: false }} />);
+  await expect.poll(() => backend.connect.mock.calls.length).toBe(1);
+  await expect.poll(() => backend.dimensions?.()).toBeTruthy();
+  const events = backend.handlers!;
+  events.onEvent({ type: 'connected', mode: 'tmux', ...backend.dimensions!()!, replayChunks: ['\x1b[HPROMPT_BEFORE_RESIZE'], replayOutOfWindow: true });
+  await expect.poll(() => document.querySelector('.xterm-rows')?.textContent).toContain('PROMPT_BEFORE_RESIZE');
+  const oldRows = document.querySelector('.xterm-rows')!.textContent;
+  backend.resize.mockClear();
+  await page.viewport(width, 450);
+  await expect.poll(() => backend.resize.mock.calls.length).toBeGreaterThan(0);
+  events.onEvent({ type: 'data', data: '\x1b[?2026h\x1b[2J\x1b[HOLD_HISTORY_DURING_RESIZE\x1b[?2026l' });
+  await frame();
+  expect(document.querySelector('.xterm-rows')!.textContent).toBe(oldRows);
+  events.onEvent({ type: 'data', data: '\x1b[?2026h\x1b[2J\x1b[HREFLOW_HISTORY_DURING_RESIZE\x1b[?2026l' });
+  await frame();
+  expect(document.querySelector('.xterm-rows')!.textContent).toBe(oldRows);
+  events.onEvent({ type: 'data', data: '\x1b[?2026h\x1b[2J\x1b[HPROMPT_AFTER_RESIZE\x1b[?2026l' });
+  await expect.poll(() => document.querySelector('.xterm-rows')?.textContent).toContain('PROMPT_AFTER_RESIZE');
+  expect(document.querySelector('.xterm-rows')!.textContent).not.toContain('HISTORY_DURING_RESIZE');
+  // The fence has finished: normal terminal output resumes.
+  events.onEvent({ type: 'data', data: '\x1b[2;1HLIVE_AFTER_RESIZE' });
+  await expect.poll(() => document.querySelector('.xterm-rows')!.textContent).toContain('LIVE_AFTER_RESIZE');
+});

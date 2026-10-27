@@ -18,6 +18,7 @@ export function desktopConnectionIntent(intent: ConnectionIntent): ServiceConnec
   const connection = { id: targetPeerId, url, targetPeerId, serviceOrigin, entryServiceId, routes,
     label: intent.serviceName || new URL(serviceOrigin || url).host };
   const invitation = intent.pairingCode || intent.routeCode ? createInviteLink({
+    ...(intent.showAccessGuide === undefined ? {} : { showAccessGuide: intent.showAccessGuide }),
     v: 1, serviceId: targetPeerId, entryUrl: url, serviceUrl: serviceOrigin,
     name: intent.serviceName, entryServiceId, code: intent.pairingCode,
     routeCode: intent.routeCode, routeOnly: intent.routeOnly, viewMode: intent.viewMode, viewLayout: intent.viewLayout,

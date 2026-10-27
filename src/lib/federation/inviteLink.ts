@@ -1,6 +1,6 @@
 import type { ConnectionIntent } from './browserIntegration';
 
-export interface InviteDescriptor { viewLayout?: 'split'; viewMode?: 'terminal' | 'chat'; v: 1; serviceId: string; code?: string; routeOnly?: boolean; entryUrl: string; serviceUrl?: string; name?: string; entryServiceId?: string; routeCode?: string }
+export interface InviteDescriptor { showAccessGuide?: boolean; viewLayout?: 'split'; viewMode?: 'terminal' | 'chat'; v: 1; serviceId: string; code?: string; routeOnly?: boolean; entryUrl: string; serviceUrl?: string; name?: string; entryServiceId?: string; routeCode?: string }
 const PREFIX = '#termdock-invite=';
 export function createInviteLink(descriptor: InviteDescriptor): string {
   const entry = new URL(descriptor.entryUrl);
@@ -31,6 +31,7 @@ export function parseInviteLink(value: string, options: { httpTransport?: boolea
   if (data.v !== 1 || typeof data.serviceId !== 'string' || !/^12D3KooW[1-9A-HJ-NP-Za-km-z]{44}$/.test(data.serviceId) || (data.routeOnly !== true && (typeof data.code !== 'string' || !/^[A-Za-z0-9_-]{32,128}$/.test(data.code)))) throw new Error('邀请信息无效或版本不兼容');
   if (data.viewLayout !== undefined && data.viewLayout !== 'split') throw new Error('邀请布局无效');
   if (data.viewMode !== undefined && !['terminal', 'chat'].includes(data.viewMode)) throw new Error('邀请视图无效');
+  if (data.showAccessGuide !== undefined && typeof data.showAccessGuide !== 'boolean') throw new Error('邀请引导选项无效');
   const entry = new URL(data.entryUrl);
   const setupLink = link.protocol === 'http:' && link.pathname === '/connect' && !link.search && !link.username && !link.password && entry.protocol === 'https:' && entry.hostname === link.hostname;
   if ((!setupLink && entry.origin !== link.origin) || entry.username || entry.password || !['https:', 'http:'].includes(entry.protocol)) throw new Error('邀请地址与服务不一致');
@@ -47,5 +48,5 @@ export function parseInviteLink(value: string, options: { httpTransport?: boolea
   // certificate trust. Only an HTTP landing page chooses its same-origin Noise endpoint.
   const httpEntry = options.httpTransport && setupLink;
   const relayed = !!data.entryServiceId && data.entryServiceId !== data.serviceId;
-  return { viewMode: data.viewMode, viewLayout: data.viewLayout, url: httpEntry ? link.origin : entry.origin, targetPeerId: data.serviceId, pairingCode: data.code, ...(data.routeOnly === true ? { routeOnly: true } : {}), serviceOrigin: httpEntry && !relayed ? link.origin : serviceOrigin, ...(httpEntry ? { nativeOrigin: entry.origin, certificateUrl: link.origin + '/certificates' + link.hash } : {}), serviceName: typeof data.name === 'string' ? data.name.slice(0, 120) : undefined, entryServiceId: data.entryServiceId, routeCode: data.routeCode };
+  return { ...(data.showAccessGuide === undefined ? {} : { showAccessGuide: data.showAccessGuide }), viewMode: data.viewMode, viewLayout: data.viewLayout, url: httpEntry ? link.origin : entry.origin, targetPeerId: data.serviceId, pairingCode: data.code, ...(data.routeOnly === true ? { routeOnly: true } : {}), serviceOrigin: httpEntry && !relayed ? link.origin : serviceOrigin, ...(httpEntry ? { nativeOrigin: entry.origin, certificateUrl: link.origin + '/certificates' + link.hash } : {}), serviceName: typeof data.name === 'string' ? data.name.slice(0, 120) : undefined, entryServiceId: data.entryServiceId, routeCode: data.routeCode };
 }

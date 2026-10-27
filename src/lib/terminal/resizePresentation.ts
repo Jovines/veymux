@@ -10,11 +10,14 @@ type RenderInternals = {
   _core?: { _renderService?: { _renderer?: { value?: Renderer } } };
 };
 export const RESIZE_PRESENTATION_TIMEOUT_MS = 500;
+export const RESIZE_PRESENTATION_SETTLE_MS = 100;
 
 /**
  * xterm's synchronized output protects row painting, but not handleResize:
  * WebGL clears its canvas and DOM removes rows immediately. Keep the existing
- * surface until the next parsed tmux frame, then resize and repaint together.
+ * surface until the resize output has settled, then resize and repaint together.
+ * The first tmux frame may still show the old pane before the application has
+ * handled SIGWINCH; releasing there exposes its history/reflow redraws.
  * This only fences local reflow; a tmux frame is not an application-ready signal.
  * All model resizes and PTY requests still happen at their original time.
  * Keep the dependency on xterm's renderer slot isolated here and fail open if
@@ -26,12 +29,17 @@ export function createResizePresentation(terminal: Terminal) {
   let frameEnded = false;
   let generation = 0;
   let fallback: ReturnType<typeof setTimeout> | undefined;
+  let settled: ReturnType<typeof setTimeout> | undefined;
+  const clearSettle = () => {
+    if (settled !== undefined) { clearTimeout(settled); settled = undefined; }
+  };
   const endFrame = terminal.parser.registerCsiHandler({ prefix: '?', final: 'l' }, params => {
     if (restore && params.some(value => value === 2026)) frameEnded = true;
     return false;
   });
 
   const finish = (paint: boolean) => {
+    clearSettle();
     if (fallback !== undefined) { clearTimeout(fallback); fallback = undefined; }
     const undo = restore;
     if (!undo) return;
@@ -54,6 +62,7 @@ export function createResizePresentation(terminal: Terminal) {
     begin() {
       generation++;
       frameEnded = false;
+      clearSettle();
       if (restore) return;
       const renderer = (terminal as unknown as RenderInternals)._core?._renderService?._renderer?.value;
       if (!renderer || typeof renderer.handleResize !== 'function'
@@ -74,9 +83,14 @@ export function createResizePresentation(terminal: Terminal) {
       fallback = setTimeout(() => finish(true), RESIZE_PRESENTATION_TIMEOUT_MS);
     },
     get generation() { return generation; },
+    writing() { clearSettle(); },
     written(writeGeneration: number) {
+      clearSettle();
+      if (writeGeneration !== generation) { frameEnded = false; return; }
       if (writeGeneration === generation && frameEnded && !terminal.modes.synchronizedOutputMode) {
-        finish(true);
+        // A complete frame is a parser boundary, not application readiness.
+        // Coalesce the following redraw burst, bounded by the original deadline.
+        settled = setTimeout(() => finish(true), RESIZE_PRESENTATION_SETTLE_MS);
       }
     },
     cancel() { finish(true); },

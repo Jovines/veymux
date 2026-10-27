@@ -2931,7 +2931,7 @@ async function findGitRoot(cwd: string, timeoutMs: number | null = GIT_TIMEOUT_M
 
 async function hasGitMetadata(candidate: string): Promise<boolean> {
   try {
-    const stat = await fs.promises.lstat(path.join(candidate, '.git'));
+    const stat = await fs.promises.stat(path.join(candidate, '.git'));
     return stat.isDirectory() || stat.isFile();
   } catch {
     return false;
@@ -2984,14 +2984,18 @@ async function discoverNestedGitRoots(workspaceRoot: string, signal?: AbortSigna
         truncated = true;
         return;
       }
-      if (NESTED_GIT_DISCOVERY_IGNORED_NAMES.has(entry.name)) continue;
+      const excluded = NESTED_GIT_DISCOVERY_IGNORED_NAMES.has(entry.name);
+      // Never enter Git internals. Other excluded names describe generated
+      // directories, but an explicit link with that name may expose a repo.
+      if (entry.name === '.git' || (excluded && !entry.isSymbolicLink())) continue;
       const candidate = path.join(dir, entry.name);
       const target = await getDirectoryTarget(candidate, entry);
       if (!target) continue;
-      // A Git repository is a hard boundary: record it, then do not scan
-      // deeper inside it. This catches containers like `repos/android` while
-      // avoiding expensive nested scans through large project worktrees.
-      if (await hasGitMetadata(candidate) || await hasGitMetadata(target)) {
+      // A link can expose only a subdirectory of a repository, with no .git
+      // at its target. Ask Git for the owning root rather than treating that
+      // directory as a non-repository container.
+      const hasMetadata = await hasGitMetadata(candidate);
+      if (hasMetadata || entry.isSymbolicLink()) {
         const root = await findGitRoot(target);
         if (root && root !== workspaceRoot && !seen.has(root)) {
           seen.add(root);
@@ -3001,8 +3005,11 @@ async function discoverNestedGitRoots(workspaceRoot: string, signal?: AbortSigna
             return;
           }
         }
-        continue;
+        // Repositories remain scan boundaries. A link back into the current
+        // workspace is only a container: its descendants may hold other repos.
+        if (hasMetadata || (root && root !== workspaceRoot)) continue;
       }
+      if (excluded) continue;
       // Keep the lexical path for display and workspace membership checks,
       // even when a container points outside the workspace through a link.
       childDirectories.push(candidate);

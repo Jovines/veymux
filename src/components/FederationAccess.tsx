@@ -20,9 +20,9 @@ import { toDataURL } from 'qrcode';
 import { parseInviteLink } from '../lib/federation/inviteLink';
 import { DesktopInvitationButton } from './DesktopInvitationButton';
 import { desktopConnectionIntent } from '../lib/services/desktopServiceConnection';
-import { ArrowLeft, Check, ChevronDown, ChevronRight, Clock3, Copy, Link2Off, MessageCircle, Monitor, Plus, Pencil, QrCode, Server, Smartphone, TerminalSquare, WifiOff, X } from 'lucide-react';
+import { ArrowLeft, Check, ChevronDown, ChevronRight, Clock3, Copy, Globe, LockKeyhole, Link2Off, MessageCircle, Monitor, Plus, Pencil, QrCode, Server, Smartphone, TerminalSquare, WifiOff, X } from 'lucide-react';
 
-export interface FederationConnection { nativeOrigin?: string; certificateUrl?: string; url: string; targetPeerId: string; pairingCode?: string; serviceName?: string; serviceOrigin?: string; entryServiceId?: string; routeCode?: string; routeOnly?: boolean }
+export interface FederationConnection { showAccessGuide?: boolean; nativeOrigin?: string; certificateUrl?: string; url: string; targetPeerId: string; pairingCode?: string; serviceName?: string; serviceOrigin?: string; entryServiceId?: string; routeCode?: string; routeOnly?: boolean }
 export interface FederationGrantInput {
   subjectId: string;
   resources?: ShareResources;
@@ -33,6 +33,7 @@ export interface FederationGrantInput {
 }
 export interface FederationGrant extends FederationGrantInput { id: string; revokedAt?: number; label?: string; deviceProfile?: DeviceProfile; routeTargetServiceId?: string; routeTargetName?: string }
 export interface FederationInviteInput {
+  showAccessGuide?: boolean;
   reusable?: boolean;
   linkExpiresAt?: number | null;
   viewLayout?: 'split';
@@ -120,10 +121,12 @@ export function FederationAccess({ onConnect, onClose, onConnectWithPassword, on
   const httpsInvite = (() => {
     if (!displayedInvite?.certificateUrl || !displayedInvite.nativeOrigin) return;
     try {
-      const link = desktopConnectionIntent(displayedInvite).invitation;
+      const link = desktopConnectionIntent({ ...displayedInvite, showAccessGuide: false }).invitation;
       return link && new URL(link).protocol === 'https:' ? link : undefined;
     } catch { return; }
   })();
+  const showInvitationGuide = !!httpsInvite && displayedInvite?.showAccessGuide !== false
+    && !window.termdockDesktop?.openServiceConnection && !inviteFailure && !initialNeedsPassword;
   useEffect(() => {
     setInviteDismissed(false); setFailedInvite(undefined); setInviteFailure(undefined);
     setInitialNeedsPassword(false); setInitialPassword('');
@@ -133,6 +136,7 @@ export function FederationAccess({ onConnect, onClose, onConnectWithPassword, on
   const [error, setError] = useState(''); const [notice, setNotice] = useState(''); const [busy, setBusy] = useState(false);
   const [inviting, setInviting] = useState(!!initialShareSessionId || !!initialShareSessionIds?.length); const [adding, setAdding] = useState(!paired);
   const [includeBackup, setIncludeBackup] = useState(true);
+  const [showAccessGuide, setShowAccessGuide] = useState(true);
   const [entryAddress, setEntryAddress] = useState<string>(); const [customAddress, setCustomAddress] = useState('');
   const [preset, setPreset] = useState<'read' | 'write' | 'chat' | 'custom' | 'full'>('read');
   const [chatView, setChatView] = useState(true), [chatSend, setChatSend] = useState(true);
@@ -271,6 +275,7 @@ export function FederationAccess({ onConnect, onClose, onConnectWithPassword, on
       const customActions = [...(chatView ? ['session.chat-view'] : []), ...(chatSend && chatView ? ['session.chat-send'] : []), ...(terminalView ? ['session.terminal-view'] : []), ...(terminalControl && terminalView ? ['session.terminal-input', 'session.resize'] : [])];
       if (preset === 'custom' && !chatView && !terminalView) throw new Error('请至少开放一种查看方式');
       const input: FederationInviteInput = { viewMode: effectiveViewMode,
+        ...(!showAccessGuide ? { showAccessGuide: false } : {}),
         ...(reusable ? { reusable: true } : {}), ...(linkExpiry !== '600000' ? { linkExpiresAt: linkExpiry === 'never' ? null : Date.now() + Number(linkExpiry) } : {}),
         ...(initialViewLayout === 'split' && stableSelected.length > 1 ? { viewLayout: 'split' as const } : {}),
         ...(preset !== 'full' && resource === 'selected' && Object.keys(appearance).length ? { sessionAppearance: appearance } : {}),
@@ -373,16 +378,17 @@ export function FederationAccess({ onConnect, onClose, onConnectWithPassword, on
             <div className="min-w-0"><h3 className="text-sm font-medium">{inviteFailure.title}</h3><p className="mt-1.5 text-sm leading-6 text-muted-foreground">{inviteFailure.description}</p></div>
           </div>}
           {displayedInvite.routeOnly && !inviteFailure && <p className="text-xs leading-relaxed text-muted-foreground">此邀请提供备用连接，目标服务仍会验证你的访问权限。</p>}
-          {initialNeedsPassword ? <form className="space-y-3" onSubmit={async event => { event.preventDefault(); setBusy(true); setError(''); try { await onConnectWithPassword?.(displayedInvite, initialPassword); } catch (failure) { setError(failure instanceof Error ? failure.message : '暂时无法登录，请重试。'); } finally { setInitialPassword(''); setBusy(false); } }}><label className="block space-y-2 text-sm"><span>目标服务密码</span><input className={field} type="password" required autoFocus autoComplete="current-password" value={initialPassword} onChange={event => setInitialPassword(event.target.value)} /></label><button className={`${primaryButton} w-full`} disabled={busy || !initialPassword}>{busy ? '正在登录…' : '登录并连接'}</button></form> : inviteFailure && !inviteFailure.retryable ? <button type="button" className={`${primaryButton} w-full text-sm`} onClick={() => { setReplacingInvite(true); setError(''); }}>输入新的邀请链接</button> : <button type="button" className={`${primaryButton} w-full text-sm`} disabled={busy} onClick={() => void connect(displayedInvite)}>{busy ? '正在连接…' : inviteFailure ? '重试连接' : '接受邀请'}</button>}
-          {(!inviteFailure || inviteFailure.retryable) && !initialNeedsPassword && <DesktopInvitationButton invitation={displayedInvite} />}
-          {displayedInvite.certificateUrl && <div className="space-y-2 text-xs leading-6 text-muted-foreground">
-            <p>直接接受邀请使用 HTTP，内容经应用加密通道传输。</p>
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-              {httpsInvite && <a className="inline-flex min-h-11 items-center text-primary underline underline-offset-2" href={httpsInvite}>直接使用 HTTPS</a>}
-              <a className="inline-flex min-h-11 items-center text-primary underline underline-offset-2" href={displayedInvite.certificateUrl} target="_blank" rel="noopener noreferrer">安装本地 CA 证书</a>
-            </div>
-            {httpsInvite && <p>HTTPS 首次打开可能显示证书提醒，请核对地址后由浏览器确认继续。</p>}
-          </div>}
+          {showInvitationGuide ? <div className="grid grid-cols-2 gap-3" aria-label="选择打开方式">
+            <a href={httpsInvite} aria-disabled={busy || undefined} onClick={event => { if (busy) event.preventDefault(); }} className="min-w-0 rounded-xl border border-primary bg-primary/10 p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:p-4">
+              <span className="mb-3 flex items-center justify-between gap-2 text-primary"><LockKeyhole size={21} aria-hidden="true" /><span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px]">推荐</span></span>
+              <span className="block text-base font-medium">HTTPS 打开 ↗</span><span className="mt-2 block text-xs leading-5">功能完整，无需安装 CA</span><span className="mt-2 block text-xs leading-5 text-muted-foreground">若提示不安全，选择继续访问即可。</span>
+            </a>
+            <button type="button" disabled={busy} onClick={() => void connect(displayedInvite!)} className="min-w-0 rounded-xl border border-border bg-surface-2 p-3 text-left hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 sm:p-4">
+              <Globe size={21} className="mb-3 text-muted-foreground" aria-hidden="true" /><span className="block text-base font-medium">{busy ? '正在连接…' : 'HTTP 打开 ↗'}</span><span className="mt-2 block text-xs leading-5">直接访问，部分功能缺失</span><span className="mt-2 block text-xs leading-5 text-muted-foreground">如主动读取剪贴板、视频预览等可能不可用。</span>
+            </button>
+          </div> : initialNeedsPassword ? <form className="space-y-3" onSubmit={async event => { event.preventDefault(); setBusy(true); setError(''); try { await onConnectWithPassword?.(displayedInvite, initialPassword); } catch (failure) { setError(failure instanceof Error ? failure.message : '暂时无法登录，请重试。'); } finally { setInitialPassword(''); setBusy(false); } }}><label className="block space-y-2 text-sm"><span>目标服务密码</span><input className={field} type="password" required autoFocus autoComplete="current-password" value={initialPassword} onChange={event => setInitialPassword(event.target.value)} /></label><button className={`${primaryButton} w-full`} disabled={busy || !initialPassword}>{busy ? '正在登录…' : '登录并连接'}</button></form> : inviteFailure && !inviteFailure.retryable ? <button type="button" className={`${primaryButton} w-full text-sm`} onClick={() => { setReplacingInvite(true); setError(''); }}>输入新的邀请链接</button> : <button type="button" className={`${primaryButton} w-full text-sm`} disabled={busy} onClick={() => void connect(displayedInvite)}>{busy ? '正在连接…' : inviteFailure ? '重试连接' : '接受邀请'}</button>}
+          {(!inviteFailure || inviteFailure.retryable) && !initialNeedsPassword && <DesktopInvitationButton invitation={displayedInvite} compact />}
+          {showInvitationGuide && <details className="border-t border-border pt-3 text-xs leading-6 text-muted-foreground"><summary className="cursor-pointer">不想看到证书提示？</summary><p className="mt-2">可选安装本地 CA 证书，之后通过 HTTPS 打开。只信任你认识的分享方。</p><a className="inline-flex min-h-11 items-center text-primary underline underline-offset-2" href={displayedInvite.certificateUrl} target="_blank" rel="noopener noreferrer">安装本地 CA 证书</a></details>}
         </section>}
         {inviting && !selectingSessions && <section>
           {!loading && missingRequested.length > 0 && <p role="alert" className="mb-3 text-xs text-destructive">有 {missingRequested.length} 个会话尚未加载或不属于此服务，暂不能生成完整分享。跨服务协作组请分别在所属服务创建邀请。</p>}
@@ -427,6 +433,7 @@ export function FederationAccess({ onConnect, onClose, onConnectWithPassword, on
             {localInviteAddress && <p className="text-xs leading-5 text-muted-foreground">当前地址仅供这台电脑使用。其他设备需选择能访问的域名或 IP 地址。</p>}
             {preset === 'write' && <p className="text-xs leading-5 text-muted-foreground">终端命令可读写该系统用户有权访问的文件。</p>}
             {preset === 'full' && <p className="text-xs leading-5 text-destructive">当前为完整服务权限，包含设置和权限管理。</p>}
+            <label className="flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border border-border p-3 text-sm"><input type="checkbox" className="mt-1 shrink-0 accent-primary" checked={showAccessGuide} onChange={event => setShowAccessGuide(event.target.checked)} /><span><span className="block">显示访问方式引导</span><span className="mt-1 block text-xs leading-5 text-muted-foreground">可信 HTTPS 域名可关闭，访客直接接受邀请。</span></span></label>
             <button type="button" aria-expanded={moreOptions} className="flex min-h-9 w-full items-center justify-between text-xs text-muted-foreground" onClick={() => setMoreOptions(value => !value)}>更多选项<span className="flex items-center gap-1">名称、图标与附带资源<ChevronDown size={13} className={moreOptions ? 'rotate-180' : ''} /></span></button>
             {moreOptions && <div className="space-y-4 border-t border-border pt-3">
               {preset !== 'full' && resource === 'selected' && selectedSessions.length > 0 && <ShareSessionAppearanceFields sessions={selectedSessions} value={sessionAppearance} onChange={setSessionAppearance} />}

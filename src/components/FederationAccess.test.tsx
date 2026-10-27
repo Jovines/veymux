@@ -16,12 +16,16 @@ describe('FederationAccess invitation flow', () => {
     const invitation = parseInviteLink(createOnboardingInviteLink(original, 'http://192.168.1.20:21000/connect'), { httpTransport: true });
     const onConnect = vi.fn();
     render(<FederationAccess initialInvite={invitation} onConnect={onConnect} onClose={() => {}} />);
-    const https = screen.getByRole('link', { name: '直接使用 HTTPS' });
+    const https = screen.getByRole('link', { name: /HTTPS 打开/ });
     expect(parseInviteLink(https.getAttribute('href')!)).toMatchObject({ url: 'https://192.168.1.20:9834', targetPeerId: serviceId, pairingCode: code, viewMode: 'chat', viewLayout: 'split' });
     https.addEventListener('click', event => event.preventDefault()); fireEvent.click(https);
     expect(onConnect).not.toHaveBeenCalled();
+    expect(parseInviteLink(https.getAttribute('href')!).showAccessGuide).toBe(false);
+    expect(screen.getByText('若提示不安全，选择继续访问即可。')).toBeTruthy();
+    expect(screen.getByText('直接访问，部分功能缺失')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /HTTP 打开/ })).toBeTruthy();
+    fireEvent.click(screen.getByText('不想看到证书提示？'));
     expect(screen.getByRole('link', { name: '安装本地 CA 证书' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: '接受邀请' })).toBeTruthy();
   });
   it('adds reusable unlimited chat sharing with a separate clear-display permission', async () => {
     const onCreateInvite = vi.fn().mockResolvedValue({ url: inviteUrl, expiresAt: null });
@@ -451,3 +455,26 @@ it('explains certificate setup and exposes the fingerprint to the sharer', async
   expect(screen.getByText('向接收方核对证书指纹')).toBeTruthy();
   expect(screen.getByText('AA:BB:CC')).toBeTruthy();
 });
+
+ it('skips transport guidance when disabled and redeems only on explicit acceptance', async () => {
+  const original = createInviteLink({ v: 1, serviceId, code, entryUrl: 'https://192.168.1.20:9834', showAccessGuide: false });
+  const invitation = parseInviteLink(createOnboardingInviteLink(original, 'http://192.168.1.20:21000/connect'), { httpTransport: true });
+  const onConnect = vi.fn().mockResolvedValue(undefined);
+  render(<FederationAccess initialInvite={invitation} onConnect={onConnect} onClose={() => {}} />);
+  expect(screen.queryByRole('link', { name: /HTTPS 打开/ })).toBeNull();
+  expect(screen.queryByRole('button', { name: /HTTP 打开/ })).toBeNull();
+  expect(screen.queryByText('不想看到证书提示？')).toBeNull();
+  expect(onConnect).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: '接受邀请' }));
+  await waitFor(() => expect(onConnect).toHaveBeenCalledExactlyOnceWith(invitation));
+ });
+ it('lets the sharer disable guidance without changing the granted scope or actions', async () => {
+  const create = vi.fn().mockResolvedValue({ url: inviteUrl, expiresAt: null });
+  render(<FederationAccess paired initialShareSessionId="one" sessions={[{ sessionId: 'one', name: '产品开发' }]} onConnect={() => {}} onClose={() => {}} onCreateInvite={create} />);
+  const toggle=screen.getByRole('checkbox', { name: /显示访问方式引导/ });
+  expect((toggle as HTMLInputElement).checked).toBe(true);
+  fireEvent.click(toggle);
+  fireEvent.click(screen.getByRole('button', { name: '生成并复制链接' }));
+  await waitFor(() => expect(create).toHaveBeenCalledOnce());
+  expect(create.mock.calls[0][0]).toMatchObject({ showAccessGuide: false, scope: { kind: 'sessions', sessionIds: ['one'] }, actions: ['session.view'] });
+ });

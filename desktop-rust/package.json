@@ -1,7 +1,7 @@
 {
   "name": "termdock-desktop",
   "private": true,
-  "version": "1.4.361",
+  "version": "1.4.362",
   "type": "module",
   "scripts": {
     "dev": "npm run prepare:workspace && npm run prepare:renderer && tauri dev",

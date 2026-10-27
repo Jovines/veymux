@@ -3654,6 +3654,7 @@ const TerminalViewportInner = React.forwardRef<TerminalController, TerminalViewp
       }
       const presentation = resizePresentationRef.current;
       const resizeGeneration = presentation?.generation;
+      presentation?.writing();
       term.write(chunk, () => {
         if (replayToken) replayToken.depth -= 1;
         if (terminalRef.current !== term) return;
