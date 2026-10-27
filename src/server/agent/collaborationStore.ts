@@ -178,6 +178,9 @@ function localGroupRequestKey(key: unknown): string {
 }
 
 export class CollaborationStore {
+  // Poll timestamps/counters are live observations, not new delivery facts.
+  // Bound their full-journal checkpoints across all recipients, including peers.
+  private lastTransportCheckpointAt = Date.now();
   onMessageQueued?: () => void;
   private changeListeners = new Set<() => void>();
   private runtimeGuards = new Set<(id: string) => void>();
@@ -1171,7 +1174,7 @@ export class CollaborationStore {
 
   setSnapshot(id: string, snapshot: string): void {
     const message = this.getMessage(id);
-    if (!message || message.direct) return;
+    if (!message || message.direct || message.snapshot === snapshot) return;
     message.snapshot = snapshot;
     this.persist();
   }
@@ -1179,12 +1182,31 @@ export class CollaborationStore {
   diagnostic(id: string): TransportDiagnostic | null { return this.document.transport?.[id] ?? null; }
   recordTransport(id: string, diagnostic: TransportDiagnostic, durable = false): void {
     if (!this.getMessage(id) || (this.document.transport?.[id]?.checked_at ?? 0) > diagnostic.checked_at) return;
+    const previous = this.document.transport?.[id];
+    if (!durable && stableJson(previous) === stableJson(diagnostic)) return;
     (this.document.transport ??= {})[id] = diagnostic;
-    this.persist(durable);
+    if (durable || this.transportFactsChanged(previous, diagnostic) || this.transportCheckpointDue()) this.persist(durable);
+  }
+
+  private transportCheckpointDue(): boolean {
+    const elapsed = Date.now() - this.lastTransportCheckpointAt;
+    return elapsed >= 60_000 || elapsed < 0;
+  }
+
+  private transportFactsChanged(previous: TransportDiagnostic | undefined, next: TransportDiagnostic): boolean {
+    // Clearing a retry or recording the first attempt changes recovery behavior.
+    // All write stages/resolutions, receipt evidence and errors stay immediate.
+    const facts = (value: TransportDiagnostic | undefined) => {
+      if (!value) return null;
+      const { checked_at: _, attempt_count, next_retry_at, ...rest } = value;
+      return { ...rest, attempted: attempt_count > 0, retryScheduled: next_retry_at != null };
+    };
+    return stableJson(facts(previous)) !== stableJson(facts(next));
   }
   /** A route blocks the whole recipient queue, not just its first message. */
   recordRecipientTransport(sessionId: string, patch: Partial<Omit<TransportDiagnostic, 'attempt_count' | 'write_stage'>> & { checked_at: number }): void {
     let changed = false;
+    let factsChanged = false;
     for (const message of this.document.messages) {
       if (message.toSessionId !== sessionId || message.status !== 'pending') continue;
       const previous = this.document.transport?.[message.id];
@@ -1192,9 +1214,10 @@ export class CollaborationStore {
       const next: TransportDiagnostic = { relay_online: null, peer_reachable: null, next_retry_at: null, last_error: null,
         ...previous, ...patch, attempt_count: previous?.attempt_count ?? 0 };
       if (JSON.stringify(previous) === JSON.stringify(next)) continue;
+      factsChanged ||= this.transportFactsChanged(previous, next);
       (this.document.transport ??= {})[message.id] = next; changed = true;
     }
-    if (changed) this.persist();
+    if (changed && (factsChanged || this.transportCheckpointDue())) this.persist();
   }
 
   receipt(id: string, raw = false) {
@@ -1399,6 +1422,7 @@ export class CollaborationStore {
         try { fs.fsyncSync(directory); } finally { fs.closeSync(directory); }
       }
       this.persistedDocument = serialized; this.storage.committed(serialized);
+      this.lastTransportCheckpointAt = Date.now();
       this.committedMessageIds = new Set(this.document.messages.map(message => message.id));
       this.committedPendingIds = new Set(this.document.messages.filter(message => message.status === 'pending').map(message => message.id));
       for (const listener of this.changeListeners) { try { listener(); } catch { /* Journal retries from durable source records. */ } }

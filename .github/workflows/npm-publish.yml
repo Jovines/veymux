@@ -115,6 +115,8 @@ jobs:
           src/server/agent/integrationBatchRelease.test.ts
           src/server/agent/integration.test.ts
           src/server/agent/collaborationNoop.test.ts
+          src/server/agent/collaborationTransportPersistence.test.ts
+          src/server/agent/collaborationDeliveryWorker.test.ts
           src/server/agent/collaborationStore.test.ts
           src/server/agent/integrationObservation.test.ts
           src/server/agent/integrationTmuxObservation.test.ts
