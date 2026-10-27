@@ -19,13 +19,19 @@ it.each([
   ['collector', 'retry', 'run', '--revision', '1'], ['collector', 'cancel', 'run'],
 ].map(args => ({ args })))('rejects incomplete collector lifecycle commands $args', ({ args }) => expect(() => parseTodoCommand(args)).toThrow());
 it('uses bounded read endpoints and explicit CAS for owner recovery', async () => {
-  const io = { request: vi.fn(async () => ({ statusCode: 200, body: '{}' })), stdin: vi.fn(), write: vi.fn() };
+  const io = { request: vi.fn(async () => ({ statusCode: 200, body: '{"collectorProtocolVersion":1}' })), stdin: vi.fn(), write: vi.fn() };
   await executeTodoCommand(parseTodoCommand(['checkpoint', 'get', '--collector', 'a/b', '--source-key', 'chat:mentions']), io);
   expect(io.request).toHaveBeenLastCalledWith('GET', '/api/terminal/operations/todos/collectors/a%2Fb/checkpoints?sourceKey=chat%3Amentions', undefined);
   await executeTodoCommand(parseTodoCommand(['collector', 'retry', 'r', '--revision', '7', '--idempotency-key', 'new-attempt']), io);
   expect(io.request).toHaveBeenLastCalledWith('POST', '/api/terminal/operations/todos/runs/r/retry', { revision: 7, idempotencyKey: 'new-attempt' });
   await executeTodoCommand(parseTodoCommand(['collector', 'cancel', 'r', '--revision', '7']), io);
   expect(io.request).toHaveBeenLastCalledWith('POST', '/api/terminal/operations/todos/runs/r/cancel', { revision: 7 });
+});
+it('rejects an old service before attempting any collector write or recovery', async () => {
+  const io = { request: vi.fn(async () => ({ statusCode: 200, body: '{"count":0}' })), stdin: vi.fn(), write: vi.fn() };
+  expect(await executeTodoCommand(parseTodoCommand(['add', '--title', '本轮待办', '--collector', 'c', '--run', 'r']), io)).toBe(1);
+  expect(io.request).toHaveBeenCalledExactlyOnceWith('GET', '/api/terminal/operations/todos/summary', undefined);
+  expect(JSON.parse(io.write.mock.calls[0][0]).error).toContain('一起升级');
 });
 it.each([
   ['update'], ['update', 'id'], ['update', 'id', '--revision', '1'],

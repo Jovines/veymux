@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-import { isTodoCategory } from './types.js';
+import { COLLECTOR_PROTOCOL_VERSION, isTodoCategory } from './types.js';
 import { normalizeDailyTimes } from '../shared/dailySchedule.js';
 import { canClaimTodo } from './claimEligibility.js';
 import path from 'node:path';
@@ -157,6 +157,9 @@ export async function executeTodoCommand(command: TodoCommand, io: {
     }
     const request = async (method: 'GET' | 'POST', suffix = '', body?: unknown) => { const response = await io.request(method, base + suffix, body); const data = JSON.parse(response.body); if (response.statusCode < 200 || response.statusCode >= 300) throw Object.assign(new Error(data.error || 'Todo request failed'), { currentRevision: data.currentRevision, code: data.code, activeRunId: data.activeRunId }); return data; };
     const content = o.file ? fs.readFileSync(String(o.file), 'utf8') : o.stdin ? await io.stdin() : String(o.content ?? o.description ?? '');
+    const needsCollectionProtocol = command.action === 'checkpoint' || command.action === 'collector' && ['run', 'inspect', 'finish', 'retry', 'cancel'].includes(command.collectorAction!)
+      || !!o.run || !!o.collector && ['add', 'update', 'complete', 'ignore', 'reopen'].includes(command.action);
+    if (needsCollectionProtocol && (await request('GET', '/summary')).collectorProtocolVersion !== COLLECTOR_PROTOCOL_VERSION) throw new Error('请将 CLI 与服务端一起升级到 1.4.386 或更新版本；旧服务不支持收集轮次与 checkpoint 门禁');
     let result;
     if (command.action === 'checkpoint') {
       result = await request('GET', `/collectors/${encodeURIComponent(String(o.collector))}/checkpoints${o['source-key'] ? `?sourceKey=${encodeURIComponent(String(o['source-key']))}` : ''}`);

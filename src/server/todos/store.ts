@@ -7,7 +7,7 @@ import { canClaimTodo } from './claimEligibility.js';
 import { JsonStorageBudget, type JsonStorageOptions } from '../utils/jsonStorageBudget.js';
 import { randomUUID, randomBytes, createHash } from 'node:crypto';
 import { nextAutomationRunAt, normalizeAutomationSchedule } from '../agent/automationStore.js';
-import { isTodoCategory, type TodoUpdateInput, type TodoCollector, type TodoCreateInput, type TodoHandoffInput, type TodoItem, type TodoLaunchConfig, type TodoProcessing, type TodoRun, type TodoSessionPolicy, type TodoSnapshot } from './types.js';
+import { COLLECTOR_PROTOCOL_VERSION, isTodoCategory, type TodoUpdateInput, type TodoCollector, type TodoCreateInput, type TodoHandoffInput, type TodoItem, type TodoLaunchConfig, type TodoProcessing, type TodoRun, type TodoSessionPolicy, type TodoSnapshot } from './types.js';
 
 interface Document extends TodoSnapshot { version: 1; requests: Record<string, { hash: string; id: string }> }
 function string(value: unknown, max: number, fallback = ''): string {
@@ -70,14 +70,14 @@ export class TodoStore {
     this.storage.write(bytes, control);
     this.doc = next; return structuredClone(result);
   }
-  openCount(): number { return this.doc.todos.filter(t => t.status === 'open').length; }
+  openCount(collectorId?: string): number { return this.doc.todos.filter(t => t.status === 'open' && (!collectorId || t.collectorId === collectorId)).length; }
   /** Session provenance survives direction removal and display-name edits. */
   collectionSessions(): Map<string, string> {
     const latest = new Map<string, TodoRun>();
     for (const run of this.doc.runs) if (run.sessionId) latest.set(run.sessionId, run);
     return new Map([...latest.values()].filter(run => run.kind === 'collect' && run.collectionSession?.owned !== false && !run.collectionSession?.recycledAt).map(run => [run.sessionId!, run.id]));
   }
-  snapshot(): TodoSnapshot { const { requests: _, version: _v, ...snapshot } = this.doc; return structuredClone(snapshot); }
+  snapshot(): TodoSnapshot { const { requests: _, version: _v, ...snapshot } = this.doc; return { ...structuredClone(snapshot), collectorProtocolVersion: COLLECTOR_PROTOCOL_VERSION }; }
   get(id: string): TodoItem { const todo = this.doc.todos.find(t => t.id === id); if (!todo) throw new TodoError('待办不存在', 404); return structuredClone(todo); }
   assertCollector(todo: TodoItem, collectorId: unknown): void {
     if (collectorId !== undefined && (typeof collectorId !== 'string' || !collectorId || todo.collectorId !== collectorId)) throw new TodoError('ownership mismatch: 待办不属于此 collector', 403, undefined, 'TODO_OWNERSHIP_MISMATCH');

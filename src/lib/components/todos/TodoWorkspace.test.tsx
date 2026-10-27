@@ -93,8 +93,8 @@ it('keeps interrupted sources busy and preserves retry identity until the owner 
   data.runs = [{ ...run(), id: 'collect-old', kind: 'collect', todoId: null, collectorId: 'collector', status: 'failed', error: '服务重启，本轮待核对', collection: { state: 'interrupted', revision: 4 } }];
   mocks.retryCollection.mockRejectedValueOnce(new Error('请先核对并关闭原收集终端'));
   mocks.retryCollection.mockImplementationOnce(async old => {
-    const next = { ...old, id: 'collect-new', error: '', status: 'delivered', collection: { state: 'active', revision: 1, previousRunId: old.id } };
-    data.runs = data.runs.map(item => item.id === old.id ? { ...item, collection: { ...item.collection!, state: 'cancelled', retryRunId: next.id } } : item).concat(next);
+    const next: TodoRun = { ...old, id: 'collect-new', error: '', status: 'delivered', collection: { state: 'active', revision: 1, previousRunId: old.id } };
+    data.runs = data.runs.map(item => item.id === old.id ? { ...item, collection: { ...item.collection!, state: 'cancelled' as const, retryRunId: next.id } } : item).concat(next);
     return { run: next };
   });
   setup(); await loaded(); fireEvent.click(screen.getByRole('button', { name: '管理收集方向' }));

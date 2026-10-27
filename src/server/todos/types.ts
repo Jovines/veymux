@@ -2,6 +2,7 @@ import type { AutomationSchedule } from '../agent/automationStore.js';
 
 export const TODO_CATEGORIES = ['short', 'long', 'delegated', 'uncategorized'] as const;
 export type TodoCategory = typeof TODO_CATEGORIES[number];
+export const COLLECTOR_PROTOCOL_VERSION = 1;
 export function isTodoCategory(value: unknown): value is TodoCategory { return TODO_CATEGORIES.some(category => category === value); }
 
 export interface TodoLaunchConfig { agentSlug: string; command: string; cwd: string; prompt: string }
@@ -49,7 +50,7 @@ export interface TodoCollector {
   checkpoints?: CollectorCheckpoint[];
   schedule: AutomationSchedule | null; nextRunAt: number | null; createdAt: number; updatedAt: number; revision: number;
 }
-export interface TodoSnapshot { todos: TodoItem[]; collectors: TodoCollector[]; runs: TodoRun[]; defaults: TodoLaunchConfig }
+export interface TodoSnapshot { todos: TodoItem[]; collectors: TodoCollector[]; runs: TodoRun[]; defaults: TodoLaunchConfig; collectorProtocolVersion?: typeof COLLECTOR_PROTOCOL_VERSION }
 export interface TodoCreateInput { title: string; description?: string; category?: TodoCategory; source?: string; sourceUrl?: string; externalId?: string; collectorId?: string; runId?: string; idempotencyKey?: string }
 export interface TodoUpdateInput { revision: number; collectorId?: string; runId?: string; title?: string; description?: string; category?: TodoCategory; sourceUrl?: string; externalId?: string; status?: TodoItem['status'] }
 export interface TodoCallerContext { backendSessionId?: string | null; tmuxSessionName?: string | null }

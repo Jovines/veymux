@@ -171,3 +171,20 @@ it('keeps accepted schedule keys stable across clock rollback and the repeated D
   clock.mockReturnValue(Date.parse('2026-11-01T01:31:00-05:00')); await runner.tick();
   expect(runtime.launch).toHaveBeenCalledOnce(); expect(store.collector(c.id).nextRunAt).toBe(Date.parse('2026-11-02T01:30:00-05:00'));
 });
+it('uses the server calendar normalization for a nonexistent DST wall time', async () => {
+  process.env.TZ = 'America/New_York';
+  const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-03-08T01:00:00-05:00'));
+  const c = store.saveCollector({ name: 'DST', config, schedule: { kind: 'daily', time: '02:30', weekdays: [0, 1, 2, 3, 4, 5, 6] } });
+  expect(store.collector(c.id).nextRunAt).toBe(Date.parse('2026-03-08T03:30:00-04:00'));
+  clock.mockReturnValue(Date.parse('2026-03-08T03:30:00-04:00')); await runner.tick();
+  expect(store.activeCollection(c.id)?.trigger).toMatchObject({ triggerType: 'schedule', timezone: 'America/New_York', scheduledAt: clock() });
+  expect(runtime.launch).toHaveBeenCalledOnce();
+});
+it('refuses storage admission without launching or losing an accepted prior run', async () => {
+  const c = store.saveCollector({ name: '容量', config });
+  const size = fs.statSync(file).size;
+  store = new TodoStore(file, { maxBytes: size + 32 }); runner = new TodoRunner(store, runtime);
+  const before = store.snapshot();
+  await expect(runner.start('collect', c.id, undefined, 'capacity')).rejects.toThrow('容量上限');
+  expect(store.snapshot()).toEqual(before); expect(runtime.launch).not.toHaveBeenCalled();
+});

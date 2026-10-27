@@ -1,4 +1,4 @@
-import { isTodoCategory } from './types.js';
+import { COLLECTOR_PROTOCOL_VERSION, isTodoCategory } from './types.js';
 import { collectionKey } from './collection.js';
 import { Router, type Request, type Response } from 'express';
 import { collectionSessionPolicy, processingPolicy, launchConfig, TodoError, TodoStore } from './store.js';
@@ -169,12 +169,15 @@ export function todoRoutes(store: TodoStore, runner: TodoRunner, runtime: TodoRu
       next();
     } catch (error) { fail(res, error); }
   });
-  const scopedSnapshot = (req: Request, res: Response) => {
-    const snapshot = store.snapshot(), requested = req.query.collectorId;
+  const collectorScope = (req: Request, res: Response) => {
+    const requested = req.query.collectorId;
     if (requested !== undefined && (typeof requested !== 'string' || !requested || requested.length > 100)) throw new TodoError('collectorId 无效');
     const owner = res.locals.collectorId as string | undefined;
     if (owner && requested && requested !== owner) throw new TodoError('ownership mismatch: 不能查询其他 collector', 403, undefined, 'TODO_OWNERSHIP_MISMATCH');
-    const collectorId = owner || requested;
+    return owner || requested as string | undefined;
+  };
+  const scopedSnapshot = (req: Request, res: Response) => {
+    const snapshot = store.snapshot(), collectorId = collectorScope(req, res);
     if (collectorId) {
       snapshot.todos = snapshot.todos.filter(todo => todo.collectorId === collectorId);
       snapshot.collectors = snapshot.collectors.filter(collector => collector.id === collectorId);
@@ -194,7 +197,8 @@ export function todoRoutes(store: TodoStore, runner: TodoRunner, runtime: TodoRu
   router.get('/collectors/:id/checkpoints', route((req, res) => {
     checkOwner(res, req.params.id);
     if (req.query.sourceKey !== undefined && typeof req.query.sourceKey !== 'string') throw new TodoError('sourceKey 无效');
-    res.json({ collectorId: req.params.id, checkpoints: store.checkpoints(req.params.id, req.query.sourceKey as string | undefined) });
+    const checkpoints = store.checkpoints(req.params.id, req.query.sourceKey as string | undefined);
+    res.json({ collectorId: req.params.id, checkpoints: Array.isArray(checkpoints) ? checkpoints : [checkpoints] });
   }));
   router.get('/runs/:id', route((req, res) => { const run = store.run(req.params.id); checkOwner(res, run.collectorId); res.json({ run }); }));
   router.post('/runs/:id/finish', route((req, res) => {
@@ -203,7 +207,7 @@ export function todoRoutes(store: TodoStore, runner: TodoRunner, runtime: TodoRu
   }));
   router.post('/runs/:id/retry', route(async (req, res) => res.json({ run: await runner.retry(req.params.id, req.body?.revision, req.body?.idempotencyKey, req) })));
   router.post('/runs/:id/cancel', route(async (req, res) => res.json({ run: await runner.cancel(req.params.id, req.body?.revision) })));
-  router.get('/summary', route((req, res) => res.json({ count: scopedSnapshot(req, res).todos.filter(todo => todo.status === 'open').length })));
+  router.get('/summary', route((req, res) => res.json({ count: store.openCount(collectorScope(req, res)), collectorProtocolVersion: COLLECTOR_PROTOCOL_VERSION })));
   router.get('/', route((req, res) => {
     const snapshot = scopedSnapshot(req, res), category = req.query.category;
     if (category !== undefined) {

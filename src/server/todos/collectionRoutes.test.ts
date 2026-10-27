@@ -52,7 +52,7 @@ it('persists the webhook envelope and rejects busy events without consuming thei
 it('uses server-scoped checkpoint/run reads and fences old run mutations after a new run starts', async () => {
   const run = (await call('/collectors/' + a.id + '/run', { idempotencyKey: 'manual' })).data.run;
   await vi.waitFor(() => expect(store.run(run.id).status).toBe('delivered'));
-  expect((await call('/collectors/' + a.id + '/checkpoints?sourceKey=chat', undefined, 'session-a')).data.checkpoints).toMatchObject({ revision: 0, cursor: null });
+  expect((await call('/collectors/' + a.id + '/checkpoints?sourceKey=chat', undefined, 'session-a')).data.checkpoints).toEqual([expect.objectContaining({ revision: 0, cursor: null })]);
   expect((await call('/collectors/' + b.id + '/checkpoints', undefined, 'session-a')).status).toBe(403);
   const rb = (await call('/collectors/' + b.id + '/run', { idempotencyKey: 'b' })).data.run;
   expect((await call('/runs/' + rb.id, undefined, 'session-a')).status).toBe(403);

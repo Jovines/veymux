@@ -111,6 +111,75 @@ Collector 的 list/sources/summary 由服务端收窄到自己的命名空间（
 
 add/update（包括完成、忽略、重开）保留原有 `{todo}` 响应，并增加顶层 `collectorId`、`todoId`、`revision` 供审计。UI 始终显示来源标签，按来源筛选优先使用 collector ID；同名方向仍可分别筛选，改名后标签跟随显示。
 
+## 可恢复的收集轮次（1.4.386）
+
+本节只增加三个有限能力：持久 checkpoint、不可变触发上下文、全周期单飞与显式恢复。它不提供 FIFO、来源适配器平台、全局 exactly-once 或多次 Agent 工具调用事务。已有 Todo 数据仍为 version=1，不迁移；旧轮次没有 cursor 就保持没有，不猜测历史扫描进度。
+
+### 读取与成功提交 checkpoint
+
+checkpoint 以 `collectorId + sourceKey` 隔离。每项保存 `revision`、opaque JSON `cursor`、`lastSuccessfulAt`（TD 成功提交时间）及 `lastSuccessfulRunId`。源系统的 watermark 可自行放入 cursor，TD 不解释它的业务含义。尚未提交的来源读取为 revision=0、cursor=null、成功时间/轮次=null。`/clear`、回收和重启不会清除已提交位置。
+
+```sh
+td todo checkpoint get --collector <id> [--source-key <key>]
+td todo collector inspect <run-id>
+td todo collector finish <run-id> --revision <collection.revision> --file outcome.json
+```
+
+`checkpoint get` 返回 `{collectorId, checkpoints:[...]}`，指定 source-key 时也保留数组形态。`inspect` 返回实际 run，包括 `collection.revision`。成功提交示例：
+
+```json
+{
+  "status": "success",
+  "summary": "声明的来源已完整扫描，无新增候选",
+  "coverage": [{"sourceKey": "document:chat", "status": "success"}],
+  "checkpoints": [{"sourceKey": "document:chat", "expectedRevision": 0, "cursor": {"lastMessageId": "opaque-id"}}]
+}
+```
+
+finish 要求有效 run revision；各 source 的 expectedRevision 必须等于当前值。所有 checkpoint 更新与 run 结果同一次存储事务落盘；任一 CAS 失败，结果和所有 checkpoint 都不变。HTTP 409 返回 currentRevision，checkpoint 冲突带 CHECKPOINT_CONFLICT。同幂等键/同结果重试不再次推进，同键不同结果拒绝。CLI 默认从结果内容生成稳定提交键，也可显式 `--idempotency-key`。
+
+status 还可为 partial/failed，coverage 逐项为 success/partial/failed，可带 note。success 必须明确声明非空覆盖范围且各项成功；只有其中声明成功的来源可以带 checkpoint。partial/failed 不能附推进位置。普通 `td todo report` 只记录结果、结束本轮，绝不推进 cursor。TD 不从“新增零条”或 Agent 的自然语言推断扫描完整性，只承诺提交者声明的覆盖范围。
+
+此前成功的单条 add/update 不会回滚；部分成功后重扫继续使用 external-id 与 revision。仅本 collector 当前有效 run 能写入或 finish，写待办时须携带 `--collector <id> --run <run-id>`。旧 run 的迟到写入返回 COLLECTOR_RUN_FENCED。人工 owner 从非 collector 会话/界面管理 TODO 的兼容入口保留。
+
+### 触发记录与容量
+
+run.trigger 在接受请求时与 run 原子持久化，之后不改写：
+
+| 字段 | 契约 |
+| --- | --- |
+| collectorId / runId | 服务端分配并绑定 |
+| triggerType | manual / schedule / webhook |
+| scheduledAt | 仅定时触发，原计划的绝对时间 |
+| receivedAt | 服务端实际接受时间 |
+| timezone | 接受时的服务端 IANA 时区 |
+| idempotencyKey | collector 内的稳定触发键 |
+| payload | 校验后的 JSON 业务通知；可省略 |
+
+HTTP 请求头与原 Authorization/Cookie 永不复制到 trigger、prompt 或普通日志。payload 作为不可信数据提供；已知凭据字段、嵌套 headers/credentials 会被拒绝，不承诺识别任意文本里隐含的秘密，调用方只提交非密业务通知。payload 与单个 cursor 各最多 16000 UTF-8 字节，outcome 最多 40000 字节，每个 collector 最多 128 个 checkpoint source、10000 个 run；另受默认 32MiB 的 TODO 存储预算约束。触发键不自动过期，未决记录不被静默删除。达到容量上限拒绝新增，先导出/维护归档或调整存储预算；本版没有自动归档命令。
+
+Webhook 必须提供稳定 Idempotency-Key（或已支持的通知 ID header）。同 collector+key、同业务 payload 返回原 run，collector 配置改动不改变原触发身份；同键不同 payload 返回 COLLECTOR_TRIGGER_CONFLICT。接受后返回 202 与 runId/state/revision；202 仅表示已持久接受。认证、禁用、大小、限流和 busy 拒绝都不是接受，不会覆盖既有 payload。原每来源 10 次/分钟限流继续适用，429 带 Retry-After。
+
+### 全周期 busy 与恢复
+
+manual、schedule、webhook 共用一份持久门禁。从接受请求到显式 report/finish/结束本轮，仅允许同 collector 一条有效收集轮次；“已发送到终端”不会释放门禁。不同 collector 可并行。同键重试先查询原记录；不同键遇未结束轮次返回 409 COLLECTOR_BUSY、activeRunId，没有隐式等待队列，也不返回假 2xx。
+
+服务重启将未决 collect 标为 interrupted/结果待核对并保留门禁；不会自动重放终端命令。回收了未报告的终端也保留这一事实。owner 在原终端已被观测为不存在后，可以使用：
+
+```sh
+td todo collector inspect <old-run-id>
+td todo collector retry <old-run-id> --revision <n> --idempotency-key <新的稳定键>
+td todo collector cancel <run-id> --revision <n>
+```
+
+retry/cancel 是用户管理操作，不能从 collector 会话调用以扩大自身权限。原终端仍存在（或无法确认）时返回 COLLECTOR_RUNTIME_PRESENT；先查看并关闭该终端。retry 创建关联 previousRunId 的新轮次，原轮次保存 retryRunId，并拒绝旧 run 的后续写入/结果；相同重试键返回同一新轮次。cancel 只结束记录，不宣称停止外部工具，不推进 cursor。终端在取消竞态后才完成创建时，保留这个实际终端的关联，但在发送 Agent 命令前拦截。
+
+UI 在收集方向卡片上禁用重复收集，展示“等待本轮结果”或“本轮结果待核对”，提供重试/结束入口及原终端入口。触发数据和声明覆盖在收集记录中按需展开，不把状态推导为 Agent 内部忙闲或来源健康。
+
+定时繁忙时保留 nextRunAt 的 due 事实；门禁释放后接受一轮合并补扫，再计算下一个服务端计划时间，不逐次重放所有错过的时刻。收集逻辑必须根据 checkpoint 选择回溯范围，依赖瞬时固定窗口的来源没有绝对无缺口保证。保持原服务端日历策略：春季不存在的墙钟时间由 Date 顺延，秋季重复小时仅取首次匹配；已接受的计划键与 nextRunAt 持久化，时钟回拨不重新接受同一时刻。不新增独立的 collector 时区引擎。
+
+CLI 与服务端需要一起升级到 >=1.4.386。新 CLI 在发送 collector 写入、run、checkpoint、finish/retry/cancel 前检查 `/summary` 的 collectorProtocolVersion=1；旧服务不支持时先拒绝，避免参数被旧服务忽略。普通人工 TODO 与只读旧 CLI 入口继续兼容。
+
 ## HTTP 接口
 
 统一前缀 `/api/terminal/operations/todos`。继承现有终端 API 的认证、CSRF、服务授权和加密传输规则；浏览器通过页面加密 fetch 使用。本机 CLI 使用 loopback 与私有本机 token。没有匿名写入或业务 HTTP 降级。
@@ -118,7 +187,12 @@ add/update（包括完成、忽略、重开）保留原有 `{todo}` 响应，并
 | 方法与路径 | 内容 |
 | --- | --- |
 | `GET /` | todos、collectors、runs、defaults；可用 `?category=short` 等筛选 |
-| `GET /summary` | 未完成数量 |
+| `GET /summary` | 未完成数量及 collectorProtocolVersion；支持命名空间 |
+| `GET /collectors/:id/checkpoints` | 持久 checkpoint，可选 sourceKey；总是返回 checkpoints 数组 |
+| `GET /runs/:id` | 本轮触发、状态、collection.revision 与明确结果 |
+| `POST /runs/:id/finish` | revision、idempotencyKey、status、summary、coverage、checkpoints；成功 CAS 原子提交 |
+| `POST /runs/:id/retry` | owner 操作：revision、全新稳定 idempotencyKey；确认原终端不存在后显式重试 |
+| `POST /runs/:id/cancel` | owner 操作：revision；确认原终端不存在后结束此轮，不推进 cursor |
 | `POST /` | title、description、category、source、sourceUrl、externalId、collectorId、idempotencyKey |
 | `POST /:id` | revision、可选 collectorId 归属前置条件，与 title / description / category / sourceUrl / externalId / status（open、completed、ignored）；revision 冲突返回 409 和 currentRevision |
 | `POST /handoff` | todoIds、note、idempotencyKey；已有目标传 sessionId，新建传 config；返回同一批次的持久化交接记录 |
