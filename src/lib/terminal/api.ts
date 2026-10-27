@@ -3924,13 +3924,14 @@ export interface GitActionResponse {
   bundle?: GitBundleResponse;
 }
 
-export async function getGitBundle(cwd?: string, signal?: AbortSignal, options: { includeNested?: boolean; refresh?: boolean; cacheOnly?: boolean; discoverOnly?: boolean; action?: string; requestSlotId?: string; requestTimeoutMs?: number | null } = {}): Promise<GitBundleResponse> {
+export async function getGitBundle(cwd?: string, signal?: AbortSignal, options: { includeNested?: boolean; refresh?: boolean; cacheOnly?: boolean; discoverOnly?: boolean; rescan?: boolean; action?: string; requestSlotId?: string; requestTimeoutMs?: number | null } = {}): Promise<GitBundleResponse> {
   const params = new URLSearchParams();
   if (cwd) params.set('cwd', cwd);
   if (options.includeNested) params.set('includeNested', 'true');
   if (options.refresh) params.set('refresh', 'true');
   if (options.cacheOnly) params.set('cacheOnly', 'true');
   if (options.discoverOnly) params.set('discoverOnly', 'true');
+  if (options.rescan !== undefined) params.set('rescan', String(options.rescan));
   params.set('action', options.action ?? (options.refresh ? 'manual_git_refresh' : 'open_sidebar_git_refresh'));
   if (options.requestSlotId) params.set('requestSlotId', options.requestSlotId);
   const qs = params.toString();

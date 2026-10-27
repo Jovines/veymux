@@ -60,3 +60,11 @@ it('preserves the split presentation without adding authorization to the URL', (
   const url = createInviteLink({ v: 1, serviceId, code, entryUrl: 'https://entry.example', viewLayout: 'split' });
   expect(parseInviteLink(url)).toMatchObject({ viewLayout: 'split', targetPeerId: serviceId });
 });
+
+it('roundtrips the optional guidance preference without changing the target or capabilities', () => {
+  const url = createInviteLink({ v: 1, serviceId, code, entryUrl: 'https://public.example', showAccessGuide: false });
+  expect(parseInviteLink(url)).toMatchObject({ showAccessGuide: false, targetPeerId: serviceId, pairingCode: code });
+  expect(parseInviteLink(url)).not.toHaveProperty('actions');
+  const malformed = createInviteLink({ v: 1, serviceId, code, entryUrl: 'https://public.example', showAccessGuide: 'false' as unknown as boolean });
+  expect(() => parseInviteLink(malformed)).toThrow('邀请引导选项无效');
+});

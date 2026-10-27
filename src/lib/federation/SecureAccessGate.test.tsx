@@ -543,6 +543,11 @@ it.each(['https://192.168.1.20:9834', 'http://192.168.1.20:21000'])('offers loca
   expect(new URL(generated.url).search).toBe('');
   expect(generated.certificateFingerprint).toBe('AA:BB:CC');
   expect(parseInviteLink(generated.url)).toMatchObject({ url: 'https://192.168.1.20:9834', pairingCode: 'b'.repeat(32), viewMode: 'chat', viewLayout: 'split' });
+  const direct = await mocks.accessProps.onCreateInvite({ ...input, showAccessGuide: false });
+  expect(new URL(direct.url).protocol).toBe('https:');
+  expect(parseInviteLink(direct.url)).toMatchObject({ showAccessGuide: false, url: 'https://192.168.1.20:9834', pairingCode: 'b'.repeat(32), viewMode: 'chat', viewLayout: 'split' });
+  expect(direct.certificateFingerprint).toBeUndefined();
+  expect(mocks.request.mock.calls.filter(([packet]) => packet.type === 'invite-create').every(([packet]) => packet.showAccessGuide === undefined)).toBe(true);
   const custom = await mocks.accessProps.onCreateInvite({ ...input, entryAddress: 'https://public.example' });
   expect(new URL(custom.url).protocol).toBe('https:');
   expect(custom.certificateFingerprint).toBeUndefined();

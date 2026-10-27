@@ -521,7 +521,7 @@ export function SecureAccessGate({ children }: { children: ReactNode }) {
   const invite = async (input: FederationInviteInput) => {
     const client = await getActiveClient();
     await inviteSetupLoading.current;
-    const { includeBackup = true, entryAddress, viewMode, viewLayout, ...grantInput } = input;
+    const { includeBackup = true, showAccessGuide, entryAddress, viewMode, viewLayout, ...grantInput } = input;
     const selected = savedConnection();
     const backups = selected ? connectionRoutes(selected) : [];
     let backup: { url: string; targetPeerId: string; routeCode: string; onboarding?: { url: string; fingerprint: string } } | undefined;
@@ -552,14 +552,14 @@ export function SecureAccessGate({ children }: { children: ReactNode }) {
     if (typeof result.code !== 'string' || typeof result.expiresAt !== 'number' && result.expiresAt !== null) throw new Error('暂时无法生成邀请。');
     window.dispatchEvent(new Event('termdock:sharing-changed'));
     await refresh();
-    let url = createInviteLink({ viewMode, viewLayout, v: 1, serviceId: client.targetPeerId, code: result.code, entryUrl: backup?.url || targetUrl, serviceUrl: targetUrl, name: serviceName, entryServiceId: backup?.targetPeerId, routeCode: backup?.routeCode });
+    let url = createInviteLink({ showAccessGuide, viewMode, viewLayout, v: 1, serviceId: client.targetPeerId, code: result.code, entryUrl: backup?.url || targetUrl, serviceUrl: targetUrl, name: serviceName, entryServiceId: backup?.targetPeerId, routeCode: backup?.routeCode });
     const hostname = new URL(targetUrl).hostname;
     const localHostname = hostname.endsWith('.local') || /^(?:192\.168\.|10\.|172\.(?:1[6-9]|2\d|3[01])\.)/.test(hostname) || hostname.startsWith('[fd') || hostname.startsWith('[fc');
-    if (!backup && localHostname && setup?.serviceId === client.targetPeerId && setup.origins.includes(new URL(targetUrl).origin)) {
+    if (showAccessGuide !== false && !backup && localHostname && setup?.serviceId === client.targetPeerId && setup.origins.includes(new URL(targetUrl).origin)) {
       try { url = createOnboardingInviteLink(url, setup.url); }
       catch { throw new Error('证书引导地址暂不可用，请重新打开分享后重试。'); }
     }
-    if (backup?.onboarding) url = createOnboardingInviteLink(url, backup.onboarding.url);
+    if (showAccessGuide !== false && backup?.onboarding) url = createOnboardingInviteLink(url, backup.onboarding.url);
     const certificate = backup?.onboarding?.fingerprint || setup?.fingerprint;
     return { id: typeof result.invitationId === 'string' ? result.invitationId : undefined, url, ...(url.startsWith('http:') && certificate ? { certificateFingerprint: certificate } : {}), expiresAt: result.expiresAt };
   };

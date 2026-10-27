@@ -3,7 +3,7 @@
 // Restoring the selected sub-repo end to end: the choice is keyed by context
 // key, mirrored server-side, and only valid once the workspace bundle that
 // lists its repositories has been read.
-import { act, cleanup, render } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { I18nProvider } from '../../i18n';
 import { useSidebarStore } from '../../stores/useSidebarStore';
@@ -210,5 +210,70 @@ describe('restoring the selected sub-repo', () => {
 
     expect(vi.mocked(getGitBundle).mock.calls.length).toBe(requestsBeforeSwitch);
     expect(useSidebarStore.getState().activeGitRepos[CONTEXT_KEY]).toBe(NESTED);
+  });
+
+  it('separates status refresh from rescan and drops changes from repositories removed by rescan', async () => {
+    render(sidebar());
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    const loaded = {
+      ...discoveryBundle,
+      files: [nestedFile],
+      repositories: [workspaceRepository(), nestedRepository(false)],
+    };
+    await act(async () => { bundles[0](loaded); });
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    const refresh = screen.getAllByRole('button', { name: 'Refresh Git status' })[0];
+    const rescan = screen.getAllByRole('button', { name: 'Rescan sub-repositories' })[0];
+
+    fireEvent.click(refresh);
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    expect(vi.mocked(getGitBundle).mock.lastCall?.[2]).toMatchObject({ refresh: true, rescan: false });
+    expect((rescan as HTMLButtonElement).disabled).toBe(true);
+    expect(refresh.getAttribute('aria-busy')).toBe('true');
+    expect(rescan.getAttribute('aria-busy')).toBe('false');
+    await act(async () => { bundles[1](loaded); });
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+
+    fireEvent.click(rescan);
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    expect(vi.mocked(getGitBundle).mock.lastCall?.[2]).toMatchObject({
+      includeNested: true, refresh: true, rescan: true, discoverOnly: true,
+    });
+    expect(refresh.getAttribute('aria-busy')).toBe('false');
+    expect(rescan.getAttribute('aria-busy')).toBe('true');
+    const replacementRoot = '/external/new-library';
+    await act(async () => { bundles[2]({
+      ...discoveryBundle,
+      repositories: [workspaceRepository(), { ...nestedRepository(true), root: replacementRoot }],
+      repoFilters: [
+        { root: WORKSPACE, label: 'app', count: 0, staged: 0 },
+        { root: replacementRoot, label: 'new library', count: 0, staged: 0, deferred: true },
+      ],
+    }); });
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    expect(Array.from(useSidebarStore.getState().changedFiles.values()).some((file) => file.repoRoot === NESTED)).toBe(false);
+    expect(useSidebarStore.getState().activeGitRepos[CONTEXT_KEY]).not.toBe(NESTED);
+    expect(rescan.getAttribute('aria-busy')).toBe('false');
+    expect((rescan as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('retries a failed rescan as a rescan and releases its loading state', async () => {
+    render(sidebar());
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    await act(async () => { bundles[0]({
+      ...discoveryBundle,
+      repositories: [workspaceRepository(), nestedRepository(false)],
+    }); });
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    vi.mocked(getGitBundle).mockRejectedValueOnce(new Error('Rescan unavailable'));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Rescan sub-repositories' })[0]);
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    expect(screen.getAllByText('Rescan unavailable').length).toBeGreaterThan(0);
+    const rescan = screen.getAllByRole('button', { name: 'Rescan sub-repositories' })[0] as HTMLButtonElement;
+    expect(rescan.disabled).toBe(false);
+    expect(rescan.getAttribute('aria-busy')).toBe('false');
+    fireEvent.click(screen.getAllByRole('button', { name: 'Retry' })[0]);
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    expect(vi.mocked(getGitBundle).mock.lastCall?.[2]).toMatchObject({ rescan: true, discoverOnly: true });
   });
 });
