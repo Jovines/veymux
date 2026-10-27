@@ -92,7 +92,7 @@ function startupInput(record: Pick<IntegrationSession, 'profile' | 'startup_cond
   const condition = record.startup_condition ?? record.profile.startupInput;
   return condition ? { state: 'pending', deadline: now + (condition.timeoutMs ?? 120000), matched_since: null, observed_at: null } : undefined;
 }
-interface Document { version: 1; sessions: IntegrationSession[]; requests: Record<string, { hash: string; sessionId: string; operationId?: string; generation?: number; result?: IntegrationSession }> }
+interface Document { version: 1; sessions: IntegrationSession[]; requests: Record<string, { hash: string; sessionId: string; operationId?: string; generation?: number; result?: IntegrationSession; forgottenGroupId?: string }> }
 export function publicIntegrationSession(record: IntegrationSession) {
   const { profile: _, deadline: _deadline, launch_submitted: _submitted, startup_condition: _condition, restore_diagnostics: diagnostics,
     launch_diagnostics: launchDiagnostics, launch_diagnostics_history: _history, message_history_seen: _messages, close_intent: _closeIntent, ...publicRecord } = record;
@@ -155,6 +155,10 @@ export class IntegrationSessions {
   }
   subscribe(listener: () => void): () => void { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
   snapshot(): IntegrationSession[] { return structuredClone(this.doc.sessions); }
+  permitsSessionAccess(id: string, principalId: string): boolean {
+    const record = this.doc.sessions.find(s => s.session_id === id && s.principal_id === principalId);
+    return !!record && !['closed','closing','released','releasing'].includes(record.state);
+  }
   private save(): void {
     if (Buffer.byteLength(JSON.stringify(this.doc)) > 64 * 1024 * 1024) integrationError('SESSION_STORAGE_FULL', 'Recovery descriptor journal is full; no new operation was committed', 503);
     atomicJson(this.file, this.doc); for (const listener of this.listeners) { try { listener(); } catch { /* Durable session state is reconciled on restart. */ } } }
@@ -175,6 +179,7 @@ export class IntegrationSessions {
     const scoped = `${principal.id}:${key}`, hash = createHash('sha256').update(JSON.stringify(input)).digest('hex');
     const previous = this.doc.requests[scoped];
     if (previous && previous.hash !== hash) integrationError('IDEMPOTENCY_CONFLICT', 'Key was already used for different session parameters', 409);
+    if (previous?.forgottenGroupId) integrationError('SESSION_FORGOTTEN', 'The original session was permanently removed; use a new creation key', 409);
     return { scoped, hash, previous };
   }
   async create(principal: IntegrationPrincipal, input: { profile: string; cwd: string; idempotencyKey: string }): Promise<IntegrationSession> {
@@ -494,6 +499,29 @@ export class IntegrationSessions {
         record.updated_at = Date.now(); this.saveRecord(record); return record;
       } finally { this.closingOperations.delete(id); }
     }));
+  }
+  /** Remove a closed recovery descriptor, retaining only idempotency tombstones.
+   * Native provider history and audit events are deliberately outside this API. */
+  async forget(principal: IntegrationPrincipal, id: string, generation: number): Promise<void> {
+    return this.lifecycle.run(id, async () => {
+      const record = this.doc.sessions.find(s => s.session_id === id && s.principal_id === principal.id && s.group_id === principal.groupId);
+      if (!record) {
+        if (Object.entries(this.doc.requests).some(([key, value]) => key.startsWith(principal.id + ':') && value.sessionId === id
+          && value.forgottenGroupId === principal.groupId && value.generation === generation)) return;
+        integrationError('INTEGRATION_SESSION_NOT_FOUND', 'Session is not owned by this integration', 404);
+      }
+      assertReleaseGeneration(record, generation);
+      if (record.state !== 'closed' || record.close_intent || record.terminal_binding || record.runtime_present !== false
+        || !this.adapter.runtimePresent || await this.adapter.runtimePresent(record)) {
+        integrationError('SESSION_NOT_CLOSED', 'Confirm a completed close before removing its recovery descriptor', 409);
+      }
+      this.assertManagementIdle(record);
+      const before = this.doc;
+      this.doc = { ...before, sessions: before.sessions.filter(s => s.session_id !== id), requests: Object.fromEntries(
+        Object.entries(before.requests).map(([key, value]) => [key, key.startsWith(principal.id + ':') && value.sessionId === id
+          ? { hash: value.hash, sessionId: id, generation, forgottenGroupId: principal.groupId } : value])) };
+      try { this.save(); } catch (error) { this.doc = before; throw error; }
+    });
   }
   async release(principal: IntegrationPrincipal, id: string, generation: number, key: string): Promise<IntegrationSession> {
     return this.mutate(principal, key, ['release', id, generation], () => this.lifecycle.run(id, async () => {

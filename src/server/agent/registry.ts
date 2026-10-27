@@ -335,7 +335,7 @@ export function inferResumeSessionId(agent: AgentInfo, argv: string[]): string |
 
   const flags = agent.slug === 'opencode' || agent.slug === 'kimi'
     ? ['--session', '-s', '-S']
-    : ['--resume', '-r'];
+    : agent.slug === 'claude' ? ['--resume', '-r', '--session-id'] : ['--resume', '-r'];
   for (let index = 0; index < tail.length; index += 1) {
     const token = tail[index];
     if (flags.includes(token)) return safeId(tail[index + 1]);

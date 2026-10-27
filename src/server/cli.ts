@@ -56,7 +56,7 @@ import { localAccessManager, getLanIPv4Addresses } from './utils/localAccess.js'
 import type { CertificateRefreshResult, StartServerResult } from './entry.js';
 import { OFFICIAL_NPM_REGISTRY, updateTermdockFromOfficialRegistry } from './utils/npmUpdate.js';
 import { DAEMON_START_TIMEOUT_MS, waitForHealth } from './utils/healthProbe.js';
-import { isProcessRunning, STOP_GRACE_MS, type ServerState } from './utils/termdockState.js';
+import { isProcessRunning, readLocalApiCa, STOP_GRACE_MS, type ServerState } from './utils/termdockState.js';
 import { recordSupervisorLost } from './utils/crashForensics.js';
 import { getTermdockVersion } from './utils/version.js';
 import {
@@ -1357,7 +1357,7 @@ async function postLocalJson(baseUrl: string, token: string, endpoint: string, p
   const body = JSON.stringify(payload);
   const isHttps = url.protocol === 'https:';
   const requestImpl = isHttps ? https.request : http.request;
-  const ca = isHttps && fs.existsSync(defaultHttpsCaPath) ? fs.readFileSync(defaultHttpsCaPath) : undefined;
+  const ca = isHttps ? readLocalApiCa(getRunningState(), defaultHttpsCaPath) : undefined;
 
   return new Promise((resolve, reject) => {
     const req = requestImpl({
@@ -1390,7 +1390,7 @@ async function getLocalJson(baseUrl: string, token: string, endpoint: string, ti
   const url = new URL(endpoint, baseUrl);
   const isHttps = url.protocol === 'https:';
   const requestImpl = isHttps ? https.request : http.request;
-  const ca = isHttps && fs.existsSync(defaultHttpsCaPath) ? fs.readFileSync(defaultHttpsCaPath) : undefined;
+  const ca = isHttps ? readLocalApiCa(getRunningState(), defaultHttpsCaPath) : undefined;
 
   return new Promise((resolve, reject) => {
     const req = requestImpl({
@@ -2615,7 +2615,7 @@ async function runPluginRemove(slug: string): Promise<void> {
     const url = new URL(`/api/terminal/agent-plugins/${encodeURIComponent(slug)}`, baseUrl);
     const isHttps = url.protocol === 'https:';
     const requestImpl = isHttps ? https.request : http.request;
-    const ca = isHttps && fs.existsSync(defaultHttpsCaPath) ? fs.readFileSync(defaultHttpsCaPath) : undefined;
+    const ca = isHttps ? readLocalApiCa(getRunningState(), defaultHttpsCaPath) : undefined;
     const req = requestImpl({
       protocol: url.protocol,
       hostname: url.hostname,
@@ -3965,6 +3965,7 @@ async function main(): Promise<void> {
               host: options.host ?? DEFAULT_HOST,
               port: options.port ?? PORT.backend,
               scheme: result.scheme,
+              httpsCaPath: https.ca,
               localUrl: `${result.scheme}://${(options.host ?? DEFAULT_HOST) === '0.0.0.0' ? 'localhost' : (options.host ?? DEFAULT_HOST)}:${options.port ?? PORT.backend}`,
               lanUrl: state.status === 'active' ? state.url : state.fallbackUrl,
               onboardingUrl: result.getOnboardingUrl(),
@@ -3993,6 +3994,7 @@ async function main(): Promise<void> {
       host: options.host ?? DEFAULT_HOST,
       port: options.port ?? PORT.backend,
       scheme: result.scheme,
+      httpsCaPath: https.ca,
       localUrl: `${result.scheme}://${(options.host ?? DEFAULT_HOST) === '0.0.0.0' ? 'localhost' : (options.host ?? DEFAULT_HOST)}:${options.port ?? PORT.backend}`,
       lanUrl: metadata.lanUrl,
       onboardingUrl: metadata.onboardingUrl,

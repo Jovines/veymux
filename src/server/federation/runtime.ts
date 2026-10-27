@@ -18,7 +18,8 @@ import type WebSocket from 'ws';
 import { createIdentity, importIdentity, exportIdentity, secureConnection, type Identity, type ByteDuplex } from './secureProtocol.js';
 import type { WebTransportDescriptor } from './webTransportProtocol.js';
 import { InvitationStore, validateInvitation, type InvitationInput } from './invitations.js';
-import { AuthorizationStore, type GrantInput } from './authorization.js';
+import { AuthorizationStore, type GrantInput, type AuthorizationGrant } from './authorization.js';
+import type { SessionAccessStore, SessionAccessClaims } from './sessionAccess.js';
 import { resolveAccessRequest, isBusinessApiPath, terminalMessageAction } from './accessPolicy.js';
 import { httpUploadLimit } from './httpUploadLimit.js';
 import { AsyncQueue, PacketChannel, toBase64, fromBase64, type Packet } from './packets.js';
@@ -70,6 +71,7 @@ class LogicalSocket extends EventEmitter {
 }
 interface HttpOperation { head: Packet; body: AsyncQueue<Uint8Array>; size: number; abort: AbortController; state: 'uploading' | 'running'; updatedAt: number; uploadSlot: boolean; responseWindow: TransferWindow }
 export interface FederationRuntimeOptions {
+  sessionAccess?: () => SessionAccessStore | undefined;
   sessionAttachmentDirectory?: string;
   restoreSharedSession?: (sessionId: string) => Promise<boolean>;
   webTransport?: () => WebTransportDescriptor | undefined;
@@ -157,6 +159,7 @@ export async function createFederationRuntime(app: express.Express, directory: s
   }
 
   async function acceptDuplex(duplex: ByteDuplex, context: { allowOpenAccess?: boolean; singleOperation?: boolean; relayed?: boolean } = {}): Promise<void> {
+    let sessionClaims: SessionAccessClaims | undefined;
     let collaborationRpc: CollaborationRpc | undefined;
     let unregisterCollaboration: (() => void) | undefined;
     const open = (action?: string) => openAccessAllowed(!context.relayed && context.allowOpenAccess === true, isAuthEnabled(), action);
@@ -167,7 +170,19 @@ export async function createFederationRuntime(app: express.Express, directory: s
       } catch { return undefined; }
     };
     const allowed = (subjectId: string, action: string, sessionId?: string) => {
+      if (sessionClaims) {
+        const access = options.sessionAccess?.();
+        return !!access && (access.allows(sessionClaims, subjectId, action, sessionId)
+          || !!sessionId && access.allows(sessionClaims, subjectId, action, stableSessionId(sessionId)));
+      }
       if (context.relayed && !relayPasswordConfigured()) return false;
+      // Scope-only invitations cannot bypass an integration's exclusive writer.
+      // Full-service maintenance access remains independent of delegated tickets.
+      if (sessionId !== undefined && !store.hasFullServiceAccess({ subjectId, serviceId })) {
+        const access = options.sessionAccess?.(), stable = stableSessionId(sessionId);
+        if (access?.restrictsNativeWriter(sessionId, action)
+          || stable !== undefined && access?.restrictsNativeWriter(stable, action)) return false;
+      }
       if (open(action) || store.authorize({ subjectId, serviceId, action, sessionId }).allowed) return true;
       // The wire may still carry the transient backend PTY id while the grant
       // is bound to the stable client session id (or an older backend id).
@@ -175,10 +190,13 @@ export async function createFederationRuntime(app: express.Express, directory: s
       const stable = stableSessionId(sessionId);
       return stable !== undefined && store.authorize({ subjectId, serviceId, action, sessionId: stable }).allowed;
     };
-    const resources = (subjectId: string) => mergeShareResources(context.relayed && !relayPasswordConfigured() ? [] : store.listEffective({ subjectId, serviceId }).map(g => g.resources));
+    const grantsFor = (subjectId: string): AuthorizationGrant[] => sessionClaims
+      ? (options.sessionAccess?.()?.grant(sessionClaims, subjectId) || []).map(grant => ({ ...grant, serviceId, createdAt: 0 }))
+      : store.listEffective({ subjectId, serviceId });
+    const resources = (subjectId: string) => mergeShareResources(context.relayed && !relayPasswordConfigured() ? [] : grantsFor(subjectId).map(g => g.resources));
     const androidAllowed = (subjectId: string, serial: string, control = false) => full(subjectId) || (control ? androidRouteAccess(resources(subjectId).android, serial) === 'control' : !!androidRouteAccess(resources(subjectId).android, serial));
     const computerAllowed = (subjectId: string, target: { host: string; protocol: string; port: number }) => full(subjectId) || !!computerResource(resources(subjectId), target.host, target.protocol, target.port);
-    const full = (subjectId: string) => (!context.relayed || relayPasswordConfigured()) && (open() || store.hasFullServiceAccess({ subjectId, serviceId }));
+    const full = (subjectId: string) => !sessionClaims && (!context.relayed || relayPasswordConfigured()) && (open() || store.hasFullServiceAccess({ subjectId, serviceId }));
     let channel: PacketChannel | undefined;
     const operations = new Map<string, HttpOperation>();
     const sockets = new Map<string, { socket: LogicalSocket; sessionId?: string; android?: string; computer?: boolean; computerTarget?: { host: string; protocol: string; port: number }; computerProtocol?: string; computerControl?: boolean }>();
@@ -191,7 +209,7 @@ export async function createFederationRuntime(app: express.Express, directory: s
       const send = (packet: Packet) => channel!.send(packet);
       const check = (action: string, sessionId?: string) => { if (!allowed(subjectId, action, sessionId)) throw new Error('AUTHORIZATION_DENIED'); };
       const attachmentRoot = (head: Packet) => attachmentReadRoot(options.sessionAttachmentDirectory,
-        context.relayed && !relayPasswordConfigured() ? [] : store.listEffective({ subjectId, serviceId }),
+        context.relayed && !relayPasswordConfigured() ? [] : grantsFor(subjectId),
         id => options.resolveSessionId?.(id) || id, String(head.method), String(head.path));
       const httpAllowed = (head: Packet) => {
         if (context.relayed) requireRelayPassword();
@@ -256,6 +274,7 @@ export async function createFederationRuntime(app: express.Express, directory: s
         finally { cancelHttp(operation); if (operations.get(id) === operation) operations.delete(id); }
       }
       revokeTimer = setInterval(() => {
+        if (sessionClaims && !options.sessionAccess?.()?.valid(sessionClaims, subjectId)) { channel?.close(); return; }
         if (context.relayed && !relayPasswordConfigured()) { duplex.close?.(new Error('TARGET_PASSWORD_REQUIRED')); return; }
         for (const { socket: logical, sessionId, android, computer, computerTarget, computerControl } of sockets.values()) {
           if (android || computer) { if (android ? !androidAllowed(subjectId, android) : !computerTarget || !computerAllowed(subjectId, computerTarget) || (computerControl && !full(subjectId) && !resources(subjectId).computers?.some(c => c.host.toLowerCase() === computerTarget.host.toLowerCase() && c.protocol === computerTarget.protocol && c.port === computerTarget.port && c.access === 'control'))) logical.close(4003, 'Authorization revoked'); continue; }
@@ -273,8 +292,14 @@ export async function createFederationRuntime(app: express.Express, directory: s
         try {
           if (packet.id.length > 128) throw new Error('INVALID_ID');
           if (context.relayed) requireRelayPassword();
+          if (sessionClaims && !['permissions','session-list','http','upload','upload-end','ack','cancel','ws-open','ws-data','ws-close'].includes(packet.type)) throw new Error('AUTHORIZATION_DENIED');
           if (collaborationRpc?.accept(packet)) continue;
-          if (packet.type === 'collaboration-connect') {
+          if (packet.type === 'session-auth') {
+            const access = options.sessionAccess?.();
+            if (!access) throw new Error('SESSION_ACCESS_UNAVAILABLE');
+            sessionClaims = access.consume(packet.ticket, subjectId);
+            send({ type: 'result', id: packet.id, serviceId, sessionId: sessionClaims.sessionId });
+          } else if (packet.type === 'collaboration-connect') {
             if (!options.collaborationService || !options.collaborationConnected) throw new Error('COLLABORATION_UPGRADE_REQUIRED');
             options.collaborationService(subjectId, { type: 'collaboration-service', id: packet.id, action: 'duplex' });
             if (!collaborationRpc) {
@@ -295,7 +320,7 @@ export async function createFederationRuntime(app: express.Express, directory: s
             const origin = typeof packet.origin === 'string' ? packet.origin : '';
             if (!origin || !packet.node || typeof packet.node !== 'object') throw new Error('INVALID_COLLABORATION_PEER');
             // The peer may only touch sessions this device can write to right now.
-            const sessions = [...new Set(store.listEffective({ subjectId, serviceId })
+            const sessions = [...new Set(grantsFor(subjectId)
               .filter(grant => grant.scope.kind === 'sessions' && grant.actions.includes('session.input'))
               .flatMap(grant => grant.scope.kind === 'sessions' ? grant.scope.sessionIds : []))];
             if (!sessions.length) throw new Error('AUTHORIZATION_DENIED');
@@ -343,7 +368,7 @@ export async function createFederationRuntime(app: express.Express, directory: s
             for (const grant of store.list()) if (grant.subjectId === subjectId) store.revoke(grant.id);
             send({ type: 'result', id: packet.id, ok: true });
           } else if (packet.type === 'permissions') {
-            const grants = store.listEffective({ subjectId, serviceId });
+            const grants = grantsFor(subjectId);
             send({ type: 'result', id: packet.id, subjectId, serviceId, fullService: full(subjectId), grants, httpWindow: MAX_TRANSFER_WINDOW, binaryChunks: true, relayAuthorizationErrors: true, relaySelfTargetGuard: true, webTransport: options.webTransport?.() });
           } else if (packet.type === 'session-list') {
             let inventory = await sessionInventory();
@@ -355,7 +380,7 @@ export async function createFederationRuntime(app: express.Express, directory: s
               }
               if (restored) inventory = await sessionInventory();
             }
-            const displayGrants = store.listEffective({ subjectId, serviceId }).filter(grant => grant.actions.some(action => ['session.view', 'session.chat-view', 'session.terminal-view'].includes(action))).reverse().sort((a, b) => b.createdAt - a.createdAt);
+            const displayGrants = grantsFor(subjectId).filter(grant => grant.actions.some(action => ['session.view', 'session.chat-view', 'session.terminal-view'].includes(action))).reverse().sort((a, b) => b.createdAt - a.createdAt);
             const seen = new Set<string>();
             const items = inventory.flatMap(session => {
               const sessionId = session.backendSessionId;

@@ -3,13 +3,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { IntegrationStore, type IntegrationPolicy } from './integrationStore.js';
+import { IntegrationStore, type IntegrationPolicy, type IntegrationStorageOptions } from './integrationStore.js';
 
 let directory: string;
 beforeEach(() => { directory = fs.mkdtempSync(path.join(os.tmpdir(), 'td-persistence-')); });
 afterEach(() => { vi.restoreAllMocks(); fs.rmSync(directory, { recursive: true, force: true }); });
-function setup(retention = 10000) {
-  const file = path.join(directory, 'events.json'), store = new IntegrationStore(file, retention);
+function setup(retention = 10000, options: IntegrationStorageOptions = {}) {
+  const file = path.join(directory, 'events.json'), store = new IntegrationStore(file, retention, options);
   const policy: IntegrationPolicy = { id: 'bridge', groupId: 'group', permissions: ['events.read'], launchProfiles: [] };
   const issued = store.provision(policy), p = store.authenticate('bridge', issued.token);
   const fact = (n: number, group = 'group') => ({ sourceKey: `source-${group}-${n}`, sourceVersion: '1',
@@ -38,8 +38,6 @@ it('keeps existing encoded events immutable across caller mutations, ACK, policy
   update.event.payload.text = 'Mutated input'; (first.payload as { text: string }).text = 'Mutated response';
   f.store.ack(f.p, 'inbox', first.cursor);
   f.store.update({ ...f.policy, launchProfiles: [] });
-  const doc = JSON.parse(fs.readFileSync(f.file, 'utf8'));
-  expect(doc.events[0].payload.text).toBe('event-1');
   const restarted = new IntegrationStore(f.file);
   expect(restarted.page(f.p, 'inbox').events).toEqual([]);
   expect(restarted.page(f.p, 'audit').events[0]!.payload).toEqual({ text: 'event-1' });
@@ -59,7 +57,7 @@ it('does not re-encode old event payloads or clone the journal for new ACKs and 
   const encodedEvents = stringify.mock.calls.map(([value]) => value).filter(value => value && typeof value === 'object' && 'event_id' in value);
   expect(encodedEvents).toHaveLength(1); expect(encodedEvents[0]).toMatchObject({ payload: { text: 'event-2' } });
   const doc = JSON.parse(fs.readFileSync(f.file, 'utf8'));
-  expect(doc.events.map((event: { sequence: number }) => event.sequence)).toEqual([1, 2]);
+  expect(new IntegrationStore(f.file).page(f.p, 'audit').events.map(event => event.sequence)).toEqual([1, 2]);
   expect(doc.consumers['bridge:group:inbox']).toBe(1);
 });
 
@@ -79,20 +77,20 @@ it('keeps ACK progress and indexed events unchanged when fsync fails, then retri
   expect(restarted.page(f.p, 'inbox').events).toMatchObject([{ sequence: 2, payload: { text: 'event-2' } }]);
 });
 
-it('indexes groups and advances retained pages correctly without bypassing retention gaps', () => {
+it('protects a slow consumer beyond the count target and indexes other groups separately', () => {
   const f = setup(2); f.store.page(f.p, 'slow');
   f.store.append([f.fact(1), f.fact(1, 'other'), f.fact(2), f.fact(2, 'other'), f.fact(3)]);
-  expect(() => f.store.page(f.p, 'slow')).toThrow(expect.objectContaining({ code: 'EVENT_RETENTION_GAP' }));
+  expect(f.store.page(f.p, 'slow').events.map(event => event.sequence)).toEqual([1, 2, 3]);
   const events = f.store.page(f.p, 'new').events;
-  expect(events.map(event => event.sequence)).toEqual([2, 3]);
+  expect(events.map(event => event.sequence)).toEqual([1, 2, 3]);
   f.store.ack(f.p, 'new', events[0]!.cursor);
-  expect(f.store.page(f.p, 'new').events.map(event => event.sequence)).toEqual([3]);
-  expect(() => f.store.ack(f.p, 'slow', events[1]!.cursor)).toThrow(expect.objectContaining({ code: 'EVENT_RETENTION_GAP' }));
+  expect(f.store.page(f.p, 'new').events.map(event => event.sequence)).toEqual([2, 3]);
+  expect(f.store.ack(f.p, 'slow', events[1]!.cursor).ack_semantics).toBe('durable_received');
 });
 
-it('keeps the 64 MiB size check on the exact bytes passed to durable persistence', () => {
-  const f = setup();
-  const update = f.fact(1); update.event.payload.text = '汉'.repeat(23 * 1024 * 1024);
+it('checks the configured capacity against exact UTF-8 segment bytes before persistence', () => {
+  const f = setup(10000, { maxBytes: 4096 });
+  const update = f.fact(1); update.event.payload.text = '汉'.repeat(1400);
   const write = vi.spyOn(fs, 'writevSync');
   expect(() => f.store.append([update])).toThrow(expect.objectContaining({ code: 'EVENT_STORAGE_FULL' }));
   expect(write).not.toHaveBeenCalled();

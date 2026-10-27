@@ -1,11 +1,12 @@
-import fs from 'node:fs';
 import path from 'node:path';
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { CollaborationError } from './collaborationProtocol.js';
 import { resolveProfileNativeIdentity, type NativeProcessIdentityConfig } from './nativeProcessIdentity.js';
+import { IntegrationJournal, type IntegrationJournalDocument as Journal } from './integrationJournal.js';
+export { atomicJson } from './integrationJournal.js';
 
 export const INTEGRATION_PROTOCOL = 1;
-export const INTEGRATION_OPERATIONS = ['message.send', 'message.read', 'task.read', 'task.create', 'task.configure', 'task.assign', 'task.comment', 'task.revise', 'task.answer', 'events.read', 'session.create', 'session.read', 'session.restore', 'session.release', 'session.rename', 'session.close'] as const;
+export const INTEGRATION_OPERATIONS = ['message.send', 'message.read', 'task.read', 'task.create', 'task.configure', 'task.assign', 'task.comment', 'task.revise', 'task.answer', 'events.read', 'session.create', 'session.read', 'session.restore', 'session.release', 'session.rename', 'session.close', 'session.forget', 'session.access'] as const;
 export type IntegrationPermission = typeof INTEGRATION_OPERATIONS[number];
 export interface StartupInputCondition {
   /** Literal terms in the current terminal viewport, with horizontal space folded. */
@@ -26,51 +27,14 @@ export interface IntegrationEvent {
   task_id?: string | null; attempt_id?: string | null; artifact_id?: string | null; message_id?: string | null;
   reply_to_event_id?: string | null; source?: string; actor?: unknown; external_actor?: unknown; payload: unknown;
 }
-interface Journal {
-  version: 1; principals: IntegrationPrincipal[]; events: IntegrationEvent[];
-  sequences: Record<string, number>; prunedThrough: Record<string, number>;
-  sources: Record<string, string>; consumers: Record<string, number>;
-}
 export function integrationError(code: string, message: string, status = 400): never { throw new CollaborationError(code, message, status); }
-export function atomicJson(file: string, value: unknown): void {
-  atomicJsonText(file, JSON.stringify(value));
+const EVENT_PREFIX = Buffer.from('{"type":"event",'), NEWLINE = Buffer.from('\n');
+export interface IntegrationStorageOptions { maxBytes?: number; maxGroupBytes?: number; segmentBytes?: number; warnPercent?: number; metadataWarnBytes?: number }
+function positiveInteger(value: number | undefined, name: string, fallback: number): number {
+  const raw = value ?? (process.env[name] === undefined ? fallback : Number(process.env[name]));
+  if (!Number.isSafeInteger(raw) || raw < 1) integrationError('INVALID_EVENT_STORAGE_CONFIG', `${name} must be a positive safe integer`);
+  return raw;
 }
-function atomicJsonText(file: string, serialized: string): void {
-  atomicJsonWrite(file, descriptor => fs.writeFileSync(descriptor, serialized));
-}
-function atomicJsonWrite(file: string, write: (descriptor: number) => void): void {
-  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-  const temporary = `${file}.${process.pid}.tmp`;
-  const descriptor = fs.openSync(temporary, 'w', 0o600);
-  try { fs.fchmodSync(descriptor, 0o600); write(descriptor); fs.fsyncSync(descriptor); }
-  finally { fs.closeSync(descriptor); }
-  fs.renameSync(temporary, file);
-  const directory = fs.openSync(path.dirname(file), 'r');
-  try { fs.fsyncSync(directory); } finally { fs.closeSync(directory); }
-}
-function atomicJsonBuffers(file: string, parts: Buffer[]): void {
-  atomicJsonWrite(file, descriptor => {
-    let index = 0, offset = 0;
-    while (index < parts.length) {
-      // Bound vectors below platform IOV_MAX, and handle short writes without
-      // replaying or dropping any byte of the checked JSON document.
-      const vectors = parts.slice(index, index + 512);
-      if (offset) vectors[0] = vectors[0]!.subarray(offset);
-      let written: number;
-      try { written = fs.writevSync(descriptor, vectors); }
-      catch (error) { if ((error as NodeJS.ErrnoException).code === 'EINTR') continue; throw error; }
-      if (written <= 0) throw new Error('Integration journal write made no progress');
-      while (index < parts.length) {
-        const available = parts[index]!.length - offset;
-        if (written < available) { offset += written; break; }
-        written -= available; index++; offset = 0;
-        if (!written) break;
-      }
-    }
-  });
-}
-const JSON_OPEN = Buffer.from('{'), JSON_CLOSE = Buffer.from('}'), JSON_COMMA = Buffer.from(','),
-  ARRAY_OPEN = Buffer.from('['), ARRAY_CLOSE = Buffer.from(']'), EVENT_PREFIX = Buffer.from('{"type":"event",'), NEWLINE = Buffer.from('\n');
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 function identifier(value: unknown, label: string): asserts value is string {
   if (typeof value !== 'string' || !/^[a-zA-Z0-9._-]{1,80}$/.test(value)) integrationError('INVALID_INTEGRATION_POLICY', `Invalid ${label}`);
@@ -113,19 +77,38 @@ export class IntegrationStore {
   // objects become collectible with their encodings.
   private encoded = new WeakMap<object, Buffer>();
   private groupEvents = new Map<string, IntegrationEvent[]>();
-  constructor(private file: string, private retention = 10000) {
-    try {
-      const document = JSON.parse(fs.readFileSync(file, 'utf8')) as Journal;
-      if (document.version !== 1 || !Array.isArray(document.events) || !Array.isArray(document.principals) || !document.sources || !document.consumers || !document.sequences || !document.prunedThrough) throw new Error('Invalid integration journal');
-      this.doc = document;
-    } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+  private journal: IntegrationJournal;
+  private maxBytes: number;
+  private maxGroupBytes: number;
+  private warnPercent: number;
+  private metadataWarnBytes: number;
+  private eventBytes = 0;
+  private groupBytes = new Map<string, number>();
+  private warning = '';
+  private rejected = new Map<string, number>();
+  constructor(file: string, private retention = 10000, options: IntegrationStorageOptions = {}) {
+    this.maxBytes = positiveInteger(options.maxBytes, 'TERMDOCK_INTEGRATION_EVENT_MAX_BYTES', 512 * 1024 * 1024);
+    this.maxGroupBytes = positiveInteger(options.maxGroupBytes, 'TERMDOCK_INTEGRATION_EVENT_GROUP_MAX_BYTES', Math.min(this.maxBytes, 128 * 1024 * 1024));
+    this.warnPercent = positiveInteger(options.warnPercent, 'TERMDOCK_INTEGRATION_EVENT_WARN_PERCENT', 80);
+    this.metadataWarnBytes = positiveInteger(options.metadataWarnBytes, 'TERMDOCK_INTEGRATION_METADATA_WARN_BYTES', 16 * 1024 * 1024);
+    const segmentBytes = positiveInteger(options.segmentBytes, 'TERMDOCK_INTEGRATION_EVENT_SEGMENT_BYTES', 1024 * 1024);
+    if (this.warnPercent > 100 || !Number.isSafeInteger(retention) || retention < 1) integrationError('INVALID_EVENT_STORAGE_CONFIG', 'Invalid warning percentage or event retention');
+    this.journal = new IntegrationJournal(file, segmentBytes);
+    this.doc = this.journal.read() ?? this.doc;
+    // Copy every legacy fact before applying the new retention policy. The
+    // original bytes remain in .v1-backup; no source identity/cursor is rebuilt.
+    this.journal.migrate(this.doc, event => this.encode(event));
+    this.eventBytes = this.doc.events.reduce((bytes, event) => bytes + this.encode(event).length + 1, 0);
     this.indexEvents();
+    this.reportCapacity();
   }
   private indexEvents(): void {
     this.groupEvents = new Map();
+    this.groupBytes = new Map();
     for (const event of this.doc.events) {
       const events = this.groupEvents.get(event.group_id) ?? [];
       events.push(event); this.groupEvents.set(event.group_id, events);
+      this.groupBytes.set(event.group_id, (this.groupBytes.get(event.group_id) ?? 0) + this.encode(event).length + 1);
     }
   }
   private encode(value: unknown): Buffer {
@@ -135,26 +118,100 @@ export class IntegrationStore {
     const serialized = Buffer.from(JSON.stringify(value)); this.encoded.set(value, serialized); return serialized;
   }
   private write(next: Journal): void {
-    const parts: Buffer[] = [JSON_OPEN];
-    for (const [index, [key, value]] of Object.entries(next).entries()) {
-      if (index) parts.push(JSON_COMMA);
-      parts.push(Buffer.from(`${JSON.stringify(key)}:`));
-      if (key === 'events') {
-        parts.push(ARRAY_OPEN);
-        for (const [index, event] of next.events.entries()) { if (index) parts.push(JSON_COMMA); parts.push(this.encode(event)); }
-        parts.push(ARRAY_CLOSE);
-      } else parts.push(this.encode(value));
-    }
-    parts.push(JSON_CLOSE);
-    if (parts.reduce((bytes, part) => bytes + part.length, 0) > 64 * 1024 * 1024) integrationError('EVENT_STORAGE_FULL', 'Integration journal is full; no event was acknowledged', 503);
-    atomicJsonBuffers(this.file, parts);
+    this.journal.commit(next, event => this.encode(event));
     const eventsChanged = next.events !== this.doc.events;
     this.doc = next;
-    if (eventsChanged) this.indexEvents();
+    if (eventsChanged) {
+      this.eventBytes = next.events.reduce((bytes, event) => bytes + this.encode(event).length + 1, 0);
+      this.indexEvents();
+    }
+    this.reportCapacity();
     for (const listener of this.listeners) { try { listener(); } catch { /* Subscription reports its own failure. */ } }
+  }
+  storageStatus() {
+    return { format: 'segmented-v2' as const, event_bytes: this.eventBytes, max_event_bytes: this.maxBytes,
+      max_group_event_bytes: this.maxGroupBytes,
+      group_usage: [...this.groupBytes].map(([group_id, event_bytes]) => ({ group_id, event_bytes, events: this.groupEvents.get(group_id)!.length })),
+      metadata_bytes: this.journal.metadataBytes, metadata_warn_bytes: this.metadataWarnBytes,
+      warning_percent: this.warnPercent, segments: this.journal.segmentCount, events: this.doc.events.length,
+      groups: this.groupEvents.size, sources: Object.keys(this.doc.sources).length, consumers: Object.keys(this.doc.consumers).length,
+      state: this.rejected.size || this.eventBytes >= this.maxBytes || [...this.groupBytes.values()].some(bytes => bytes >= this.maxGroupBytes) ? 'full' as const
+        : this.eventBytes >= this.maxBytes * this.warnPercent / 100 || [...this.groupBytes.values()].some(bytes => bytes >= this.maxGroupBytes * this.warnPercent / 100)
+          || this.journal.metadataBytes >= this.metadataWarnBytes ? 'warning' as const : 'ok' as const,
+      last_rejected_event_bytes: this.rejected.size ? Math.max(...this.rejected.values()) : null,
+      blocked_groups: [...this.rejected.keys()],
+      ack_available: true, reclamation: 'confirmed_prefix_only' as const };
+  }
+  private reportCapacity(): void {
+    const status = this.storageStatus(), warning = status.state === 'ok' ? '' : `${status.state}:${status.metadata_bytes >= this.metadataWarnBytes}`;
+    if (warning && warning !== this.warning) console.warn('[integration-storage]', JSON.stringify(status));
+    this.warning = warning;
+  }
+  private reclaim(next: Journal): void {
+    // Every registered consumer of an active principal protects its unconfirmed
+    // suffix. A group without a consumer has no durable delivery promise yet.
+    const confirmed = new Map<string, number>();
+    for (const principal of next.principals) if (!principal.revoked) {
+      const prefix = `${principal.id}:${principal.groupId}:`;
+      for (const [key, watermark] of Object.entries(next.consumers)) if (key.startsWith(prefix) && !next.consumerLifecycle?.[key]?.retired_at) {
+        confirmed.set(principal.groupId, Math.min(confirmed.get(principal.groupId) ?? Infinity, watermark));
+      }
+    }
+    const counts = new Map<string, number>(), groupBytes = new Map<string, number>(), changedGroups = new Set<string>();
+    for (const event of next.events) {
+      counts.set(event.group_id, (counts.get(event.group_id) ?? 0) + 1);
+      groupBytes.set(event.group_id, (groupBytes.get(event.group_id) ?? 0) + this.encode(event).length + 1);
+      if (event.sequence > (this.doc.sequences[event.group_id] ?? 0)) changedGroups.add(event.group_id);
+    }
+    let bytes = next.events.reduce((total, event) => total + this.encode(event).length + 1, 0);
+    next.events = next.events.filter(event => {
+      const group = event.group_id, count = counts.get(group)!;
+      // Never discard facts from the incoming batch to make that batch fit.
+      const safe = Math.min(confirmed.get(group) ?? next.sequences[group]!, this.doc.sequences[group] ?? 0);
+      if (event.sequence > safe || count <= this.retention && bytes <= this.maxBytes && (!changedGroups.has(group) || groupBytes.get(group)! <= this.maxGroupBytes)) return true;
+      counts.set(group, count - 1); bytes -= this.encode(event).length + 1;
+      groupBytes.set(group, groupBytes.get(group)! - this.encode(event).length - 1);
+      next.prunedThrough[group] = Math.max(next.prunedThrough[group] ?? 0, event.sequence); return false;
+    });
+    if (bytes > this.maxBytes || [...changedGroups].some(group => groupBytes.get(group)! > this.maxGroupBytes)) {
+      for (const group of changedGroups) this.rejected.set(group, bytes);
+      this.reportCapacity();
+      integrationError('EVENT_STORAGE_FULL', 'Unconfirmed integration events exceed global/group capacity; consume and ACK existing events or increase TERMDOCK_INTEGRATION_EVENT_MAX_BYTES / TERMDOCK_INTEGRATION_EVENT_GROUP_MAX_BYTES. No source update in this group batch was committed', 503);
+    }
+  }
+  consumerStatus() {
+    return Object.entries(this.doc.consumers).map(([key, sequence]) => {
+      const principal = this.doc.principals.find(p => key.startsWith(`${p.id}:${p.groupId}:`));
+      const group = principal?.groupId, lifecycle = this.doc.consumerLifecycle?.[key];
+      return { principal_id: principal?.id ?? null, group_id: group ?? null,
+        consumer: principal ? key.slice(`${principal.id}:${principal.groupId}:`.length) : key,
+        confirmed_sequence: sequence, latest_sequence: group ? this.doc.sequences[group] ?? 0 : null,
+        lag: group ? (this.doc.sequences[group] ?? 0) - sequence : null,
+        retention_gap: group ? sequence < (this.doc.prunedThrough[group] ?? 0) : null,
+        retired_at: lifecycle?.retired_at ?? null, last_ack_at: lifecycle?.last_ack_at ?? null,
+        protects_events: !!principal && !principal.revoked && !lifecycle?.retired_at };
+    });
+  }
+  retireConsumer(principalId: string, consumer: string, expectedSequence: number, idempotencyKey: string) {
+    const principal = this.doc.principals.find(p => p.id === principalId);
+    if (!principal) integrationError('INTEGRATION_NOT_FOUND', 'Integration does not exist', 404);
+    const key = this.key(principal, consumer), sequence = this.doc.consumers[key], lifecycle = this.doc.consumerLifecycle?.[key];
+    if (!Number.isSafeInteger(expectedSequence) || expectedSequence < 0 || typeof idempotencyKey !== 'string' || !idempotencyKey.trim() || idempotencyKey.length > 160) integrationError('INVALID_CONSUMER_RETIREMENT', 'An expected sequence and idempotency key are required');
+    if (sequence === undefined) integrationError('EVENT_CONSUMER_NOT_STARTED', 'Consumer has not started');
+    const operation = hash(idempotencyKey);
+    if (lifecycle?.retired_at) {
+      if (lifecycle.retirement_key !== operation || sequence !== expectedSequence) integrationError('EVENT_CONSUMER_RETIRED', 'Consumer was already retired by a different decision', 409);
+      return { retired_at: lifecycle.retired_at, confirmed_sequence: sequence };
+    }
+    if (sequence !== expectedSequence) integrationError('EVENT_CONSUMER_CHANGED', 'Consumer advanced; reread before retiring', 409);
+    const retired_at = Date.now();
+    this.write({ ...this.doc, consumerLifecycle: { ...this.doc.consumerLifecycle,
+      [key]: { ...lifecycle, retired_at, retirement_key: operation } } });
+    return { retired_at, confirmed_sequence: sequence };
   }
   subscribe(listener: () => void): () => void { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
   policies(): Omit<IntegrationPrincipal, 'tokenHash'>[] { return this.doc.principals.map(({ tokenHash: _, ...principal }) => structuredClone(principal)); }
+  permits(id: string, permission: IntegrationPermission): boolean { return this.doc.principals.some(p => p.id === id && !p.revoked && p.permissions.includes(permission)); }
   provision(policy: IntegrationPolicy): { principal: IntegrationPolicy; token: string } {
     const checked = validatePolicy(policy);
     if (this.doc.principals.some(p => p.id === checked.id)) integrationError('INTEGRATION_EXISTS', 'Use a new id; credentials cannot be silently replaced', 409);
@@ -203,13 +260,11 @@ export class IntegrationStore {
       next.sequences[group] = sequence; next.sources[update.sourceKey] = update.sourceVersion;
     }
     if (!next) return;
-    const counts = new Map<string, number>();
-    next.events = next.events.reverse().filter(event => {
-      const count = (counts.get(event.group_id) ?? 0) + 1; counts.set(event.group_id, count);
-      if (count <= this.retention) return true;
-      next.prunedThrough[event.group_id] = Math.max(next.prunedThrough[event.group_id] ?? 0, event.sequence); return false;
-    }).reverse();
+    this.reclaim(next);
+    const changedGroups = new Set(updates.filter(update => this.doc.sources[update.sourceKey] !== update.sourceVersion).map(update => update.event.group_id));
     this.write(next);
+    for (const group of changedGroups) this.rejected.delete(group);
+    this.reportCapacity();
   }
   private cursor(group: string, sequence: number): string { return Buffer.from(JSON.stringify({ v: 1, group, sequence })).toString('base64url'); }
   private decode(group: string, cursor: string): number {
@@ -222,6 +277,7 @@ export class IntegrationStore {
   private selectPage(principal: IntegrationPrincipal, consumer: string, cursor?: string): { events: IntegrationEvent[]; cursor: string } {
     this.authorize(principal, 'events.read');
     const key = this.key(principal, consumer), group = principal.groupId;
+    if (this.doc.consumerLifecycle?.[key]?.retired_at) integrationError('EVENT_CONSUMER_RETIRED', 'Administrator retired this consumer; reconcile and explicitly use a new consumer name', 409);
     const floor = this.doc.prunedThrough[group] ?? 0;
     // A new consumer explicitly starts at the earliest retained fact. Existing
     // consumers never silently skip a retention gap.
@@ -249,12 +305,14 @@ export class IntegrationStore {
   ack(principal: IntegrationPrincipal, consumer: string, cursor: string): { cursor: string; ack_semantics: 'durable_received' } {
     this.authorize(principal, 'events.read');
     const key = this.key(principal, consumer), sequence = this.decode(principal.groupId, cursor), confirmed = this.doc.consumers[key];
+    if (this.doc.consumerLifecycle?.[key]?.retired_at) integrationError('EVENT_CONSUMER_RETIRED', 'Retired consumers cannot acknowledge', 409);
     if (confirmed === undefined) integrationError('EVENT_CONSUMER_NOT_STARTED', 'Subscribe before acknowledging');
     if (sequence < confirmed) integrationError('EVENT_ACK_REWIND', 'Acknowledgement cannot rewind');
     if (confirmed < (this.doc.prunedThrough[principal.groupId] ?? 0)) integrationError('EVENT_RETENTION_GAP', 'Consumer has a retention gap', 409);
     // Cursor is a cumulative declaration that every preceding event is safely
     // in the bridge inbox. The subscription server separately checks it was sent.
-    if (sequence !== confirmed) this.write({ ...this.doc, consumers: { ...this.doc.consumers, [key]: sequence } });
+    if (sequence !== confirmed) this.write({ ...this.doc, consumers: { ...this.doc.consumers, [key]: sequence },
+      consumerLifecycle: { ...this.doc.consumerLifecycle, [key]: { ...this.doc.consumerLifecycle?.[key], last_ack_at: Date.now() } } });
     return { cursor, ack_semantics: 'durable_received' };
   }
   cursorSequence(group: string, cursor: string): number { return this.decode(group, cursor); }

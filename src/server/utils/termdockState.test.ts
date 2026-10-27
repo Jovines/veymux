@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   isProcessRunning,
   readJsonFile,
+  readLocalApiCa,
   readServerState,
   removeJsonState,
   writeJsonStateAtomic,
@@ -22,6 +23,15 @@ afterEach(() => {
   for (const directory of temporaryDirectories.splice(0)) {
     fs.rmSync(directory, { recursive: true, force: true });
   }
+});
+
+it('uses the running service custom CA and fails closed if that CA disappears', () => {
+  const dir = makeTemporaryDirectory(), fallback = path.join(dir, 'default.pem'), custom = path.join(dir, 'custom.pem');
+  fs.writeFileSync(fallback, 'default-ca'); fs.writeFileSync(custom, 'configured-ca');
+  expect(readLocalApiCa({ httpsCaPath: custom }, fallback)?.toString()).toBe('configured-ca');
+  fs.unlinkSync(custom);
+  expect(() => readLocalApiCa({ httpsCaPath: custom }, fallback)).toThrow();
+  expect(readLocalApiCa({}, fallback)?.toString()).toBe('default-ca');
 });
 
 describe('writeJsonStateAtomic', () => {

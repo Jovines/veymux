@@ -11,7 +11,7 @@ import { clearPluginAgents, detectAgentFromCommand, inferResumeSessionId, regist
 import type { LoadedPlugin } from './plugins.js';
 import { selectTmuxForegroundProgram, type TmuxProcessRow } from '../utils/tmuxProgramDetection.js';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { IntegrationStore, validatePolicy, type IntegrationPolicy, type IntegrationPrincipal } from './integrationStore.js';
+import { IntegrationStore, validatePolicy, type IntegrationPolicy, type IntegrationPrincipal, type IntegrationStorageOptions } from './integrationStore.js';
 import { IntegrationSessions, permittedCwd, integrationLaunchCommand, publicIntegrationSession, type IntegrationSessionAdapter, type IntegrationSession } from './integrationSessions.js';
 import { IntegrationRuntime, integrationSocketPath } from './integrationServer.js';
 import { assertNativeResumeAvailable, collectNativeResumeOwnerCandidates } from './nativeResumeOwner.js';
@@ -50,7 +50,7 @@ it('authenticates a separate scoped identity, stores only credential hashes, and
   store.revoke('bridge'); expect(() => store.authorize(p, 'task.read')).toThrow();
   expect(() => new IntegrationStore(path.join(dir, 'events.json')).authenticate('bridge', issued.token)).toThrow();
 });
-it('replays unacknowledged events with stable ids after restart; deduplication and retention gaps are explicit', () => {
+it('replays stable unacknowledged events after restart without count-based loss', () => {
   const file = path.join(dir, 'events.json'); let store = new IntegrationStore(file, 2);
   const issued = store.provision(policy()), p = store.authenticate('bridge', issued.token);
   store.page(p, 'inbox');
@@ -60,8 +60,8 @@ it('replays unacknowledged events with stable ids after restart; deduplication a
   expect(store.page(p, 'inbox').events).toEqual([first]);
   store.ack(p, 'inbox', first.cursor); expect(store.page(p, 'inbox').events).toEqual([]);
   store.append([fact(2), fact(3), fact(4)]);
-  expect(() => store.page(p, 'inbox')).toThrow(/retained history/);
-  expect(store.page(p, 'reconciled').events.map(e => e.sequence)).toEqual([3, 4]);
+  expect(store.page(p, 'inbox').events.map(e => e.sequence)).toEqual([2, 3, 4]);
+  expect(store.page(p, 'reconciled').events.map(e => e.sequence)).toEqual([2, 3, 4]);
 });
 it('rejects unsafe profiles, symlink escapes and readable credential files', () => {
   expect(() => validatePolicy({ ...policy(), launchProfiles: [null as never] })).toThrow();
@@ -174,19 +174,20 @@ it('retains the old --integration switch and exposes independent principal / cor
   expect(() => parseCollaborationCommand(['--principal', 'bridge', 'session', 'restore', 's', '--idempotency-key', 'k', '--launch-profile', 'other'])).toThrow();
 });
 
-async function runtimeFixture(sessionAdapter?: IntegrationSessionAdapter) {
+async function runtimeFixture(sessionAdapter?: IntegrationSessionAdapter, eventStorage?: IntegrationStorageOptions) {
   const messages = new CollaborationStore(path.join(dir, 'groups.json')), group = messages.save({ name: 'Local fixture', sessionIds: ['worker'] });
   const taskStore = new CollaborationTaskStore(path.join(dir, 'tasks.json'));
   const peers = { descriptor: () => ({ serviceId }), taskMember: (sessionId: string) => ({ serviceId, sessionId }), taskSession: (m: typeof worker) => m.sessionId } as unknown as CollaborationService;
   const tasks = new CollaborationTaskService(taskStore, messages, peers, () => {});
-  const options = { directory: dir, socketPath: path.join(dir, 'api.sock'), adminToken: 'local-admin', messages, taskStore, tasks, peers, sessions: sessionAdapter ?? adapter().api };
-  const runtime = new IntegrationRuntime(options); await runtime.listen(); resources.push(() => runtime.close());
+  const options = { directory: dir, socketPath: path.join(dir, 'api.sock'), adminToken: 'local-admin', messages, taskStore, tasks, peers, sessions: sessionAdapter ?? adapter().api, eventStorage };
+  const runtime = new IntegrationRuntime({ ...options, serviceId }); await runtime.listen(); resources.push(() => runtime.close());
   const issued = runtime.store.provision(policy(group.id));
   const headers = { 'x-termdock-integration-protocol': '1', 'x-termdock-integration-id': 'bridge', authorization: `Bearer ${issued.token}`, 'Content-Type': 'application/json' };
   const request = (method: string, route: string, body?: unknown, requestHeaders: Record<string, string> = headers) => new Promise<{ status: number; body: any }>((resolve, reject) => {
-    const req = http.request({ socketPath: options.socketPath, method, path: route, headers: requestHeaders }, res => {
-      let raw = ''; res.on('data', chunk => { raw += chunk; }); res.once('end', () => resolve({ status: res.statusCode!, body: JSON.parse(raw) }));
-    }); req.once('error', reject); req.end(body === undefined ? undefined : JSON.stringify(body));
+    const data = body === undefined ? undefined : JSON.stringify(body);
+    const req = http.request({ socketPath: options.socketPath, method, path: route, headers: { ...requestHeaders, ...(data ? { 'Content-Length': Buffer.byteLength(data) } : {}) } }, res => {
+      let raw = ''; res.on('data', chunk => { raw += chunk; }); res.once('end', () => { try { resolve({ status: res.statusCode!, body: JSON.parse(raw) }); } catch (error) { reject(error); } });
+    }); req.once('error', reject); req.end(data);
   });
   const stream = () => {
     const events: any[] = [], waiters: Array<() => void> = [];
@@ -195,7 +196,7 @@ async function runtimeFixture(sessionAdapter?: IntegrationSessionAdapter) {
     }); req.on('error', () => {}); resources.push(() => { req.destroy(); });
     return { req, events, async next() { if (!events.length) await new Promise<void>((resolve, reject) => { const timer = setTimeout(() => reject(new Error('No pushed event')), 3000); waiters.push(() => { clearTimeout(timer); resolve(); }); }); return events.shift(); } };
   };
-  return { runtime, messages, group, taskStore, request, stream, options, issued };
+  return { runtime, messages, group, taskStore, request, stream, options: { ...options, serviceId }, issued };
 }
 it('reconciles only changed source domains and preserves dirty work across append failures', async () => {
   const f = await runtimeFixture(); f.runtime.sync();
@@ -320,6 +321,73 @@ it('pushes from durable task changes through an actual socket; read is not ACK, 
   expect(await f.request('POST', '/events/ack', { cursor: event.cursor, consumer: 'inbox' })).toMatchObject({ status: 200, body: { ack_semantics: 'durable_received' } });
   f.runtime.store.revoke('bridge'); expect(await reconnect.next()).toMatchObject({ type: 'error', code: 'INTEGRATION_REVOKED', retryable: false });
   expect(await f.request('GET', '/capabilities')).toMatchObject({ status: 403, body: { code: 'INTEGRATION_REVOKED' } });
+});
+it('keeps a real socket subscription and durable ACK usable during capacity backpressure, including reconnect and restart', async () => {
+  const f = await runtimeFixture(undefined, { maxBytes: 1600, segmentBytes: 700 });
+  const update = (n: number) => ({ sourceKey: `capacity-${n}`, sourceVersion: '1', eventId: `capacity-event-${n}`,
+    event: { group_id: f.group.id, kind: 'message.reply', created_at: n, payload: { text: 'x'.repeat(400) } } });
+  const p = f.runtime.store.authenticate('bridge', f.issued.token);
+  f.runtime.store.page(p, 'inbox'); f.runtime.store.append([update(1), update(2)]);
+  const subscription = f.stream();
+  const first = await subscription.next(), second = await subscription.next();
+  expect([first.event_id, second.event_id]).toEqual(['capacity-event-1', 'capacity-event-2']);
+  f.messages.send({ groupId: f.group.id, fromSessionId: null, toSessionIds: ['worker'], kind: 'ask', content: 'unconfirmed real original', idempotencyKey: 'capacity-source' });
+  expect(() => f.runtime.sync()).toThrow(expect.objectContaining({ code: 'EVENT_STORAGE_FULL' }));
+  const reconnect = f.stream(); expect((await reconnect.next()).event_id).toBe(first.event_id);
+  expect(await f.request('POST', '/events/ack', { consumer: 'inbox', cursor: second.cursor })).toMatchObject({ status: 200, body: { ack_semantics: 'durable_received' } });
+  expect(manifestConsumers()).toMatchObject({ [`bridge:${f.group.id}:inbox`]: 2 });
+  subscription.req.destroy(); reconnect.req.destroy(); await f.runtime.close();
+  // Suppress the final fixture closer: close is exercised explicitly here.
+  resources.splice(0);
+  const restarted = new IntegrationRuntime(f.options); await restarted.listen(); resources.push(() => restarted.close());
+  expect(restarted.store.authenticate('bridge', f.issued.token).groupId).toBe(f.group.id);
+  expect(restarted.store.page(p, 'inbox').events.every(event => event.sequence > 2)).toBe(true);
+  function manifestConsumers() { return JSON.parse(fs.readFileSync(path.join(dir, 'integrations.json'), 'utf8')).consumers; }
+});
+it('exposes capacity/consumer diagnostics and fenced retirement only to the local administrator', async () => {
+  const f = await runtimeFixture(), admin = { 'Content-Type': 'application/json', 'x-termdock-integration-protocol': '1', 'x-termdock-local-token': 'local-admin' };
+  const p = f.runtime.store.authenticate('bridge', f.issued.token); f.runtime.store.page(p, 'probe');
+  expect(await f.request('GET', '/admin/storage')).toMatchObject({ status: 401 });
+  expect(await f.request('GET', '/admin/consumers')).toMatchObject({ status: 401 });
+  expect(await f.request('POST', '/admin/consumers/retire', {})).toMatchObject({ status: 401 });
+  expect(await f.request('GET', '/admin/storage', undefined, admin)).toMatchObject({ status: 200, body: { format: 'segmented-v2', ack_available: true } });
+  expect(await f.request('GET', '/admin/consumers', undefined, admin)).toMatchObject({ status: 200, body: { consumers: [expect.objectContaining({ consumer: 'probe', confirmed_sequence: 0, protects_events: true })] } });
+  const body = { principal_id: 'bridge', consumer: 'probe', expected_sequence: 0, idempotency_key: 'retire-probe' };
+  expect(await f.request('POST', '/admin/consumers/retire', { ...body, expected_sequence: 1 }, admin)).toMatchObject({ status: 409, body: { code: 'EVENT_CONSUMER_CHANGED' } });
+  expect(await f.request('POST', '/admin/consumers/retire', body, admin)).toMatchObject({ status: 200, body: { confirmed_sequence: 0 } });
+  expect(() => f.runtime.store.page(p, 'probe')).toThrow(expect.objectContaining({ code: 'EVENT_CONSUMER_RETIRED' }));
+});
+it('routes storage/consumer administration CLI through its isolated local socket and validates retirement flags before writing', async () => {
+  let port = 45000 + Math.floor(Math.random() * 10000);
+  while (fs.existsSync(integrationSocketPath(port))) port++;
+  const socket = integrationSocketPath(port), calls: Array<{ method?: string; route?: string; body: unknown }> = [];
+  const server = http.createServer((req, res) => {
+    expect(req.headers['x-termdock-local-token']).toBe('test-admin');
+    let raw = ''; req.on('data', chunk => { raw += chunk; }); req.on('end', () => {
+      calls.push({ method: req.method, route: req.url, body: raw ? JSON.parse(raw) : null });
+      res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ ok: true }));
+    });
+  });
+  await new Promise<void>(resolve => server.listen(socket, resolve)); resources.push(() => new Promise<void>(resolve => server.close(() => resolve())));
+  const output: string[] = [], write = (line: string) => output.push(line);
+  expect(await runIntegrationAdmin(['storage'], port, 'test-admin', write)).toBe(0);
+  expect(await runIntegrationAdmin(['consumers'], port, 'test-admin', write)).toBe(0);
+  const args = ['consumer', 'retire', '--principal', 'bridge', '--consumer', 'probe', '--expected-sequence', '0', '--idempotency-key', 'retire-key'];
+  expect(await runIntegrationAdmin(args, port, 'test-admin', write)).toBe(0);
+  expect(calls).toEqual([{ method: 'GET', route: '/admin/storage', body: null }, { method: 'GET', route: '/admin/consumers', body: null },
+    { method: 'POST', route: '/admin/consumers/retire', body: { principal_id: 'bridge', consumer: 'probe', expected_sequence: 0, idempotency_key: 'retire-key' } }]);
+  expect(await runIntegrationAdmin(args.slice(0, -2), port, 'test-admin', write)).toBe(1);
+  expect(calls).toHaveLength(3); expect(output.join('')).not.toContain('test-admin');
+});
+it('commits another group from the same source scan even when one group has an oversized pending event', async () => {
+  const f = await runtimeFixture(undefined, { maxBytes: 10000, maxGroupBytes: 4000 });
+  const other = f.messages.save({ name: 'Healthy group', sessionIds: ['other'] });
+  const issued = f.runtime.store.provision({ ...policy(other.id), id: 'other-bridge' });
+  f.messages.send({ groupId: f.group.id, fromSessionId: null, toSessionIds: ['worker'], kind: 'message', content: 'x'.repeat(5000) });
+  const [message] = f.messages.send({ groupId: other.id, fromSessionId: null, toSessionIds: ['other'], kind: 'message', content: 'Healthy group can continue' });
+  expect(() => f.runtime.sync()).toThrow(expect.objectContaining({ code: 'EVENT_STORAGE_FULL' }));
+  const p = f.runtime.store.authenticate('other-bridge', issued.token);
+  expect(f.runtime.store.page(p, 'consumer').events.some(event => event.message_id === message!.id)).toBe(true);
 });
 it('denies scope violations, principal impersonation, user acceptance and unsent ACKs on the real endpoint', async () => {
   const f = await runtimeFixture();
@@ -1042,6 +1110,7 @@ it('scoped management grants require no empty terminal; close retains messages a
   const id = created.body.session.session_id, grant = policy(f.group.id);
   expect(created.body.session).toMatchObject({ state: 'ready' });
   expect((await f.request('GET', '/capabilities')).body).toMatchObject({ session_rename: true, session_close: true, session_rename_min_version: '1.4.315', session_close_min_version: '1.4.315' });
+  expect(await f.request('GET', `/sessions/${id}/access-state`)).toMatchObject({ status: 403, body: { code: 'INTEGRATION_PERMISSION_DENIED' } });
   const rename = { generation: 1, name: 'Fast', idempotency_key: 'rename' };
   const close = { generation: 2, idempotency_key: 'close' };
   expect(await f.request('POST', `/sessions/${id}/rename`, rename)).toMatchObject({ status: 403, body: { code: 'INTEGRATION_PERMISSION_DENIED' } });
@@ -1056,6 +1125,29 @@ it('scoped management grants require no empty terminal; close retains messages a
   f.messages.markDelivered([original.id]);
   const audit = f.messages.storeIntegrationReply(original.id, id, 'historical result', { responseKind: 'result', idempotencyKey: 'result' });
   grant.permissions.push('session.close', 'message.send', 'message.read'); f.runtime.store.update(grant);
+  grant.permissions.push('session.forget', 'session.access'); f.runtime.store.update(grant);
+  expect(await f.request('DELETE', `/sessions/${id}`, { generation: 2 })).toMatchObject({ status: 409, body: { code: 'SESSION_NOT_CLOSED' } });
+  expect(await f.request('GET', `/sessions/${id}/access-state`)).toEqual({ status: 200,
+    body: { sessionId: id, fence: 0, readerFence: 0, exclusive: false } });
+  expect(await f.request('GET', '/sessions/worker/access-state')).toMatchObject({ status: 404 });
+  const lease = { id: randomUUID(), userId: 'user', deviceId: 'device', expiresAt: Date.now() + 60000 };
+  expect(await f.request('POST', `/sessions/${id}/access`, { fence: 1, lease, exclusive: true })).toMatchObject({ status: 200 });
+  const ticket = await f.request('POST', `/sessions/${id}/access-ticket`, { deviceId: 'device' });
+  expect(ticket).toMatchObject({ status: 200, body: { ticket: expect.stringMatching(/^session\./) } });
+  const reader={...lease,id:randomUUID(),deviceId:'reader111111111111'};
+  expect(await f.request('GET','/capabilities')).toMatchObject({status:200,body:{service_id:serviceId,
+    session_access_readers:true,session_access_exclusive:true,session_access_state:true}});
+  expect(await f.request('POST',`/sessions/${id}/access-readers`,{fence:1,leases:[reader]})).toMatchObject({status:200});
+  expect(await f.request('GET', `/sessions/${id}/access-state`)).toEqual({ status: 200,
+    body: { sessionId: id, fence: 1, readerFence: 1, exclusive: true } });
+  const readTicket=await f.request('POST',`/sessions/${id}/access-ticket`,{deviceId:reader.deviceId,readerId:reader.id});
+  const readClaims=f.runtime.sessionAccess.consume(readTicket.body.ticket,reader.deviceId);
+  expect(readClaims).toMatchObject({readOnly:true,sessionId:id});
+  expect(f.runtime.sessionAccess.allows(readClaims,reader.deviceId,'session.input',id)).toBe(false);
+  const otherPrincipal=f.runtime.store.authenticate('other',foreign.token);otherPrincipal.permissions.push('session.access');f.runtime.store.update(otherPrincipal);
+  expect(await f.request('POST',`/sessions/${id}/access-readers`,{fence:2,leases:[]},{'Content-Type':'application/json',authorization:`Bearer ${foreign.token}`,'x-termdock-integration-id':'other','x-termdock-integration-protocol':'1'})).toMatchObject({status:404});
+  expect(await f.request('GET', `/sessions/${id}/access-state`, undefined, {'Content-Type':'application/json',authorization:`Bearer ${foreign.token}`,'x-termdock-integration-id':'other','x-termdock-integration-protocol':'1'})).toMatchObject({ status: 404, body: { code: 'INTEGRATION_SESSION_NOT_FOUND' } });
+  grant.permissions = grant.permissions.filter(p => p !== 'session.forget'); f.runtime.store.update(grant);
   expect(await f.request('POST', `/sessions/${id}/close`, { ...close, generation: '2' })).toMatchObject({ status: 409, body: { code: 'INVALID_SESSION_GENERATION' } });
   const closed = await f.request('POST', `/sessions/${id}/close`, close);
   expect(closed).toMatchObject({ status: 200, body: { session: { state: 'closed', generation: 3, runtime_present: false, terminal_binding: null, close_pending: false } } });
@@ -1068,6 +1160,16 @@ it('scoped management grants require no empty terminal; close retains messages a
   const events = f.runtime.store.page(p, 'management').events;
   expect(events.find(e => e.kind === 'session.renamed')).toMatchObject({ payload: { name: 'Fast', generation: 2, operation_id: created.body.session.operation_id } });
   expect(events.find(e => e.kind === 'session.closed')).toMatchObject({ payload: { session: { state: 'closed', runtime_present: false } } });
+  const forget = { generation: 3 };
+  expect(await f.request('DELETE', `/sessions/${id}`, forget)).toMatchObject({ status: 403 });
+  grant.permissions.push('session.forget'); f.runtime.store.update(grant);
+  expect(await f.request('DELETE', `/sessions/${id}`, { generation: 2 })).toMatchObject({ status: 409, body: { code: 'SESSION_GENERATION_MISMATCH' } });
+  expect(await f.request('DELETE', `/sessions/${id}`, forget)).toMatchObject({ status: 200, body: { forgotten: true } });
+  expect(await f.request('DELETE', `/sessions/${id}`, forget)).toMatchObject({ status: 200, body: { forgotten: true } });
+  expect(await f.request('GET', `/sessions/${id}`)).toMatchObject({ status: 404 });
+  expect(await f.request('POST', '/sessions', { launch_profile: 'agent', cwd: dir, idempotency_key: 'create' })).toMatchObject({ status: 409, body: { code: 'SESSION_FORGOTTEN' } });
+  expect(await f.request('POST', `/sessions/${id}/close`, close)).toMatchObject({ status: 409, body: { code: 'SESSION_FORGOTTEN' } });
+  expect(api.restore).not.toHaveBeenCalled();
 });
 it('rename/close CLI validates required flags and fails closed against old capabilities', async () => {
   for (const args of [['rename', 'id', '--generation', '1'], ['close', 'id'], ['close', 'id', '--generation', '1', '--name', 'bad'], ['rename', 'id', '--generation', '0', '--name', 'bad']]) expect(() => parseCollaborationCommand(['--principal', 'bridge', 'session', ...args, '--idempotency-key', 'key'])).toThrow();

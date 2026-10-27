@@ -10,9 +10,10 @@ import type { CollaborationTaskStore } from './collaborationTaskStore.js';
 import type { CollaborationTaskService } from './collaborationTaskService.js';
 import type { CollaborationService } from './collaborationService.js';
 import type { TaskOrigin, TaskOperation, TaskCreateInput } from './collaborationTaskTypes.js';
-import { IntegrationStore, INTEGRATION_PROTOCOL, INTEGRATION_OPERATIONS, atomicJson, integrationError, type IntegrationPermission, type IntegrationPrincipal, type IntegrationEvent } from './integrationStore.js';
+import { IntegrationStore, INTEGRATION_PROTOCOL, INTEGRATION_OPERATIONS, atomicJson, integrationError, type IntegrationPermission, type IntegrationPrincipal, type IntegrationEvent, type IntegrationStorageOptions } from './integrationStore.js';
 import { IntegrationSessions, publicIntegrationSession, type IntegrationSessionAdapter } from './integrationSessions.js';
 import { getTermdockVersion } from '../utils/version.js';
+import { SessionAccessStore } from '../federation/sessionAccess.js';
 
 export function integrationSocketPath(port: number, home = homedir()): string {
   const preferred = path.join(home, '.termdock', `integration-${port}.sock`);
@@ -25,8 +26,10 @@ export function integrationSocketPath(port: number, home = homedir()): string {
 }
 export interface IntegrationRuntimeOptions {
   directory: string; socketPath: string; adminToken?: string;
+  eventStorage?: IntegrationStorageOptions;
   messages: CollaborationStore; taskStore: CollaborationTaskStore;
   tasks: CollaborationTaskService; peers: CollaborationService; sessions: IntegrationSessionAdapter;
+  serviceId?: string;
 }
 type Update = { sourceKey: string; sourceVersion: string; eventId?: string; event: Omit<IntegrationEvent, 'event_id' | 'sequence' | 'cursor'> };
 type SyncSource = 'messages' | 'tasks' | 'sessions';
@@ -43,6 +46,7 @@ function scopedId(input: string, ids: string[], type: string): string {
 export class IntegrationRuntime {
   readonly store: IntegrationStore;
   readonly sessions: IntegrationSessions;
+  readonly sessionAccess: SessionAccessStore;
   private server: Server;
   private stops: Array<() => void> = [];
   private streams = new Set<ServerResponse>();
@@ -55,8 +59,11 @@ export class IntegrationRuntime {
   private releaseBatchOperations: ReleaseBatchOperation[] = [];
   private releaseBatchRunning = false;
   constructor(private options: IntegrationRuntimeOptions) {
-    this.store = new IntegrationStore(path.join(options.directory, 'integrations.json'));
+    this.store = new IntegrationStore(path.join(options.directory, 'integrations.json'), 10000, options.eventStorage);
     this.sessions = new IntegrationSessions(path.join(options.directory, 'integration-sessions.json'), options.sessions);
+    this.sessionAccess = new SessionAccessStore(path.join(options.directory, 'session-access.json'), (id, principalId) => {
+      return this.sessions.permitsSessionAccess(id, principalId) && this.store.permits(principalId, 'session.access');
+    });
     this.releaseBatchFile = path.join(options.directory, 'session-release-batches.json');
     try {
       const saved = JSON.parse(fs.readFileSync(this.releaseBatchFile, 'utf8')) as ReleaseBatchOperation[];
@@ -71,7 +78,7 @@ export class IntegrationRuntime {
     this.stops.push(options.messages.registerRuntimeGuard(id => this.sessions.assertRuntimeMessage(id)));
     const changed = (source: SyncSource) => () => {
       this.dirtySources.add(source);
-      try { this.sync(); } catch (error) { this.failStreams(error); this.scheduleRetry(); }
+      try { this.sync(); } catch (error) { if (!this.capacityBlocked(error)) this.failStreams(error); this.scheduleRetry(); }
     };
     this.stops.push(options.messages.subscribe(changed('messages')), options.taskStore.subscribe(changed('tasks')), this.sessions.subscribe(changed('sessions')));
     const app = express(); app.use(express.json({ limit: '2mb' }));
@@ -88,6 +95,14 @@ export class IntegrationRuntime {
       const given = Buffer.from(String(req.headers['x-termdock-local-token'] ?? '')), expected = Buffer.from(options.adminToken ?? '');
       if (!expected.length || given.length !== expected.length || !timingSafeEqual(given, expected)) integrationError('INTEGRATION_ADMIN_REQUIRED', 'Local administration credential is required', 401);
     };
+    app.get('/admin/storage', run(req => { admin(req); return this.store.storageStatus(); }));
+    app.get('/admin/consumers', run(req => { admin(req); return { consumers: this.store.consumerStatus() }; }));
+    app.post('/admin/consumers/retire', run(req => {
+      admin(req);
+      const body = req.body;
+      if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some(key => !['principal_id', 'consumer', 'expected_sequence', 'idempotency_key'].includes(key))) integrationError('INVALID_CONSUMER_RETIREMENT', 'Specify principal_id, consumer, expected_sequence and idempotency_key only');
+      return this.store.retireConsumer(body.principal_id, body.consumer, body.expected_sequence, body.idempotency_key);
+    }));
     app.get('/admin/groups', run(req => { admin(req); return { groups: options.messages.listLocalGroupMetadata(req.query.include_archived === 'true') }; }));
     app.get('/admin/groups/:id', run(req => { admin(req); return { group: options.messages.getLocalGroupMetadata(req.params.id) }; }));
     app.post('/admin/groups/:id/rename', run(req => {
@@ -218,6 +233,26 @@ export class IntegrationRuntime {
       this.sync(); return { session: publicIntegrationSession(session) };
     }));
     app.get('/sessions/:id', run(async req => { const p = principal(req); this.authorize(p, 'session.read'); return { session: publicIntegrationSession(await this.sessions.get(p, req.params.id)) }; }));
+    app.post('/sessions/:id/access', run(async req => {
+      const p = principal(req); this.authorize(p, 'session.access');
+      await this.sessions.get(p, req.params.id);
+      return this.sessionAccess.update(req.params.id, p.id, req.body);
+    }));
+    app.get('/sessions/:id/access-state', run(async req => {
+      const p = principal(req); this.authorize(p, 'session.access');
+      const session = await this.sessions.get(p, req.params.id);
+      return { sessionId: session.session_id, ...this.sessionAccess.revision(session.session_id, p.id) };
+    }));
+    app.post('/sessions/:id/access-readers', run(async req => {
+      const p=principal(req);this.authorize(p,'session.access');
+      await this.sessions.get(p,req.params.id);
+      return this.sessionAccess.updateReaders(req.params.id,p.id,req.body);
+    }));
+    app.post('/sessions/:id/access-ticket', run(async req => {
+      const p = principal(req); this.authorize(p, 'session.access');
+      await this.sessions.get(p, req.params.id);
+      return { ticket: this.sessionAccess.ticket(req.params.id, p.id, req.body?.deviceId,req.body?.readerId) };
+    }));
     app.post('/sessions/:id/restore', run(async req => { const p = principal(req); this.authorize(p, 'session.restore'); const session = await this.sessions.restore(p, req.params.id, req.body?.idempotency_key); this.sync(); return { session: publicIntegrationSession(session) }; }));
     app.post('/sessions/:id/retry-cold', run(async req => { const p = principal(req); this.authorize(p, 'session.create'); const session = await this.sessions.retryCold(p, req.params.id, req.body?.generation, req.body?.idempotency_key); this.sync(); return { session: publicIntegrationSession(session) }; }));
     app.post('/sessions/:id/release', run(async req => { const p = principal(req); this.authorize(p, 'session.release'); const session = await this.sessions.release(p, req.params.id, req.body?.generation, req.body?.idempotency_key); this.sync(); return { session: publicIntegrationSession(session) }; }));
@@ -233,9 +268,13 @@ export class IntegrationRuntime {
     }));
     app.post('/sessions/:id/rename', run(async req => { const p = principal(req); this.authorize(p, 'session.rename'); const session = await this.sessions.rename(p, req.params.id, req.body?.generation, req.body?.name, req.body?.idempotency_key); this.sync(); return { session: publicIntegrationSession(session) }; }));
     app.post('/sessions/:id/close', run(async req => { const p = principal(req); this.authorize(p, 'session.close'); const session = await this.sessions.closeSession(p, req.params.id, req.body?.generation, req.body?.idempotency_key); this.sync(); return { session: publicIntegrationSession(session) }; }));
+    app.delete('/sessions/:id', run(async req => { const p = principal(req); this.authorize(p, 'session.forget'); await this.sessions.forget(p, req.params.id, req.body?.generation); this.sync(); return { forgotten: true }; }));
     app.get('/events', run((req, res) => {
       const p = principal(req); this.authorize(p, 'events.read', req.query.group);
-      this.sync(); this.stream(p, String(req.query.consumer ?? 'default'), req, res);
+      // Capacity backpressure must not prevent a consumer from draining and
+      // confirming the already committed suffix that releases that capacity.
+      try { this.sync(); } catch (error) { if (!this.capacityBlocked(error)) throw error; this.scheduleRetry(); }
+      this.stream(p, String(req.query.consumer ?? 'default'), req, res);
     }));
     app.post('/events/ack', run(req => {
       const p = principal(req); this.authorize(p, 'events.read');
@@ -248,9 +287,11 @@ export class IntegrationRuntime {
     this.server = createServer(app);
   }
   capabilities() {
-    return { integration_protocol: INTEGRATION_PROTOCOL, server_version: getTermdockVersion(), local_only: true,
-      integration_principal: true, group_scoped_permissions: true, durable_event_push: true,
+    return { integration_protocol: INTEGRATION_PROTOCOL, server_version: getTermdockVersion(), service_id:this.options.serviceId, local_only: true,
+      integration_principal: true, group_scoped_permissions: true, durable_event_push: true, session_access_tickets: true, session_access_readers:true,
+      session_access_exclusive: true, session_access_state: true,
       event_ack_semantics: 'durable_received', correlated_task_responses: true, accepted_task_comments: true,
+      segmented_event_storage: true, event_storage_diagnostics: true, explicit_consumer_retirement: true,
       idempotent_session_create: true, exact_session_restore: true, external_validation: false,
       startup_input_conditions: true, session_runtime_release: true, stable_session_identity: true, session_lifecycle_generation: true,
       session_resume_configuration: true, session_lifecycle_min_version: '1.4.309',
@@ -267,6 +308,7 @@ export class IntegrationRuntime {
       session_cold_retry: true, session_cold_retry_min_version: '1.4.314',
       session_rename: true, session_rename_min_version: '1.4.315',
       session_close: true, session_close_min_version: '1.4.315',
+      session_forget: true,
       session_close_diagnostics: true, session_close_diagnostics_min_version: '1.4.349',
       session_close_detached_registration: process.platform === 'linux', session_close_detached_registration_min_version: '1.4.349',
       admin_local_group_create: true, admin_local_group_create_min_version: '1.4.318',
@@ -440,7 +482,18 @@ export class IntegrationRuntime {
           group_id: session.group_id, kind: 'session.renamed', created_at: session.name_updated_at, source: 'system',
           actor: { integration_id: session.principal_id }, payload: { session_id: session.session_id, name: session.name, generation: session.name_generation, operation_id: session.name_operation_id } } });
       updates.sort((a, b) => a.event.created_at - b.event.created_at);
-      this.store.append(updates);
+      // Group sequences are independent. A large/stalled group's backpressure
+      // must not roll back otherwise admissible groups in the same source scan.
+      const batches = new Map<string, Update[]>();
+      for (const update of updates) {
+        const batch = batches.get(update.event.group_id) ?? []; batch.push(update); batches.set(update.event.group_id, batch);
+      }
+      let blocked: unknown;
+      for (const batch of batches.values()) {
+        try { this.store.append(batch); }
+        catch (error) { if (!this.capacityBlocked(error)) throw error; blocked ??= error; }
+      }
+      if (blocked) throw blocked;
       this.syncedGroups = groupVersion;
     } catch (error) {
       for (const source of sources) this.dirtySources.add(source);
@@ -453,6 +506,7 @@ export class IntegrationRuntime {
   private failStreams(error: unknown): void {
     for (const stream of this.streams) stream.end(`${JSON.stringify(this.error(error))}\n`);
   }
+  private capacityBlocked(error: unknown): boolean { return error instanceof CollaborationError && error.code === 'EVENT_STORAGE_FULL'; }
   private scheduleRetry(): void {
     if (this.retry) return;
     this.retry = setTimeout(() => { this.retry = undefined; try { this.sync(); } catch { this.scheduleRetry(); } }, 1000); this.retry.unref();
@@ -514,7 +568,8 @@ export class IntegrationRuntime {
         catch (error) { reject(error); }
       });
     });
-    this.sync(); await this.sessions.refreshAll(); void this.pumpReleaseBatches();
+    try { this.sync(); } catch (error) { if (!this.capacityBlocked(error)) throw error; this.scheduleRetry(); }
+    await this.sessions.refreshAll(); void this.pumpReleaseBatches();
   }
   async close(): Promise<void> {
     for (const stop of this.stops) stop(); if (this.retry) clearTimeout(this.retry); this.sessions.close();

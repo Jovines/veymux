@@ -9,6 +9,12 @@ import { getTermdockVersion } from '../utils/version.js';
 
 export const INTEGRATION_HELP = `td integration — local scoped integration administration
   groups | list
+  storage (read event capacity, warnings and metadata usage; local administrator only)
+  consumers (read confirmation watermarks, lag and retirement state)
+  consumer retire --principal <id> --consumer <name> --expected-sequence <N> --idempotency-key <key>
+    Explicitly ends a consumer's retention protection; preserves its watermark.
+    Its old name can no longer subscribe/ACK. Reconcile before using a new name.
+    Never retire a slow/idle consumer merely because its last ACK is old.
   group get <exact-group-id>
   group rename <exact-group-id> --name <name> --expected-updated-at <N> --idempotency-key <key>
     Administrator only; minimum CLI/running service 1.4.319;
@@ -147,6 +153,24 @@ export async function runIntegrationAdmin(argv: string[], port: number, adminTok
     const action = argv[0] ?? 'help', options: Record<string, string> = {};
     if (action === 'help' || argv.includes('--help')) { write(INTEGRATION_HELP); return 0; }
     const socketPath = integrationSocketPath(port);
+    if (action === 'storage' || action === 'consumers') {
+      if (argv.length !== 1) throw new Error('Usage: td integration storage | consumers');
+      write(JSON.stringify(parsed(await request(socketPath, 'GET', `/admin/${action}`, undefined, headers(undefined, adminToken)))));
+      return 0;
+    }
+    if (action === 'consumer') {
+      const args: Record<string, string> = {};
+      if (argv[1] !== 'retire') throw new Error('Usage: td integration consumer retire --principal <id> --consumer <name> --expected-sequence <N> --idempotency-key <key>');
+      for (let index = 2; index < argv.length; index += 2) {
+        if (!['--principal', '--consumer', '--expected-sequence', '--idempotency-key'].includes(argv[index]) || !argv[index + 1] || Object.hasOwn(args, argv[index])) throw new Error('Invalid consumer retirement arguments');
+        args[argv[index]] = argv[index + 1];
+      }
+      if (Object.keys(args).length !== 4 || !/^(0|[1-9][0-9]*)$/.test(args['--expected-sequence'])) throw new Error('Consumer retirement requires all four arguments and an integer sequence');
+      write(JSON.stringify(parsed(await request(socketPath, 'POST', '/admin/consumers/retire', {
+        principal_id: args['--principal'], consumer: args['--consumer'], expected_sequence: Number(args['--expected-sequence']), idempotency_key: args['--idempotency-key'],
+      }, headers(undefined, adminToken)))));
+      return 0;
+    }
     if (action === 'group' && ['get', 'rename', 'archive', 'unarchive'].includes(argv[1])) {
       const operation = argv[1], id = argv[2], args: Record<string, string> = {};
       const usage = 'Usage: td integration group get <exact-id> | group rename <exact-id> --name <name> --expected-updated-at <N> --idempotency-key <key> | group archive|unarchive <exact-id> --expected-updated-at <N> --idempotency-key <key>';

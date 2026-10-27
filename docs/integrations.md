@@ -21,6 +21,94 @@ TD 提供受限身份、持久事件推送、关联咨询回复，以及会话�
 `complete` 是执行成员的明确交付，`accepted` 是用户明确验收；投递成功、终端快照、
 事件 ACK 都不表示已读、任务完成或业务校验通过。
 
+## 事件存储、容量与维护
+
+实际服务回读 `segmented_event_storage=true`、`event_storage_diagnostics=true` 后，
+事件使用分段存储；API 仍是协议 **1**，`event_id`、每组 sequence、opaque cursor
+和 `durable_received` 语义保持不变。磁盘格式版本不是 API 协议版本。
+
+`~/.termdock/integration-state/<port>/integrations.json` 是版本 2 的原子索引，保存
+principal、来源去重版本、sequence、保留下界、consumer 水位及分段引用；事件在同目录的
+`integrations.json.segments/*.jsonl` 中。分段不可变，每段有字节数、事件数和 SHA-256。
+先持久写分段，再原子提交索引；没有被已提交索引引用的文件不参与重放。
+ACK、凭据撤销及策略更新只提交索引，不重写事件段，也不受事件字节配额阻断。
+真实磁盘满或 I/O 失败仍会拒绝持久确认，不能把配额独立理解成磁盘写入必定成功。
+
+旧版本 1 JSON 首次打开时自动迁移：先保留**原始字节**到
+`integrations.json.v1-backup`，逐条保留原事件及元数据，然后提交版本 2 索引。
+迁移不按新容量裁剪、不补 ACK、不更换身份、凭据、消息或游标，已有 retention gap 也不会
+被掩盖。原件超过新配置预算时仍完整导入，随后告警并对新增事件施加背压。
+迁移须保证只有一个服务写入；不要运行第二个服务或外部写程序同时修改这些文件。
+诊断工具不能再把索引中没有 `events` 数组当作历史丢失；业务统一走订阅 API。
+
+以下环境变量在**服务启动时**读取，字节数必须是正安全整数：
+
+| 配置 | 默认 | 含义 |
+| --- | ---: | --- |
+| `TERMDOCK_INTEGRATION_EVENT_MAX_BYTES` | 536870912（512 MiB） | 所有当前事件段的逻辑字节预算 |
+| `TERMDOCK_INTEGRATION_EVENT_GROUP_MAX_BYTES` | min(总预算, 134217728)，即最多 128 MiB | 每组事件预算，隔离单组积压 |
+| `TERMDOCK_INTEGRATION_EVENT_SEGMENT_BYTES` | 1048576（1 MiB） | 分段目标大小；单个大事件单独成段，仍受事件预算约束 |
+| `TERMDOCK_INTEGRATION_EVENT_WARN_PERCENT` | 80 | 总量或任一组的告警百分比，范围 1–100 |
+| `TERMDOCK_INTEGRATION_METADATA_WARN_BYTES` | 16777216（16 MiB） | 索引元数据独立预警，不作为 ACK 的硬上限 |
+
+预算统计使用实际 UTF-8 JSONL 字节，包含换行；不是事件条数或字符串字符数。
+预算不含迁移备份、暂存段、索引及文件系统开销，维护时仍须预留磁盘空间并监控磁盘。
+来源去重键不会随事件回收而丢弃，元数据因此也可能增长，单独计量和预警。
+分段在启动时校验并建立内存索引，预算调大也会提高启动读取量及内存需求。
+
+每组 10,000 条是普通历史保留目标，**不是无条件删除未确认事件的许可**。
+每组取所有未撤销 principal 下、未退休 consumer 的最小 ACK 水位；未确认后缀始终保留。
+超过条数目标的未确认事件可继续保存在段中。在后续新增事件时，自动回收超过条数目标的
+已确认前缀；字节紧张时可进一步缩短已确认历史。没有注册 consumer 的组没有既存的消费
+保留承诺，其旧历史也可按条数/字节回收。不会为凑配额丢掉本轮新事件。
+保留下界只随实际回收推进，新 consumer 从最早保留处开始；旧 consumer 的缺口仍明确报错。
+
+不能安全回收出空间时，新增组批次返回 `EVENT_STORAGE_FULL`，该批次的来源版本、
+sequence 和事件都不提交。同轮其他组可在各自预算及总预算内继续提交。
+订阅、重连和 ACK 仍可处理已提交事件；后台同步不会因容量错误关闭已有订阅或阻止本地
+集成端点启动，避免“必须消费才能腾空间，却因容量满而不能订阅”的死结。
+清理不引用段发生在成功提交后；清理失败不把已持久 ACK 反报为失败，下次提交重试清理。
+发生索引 rename 成功、目录 fsync 失败等不确定提交时，停止继续写并报
+`EVENT_COMMIT_UNCONFIRMED`，重新打开存储对账，不能直接猜测成功或覆盖水位。
+
+管理员只读诊断：
+
+```sh
+td integration storage
+td integration consumers
+```
+
+容量阈值跨越及启动告警写入 `[integration-storage]` 日志，不包含正文或凭据。
+诊断返回事件/索引字节、预算、每组用量、段数、被拒组，以及 consumer 的确认序号、
+积压、缺口与最后确认时间（旧记录为 null，不推测历史时间）。仅本机管理员可访问。
+
+长期闲置不等于可以删除 consumer；水位为 0 的测试 consumer 同样会保护历史。
+确认某 consumer 永久停用并完成对账后，管理员才可显式结束它的保留保护：
+
+```sh
+td integration consumer retire --principal <原principal> --consumer <原consumer> \
+  --expected-sequence <刚读取的确认序号> --idempotency-key <本次稳定操作键>
+```
+
+该操作保留原水位及退休记录，不生成 ACK；旧 consumer 名称此后拒绝订阅和 ACK。
+水位已变化则拒绝，重试相同参数/键回读原结果。重新接入须先对账，再明确选择新名称。
+不得为了腾空间自动退休慢消费者、推进水位或代收件人确认/重放消息。
+
+维护部署按相应机器的维护授权进行：先构建、测试，在停写窗口记录旧文件 SHA、所有
+principal/consumer/source 键、序号、消息原 ID 与外部 inbox/outbox 状态，再停止该机旧
+TD、备份状态目录、用新构建启动唯一服务。TD WebSocket/订阅会短暂中断，消费者需重连；
+独立 tmux/PTY 中的 Agent 不应因重启 TD 被终止，仍须按本机 supervisor/systemd 配置核对。
+消费者沿用原凭据、名称和最后持久 ACK，不新建身份，不主动重投原消息。
+
+验收须对照原件逐条核实事件身份/游标及元数据，检查真实消费者 inbox 落盘记录和服务端
+ACK 对应同一事件，再独立验证原请求的明确接收及实际新业务产物。
+`session.failed` 被成功消费只证明传输/处理/确认链路恢复，服务存活更不能证明业务恢复。
+此前的 `ECHO_UNCONFIRMED`、输入探测及派发门控按原消息、attempt 和收件身份单独诊断。
+
+原始备份是迁移前恢复材料，**不是迁移后可直接覆盖回去的回滚文件**：这样做会丢失迁移后
+事件、水位和退休决定。旧程序应拒绝版本 2；一旦新版本产生写入，回退须先停写并保留
+完整当前索引/段及外部消费记录，由兼容当前格式的修复版本接管，不直接恢复旧备份。
+
 ## 普通消息接入（1.4.308，推荐用于机器人与报表）
 
 触发 Agent、追问和回帖可使用普通消息：**无需创建 task，不产生任务看板或逐期用户验收**。
@@ -1518,3 +1606,123 @@ td integration close-diagnostics <原TD-session-id>
 回归包括真实 Noise/中转授权撤回后的错误传播、网络与授权区分、其它合法路线成功、目标拒绝不绕过、零权限写入的展示/取消、窄中转授权明确确认及写后重读、管理员拒绝、精确目标登录、原终端/草稿保留、旧 client/目标/页面晚回执、同身份多地址/重复项/同名不同身份及 self-relay 兼容。发布工作流纳入相关服务管理组件与工作空间测试。原有总路由预算测试曾在未改动 350 基线复现计时器提前触发导致多试备用 provider；本版按原绝对 deadline 重核，不放宽超时预算或修改断言。
 
 维护机浏览器在 390×844 和 1280×800 的隔离夹具复核恢复选择、取消、无管理权限、指定目标登录与成功后的界面；夹具只记录读/写计数、不连接真实业务。真实 iPhone PWA/macOS 的授权失效交互仍由现场在安全夹具或自然失败中验收，不为测试撤销已恢复手机的正式授权。全仓前端 tsc 若被既有测试文件语法阻断应单列，生产源码类型检查、完整构建和发布回归独立报告，不修改无关测试。
+
+## Session access leases and descriptor deletion
+
+A local integration can delegate a browser connection to one of its own sessions
+without sharing a service password or a long-lived integration credential. Detect
+`session_access_tickets` in `/capabilities`, and grant `session.access` explicitly.
+All calls below use the existing private Unix socket and integration headers.
+
+1. `POST /sessions/:id/access` with `{fence, lease}`. `fence` is a monotonic integer;
+   `lease` is `{id,userId,deviceId,expiresAt}` or `null` to revoke. Leases last at most
+   125 seconds. Renew the same owner/device before expiration; advance the fence
+   when ownership changes. An initially empty `deviceId` may be bound once.
+2. `POST /sessions/:id/access-ticket` with `{deviceId}` returns a ticket valid for
+   at most 30 seconds. Deliver it only to that authenticated browser. Consumption
+   is durably single-use, including after a service restart. A persistence failure
+   rejects admission; request a fresh ticket after an uncertain failure.
+3. Establish the existing Noise channel and send the encrypted RPC
+   `{type:'session-auth', ticket}`. The device's Noise identity must match the lease.
+   This connection exposes only the selected session's chat and terminal capabilities,
+   even if that device also holds a full-service grant. It cannot manage or reshare
+   sessions. Revocation, principal revocation and lease expiration close live channels.
+
+The integrator remains responsible for user authentication, ACLs, lease ownership
+and routing to the right service. Browser disconnect/revocation does not close the
+Agent. Session creation, restoration and close keep their existing idempotency and
+exact native-process ownership checks.
+
+Detect `session_access_readers` to enable simultaneous observers. The private
+`/capabilities` response also includes `service_id` when the runtime knows its
+federation identity; verify it before registering a target in an external portal.
+`POST /sessions/:id/access-readers` accepts `{fence, leases}`. This revision is
+independent from the writer fence. Supply a complete snapshot of up to 32 reader
+leases using the same lease fields and 125-second maximum lifetime. Increment
+the reader revision for every changed snapshot; stale revisions are rejected.
+An empty snapshot revokes all readers without affecting the writer or Agent.
+Request a reader ticket with `{deviceId, readerId}` at the existing access-ticket
+endpoint. Reader tickets permit only session metadata, chat viewing and terminal
+viewing; input, resize, chat sending, management and resharing remain denied even
+when the device has a separate full-service grant. Writer handoff preserves
+observers. Removing and re-adding a reader creates a new generation so an old
+channel cannot regain access. Reassigning an existing reader ID to another user
+or device also changes its generation; returning it to the original identity does
+not revive old channels. Renewing the same identity preserves its live observer.
+Membership changes are the integrator's
+responsibility and must result in a new authorized reader snapshot.
+
+These endpoints remain restricted to sessions owned by that integration
+principal. A local terminal's existence or a browser's input permission does not
+authorize lending it to someone else. Existing-terminal adoption requires a
+separate, explicit administrator delegation design; it is not enabled here.
+
+### Exclusive writers and recovering access revisions
+
+Detect `session_access_exclusive` before sending the optional `exclusive` boolean
+to `POST /sessions/:id/access`. It defaults to false for existing integrations.
+When true, ordinary session-scoped grants, including older native invitations,
+cannot input, resize or send chat to that session. The bound writer ticket remains
+usable, reader tickets remain read-only, and other sessions are unaffected.
+Checks apply to already-open terminal sockets as well as new HTTP and WebSocket
+operations, whether connected directly or through an encrypted relay.
+
+Separately authenticated full-service administrators retain maintenance access.
+A connection that authenticated with a session ticket stays within that ticket's
+scope even when its device also has a full-service grant.
+
+Exclusive mode is persisted independently of the current writer lease. Expiry,
+`lease:null`, reader updates and writer updates that omit `exclusive` keep it in
+effect; disconnecting or releasing the browser never terminates the Agent.
+Explicitly send `exclusive:false` with a higher writer fence to return control to
+ordinary grants. Changing the mode in either direction at the same fence is a
+conflict; an older fence cannot undo the current policy. The integration's session
+ownership and active `session.access` permission remain required.
+
+Detect `session_access_state` before calling `GET /sessions/:id/access-state`.
+It uses the same private Unix socket, requires `session.access` and only accepts
+this principal's integration session ID returned by session creation. It returns:
+
+```json
+{"sessionId":"<integration-session-id>","fence":4,"readerFence":8,"exclusive":true}
+```
+
+Before the first access update, both revisions are zero and `exclusive` is false.
+The response does not expose lease occupants, device IDs, credentials or ticket
+keys and does not advance either access revision. Persist the verified service ID
+alongside this session ID. After a controller restart or an uncertain write, read
+the current revisions and reconcile the original operation before updating;
+this is a snapshot, not an ownership reservation. On conflict, reread instead of
+blindly advancing a counter to take over another writer.
+
+To remove a recovery descriptor after an explicit close, detect `session_forget`,
+then grant `session.forget` and call `DELETE /sessions/:id` with the current
+`{generation}`. It rejects running, ambiguously closed or foreign sessions. Repeats
+at the same final generation succeed. Creation/management keys become small durable
+tombstones: replay cannot resurrect the forgotten session. This removes the
+integration descriptor, not project files, the Agent provider's native history,
+messages or audit events. Apply separate retention policies to those stores.
+
+### First managed Agent session
+
+Before approving a launch profile, resolve and check the exact Agent executable
+and version that the profile will run. A successful login check in an interactive
+shell can use a different CLI from an absolute profile path or service environment.
+Keep the configured native-identity mechanism working for both launch and exact
+resume; merely seeing an Agent TUI is not proof that TD has captured its identity.
+
+For a Claude profile using TD's hooks, back up the private Agent settings and run
+`td plugin-hooks claude install` against the running local service. The installer
+merges TD-owned hooks with existing settings. Verify that the selected CLI accepts
+the configured hook events. If an older CLI rejects an event such as `StopFailure`,
+select a compatible installed CLI or upgrade it through the device's usual process;
+do not skip the entire settings file or remove other tools' hooks to continue.
+
+Create a fresh disposable integration session and check that it reaches `ready`
+with a nonempty `agent_native_session_id`. An Agent already running before hook
+installation may not load the new hooks; keep existing work intact and use a new
+test session. `SESSION_BINDING_TIMEOUT` is not successful native identity capture.
+Profile updates preserve old session launch snapshots. Test browser input and
+reply, release/re-entry and controller restart separately from service health,
+and verify the same native identity rather than assuming a newly launched Agent
+is a restored conversation.
