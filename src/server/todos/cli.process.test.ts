@@ -83,13 +83,13 @@ it('injects and deduplicates through the actual CLI, local credential and HTTP r
     expect(scoped.collectors.map((c: { id: string; name: string }) => [c.id, c.name])).toEqual([[ca.id, '改名后的 A']]);
     const inspected = JSON.parse((await run(['collector', 'inspect', store.activeCollection(ca.id)!.id], '', 'backend-a')).stdout).run;
     expect(inspected.trigger).toMatchObject({ collectorId: ca.id, triggerType: 'manual', runId: inspected.id });
-    expect(JSON.parse((await run(['checkpoint', 'get', '--collector', ca.id, '--source-key', 'chat'], '', 'backend-a')).stdout).checkpoints[0]).toMatchObject({ revision: 0, cursor: null });
-    const outcome = JSON.stringify({ status: 'success', summary: '声明的来源已完整扫描', coverage: [{ sourceKey: 'chat', status: 'success' }], checkpoints: [{ sourceKey: 'chat', expectedRevision: 0, cursor: { opaque: 'page-7' } }] });
+    expect(JSON.parse((await run(['checkpoint', 'get', '--collector', ca.id, '--source-key', 'source-a'], '', 'backend-a')).stdout).checkpoints[0]).toMatchObject({ revision: 0, cursor: null });
+    const outcome = JSON.stringify({ status: 'success', summary: '声明的来源已完整扫描', coverage: [{ sourceKey: 'source-a', status: 'success' }], checkpoints: [{ sourceKey: 'source-a', expectedRevision: 0, cursor: { opaque: 'page-7' } }] });
     const finishArgs = ['collector', 'finish', inspected.id, '--revision', String(inspected.collection.revision), '--stdin'];
     const committed = await run(finishArgs, outcome, 'backend-a');
     expect(committed.code).toBe(0); expect(JSON.parse(committed.stdout).run.collection.state).toBe('complete');
     expect(JSON.parse((await run(finishArgs, outcome, 'backend-a')).stdout).run.id).toBe(inspected.id);
-    expect(JSON.parse((await run(['checkpoint', 'get', '--collector', ca.id, '--source-key', 'chat'], '', 'backend-a')).stdout).checkpoints[0]).toMatchObject({ revision: 1, cursor: { opaque: 'page-7' }, lastSuccessfulRunId: inspected.id });
+    expect(JSON.parse((await run(['checkpoint', 'get', '--collector', ca.id, '--source-key', 'source-a'], '', 'backend-a')).stdout).checkpoints[0]).toMatchObject({ revision: 1, cursor: { opaque: 'page-7' }, lastSuccessfulRunId: inspected.id });
     const late = await run(['update', ownedA.id, '--collector', ca.id, '--revision', '4', '--title', '旧轮次迟到写入'], '', 'backend-a');
     expect(late.code).toBe(1); expect(JSON.parse(late.stdout).code).toBe('COLLECTOR_RUN_FENCED');
     expect(new TodoStore(path.join(state, 'todos.json')).collectorForSession('session-a')).toBe(ca.id);

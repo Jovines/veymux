@@ -312,13 +312,13 @@ termdock --https-cert <cert.pem> --https-key <key.pem> --https-ca <rootCA.pem>
 手机首次接入时，先在同一 Wi‑Fi 下打开 `termdock --status` 或服务启动日志输出的 onboarding 地址，例如：
 
 ```text
-http://192.168.1.23:52741/onboarding
+http://192.0.2.23:52741/onboarding
 ```
 
 该页面会提供 CA 证书下载和 iPhone / Android 安装步骤；如果只想直接下载证书，也可以打开更短的：
 
 ```text
-http://192.168.1.23:52741/ca
+http://192.0.2.23:52741/ca
 ```
 
 安装并信任 CA 后，再打开正式地址：

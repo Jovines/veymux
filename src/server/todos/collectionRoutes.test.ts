@@ -44,7 +44,7 @@ it('persists the webhook envelope and rejects busy events without consuming thei
   expect((await webhook('event-1', { resourceId: 'different' })).status).toBe(409);
   expect(await webhook('event-2', { resourceId: 'msg-8' })).toMatchObject({ status: 409, data: { code: 'COLLECTOR_BUSY', activeRunId: run.id } });
   const revision = store.run(run.id).collection!.revision;
-  expect((await call('/runs/' + run.id + '/finish', { revision, idempotencyKey: 'finish-1', status: 'success', summary: '只覆盖声明的来源', coverage: [{ sourceKey: 'chat', status: 'success' }], checkpoints: [{ sourceKey: 'chat', expectedRevision: 0, cursor: { page: 'opaque-1' } }] }, 'session-a')).status).toBe(200);
+  expect((await call('/runs/' + run.id + '/finish', { revision, idempotencyKey: 'finish-1', status: 'success', summary: '只覆盖声明的来源', coverage: [{ sourceKey: 'source-a', status: 'success' }], checkpoints: [{ sourceKey: 'source-a', expectedRevision: 0, cursor: { page: 'opaque-1' } }] }, 'session-a')).status).toBe(200);
   const second = await webhook('event-2', { resourceId: 'msg-8' }); expect(second.status).toBe(202);
   expect(store.run(second.data.runId).trigger?.payload).toEqual({ resourceId: 'msg-8' });
   expect(runtime.launch).toHaveBeenCalledTimes(2);
@@ -70,13 +70,13 @@ it('allows one atomic success from racing finish requests and makes identical re
   const run = (await call('/collectors/' + a.id + '/run', { idempotencyKey: 'start' })).data.run;
   await vi.waitFor(() => expect(store.run(run.id).status).toBe('delivered'));
   const revision = store.run(run.id).collection!.revision;
-  const body = { revision, idempotencyKey: 'commit', status: 'success', summary: '声明来源已完整读取', coverage: [{ sourceKey: 'chat', status: 'success' }], checkpoints: [{ sourceKey: 'chat', expectedRevision: 0, cursor: 'page-7' }] };
-  const results = await Promise.all([call('/runs/' + run.id + '/finish', body, 'session-a'), call('/runs/' + run.id + '/finish', { ...body, idempotencyKey: 'competing', checkpoints: [{ sourceKey: 'chat', expectedRevision: 0, cursor: 'wrong' }] }, 'session-a')]);
+  const body = { revision, idempotencyKey: 'commit', status: 'success', summary: '声明来源已完整读取', coverage: [{ sourceKey: 'source-a', status: 'success' }], checkpoints: [{ sourceKey: 'source-a', expectedRevision: 0, cursor: 'page-7' }] };
+  const results = await Promise.all([call('/runs/' + run.id + '/finish', body, 'session-a'), call('/runs/' + run.id + '/finish', { ...body, idempotencyKey: 'competing', checkpoints: [{ sourceKey: 'source-a', expectedRevision: 0, cursor: 'wrong' }] }, 'session-a')]);
   expect(results.map(r => r.status).sort()).toEqual([200, 409]);
   const winner = results.find(r => r.status === 200)!;
-  const retryBody = winner.data.run.collection.commit.key === 'commit' ? body : { ...body, idempotencyKey: 'competing', checkpoints: [{ sourceKey: 'chat', expectedRevision: 0, cursor: 'wrong' }] };
+  const retryBody = winner.data.run.collection.commit.key === 'commit' ? body : { ...body, idempotencyKey: 'competing', checkpoints: [{ sourceKey: 'source-a', expectedRevision: 0, cursor: 'wrong' }] };
   expect((await call('/runs/' + run.id + '/finish', retryBody, 'session-a')).data.run).toEqual(winner.data.run);
-  expect(store.checkpoints(a.id, 'chat')).toMatchObject({ revision: 1, lastSuccessfulRunId: run.id });
+  expect(store.checkpoints(a.id, 'source-a')).toMatchObject({ revision: 1, lastSuccessfulRunId: run.id });
   expect((await call('/collectors', { ...store.collector(a.id), checkpoints: [{ sourceKey: 'bypass', revision: 99, cursor: 'skip' }] })).status).toBe(400);
 });
 it('makes recovery an owner operation and refuses it until the old terminal is absent', async () => {

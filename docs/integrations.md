@@ -439,7 +439,7 @@ td collab --principal report-bridge capabilities
 - 用户任务生命周期 `status=open|accepted|closed` 保持既有含义；后台是否执行交付，读下面的 `execution`，
   不等待 `status=accepted`。不自动生成 accepted；principal 仍不能验收。已有用户验收历史保留。
 - 人工工作台列表 API 默认只列 interactive，看板与“需要你”同样排除 automation，
-  包括 complete、blocked、failed、预期测试超时和真实提问。业务负责在文档服务分诊/提问，
+  包括 complete、blocked、failed、预期测试超时和真实提问。业务侧负责分诊/提问，
   可使用 task ask/answer 持久关联。异常、问题原文、投递状态和失败重试并未删除或改成成功。
 - Agent CLI 与 principal 的 task list 默认保留全部授权组记录；可用 `--purpose automation|interactive|all` 筛选。
   task get 不受用途过滤，原始正文与历史仍可回读。用途不代替组权限。

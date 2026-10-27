@@ -132,7 +132,7 @@ td todo collector finish <run-id> --revision <collection.revision> --file outcom
   "status": "success",
   "summary": "声明的来源已完整扫描，无新增候选",
   "coverage": [{"sourceKey": "source:sample", "status": "success"}],
-  "checkpoints": [{"sourceKey": "source:sample", "expectedRevision": 0, "cursor": {"lastMessageId": "opaque-id"}}]
+  "checkpoints": [{"sourceKey": "source:sample", "expectedRevision": 0, "cursor": {"position": "opaque-position"}}]
 }
 ```
 

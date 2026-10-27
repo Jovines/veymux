@@ -23,7 +23,7 @@ const id = 'ExampleDocumentToken1234567';
 const url = `https://${host}${id}`;
 
 it.each(['', ' '])('joins the screenshot three-row URL with trailing padding %j and opens its full target from every row', async padding => {
-  const { links, activate } = await fixture(`• 已转成 文档服务文档：尾部固定筛选配置清单 (\x1b[34mhttps://${padding}\r\n  ${host}${padding}\r\n  ${id}\x1b[0m)。`);
+  const { links, activate } = await fixture(`• 已转成 示例文档：尾部固定筛选配置清单 (\x1b[34mhttps://${padding}\r\n  ${host}${padding}\r\n  ${id}\x1b[0m)。`);
   for (const row of [1, 2, 3]) {
     expect(links(row)?.map(link => link.text)).toEqual([url]);
     expect(links(row)?.[0].range.end).toEqual({ x: 2 + id.length, y: 3 });
