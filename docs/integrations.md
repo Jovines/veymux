@@ -1564,6 +1564,44 @@ principal. A local terminal's existence or a browser's input permission does not
 authorize lending it to someone else. Existing-terminal adoption requires a
 separate, explicit administrator delegation design; it is not enabled here.
 
+### Exclusive writers and recovering access revisions
+
+Detect `session_access_exclusive` before sending the optional `exclusive` boolean
+to `POST /sessions/:id/access`. It defaults to false for existing integrations.
+When true, ordinary session-scoped grants, including older native invitations,
+cannot input, resize or send chat to that session. The bound writer ticket remains
+usable, reader tickets remain read-only, and other sessions are unaffected.
+Checks apply to already-open terminal sockets as well as new HTTP and WebSocket
+operations, whether connected directly or through an encrypted relay.
+
+Separately authenticated full-service administrators retain maintenance access.
+A connection that authenticated with a session ticket stays within that ticket's
+scope even when its device also has a full-service grant.
+
+Exclusive mode is persisted independently of the current writer lease. Expiry,
+`lease:null`, reader updates and writer updates that omit `exclusive` keep it in
+effect; disconnecting or releasing the browser never terminates the Agent.
+Explicitly send `exclusive:false` with a higher writer fence to return control to
+ordinary grants. Changing the mode in either direction at the same fence is a
+conflict; an older fence cannot undo the current policy. The integration's session
+ownership and active `session.access` permission remain required.
+
+Detect `session_access_state` before calling `GET /sessions/:id/access-state`.
+It uses the same private Unix socket, requires `session.access` and only accepts
+this principal's integration session ID returned by session creation. It returns:
+
+```json
+{"sessionId":"<integration-session-id>","fence":4,"readerFence":8,"exclusive":true}
+```
+
+Before the first access update, both revisions are zero and `exclusive` is false.
+The response does not expose lease occupants, device IDs, credentials or ticket
+keys and does not advance either access revision. Persist the verified service ID
+alongside this session ID. After a controller restart or an uncertain write, read
+the current revisions and reconcile the original operation before updating;
+this is a snapshot, not an ownership reservation. On conflict, reread instead of
+blindly advancing a counter to take over another writer.
+
 To remove a recovery descriptor after an explicit close, detect `session_forget`,
 then grant `session.forget` and call `DELETE /sessions/:id` with the current
 `{generation}`. It rejects running, ambiguously closed or foreign sessions. Repeats
@@ -1571,3 +1609,27 @@ at the same final generation succeed. Creation/management keys become small dura
 tombstones: replay cannot resurrect the forgotten session. This removes the
 integration descriptor, not project files, the Agent provider's native history,
 messages or audit events. Apply separate retention policies to those stores.
+
+### First managed Agent session
+
+Before approving a launch profile, resolve and check the exact Agent executable
+and version that the profile will run. A successful login check in an interactive
+shell can use a different CLI from an absolute profile path or service environment.
+Keep the configured native-identity mechanism working for both launch and exact
+resume; merely seeing an Agent TUI is not proof that TD has captured its identity.
+
+For a Claude profile using TD's hooks, back up the private Agent settings and run
+`td plugin-hooks claude install` against the running local service. The installer
+merges TD-owned hooks with existing settings. Verify that the selected CLI accepts
+the configured hook events. If an older CLI rejects an event such as `StopFailure`,
+select a compatible installed CLI or upgrade it through the device's usual process;
+do not skip the entire settings file or remove other tools' hooks to continue.
+
+Create a fresh disposable integration session and check that it reaches `ready`
+with a nonempty `agent_native_session_id`. An Agent already running before hook
+installation may not load the new hooks; keep existing work intact and use a new
+test session. `SESSION_BINDING_TIMEOUT` is not successful native identity capture.
+Profile updates preserve old session launch snapshots. Test browser input and
+reply, release/re-entry and controller restart separately from service health,
+and verify the same native identity rather than assuming a newly launched Agent
+is a restored conversation.
