@@ -36,6 +36,14 @@ export class SessionAccessStore {
     try { fs.fsyncSync(directory); } finally { fs.closeSync(directory); }
     this.states = states;
   }
+  /** Non-mutating recovery metadata; never disclose lease identities or keys. */
+  revision(sessionId: string, principalId: string) {
+    const state = this.states[sessionId];
+    if (!this.authorized(sessionId, principalId) || state && state.principalId !== principalId) {
+      throw new CollaborationError('SESSION_ACCESS_DENIED', 'SESSION_ACCESS_DENIED', 409);
+    }
+    return { fence: state?.fence || 0, readerFence: state?.readers?.fence || 0, exclusive: state?.exclusive === true };
+  }
   /** Exclusive ownership also fences ordinary session-scoped invitations. The
    * federation runtime preserves separately authenticated full-service admins. */
   restrictsNativeWriter(sessionId: string, action: string): boolean {

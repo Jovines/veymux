@@ -1043,6 +1043,7 @@ it('scoped management grants require no empty terminal; close retains messages a
   const id = created.body.session.session_id, grant = policy(f.group.id);
   expect(created.body.session).toMatchObject({ state: 'ready' });
   expect((await f.request('GET', '/capabilities')).body).toMatchObject({ session_rename: true, session_close: true, session_rename_min_version: '1.4.315', session_close_min_version: '1.4.315' });
+  expect(await f.request('GET', `/sessions/${id}/access-state`)).toMatchObject({ status: 403, body: { code: 'INTEGRATION_PERMISSION_DENIED' } });
   const rename = { generation: 1, name: 'Fast', idempotency_key: 'rename' };
   const close = { generation: 2, idempotency_key: 'close' };
   expect(await f.request('POST', `/sessions/${id}/rename`, rename)).toMatchObject({ status: 403, body: { code: 'INTEGRATION_PERMISSION_DENIED' } });
@@ -1059,19 +1060,26 @@ it('scoped management grants require no empty terminal; close retains messages a
   grant.permissions.push('session.close', 'message.send', 'message.read'); f.runtime.store.update(grant);
   grant.permissions.push('session.forget', 'session.access'); f.runtime.store.update(grant);
   expect(await f.request('DELETE', `/sessions/${id}`, { generation: 2 })).toMatchObject({ status: 409, body: { code: 'SESSION_NOT_CLOSED' } });
+  expect(await f.request('GET', `/sessions/${id}/access-state`)).toEqual({ status: 200,
+    body: { sessionId: id, fence: 0, readerFence: 0, exclusive: false } });
+  expect(await f.request('GET', '/sessions/worker/access-state')).toMatchObject({ status: 404 });
   const lease = { id: randomUUID(), userId: 'user', deviceId: 'device', expiresAt: Date.now() + 60000 };
-  expect(await f.request('POST', `/sessions/${id}/access`, { fence: 1, lease })).toMatchObject({ status: 200 });
+  expect(await f.request('POST', `/sessions/${id}/access`, { fence: 1, lease, exclusive: true })).toMatchObject({ status: 200 });
   const ticket = await f.request('POST', `/sessions/${id}/access-ticket`, { deviceId: 'device' });
   expect(ticket).toMatchObject({ status: 200, body: { ticket: expect.stringMatching(/^session\./) } });
   const reader={...lease,id:randomUUID(),deviceId:'reader111111111111'};
-  expect(await f.request('GET','/capabilities')).toMatchObject({status:200,body:{service_id:serviceId,session_access_readers:true}});
+  expect(await f.request('GET','/capabilities')).toMatchObject({status:200,body:{service_id:serviceId,
+    session_access_readers:true,session_access_exclusive:true,session_access_state:true}});
   expect(await f.request('POST',`/sessions/${id}/access-readers`,{fence:1,leases:[reader]})).toMatchObject({status:200});
+  expect(await f.request('GET', `/sessions/${id}/access-state`)).toEqual({ status: 200,
+    body: { sessionId: id, fence: 1, readerFence: 1, exclusive: true } });
   const readTicket=await f.request('POST',`/sessions/${id}/access-ticket`,{deviceId:reader.deviceId,readerId:reader.id});
   const readClaims=f.runtime.sessionAccess.consume(readTicket.body.ticket,reader.deviceId);
   expect(readClaims).toMatchObject({readOnly:true,sessionId:id});
   expect(f.runtime.sessionAccess.allows(readClaims,reader.deviceId,'session.input',id)).toBe(false);
   const otherPrincipal=f.runtime.store.authenticate('other',foreign.token);otherPrincipal.permissions.push('session.access');f.runtime.store.update(otherPrincipal);
   expect(await f.request('POST',`/sessions/${id}/access-readers`,{fence:2,leases:[]},{'Content-Type':'application/json',authorization:`Bearer ${foreign.token}`,'x-termdock-integration-id':'other','x-termdock-integration-protocol':'1'})).toMatchObject({status:404});
+  expect(await f.request('GET', `/sessions/${id}/access-state`, undefined, {'Content-Type':'application/json',authorization:`Bearer ${foreign.token}`,'x-termdock-integration-id':'other','x-termdock-integration-protocol':'1'})).toMatchObject({ status: 404, body: { code: 'INTEGRATION_SESSION_NOT_FOUND' } });
   grant.permissions = grant.permissions.filter(p => p !== 'session.forget'); f.runtime.store.update(grant);
   expect(await f.request('POST', `/sessions/${id}/close`, { ...close, generation: '2' })).toMatchObject({ status: 409, body: { code: 'INVALID_SESSION_GENERATION' } });
   const closed = await f.request('POST', `/sessions/${id}/close`, close);

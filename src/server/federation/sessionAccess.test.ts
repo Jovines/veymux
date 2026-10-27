@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -14,6 +14,18 @@ function fixture() {
   return { store,lease,file,advance:() => {now+=91000;},revoke:() => {authorized=false;} };
 }
 describe('integration session access',() => {
+  it('reads revisions without changing state or exposing private leases and preserves them on restart', () => {
+    const f = fixture(), empty = readFileSync(f.file, 'utf8');
+    expect(f.store.revision('s1', 'p1')).toEqual({ fence: 0, readerFence: 0, exclusive: false });
+    expect(readFileSync(f.file, 'utf8')).toBe(empty);
+    f.store.update('s1', 'p1', { fence: 4, lease: f.lease, exclusive: true });
+    f.store.updateReaders('s1', 'p1', { fence: 8, leases: [{ ...f.lease, id: randomUUID(), deviceId: 'reader' }] });
+    const saved = readFileSync(f.file, 'utf8'), restarted = new SessionAccessStore(f.file, () => true);
+    expect(restarted.revision('s1', 'p1')).toEqual({ fence: 4, readerFence: 8, exclusive: true });
+    expect(readFileSync(f.file, 'utf8')).toBe(saved);
+    expect(() => restarted.revision('s1', 'other-principal')).toThrow();
+    f.revoke(); expect(() => f.store.revision('s1', 'p1')).toThrow();
+  });
   it('persists opt-in writer exclusivity across reader changes, expiry, release and restart', () => {
     const f = fixture(), reader = { ...f.lease, id: randomUUID(), deviceId: 'reader' };
     f.store.update('s1', 'p1', { fence: 1, lease: f.lease, exclusive: true });

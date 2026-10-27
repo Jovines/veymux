@@ -229,6 +229,11 @@ export class IntegrationRuntime {
       await this.sessions.get(p, req.params.id);
       return this.sessionAccess.update(req.params.id, p.id, req.body);
     }));
+    app.get('/sessions/:id/access-state', run(async req => {
+      const p = principal(req); this.authorize(p, 'session.access');
+      const session = await this.sessions.get(p, req.params.id);
+      return { sessionId: session.session_id, ...this.sessionAccess.revision(session.session_id, p.id) };
+    }));
     app.post('/sessions/:id/access-readers', run(async req => {
       const p=principal(req);this.authorize(p,'session.access');
       await this.sessions.get(p,req.params.id);
@@ -272,6 +277,7 @@ export class IntegrationRuntime {
   capabilities() {
     return { integration_protocol: INTEGRATION_PROTOCOL, server_version: getTermdockVersion(), service_id:this.options.serviceId, local_only: true,
       integration_principal: true, group_scoped_permissions: true, durable_event_push: true, session_access_tickets: true, session_access_readers:true,
+      session_access_exclusive: true, session_access_state: true,
       event_ack_semantics: 'durable_received', correlated_task_responses: true, accepted_task_comments: true,
       idempotent_session_create: true, exact_session_restore: true, external_validation: false,
       startup_input_conditions: true, session_runtime_release: true, stable_session_identity: true, session_lifecycle_generation: true,
