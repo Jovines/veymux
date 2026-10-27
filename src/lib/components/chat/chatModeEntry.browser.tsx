@@ -14,6 +14,37 @@ import { SessionWorkspace } from './SessionWorkspace';
 let root: Root | undefined;
 const launches: string[] = [];
 afterEach(() => { root?.unmount(); launches.splice(0).forEach(finishSessionChatStartup); useTerminalStore.getState().clearAllTerminalSessions(); document.body.replaceChildren(); localStorage.clear(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+it.each([390, 1280])('keeps explicit working consistent with the sidebar while an earlier result is unreviewed at width %i', async width => {
+  await page.viewport(width, 844);
+  const id = `working-review-${width}-${Date.now()}`;
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json({ agentAvailable: true, agent: { displayName: 'CustomAgent' },
+    messages: [{ id: 'request', role: 'user', content: '继续检查', createdAt: 1, status: 'delivered' }] })));
+  function Dot() {
+    const session = useTerminalStore(state => state.sessions.get(id));
+    return <span data-test-activity-dot className="relative block h-6 w-6"><AgentSessionDot status={session?.agentStatus ?? null}
+      needsReview={session?.agentNeedsReview} chatAttention={session?.chatAttention} /></span>;
+  }
+  const host = document.createElement('div'); host.className = 'h-screen flex flex-col'; document.body.append(host); root = createRoot(host);
+  root.render(<><Dot /><main className="min-h-0 flex-1"><SessionChatView sessionId={id} active={false} visible onTerminal={() => {}} /></main></>);
+  await expect.element(page.getByText('继续检查')).toBeVisible();
+  const store = useTerminalStore.getState();
+  store.setTerminalSession(id, { sessionId: `backend-${id}`, cols: 80, rows: 24 });
+  store.setSessionAgentStatus(id, { agentStatus: 'working', reviewed: false });
+  await expect.poll(() => document.querySelector('[data-test-activity-dot] .bg-\\[var\\(--success\\)\\]')).not.toBeNull();
+  await expect.element(page.getByRole('status', { name: 'CustomAgent处理中' })).toBeVisible();
+  expect(document.querySelector('[data-chat-terminal-access] .td-loading-spinner')).not.toBeNull();
+  expect(useTerminalStore.getState().sessions.get(id)?.agentNeedsReview).toBe(true);
+  const entry = document.querySelector('[data-chat-terminal-access]')!, box = entry.getBoundingClientRect();
+  expect(box.left).toBeGreaterThanOrEqual(0); expect(box.right).toBeLessThanOrEqual(width);
+  store.setSessionAgentStatus(id, { agentStatus: 'waiting', reviewed: false });
+  await expect.element(page.getByRole('status', { name: 'CustomAgent等你处理' })).toBeVisible();
+  expect(entry.querySelector('.td-loading-spinner')).toBeNull();
+  store.setSessionAgentStatus(id, { agentStatus: 'done', reviewed: false });
+  await expect.poll(() => entry.textContent).toBe('详情');
+  store.setSessionAgentStatus(id, { agentStatus: 'working', reviewed: false });
+  await expect.element(page.getByRole('status', { name: 'CustomAgent处理中' })).toBeVisible();
+  expect(document.querySelector('[data-chat-terminal-access]')).toBe(entry);
+});
 it.each([390, 1280])('switches the complete chat activity policy with conversation presence and Terminal mode at width %i', async width => {
   await page.viewport(width, 844);
   // Concurrent DPR pages cannot both own the browser window focus.

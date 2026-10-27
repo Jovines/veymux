@@ -613,7 +613,8 @@ function SessionChatContent({ sessionId, name = '当前会话', canWrite: reques
   });
   const reportedStopped = useTerminalStore(state => {
     const session = state.sessions.get(sessionId), progress = session?.tuiProgress;
-    return session?.agentStatus === 'waiting' || !!session?.agentNeedsReview && !(session.chatAttention?.mode && session.chatAttention.index)
+    // An earlier unreviewed result does not stop a newly reported working turn.
+    return session?.agentStatus === 'waiting' || session?.agentStatus !== 'working' && !!session?.agentNeedsReview && !(session.chatAttention?.mode && session.chatAttention.index)
       || session?.agentStatus === 'done' && !shouldShowTuiLoading(session)
       || session?.agentStatus !== 'working' && !!progress && ['blocked', 'done', 'error', 'pause'].includes(progress.state);
   });

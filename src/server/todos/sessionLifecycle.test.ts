@@ -38,7 +38,7 @@ it('waits ten minutes of observed silence, restarts on output, and preserves tas
   fact!.lastOutputAt = clock; clock += 2; await lifecycle.recycle(); expect(runtime.close).not.toHaveBeenCalled();
   clock += 600_000; await lifecycle.recycle(); expect(runtime.close).toHaveBeenCalledOnce();
   expect(store.run(run.id).collectionSession?.recycledAt).toBeGreaterThan(0); expect(store.collectionSessions().size).toBe(0);
-  expect(store.run(run.id).status).toBe('delivered');
+  expect(store.run(run.id)).toMatchObject({ status: 'failed', collection: { state: 'interrupted' } });
 });
 it('gives restarted or replaced runtimes a full observation period and never replays cleanup', async () => {
   const run = owned(); clock += 6_000_000; await lifecycle.recycle(); expect(runtime.close).not.toHaveBeenCalled();
@@ -66,12 +66,16 @@ it('reuses only compatible owned terminals after the prior report and records as
   await lifecycle.collect(run, '第二轮提示词', id => { store.mark(run.id, { sessionId: id }); }, launch);
   expect(launch).not.toHaveBeenCalled(); expect(runtime.reuse).toHaveBeenCalledWith(run, 'terminal', '第二轮提示词', '/clear');
 });
-it('does not reset a still-unreported previous run or replay a failed reuse', async () => {
-  const first = owned(10, 'reuse'), run = store.begin('collect', first.collectorId!, config, 'second').run;
+it('rejects a new trigger while the prior report is outstanding and does not replay a failed reuse', async () => {
+  const first = owned(10, 'reuse');
+  expect(() => store.begin('collect', first.collectorId!, config, 'second')).toThrow('尚未结束');
+  expect(runtime.reuse).not.toHaveBeenCalled();
+  store.report(first.id, 'complete', '完成');
+  const run = store.begin('collect', first.collectorId!, config, 'second').run;
   const launch = vi.fn(async () => {});
-  await expect(lifecycle.collect(run, 'prompt', () => {}, launch)).rejects.toThrow('尚未报告结束'); expect(runtime.reuse).not.toHaveBeenCalled(); expect(launch).not.toHaveBeenCalled();
-  store.report(first.id, 'complete', '完成'); runtime.reuse = vi.fn(async () => { throw new Error('reset failed'); });
-  await expect(lifecycle.collect(run, 'prompt', () => {}, launch)).rejects.toThrow('reset failed'); expect(runtime.reuse).toHaveBeenCalledOnce(); expect(launch).not.toHaveBeenCalled();
+  runtime.reuse = vi.fn(async () => { throw new Error('reset failed'); });
+  await expect(lifecycle.collect(run, 'prompt', () => {}, launch)).rejects.toThrow('reset failed');
+  expect(runtime.reuse).toHaveBeenCalledOnce(); expect(launch).not.toHaveBeenCalled();
 });
 it('serializes reuse against recycling and recreates a missing managed terminal only', async () => {
   const first = owned(1, 'reuse'); store.report(first.id, 'complete', '完成'); await lifecycle.recycle();

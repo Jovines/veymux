@@ -33,7 +33,7 @@ const request = async (suffix: string, body?: unknown, context: unknown = { back
   const response = await fetch(base + suffix, { method: body === undefined ? 'GET' : 'POST', headers: {
     'Content-Type': 'application/json', 'X-Termdock-Local-Token': 'fixture',
     ...(context === undefined ? {} : { 'X-Termdock-Todo-Context': encodeURIComponent(JSON.stringify(context)) }),
-  }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+  }, ...(body === undefined ? {} : { body: JSON.stringify(body && typeof body === 'object' && 'collectorId' in body && !('runId' in body) ? { ...body, runId: runs[(context as { backendSessionId?: string })?.backendSessionId === 'session-1' ? 1 : 0].id } : body) }) });
   return { status: response.status, data: await response.json() };
 };
 

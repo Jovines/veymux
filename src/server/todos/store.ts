@@ -1,4 +1,8 @@
 import fs from 'node:fs';
+import { activeCollection, assertCollectionWrite, beginCollection as reserveCollection, collectionKey, finishCollection as commitCollection, previousCollection, sourceKey } from './collection.js';
+import type { CollectorFinishInput, CollectorTriggerInput } from './types.js';
+import { TodoError } from './errors.js';
+export { TodoError } from './errors.js';
 import { canClaimTodo } from './claimEligibility.js';
 import { JsonStorageBudget, type JsonStorageOptions } from '../utils/jsonStorageBudget.js';
 import { randomUUID, randomBytes, createHash } from 'node:crypto';
@@ -6,7 +10,6 @@ import { nextAutomationRunAt, normalizeAutomationSchedule } from '../agent/autom
 import { isTodoCategory, type TodoUpdateInput, type TodoCollector, type TodoCreateInput, type TodoHandoffInput, type TodoItem, type TodoLaunchConfig, type TodoProcessing, type TodoRun, type TodoSessionPolicy, type TodoSnapshot } from './types.js';
 
 interface Document extends TodoSnapshot { version: 1; requests: Record<string, { hash: string; id: string }> }
-export class TodoError extends Error { constructor(message: string, readonly status = 400, readonly currentRevision?: number, readonly code?: string) { super(message); } }
 function string(value: unknown, max: number, fallback = ''): string {
   if (value === undefined) return fallback;
   if (typeof value !== 'string' || value.length > max || value.includes('\0')) throw new TodoError('内容格式或长度无效');
@@ -49,9 +52,14 @@ export class TodoStore {
       const doc = JSON.parse(fs.readFileSync(file, 'utf8')) as Document;
       if (doc.version !== 1 || !Array.isArray(doc.todos) || !Array.isArray(doc.collectors) || !Array.isArray(doc.runs) || !doc.requests || !doc.defaults) throw new Error('无效的 Todo 数据文件');
       this.doc = doc;
-      // Never replay a launch after a crash: it might already have reached a terminal.
-      if (doc.runs.some(r => r.status === 'launching')) this.transaction(next => {
-        for (const run of next.runs) if (run.status === 'launching') { run.status = 'failed'; run.error = '服务重启中断了启动确认，请检查已有终端后重新发起'; run.updatedAt = Date.now(); }
+      // Never replay an unconfirmed terminal operation after restart.
+      if (doc.runs.some(run => run.status === 'launching' || run.kind === 'collect' && (run.collection?.state === 'active' || run.status === 'delivered' && !run.result))) this.transaction(next => {
+        for (const run of next.runs) {
+          if (run.kind === 'collect' && (run.collection?.state === 'active' || !run.collection && ['launching', 'delivered'].includes(run.status) && !run.result)) {
+            run.collection = { ...run.collection, state: 'interrupted', revision: (run.collection?.revision ?? 0) + 1 };
+            run.status = 'failed'; run.error = '服务重启，本轮结果待核对；请关闭原收集终端后显式重试'; run.updatedAt = Date.now();
+          } else if (run.status === 'launching') { run.status = 'failed'; run.error = '服务重启中断了启动确认，请检查已有终端后重新发起'; run.updatedAt = Date.now(); }
+        }
       }, true);
     } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
   }
@@ -83,6 +91,7 @@ export class TodoStore {
   run(id: string): TodoRun { const run = this.doc.runs.find(r => r.id === id); if (!run) throw new TodoError('执行记录不存在', 404); return structuredClone(run); }
   private check(revision: unknown, current: number) { if (revision !== current) throw new TodoError('记录已更新，请刷新后重试', 409, current); }
   create(input: TodoCreateInput): TodoItem {
+    if (input.runId !== undefined) assertCollectionWrite(this.doc, input.collectorId, input.runId);
     const sourceUrl = sourceLink(input.sourceUrl);
     const collectorId = string(input.collectorId, 100) || null;
     const collectorName = collectorId ? this.doc.collectors.find(c => c.id === collectorId)?.name ?? this.doc.runs.find(r => r.collectorId === collectorId)?.name : null;
@@ -103,6 +112,7 @@ export class TodoStore {
     });
   }
   update(id: string, input: TodoUpdateInput): TodoItem {
+    if (input.runId !== undefined) assertCollectionWrite(this.doc, input.collectorId, input.runId);
     if ('source' in input || 'sourceId' in input) throw new TodoError('待办来源命名空间不可修改');
     return this.transaction(doc => {
       const todo = doc.todos.find(t => t.id === id); if (!todo) throw new TodoError('待办不存在', 404);
@@ -132,6 +142,7 @@ export class TodoStore {
       const previous = input.id ? doc.collectors.find(c => c.id === input.id) : null;
       if (input.id && !previous) throw new TodoError('收集方向不存在', 404);
       if (previous) this.check(input.revision, previous.revision);
+      if (input.checkpoints !== undefined && JSON.stringify(input.checkpoints) !== JSON.stringify(previous?.checkpoints ?? [])) throw new TodoError('checkpoint 只能通过 collector finish 成功提交');
       const now = Date.now(), enabled = input.enabled !== false;
       const session = collectionSessionPolicy(input.session ?? previous?.session);
       const processing = processingPolicy(input.processing ?? previous?.processing, config);
@@ -139,29 +150,79 @@ export class TodoStore {
         secret: previous?.webhook?.secret || (input.webhook?.enabled ? randomBytes(32).toString('base64url') : '') };
       const collector: TodoCollector = { session, processing, webhook, id: previous?.id ?? randomUUID(), name, config, enabled, schedule,
         nextRunAt: schedule && enabled ? (previous?.enabled && JSON.stringify(previous.schedule) === JSON.stringify(schedule) ? previous.nextRunAt : nextAutomationRunAt(schedule, now, now)) : null,
+        ...(previous?.checkpoints ? { checkpoints: previous.checkpoints } : {}),
         createdAt: previous?.createdAt ?? now, updatedAt: now, revision: (previous?.revision ?? 0) + 1 };
       if (previous) Object.assign(previous, collector); else doc.collectors.push(collector); return collector;
     });
   }
   removeCollector(id: string, revision: number): void { this.transaction(doc => { const c = doc.collectors.find(c => c.id === id); if (!c) throw new TodoError('收集方向不存在', 404); this.check(revision, c.revision); doc.collectors = doc.collectors.filter(c => c.id !== id); }); }
   due(now = Date.now()): TodoCollector[] { return this.doc.collectors.filter(c => c.enabled && c.nextRunAt !== null && c.nextRunAt <= now).map(c => structuredClone(c)); }
-  begin(kind: TodoRun['kind'], id: string, config: TodoLaunchConfig, key: string): { run: TodoRun; fresh: boolean } {
-    if (!key || key.length > 200) throw new TodoError('缺少有效的请求标识');
-    const hash = this.hash({ kind, id, config });
-    const previous = this.doc.requests[`run:${key}`];
-    if (previous) { if (previous.hash !== hash) throw new TodoError('同一请求标识的内容不一致', 409); return { run: this.run(previous.id), fresh: false }; }
-    const item = kind === 'execute' ? this.get(id) : this.collector(id);
-    if (kind === 'execute' && (item as TodoItem).claim && (item as TodoItem).claim!.expiresAt > Date.now()) throw new TodoError('待办已被领取，请先释放领取', 409);
-    if (kind === 'execute' && (item as TodoItem).status !== 'open') throw new TodoError('请先重新打开这条待办', 409);
-    if (this.doc.runs.some(r => r.status === 'launching' && (kind === 'execute' ? r.todoId === id || r.handoff?.todoIds.includes(id) : r.collectorId === id))) throw new TodoError('此项正在启动，请稍候', 409);
+  activeCollection(collectorId: string): TodoRun | undefined { return structuredClone(activeCollection(this.doc, collectorId)); }
+  assertCollectionWrite(collectorId: unknown, runId: unknown): TodoRun { return structuredClone(assertCollectionWrite(this.doc, collectorId, runId)); }
+  checkpoints(collectorId: string, key?: string) {
+    const points = this.collector(collectorId).checkpoints ?? [];
+    if (key === undefined) return points;
+    const normalized = sourceKey(key);
+    return points.find(point => point.sourceKey === normalized) ?? { sourceKey: normalized, revision: 0, cursor: null, lastSuccessfulAt: null, lastSuccessfulRunId: null };
+  }
+  previousCollection(id: string, key: string, trigger: CollectorTriggerInput, overrides?: Partial<TodoLaunchConfig>): TodoRun | undefined {
+    return structuredClone(previousCollection(this.doc, id, key, trigger, overrides));
+  }
+  beginCollection(id: string, config: TodoLaunchConfig, key: string, trigger: CollectorTriggerInput, overrides?: Partial<TodoLaunchConfig>): { run: TodoRun; fresh: boolean } {
     return this.transaction(doc => {
-      const now = Date.now(); const run: TodoRun = { id: randomUUID(), kind, todoId: kind === 'execute' ? id : null, collectorId: kind === 'collect' ? id : null,
-        name: kind === 'execute' ? (item as TodoItem).title : (item as TodoCollector).name, config, status: 'launching', createdAt: now, updatedAt: now, sessionId: null, result: '', error: '' };
-      if (kind === 'execute') { const todo = doc.todos.find(t => t.id === id)!; if (todo.autoProcessing?.state === 'pending') { todo.autoProcessing.state = 'dispatched'; todo.autoProcessing.runId = run.id; todo.updatedAt = now; todo.revision++; } }
-      if (kind === 'collect') { const policy = collectionSessionPolicy((item as TodoCollector).session); run.collectionSession = { ...policy, owned: !policy.targetSessionId }; }
-      doc.runs.push(run); doc.requests[`run:${key}`] = { hash, id: run.id };
-      if (kind === 'collect') { const c = doc.collectors.find(c => c.id === id)!; c.nextRunAt = c.schedule && c.enabled ? nextAutomationRunAt(c.schedule, now + 1, c.createdAt) : null; c.updatedAt = now; c.revision++; }
-      return { run, fresh: true };
+      const result = reserveCollection(doc, id, config, key, trigger, overrides);
+      if (result.fresh) { const policy = collectionSessionPolicy(doc.collectors.find(c => c.id === id)!.session); result.run.collectionSession = { ...policy, owned: !policy.targetSessionId }; }
+      return result;
+    });
+  }
+  finishCollection(id: string, input: CollectorFinishInput): TodoRun { return this.transaction(doc => commitCollection(doc, id, input)); }
+  cancelCollection(id: string, revision: number): TodoRun {
+    return this.transaction(doc => {
+      const run = doc.runs.find(run => run.id === id);
+      if (!run || run.kind !== 'collect' || !run.collection) throw new TodoError('收集记录不存在', 404);
+      this.check(revision, run.collection.revision);
+      if (!['active', 'interrupted'].includes(run.collection.state)) throw new TodoError('本轮已结束', 409);
+      run.collection.state = 'cancelled'; run.collection.revision++;
+      run.status = 'failed'; run.error = '已结束本轮；checkpoint 未推进'; run.updatedAt = Date.now(); return run;
+    }, true);
+  }
+  retryCollection(id: string, revision: number, key: string): { run: TodoRun; fresh: boolean } {
+    key = collectionKey(key);
+    return this.transaction(doc => {
+      const old = doc.runs.find(run => run.id === id);
+      if (!old || !old.trigger || !old.collection) throw new TodoError('旧版收集记录不能直接重试，请核对后新建一轮', 409);
+      if (old.collection.retryRunId) {
+        const retried = doc.runs.find(run => run.id === old.collection!.retryRunId)!;
+        if (retried.trigger?.idempotencyKey !== key) throw new TodoError('此轮已重试，请检查关联的新一轮', 409);
+        return { run: retried, fresh: false };
+      }
+      this.check(revision, old.collection.revision);
+      if (key === old.trigger.idempotencyKey) throw new TodoError('显式重试须使用新的请求标识');
+      if (old.collection.state === 'complete') throw new TodoError('成功轮次不重试，请发起新的收集', 409);
+      old.collection.state = 'cancelled'; old.collection.revision++; old.status = 'failed'; old.error = '已显式重试，旧轮次写入被拒绝'; old.updatedAt = Date.now();
+      const { triggerType, scheduledAt, payload } = old.trigger;
+      const result = reserveCollection(doc, old.collectorId!, old.config, key, { triggerType, scheduledAt, payload }, undefined, old.id);
+      if (!result.fresh) throw new TodoError('重试标识已用于其他收集请求', 409);
+      const policy = collectionSessionPolicy(doc.collectors.find(c => c.id === old.collectorId)!.session);
+      result.run.collectionSession = { ...policy, owned: !policy.targetSessionId };
+      old.collection.retryRunId = result.run.id; return result;
+    });
+  }
+  begin(kind: TodoRun['kind'], id: string, config: TodoLaunchConfig, key: string): { run: TodoRun; fresh: boolean } {
+    if (kind === 'collect') return this.beginCollection(id, config, key, { triggerType: 'manual' }, config);
+    if (!key || key.length > 200) throw new TodoError('缺少有效的请求标识');
+    const hash = this.hash({ kind, id, config }), previous = this.doc.requests[`run:${key}`];
+    if (previous) { if (previous.hash !== hash) throw new TodoError('同一请求标识的内容不一致', 409); return { run: this.run(previous.id), fresh: false }; }
+    const item = this.get(id);
+    if (item.claim && item.claim.expiresAt > Date.now()) throw new TodoError('待办已被领取，请先释放领取', 409);
+    if (item.status !== 'open') throw new TodoError('请先重新打开这条待办', 409);
+    if (this.doc.runs.some(r => r.status === 'launching' && (r.todoId === id || r.handoff?.todoIds.includes(id)))) throw new TodoError('此项正在启动，请稍候', 409);
+    return this.transaction(doc => {
+      const now = Date.now(); const run: TodoRun = { id: randomUUID(), kind, todoId: id, collectorId: null,
+        name: item.title, config, status: 'launching', createdAt: now, updatedAt: now, sessionId: null, result: '', error: '' };
+      const todo = doc.todos.find(t => t.id === id)!;
+      if (todo.autoProcessing?.state === 'pending') { todo.autoProcessing.state = 'dispatched'; todo.autoProcessing.runId = run.id; todo.updatedAt = now; todo.revision++; }
+      doc.runs.push(run); doc.requests[`run:${key}`] = { hash, id: run.id }; return { run, fresh: true };
     });
   }
   previousHandoff(input: TodoHandoffInput): TodoRun | undefined {
@@ -200,6 +261,10 @@ export class TodoStore {
       if (update.sessionId) run.sessionId = update.sessionId;
       // An Agent can submit its report before launch delivery acknowledgement returns.
       if (run.status === 'launching') { if (update.status) run.status = update.status; if (update.error) run.error = update.error; }
+      if (run.collection?.state === 'active') {
+        if (update.status === 'failed') run.collection.state = run.sessionId ? 'interrupted' : 'failed';
+        run.collection.revision++;
+      } else if (run.collection && update.sessionId) run.collection.revision++;
       run.updatedAt = Date.now(); return run;
     }, true);
   }
@@ -258,13 +323,18 @@ export class TodoStore {
   recycled(sessionId: string): void {
     this.transaction(doc => { for (const run of doc.runs) if (run.kind === 'collect' && run.sessionId === sessionId && run.collectionSession?.owned !== false) {
       run.collectionSession = { ...collectionSessionPolicy(run.collectionSession), owned: true, recycledAt: Date.now() };
+      if (run.collection?.state === 'active') { run.collection.state = 'interrupted'; run.collection.revision++; run.status = 'failed'; run.error = '收集终端已回收，本轮结果待核对'; }
     } }, true);
   }
   report(id: string, status: 'complete' | 'blocked' | 'failed', content: string): TodoRun {
     if (!['complete', 'blocked', 'failed'].includes(status)) throw new TodoError('结果状态无效');
     const result = string(content, 40000); if (!result) throw new TodoError('请填写结果');
     return this.transaction(doc => { const run = doc.runs.find(r => r.id === id); if (!run) throw new TodoError('执行记录不存在', 404);
-      if (run.result && (run.status !== status || run.result !== result)) throw new TodoError('此轮已有结果，请发起新一轮执行', 409);
+      if (run.result) { if (run.status !== status || run.result !== result) throw new TodoError('此轮已有结果，请发起新一轮执行', 409); return run; }
+      if (run.collection) {
+        if (!['active', 'interrupted'].includes(run.collection.state) || activeCollection(doc, run.collectorId!)?.id !== id) throw new TodoError('此轮已失效，不能提交结果', 409, run.collection.revision, 'COLLECTOR_RUN_FENCED');
+        run.collection.state = status === 'complete' ? 'complete' : status === 'blocked' ? 'partial' : 'failed'; run.collection.revision++;
+      }
       run.status = status; run.result = result; run.updatedAt = Date.now(); return run; }, true);
   }
   private hash(value: unknown): string { return createHash('sha256').update(JSON.stringify(value)).digest('hex'); }

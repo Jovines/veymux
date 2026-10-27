@@ -13,6 +13,21 @@ it('targets a specific run for reporting and never retries an uncertain write', 
 });
 it('shows help without a running service', async () => { const io = { request: vi.fn(), stdin: vi.fn(), write: vi.fn() }; expect(await executeTodoCommand(parseTodoCommand(['--help']), io)).toBe(0); expect(io.request).not.toHaveBeenCalled(); });
 it.each([
+  ['checkpoint', 'get'], ['checkpoint', 'get', '--collector', 'c', '--title', 'x'],
+  ['collector', 'finish', 'run', '--stdin'], ['collector', 'finish', 'run', '--revision', '1'],
+  ['collector', 'finish', 'run', '--revision', '0', '--stdin'], ['collector', 'finish', 'run', '--revision', '1', '--stdin', '--file', 'x'],
+  ['collector', 'retry', 'run', '--revision', '1'], ['collector', 'cancel', 'run'],
+].map(args => ({ args })))('rejects incomplete collector lifecycle commands $args', ({ args }) => expect(() => parseTodoCommand(args)).toThrow());
+it('uses bounded read endpoints and explicit CAS for owner recovery', async () => {
+  const io = { request: vi.fn(async () => ({ statusCode: 200, body: '{}' })), stdin: vi.fn(), write: vi.fn() };
+  await executeTodoCommand(parseTodoCommand(['checkpoint', 'get', '--collector', 'a/b', '--source-key', 'chat:mentions']), io);
+  expect(io.request).toHaveBeenLastCalledWith('GET', '/api/terminal/operations/todos/collectors/a%2Fb/checkpoints?sourceKey=chat%3Amentions', undefined);
+  await executeTodoCommand(parseTodoCommand(['collector', 'retry', 'r', '--revision', '7', '--idempotency-key', 'new-attempt']), io);
+  expect(io.request).toHaveBeenLastCalledWith('POST', '/api/terminal/operations/todos/runs/r/retry', { revision: 7, idempotencyKey: 'new-attempt' });
+  await executeTodoCommand(parseTodoCommand(['collector', 'cancel', 'r', '--revision', '7']), io);
+  expect(io.request).toHaveBeenLastCalledWith('POST', '/api/terminal/operations/todos/runs/r/cancel', { revision: 7 });
+});
+it.each([
   ['update'], ['update', 'id'], ['update', 'id', '--revision', '1'],
   ['update', 'id', '--category', 'bad'], ['list', '--category', 'bad'],
   ...['0', '-1', '1.5', '1e2', '9007199254740992'].map(revision => ['update', 'id', '--title', 'x', '--revision', revision]),

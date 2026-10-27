@@ -24,6 +24,7 @@ it('injects and deduplicates through the actual CLI, local credential and HTTP r
   fs.writeFileSync(preload, "import os from 'node:os'; import { syncBuiltinESMExports } from 'node:module'; os.homedir = () => process.env.TD_TODO_TEST_DIRECTORY; syncBuiltinESMExports();");
   fs.writeFileSync(path.join(state, 'server.json'), JSON.stringify({ pid: process.pid, host: '127.0.0.1', scheme: 'http', port: (server.address() as { port: number }).port, localApiToken: 'todo-cli-fixture' }), { mode: 0o600 });
   const run = (args = ['add', '--title', '项目巡检待办', '--source', '外部工具', '--external-id', 'stable', '--category', 'short', '--stdin'], content = '外部程序传入的背景与处理要求', backend?: string) => new Promise<{ code: number | null; stdout: string; stderr: string }>((resolve, reject) => {
+    if (backend && ['add', 'update', 'complete', 'ignore', 'reopen'].includes(args[0])) args = [...args, '--run', store.snapshot().runs.find(run => run.sessionId === (backend === 'backend-a' ? 'session-a' : 'session-b'))!.id];
     const child = spawn(process.execPath, ['--import', preload, '--import', 'tsx', path.resolve('src/server/cli.ts'), 'todo', ...args], { env: { ...process.env, TD_TODO_TEST_DIRECTORY: directory, TERMDOCK: backend ? "1" : undefined, TERMDOCK_BACKEND_SESSION_ID: backend, TMUX: undefined, TMUX_PANE: undefined }, stdio: ['pipe', 'pipe', 'pipe'] });
     let stdout = '', stderr = ''; const timer = setTimeout(() => child.kill(), 8000);
     child.stdout.on('data', chunk => { stdout += chunk; }); child.stderr.on('data', chunk => { stderr += chunk; });
@@ -80,6 +81,17 @@ it('injects and deduplicates through the actual CLI, local credential and HTTP r
     const scoped = JSON.parse((await run(['list', '--collector', ca.id], '', 'backend-a')).stdout);
     expect(scoped.todos.map((t: { id: string }) => t.id)).toEqual([ownedA.id]);
     expect(scoped.collectors.map((c: { id: string; name: string }) => [c.id, c.name])).toEqual([[ca.id, '改名后的 A']]);
+    const inspected = JSON.parse((await run(['collector', 'inspect', store.activeCollection(ca.id)!.id], '', 'backend-a')).stdout).run;
+    expect(inspected.trigger).toMatchObject({ collectorId: ca.id, triggerType: 'manual', runId: inspected.id });
+    expect(JSON.parse((await run(['checkpoint', 'get', '--collector', ca.id, '--source-key', 'chat'], '', 'backend-a')).stdout).checkpoints).toMatchObject({ revision: 0, cursor: null });
+    const outcome = JSON.stringify({ status: 'success', summary: '声明的来源已完整扫描', coverage: [{ sourceKey: 'chat', status: 'success' }], checkpoints: [{ sourceKey: 'chat', expectedRevision: 0, cursor: { opaque: 'page-7' } }] });
+    const finishArgs = ['collector', 'finish', inspected.id, '--revision', String(inspected.collection.revision), '--stdin'];
+    const committed = await run(finishArgs, outcome, 'backend-a');
+    expect(committed.code).toBe(0); expect(JSON.parse(committed.stdout).run.collection.state).toBe('complete');
+    expect(JSON.parse((await run(finishArgs, outcome, 'backend-a')).stdout).run.id).toBe(inspected.id);
+    expect(JSON.parse((await run(['checkpoint', 'get', '--collector', ca.id, '--source-key', 'chat'], '', 'backend-a')).stdout).checkpoints).toMatchObject({ revision: 1, cursor: { opaque: 'page-7' }, lastSuccessfulRunId: inspected.id });
+    const late = await run(['update', ownedA.id, '--collector', ca.id, '--revision', '4', '--title', '旧轮次迟到写入'], '', 'backend-a');
+    expect(late.code).toBe(1); expect(JSON.parse(late.stdout).code).toBe('COLLECTOR_RUN_FENCED');
     expect(new TodoStore(path.join(state, 'todos.json')).collectorForSession('session-a')).toBe(ca.id);
     expect(runtime.launch).not.toHaveBeenCalled();
   } finally { await new Promise<void>(resolve => server.close(() => resolve())); fs.rmSync(directory, { recursive: true, force: true }); }

@@ -102,6 +102,7 @@ it('persists multi-time schedules and triggers each selected time once through t
       await runner.tick(); await runner.tick();
       await vi.waitFor(() => expect(runtime.launch).toHaveBeenCalledTimes(expectedCalls));
       expect(store.collector(collector.id).nextRunAt).toBe(next);
+      store.report(store.snapshot().runs.at(-1)!.id, 'complete', '本轮收集完成');
     }
     const current = store.collector(collector.id);
     store.saveCollector({ ...current, enabled: false });

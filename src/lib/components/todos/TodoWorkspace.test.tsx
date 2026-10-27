@@ -7,9 +7,9 @@ import { useCollaborationNavigation } from '../../stores/useCollaborationNavigat
 import { useSessionDirectoryStore } from '../../stores/useSessionDirectory';
 import { useTodoWorkspace } from '../../todos/workspace';
 import type { TodoRun, TodoSnapshot } from '../../todos/api';
-const mocks = vi.hoisted(() => ({ list: vi.fn(), create: vi.fn(), update: vi.fn(), start: vi.fn(), handoff: vi.fn(), collect: vi.fn(), remove: vi.fn(), releaseClaim: vi.fn(), save: vi.fn(), defaults: vi.fn(), agents: vi.fn(), settings: vi.fn(), inventory: vi.fn(), peer: 'local' }));
+const mocks = vi.hoisted(() => ({ list: vi.fn(), create: vi.fn(), update: vi.fn(), start: vi.fn(), handoff: vi.fn(), collect: vi.fn(), remove: vi.fn(), releaseClaim: vi.fn(), retryCollection: vi.fn(), cancelCollection: vi.fn(), save: vi.fn(), defaults: vi.fn(), agents: vi.fn(), settings: vi.fn(), inventory: vi.fn(), peer: 'local' }));
 vi.mock('../../terminal/api', () => ({ getAgentLaunchers: mocks.agents, getSettings: mocks.settings, getSessionInventory: mocks.inventory }));
-vi.mock('../../todos/api', () => ({ listTodos: mocks.list, releaseTodoClaim: mocks.releaseClaim, createTodo: mocks.create, updateTodo: mocks.update, startTodo: mocks.start, handoffTodos: mocks.handoff, collectTodos: mocks.collect, saveTodoCollector: mocks.save, removeTodoCollector: mocks.remove, saveTodoDefaults: mocks.defaults }));
+vi.mock('../../todos/api', () => ({ listTodos: mocks.list, releaseTodoClaim: mocks.releaseClaim, createTodo: mocks.create, updateTodo: mocks.update, startTodo: mocks.start, handoffTodos: mocks.handoff, collectTodos: mocks.collect, retryTodoCollection: mocks.retryCollection, cancelTodoCollection: mocks.cancelCollection, saveTodoCollector: mocks.save, removeTodoCollector: mocks.remove, saveTodoDefaults: mocks.defaults }));
 vi.mock('../../federation/browserIntegration', () => ({ savedConnection: () => ({ targetPeerId: mocks.peer, serviceName: '测试电脑' }), SECURE_STATE_EVENT: 'test-service-change' }));
 vi.mock('../sidebar/DirectoryPickerDialog', () => ({ DirectoryPickerDialog: () => null }));
 const todo = { id: 'one', title: '检查移动端输入', description: '补充输入法的复现条件', source: '项目巡检', sourceUrl: '', externalId: '', collectorId: null, status: 'open' as const, createdAt: 1, updatedAt: 1, revision: 1 };
@@ -87,6 +87,26 @@ it('filters identical collector names by stable ID and follows renamed labels', 
   expect(screen.getByText('改名后的 A', { selector: 'p' })).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: '清除筛选' }));
   expect(screen.getByRole('button', { name: 'B 的事项' })).toBeTruthy();
+});
+it('keeps interrupted sources busy and preserves retry identity until the owner resolves the runtime', async () => {
+  data.collectors = [{ id: 'collector', name: '每日收集', config: data.defaults, enabled: true, schedule: null, nextRunAt: null, revision: 1, createdAt: 1, updatedAt: 1 }];
+  data.runs = [{ ...run(), id: 'collect-old', kind: 'collect', todoId: null, collectorId: 'collector', status: 'failed', error: '服务重启，本轮待核对', collection: { state: 'interrupted', revision: 4 } }];
+  mocks.retryCollection.mockRejectedValueOnce(new Error('请先核对并关闭原收集终端'));
+  mocks.retryCollection.mockImplementationOnce(async old => {
+    const next = { ...old, id: 'collect-new', error: '', status: 'delivered', collection: { state: 'active', revision: 1, previousRunId: old.id } };
+    data.runs = data.runs.map(item => item.id === old.id ? { ...item, collection: { ...item.collection!, state: 'cancelled', retryRunId: next.id } } : item).concat(next);
+    return { run: next };
+  });
+  setup(); await loaded(); fireEvent.click(screen.getByRole('button', { name: '管理收集方向' }));
+  expect((screen.getByRole('button', { name: '等待本轮结果' }) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(screen.getByRole('button', { name: '重试收集' }));
+  await screen.findByRole('alert');
+  expect(mocks.collect).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: '重试收集' }));
+  await waitFor(() => expect(mocks.retryCollection).toHaveBeenCalledTimes(2));
+  expect(mocks.retryCollection.mock.calls[1][1]).toBe(mocks.retryCollection.mock.calls[0][1]);
+  await waitFor(() => expect(screen.queryByRole('button', { name: '重试收集' })).toBeNull());
+  expect(mocks.retryCollection.mock.calls[1][0]).toMatchObject({ id: 'collect-old', collection: { revision: 4 } });
 });
 
 

@@ -100,7 +100,7 @@ it('accepts authenticated JSON notifications with idempotency while denying disa
   const first = await notify(c.webhook.secret); expect(first.status).toBe(202);
   const duplicate = await notify(c.webhook.secret); expect(duplicate.data.runId).toBe(first.data.runId); expect(runtime.launch).toHaveBeenCalledOnce();
   expect(store.run(first.data.runId).config.command).toBe('fixture');
-  expect(store.run(first.data.runId).config.prompt).toContain('"issue":7');
+  expect(store.run(first.data.runId).trigger?.payload).toEqual({ issue: 7 });
   expect((await notify(c.webhook.secret, 'event-1', { issue: 9 })).status).toBe(409);
   const latest = store.collector(c.id); store.saveCollector({ ...latest, enabled: false });
   expect((await notify(c.webhook.secret, 'event-2')).status).toBe(410); expect(runtime.launch).toHaveBeenCalledOnce();
