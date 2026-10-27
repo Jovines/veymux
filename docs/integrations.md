@@ -1536,7 +1536,7 @@ fail-closed，旧绑定与原消息保留，`session get` 仍报告身份错误�
 
 目录是示例，必须按实际 Agent 的持锁协议填写。支持管理员指定的绝对目录、`~/` 目录，以及仅以前缀 `{cwd}/` 锚定的模板；模板不允许 `..` 或其它变量，解析后的目录须在 TD 服务用户 home 内。调用现有 `td integration update --file <完整policy.json>`，不增加权限、不重建 principal 或凭据。CLI 在旧服务/非 Linux 服务上拒绝该配置，不能静默忽略。原有不配置此项的 profile 保持插件缺省行为。
 
-wrapper 负责实际设置 Agent 自己的数据目录、准备 hooks/参数，并最终运行真正的 Agent；这个字段只声明 TD 的核验目录，不设置环境、不执行脚本、不创建目录，不自动读取 `AGENT_HOME` 等私有变量。TD 仍检查目录与文件权限、进程 starttime、前台关系、实际 FD/inode 和当前内核 flock，要求唯一 native UUID。显式 profile 目录不可证明时不降级到 argv/hook/旧 UUID，多个持锁 UUID 仍拒绝。目录语义纳入恢复配置指纹，保存至启动代次；服务重启、metadata 更新、check 解除不会丢失它。
+wrapper 负责实际设置 Agent 自己的数据目录、准备 hooks/参数，并最终运行真正的 Agent；这个字段只声明 TD 的核验目录，不设置环境、不执行脚本、不创建目录，不自动读取 Agent 专用环境变量。TD 仍检查目录与文件权限、进程 starttime、前台关系、实际 FD/inode 和当前内核 flock，要求唯一 native UUID。显式 profile 目录不可证明时不降级到 argv/hook/旧 UUID，多个持锁 UUID 仍拒绝。目录语义纳入恢复配置指纹，保存至启动代次；服务重启、metadata 更新、check 解除不会丢失它。
 
 该配置只用于之后创建的 session；旧 session 保留原 profile 快照，policy update 不迁移旧记录或修改运行 Agent。不要为旧未知结果自动 create 新 ID 或 retry-cold。原 UUID 恢复、重复 owner 保护、关闭仍遵守现有身份/代次/幂等门禁；独立数据目录不构成对同 UID 进程的安全隔离。
 
