@@ -4,8 +4,8 @@ import { TodoMoreMenu, type TodoMenuItem } from './TodoMoreMenu';
 import { startTodoDrag } from './TodoSessionDropTarget';
 import type { ReactNode } from 'react';
 
-export function TodoItemCard({ todo, runs, workspace, sessionName, busy, expanded, selecting, checked, canSelect, handoff, onToggle, onCheck, onHandoff, onOpen, onStatus, onEdit, onReleaseClaim }: {
-  todo: TodoItem; runs: TodoRun[]; workspace: string; sessionName?: string; busy: boolean; expanded: boolean; selecting: boolean; checked: boolean; canSelect: boolean; handoff?: ReactNode;
+export function TodoItemCard({ todo, runs, workspace, sourceName, sessionName, busy, expanded, selecting, checked, canSelect, handoff, onToggle, onCheck, onHandoff, onOpen, onStatus, onEdit, onReleaseClaim }: {
+  todo: TodoItem; sourceName?: string; runs: TodoRun[]; workspace: string; sessionName?: string; busy: boolean; expanded: boolean; selecting: boolean; checked: boolean; canSelect: boolean; handoff?: ReactNode;
   onReleaseClaim?: () => void; onToggle: () => void; onCheck: (checked: boolean) => void; onHandoff: () => void; onOpen: (run: TodoRun) => void; onStatus: (status: TodoItem['status']) => void; onEdit: () => void;
 }) {
   const latest = runs.at(-1), linked = !!latest?.sessionId && latest.status !== 'failed';
@@ -26,7 +26,7 @@ export function TodoItemCard({ todo, runs, workspace, sessionName, busy, expande
       <div className="min-w-0 flex-1 py-2">
         {hasDetails ? <button type="button" aria-expanded={expanded} className="flex w-full items-start gap-1.5 text-left" onClick={onToggle}><span className={`min-w-0 flex-1 break-words text-[15px] font-medium leading-6 ${todo.status === 'completed' ? 'text-muted-foreground line-through' : ''}`}>{todo.title}</span><ChevronDown size={14} className={`mt-1.5 shrink-0 text-muted-foreground transition-transform ${expanded ? 'rotate-180' : ''}`} /></button>
           : <h3 className={`break-words text-[15px] font-medium leading-6 ${todo.status === 'completed' ? 'text-muted-foreground line-through' : ''}`}>{todo.title}</h3>}
-        {todo.source !== '手动添加' && <p className="mt-1 truncate text-xs leading-5 text-muted-foreground">{todo.source}</p>}
+        <p className="mt-1 truncate text-xs leading-5 text-muted-foreground">{sourceName ?? todo.source}</p>
       </div>
       {!selecting && <button type="button" aria-label={`编辑 ${todo.title}`} title="编辑待办" className="inline-flex min-h-11 w-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-surface-2 hover:text-foreground" disabled={busy || !!handoff} onClick={onEdit}><Pencil size={15} /></button>}
       {!selecting && !!menu.length && <TodoMoreMenu label={`更多操作 ${todo.title}`} items={menu} disabled={busy || !!handoff} />}

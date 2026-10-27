@@ -18,6 +18,16 @@ function owned(minutes = 10, mode: 'new' | 'reuse' = 'new') {
   const run = store.begin('collect', collector.id, config, 'first').run;
   store.mark(run.id, { sessionId: 'terminal', status: 'delivered' }); return store.run(run.id);
 }
+it('refuses to reuse another collector terminal before rebinding ownership or sending input', async () => {
+  const first = owned(10, 'reuse'); store.report(first.id, 'complete', '完成');
+  const other = store.saveCollector({ name: '另一个方向', config, session: { mode: 'reuse', targetSessionId: 'terminal', beforePrompt: '', idleMinutes: 10 } });
+  const run = store.begin('collect', other.id, config, 'other').run;
+  const created = vi.fn(), launch = vi.fn();
+  await expect(lifecycle.collect(run, '另一方向提示词', created, launch)).rejects.toThrow('ownership mismatch');
+  expect(created).not.toHaveBeenCalled(); expect(runtime.reuse).not.toHaveBeenCalled(); expect(launch).not.toHaveBeenCalled();
+  expect(store.collectorForSession('terminal')).toBe(first.collectorId);
+  expect(store.run(run.id).sessionId).toBeNull();
+});
 it('uses ten minutes by default and validates timeout without silently truncating values', () => {
   expect(collectionSessionPolicy().idleMinutes).toBe(10);
   for (const idleMinutes of [-1, 1.5, NaN, '10', 43201]) expect(() => collectionSessionPolicy({ idleMinutes } as never)).toThrow();

@@ -57,6 +57,42 @@ it('persists messages once and shares existing Session history across full-servi
   expect(f.deliver).toHaveBeenCalledWith('agent');
   expect(JSON.stringify(mine)).not.toContain('readAt');
 });
+it('rejects accidental chat envelopes before storage and accepts a corrected Markdown reply with the same key', async () => {
+  const f = await fixture(), original = await f.post('请解释网络检查结果').then(r => r.json());
+  const reply = (content: string, metadata?: Record<string, unknown>) => fetch(`${f.base}/collab/reply`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session: 'agent', messageId: original.id, content, metadata, idempotency_key: 'format-retry', response_kind: 'result' }),
+  });
+  for (const body of [{ text: '**正常**\n\n- 网络已恢复' }, { text: '请选择', ui: 'root = Stack([])' }]) {
+    const response = await reply(JSON.stringify(body));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ code: 'INVALID_CHAT_REPLY_FORMAT', error: expect.stringContaining('--file 原样读取') });
+    expect((await f.read()).messages).toHaveLength(1);
+  }
+  for (const content of ['not json', JSON.stringify({ text: '' }), JSON.stringify({ text: 'ok', ui: {} })]) {
+    const response = await reply(content, { openui: { version: 2 } });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ code: 'INVALID_CHAT_REPLY_FORMAT' });
+  }
+  const markdown = '**正常**\n\n- 网络已恢复';
+  expect((await reply(markdown)).status).toBe(200);
+  expect((await f.read()).messages[1]).toMatchObject({ content: markdown });
+});
+
+it('preserves literal JSON code, other JSON documents and background integration payloads', async () => {
+  const f = await fixture(), original = await f.post('请展示 JSON').then(r => r.json());
+  const literal = '```json\n{"text":"原文\\n内容"}\n```';
+  const document = JSON.stringify({ text: '字段值', status: 'ok' });
+  for (const [index, content] of [literal, document].entries()) {
+    f.store.storeIntegrationReply(original.id, 'agent', content, { idempotencyKey: `literal-${index}` });
+  }
+  expect((await f.read()).messages.slice(1).map((m: { content: string }) => m.content)).toEqual([literal, document]);
+  const group = f.store.save({ name: 'Background', sessionIds: ['agent'] });
+  const request = f.store.send({ groupId: group.id, fromSessionId: null, toSessionIds: ['agent'], kind: 'ask', content: 'JSON response', integrationOrigin: { integrationId: 'background', source: 'integration' } })[0];
+  const content = JSON.stringify({ text: 'machine payload' });
+  expect(f.store.storeIntegrationReply(request.id, 'agent', content, { idempotencyKey: 'background-json' }).content).toBe(content);
+});
+
 it('persists OpenUI replies and versioned form values for authorized clients, with text compatibility and conflict detection', async () => {
   const f = await fixture(), original = await f.post('选择方案').then(response => response.json());
   const ui = 'root = Stack([Text("方案说明")])';

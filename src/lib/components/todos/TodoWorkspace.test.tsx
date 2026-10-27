@@ -40,6 +40,55 @@ const pickRecipient = async () => {
 const loaded = async () => { await screen.findByText('检查移动端输入'); await waitFor(() => expect(mocks.settings).toHaveBeenCalled()); };
 const more = (name: string) => { fireEvent.click(screen.getByRole('button', { name: '待办菜单' })); fireEvent.click(screen.getByRole('menuitem', { name })); };
 
+it.each([390, 1100])('groups categories including legacy and empty groups at width %s and edits classification', async width => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(width);
+  data.todos[0] = { ...todo, category: 'short' };
+  setup(); await loaded();
+  const open = screen.getByRole('region', { name: '待完成列表' });
+  expect(within(within(open).getByRole('region', { name: '短期待办' })).getByText(todo.title)).toBeTruthy();
+  expect(within(within(open).getByRole('region', { name: '未分类待办' })).getByText('评估语音方案')).toBeTruthy();
+  expect(within(within(open).getByRole('region', { name: '待跟进待办' })).getByText('暂无')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: `编辑 ${todo.title}` }));
+  fireEvent.change(screen.getByRole('combobox', { name: '分类' }), { target: { value: 'delegated' } });
+  fireEvent.change(screen.getByRole('textbox', { name: '背景和处理要求' }), { target: { value: '待合入并通知' } });
+  fireEvent.click(screen.getByRole('button', { name: '保存修改' }));
+  await waitFor(() => expect(mocks.update).toHaveBeenCalledWith(expect.objectContaining({ id: todo.id, revision: 1 }), expect.objectContaining({ category: 'delegated', description: '待合入并通知' })));
+  await waitFor(() => expect(within(within(open).getByRole('region', { name: '待跟进待办' })).getByText(todo.title)).toBeTruthy());
+  expect(data.todos).toHaveLength(2);
+});
+it('keeps stale edit drafts until the user explicitly reloads the latest todo', async () => {
+  setup(); await loaded();
+  fireEvent.click(screen.getByRole('button', { name: `编辑 ${todo.title}` }));
+  fireEvent.change(screen.getByRole('textbox', { name: '背景和处理要求' }), { target: { value: '我的草稿' } });
+  data.todos[0] = { ...todo, revision: 2, description: '另一位编辑者的进展', category: 'long' };
+  mocks.update.mockRejectedValueOnce(new Error('记录已更新，请刷新后重试'));
+  fireEvent.click(screen.getByRole('button', { name: '保存修改' }));
+  await screen.findByRole('alert');
+  expect((screen.getByRole('textbox', { name: '背景和处理要求' }) as HTMLTextAreaElement).value).toBe('我的草稿');
+  fireEvent.click(screen.getByRole('button', { name: '放弃修改并重新载入' }));
+  await waitFor(() => expect((screen.getByRole('textbox', { name: '背景和处理要求' }) as HTMLTextAreaElement).value).toBe('另一位编辑者的进展'));
+  expect((screen.getByRole('combobox', { name: '分类' }) as HTMLSelectElement).value).toBe('long');
+  expect(mocks.update).toHaveBeenCalledOnce();
+  fireEvent.change(screen.getByRole('textbox', { name: '背景和处理要求' }), { target: { value: '基于新进展补充' } });
+  fireEvent.click(screen.getByRole('button', { name: '保存修改' }));
+  await waitFor(() => expect(mocks.update).toHaveBeenLastCalledWith(expect.objectContaining({ id: todo.id, revision: 2 }), expect.objectContaining({ description: '基于新进展补充' })));
+});
+it('filters identical collector names by stable ID and follows renamed labels', async () => {
+  data.collectors = ['collector-a', 'collector-b'].map(id => ({ id, name: '每日收集', config: data.defaults, enabled: true, schedule: null, nextRunAt: null, createdAt: 1, updatedAt: 1, revision: 1 }));
+  data.todos = [{ ...todo, collectorId: 'collector-a' }, { ...todo, id: 'two', title: 'B 的事项', collectorId: 'collector-b' }];
+  setup(); await loaded(); more('搜索和筛选');
+  fireEvent.change(screen.getByRole('combobox', { name: '按来源筛选' }), { target: { value: 'collector:collector-a' } });
+  expect(screen.queryByRole('button', { name: 'B 的事项' })).toBeNull();
+  expect(screen.getByRole('button', { name: todo.title })).toBeTruthy();
+  data.collectors[0] = { ...data.collectors[0], name: '改名后的 A' };
+  await act(async () => { window.dispatchEvent(new Event('termdock:secure-ready')); });
+  await waitFor(() => expect(screen.getByRole('option', { name: '改名后的 A' })).toBeTruthy());
+  expect((screen.getByRole('combobox', { name: '按来源筛选' }) as HTMLSelectElement).value).toBe('collector:collector-a');
+  expect(screen.getByText('改名后的 A', { selector: 'p' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: '清除筛选' }));
+  expect(screen.getByRole('button', { name: 'B 的事项' })).toBeTruthy();
+});
+
 
 it('shows selected weekdays and every configured time in the collection directory', async () => {
   data.collectors = [{ id: 'multi', name: '早晚收集', config: data.defaults, enabled: true, schedule: { kind: 'daily', time: '09:00', times: ['09:00', '20:00'], weekdays: [1, 3, 5] }, nextRunAt: null, revision: 1, createdAt: 1, updatedAt: 1 }];

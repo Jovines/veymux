@@ -75,7 +75,7 @@ it('places input retry beside the failed message and clears it after delivery', 
   const retry = await screen.findByRole('button', { name: '重试' });
   expect(retry.closest('[data-chat-message]')?.getAttribute('data-chat-message')).toBe(message.id);
   expect(view.container.querySelector('[data-chat-composer]')?.parentElement?.querySelector('[data-chat-delivery-notice]')).toBeNull();
-  expect(screen.queryByText('待发送')).toBeNull();
+  expect(screen.queryByText('发送中')).toBeNull();
   fireEvent.click(retry); await waitFor(() => expect(requests.mock.calls.some(([url, init]) => String(url).endsWith('/input-pending/delivery') && init?.method === 'POST')).toBe(true));
   message.status = 'delivered'; delete message.delivery;
   fireEvent(window, new Event('online')); await screen.findByText('已发送');

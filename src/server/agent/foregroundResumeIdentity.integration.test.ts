@@ -58,7 +58,7 @@ it.skipIf(process.platform !== 'linux')('recovers a real resumed pane, settles a
       }));
       return { state: 'ready', write };
     });
-    const makeWorker = () => new CollaborationDeliveryWorker({ store, peers: () => [], isLocal: () => true, resolve, onError: () => {}, snapshotDelayMs: 0 });
+    const makeWorker = () => new CollaborationDeliveryWorker({ store, isLocal: () => true, resolve, onError: () => {}, snapshotDelayMs: 0 });
     worker = makeWorker();
     vi.spyOn(store, 'markDelivered').mockImplementationOnce(() => { throw new Error('crash before receipt'); });
     await expect(worker.run('target')).rejects.toThrow('crash before receipt');

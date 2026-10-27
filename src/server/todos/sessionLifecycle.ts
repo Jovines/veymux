@@ -29,6 +29,8 @@ export class CollectionSessionLifecycle {
       && r.config.agentSlug === run.config.agentSlug && r.config.command === run.config.command && r.config.cwd === run.config.cwd);
     const id = policy.targetSessionId ?? previous?.sessionId;
     if (!id) return launch();
+    const owner = this.store.collectorForSession(id);
+    if (owner && owner !== run.collectorId) throw new TodoError('ownership mismatch: 此会话已用于其他 collector，请选择独立会话', 403, undefined, 'TODO_OWNERSHIP_MISMATCH');
     if (this.locks.has(id)) throw new TodoError('收集会话正在操作，请稍后重试', 409);
     this.locks.add(id);
     try {

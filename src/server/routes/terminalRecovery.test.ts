@@ -6,6 +6,7 @@ import { expect, it, vi } from 'vitest';
 import { detectTmuxRecoveryIncident, retainDismissedTmuxSessions, shouldAutomaticallyRecoverTmuxIncident } from '../utils/tmuxRecovery.js';
 import { isTmuxRecoveryCandidate } from '../utils/tmuxRecoveryCandidate.js';
 import { getSessionPresentation } from '../utils/sessionDisplayName.js';
+import { SharedSnapshotCache } from '../utils/sharedSampling.js';
 
 // Exercise the actual route functions without boot-time tmux configuration or
 // access to the developer's persisted sessions.
@@ -13,7 +14,8 @@ const source = fs.readFileSync(new URL('./terminal.ts', import.meta.url), 'utf8'
 const ast = ts.createSourceFile('terminal.ts', source, ts.ScriptTarget.Latest, true);
 function routeFunctions(names: string[], setup: string, dependencies: Record<string, unknown>) {
   const functions = ast.statements.filter(node => ts.isFunctionDeclaration(node) && names.includes(node.name?.text ?? '')).map(node => node.getText(ast)).join('\n');
-  const context = vm.createContext({ Date, console, setTimeout, clearTimeout, shellNamesBackend: new Set(['zsh', 'bash']),
+  const context = vm.createContext({ Date, console, setTimeout, clearTimeout, process: { env: {} },
+    tmuxServerPidSnapshots: new SharedSnapshotCache(0), shellNamesBackend: new Set(['zsh', 'bash']),
     globalSessionState: { sessions: [] }, sessionViewModes: { get: () => null }, getSessionPresentation,
     agentBySlug: (slug: string) => ({ slug, displayName: slug }), serializeAgentIdentity: () => null,
     splitCommandToArgv: (raw: string) => raw.split(/\s+/),
@@ -346,14 +348,15 @@ it('keeps the incident when a rebuilt shell still has a cached backend Agent', a
 });
 
 
-it('queues one durable automatic reconnect after observing replacement shells, outside the inventory build', async () => {
+it.each([false, true])('only queues automatic reconnect with explicit opt-in: %s', async enabled => {
   vi.useFakeTimers();
   try {
     const state = { lastServerPid: 100, incident: null, dismissedSessionIds: [] };
     const operations: { incidentId: string }[] = [];
     const create = vi.fn(async (operation: { incidentId: string }) => { operations.push(operation); });
     const context = routeFunctions(['observeTmuxServerGeneration'], '', {
-      setTimeout, tmuxRecoveryState: state, persistTmuxRecoveryState: vi.fn(), getTmuxServerPid: async () => 200,
+      setTimeout, process: { env: enabled ? { TD_TMUX_AUTO_RECOVERY: '1' } : {} },
+      tmuxRecoveryState: state, persistTmuxRecoveryState: vi.fn(), getTmuxServerPid: async () => 200,
       globalSessionState: { sessions: [{ sessionId: 'frontend', mode: 'tmux', tmuxSessionName: 'original', cwd: '/work', agentResume: { slug: 'custom-agent', sessionId: 'native' } }] },
       terminalSessions: new Map(), intentionallyDeletingTmuxSessions: new Set(),
       detectTmuxRecoveryIncident, retainDismissedTmuxSessions, shouldAutomaticallyRecoverTmuxIncident,
@@ -363,6 +366,7 @@ it('queues one durable automatic reconnect after observing replacement shells, o
     await context.observeTmuxServerGeneration([{ name: 'original', program: 'zsh', foregroundProgram: 'zsh', rawArgs: 'zsh' }], true);
     expect(create).not.toHaveBeenCalled();
     await vi.runOnlyPendingTimersAsync();
+    if (!enabled) { expect(create).not.toHaveBeenCalled(); return; }
     expect(create).toHaveBeenCalledWith(expect.objectContaining({ sessionIds: ['frontend'], scope: { kind: 'incident' }, idempotencyKey: expect.stringMatching(/^automatic-recovery:/) }));
     await context.observeTmuxServerGeneration([{ name: 'original', program: 'zsh', foregroundProgram: 'zsh', rawArgs: 'zsh' }], true);
     await vi.runOnlyPendingTimersAsync();

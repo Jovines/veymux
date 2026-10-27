@@ -8,7 +8,7 @@ export interface IntegrationJournalDocument {
   version: 1; principals: IntegrationPrincipal[]; events: IntegrationEvent[];
   sequences: Record<string, number>; prunedThrough: Record<string, number>;
   sources: Record<string, string>; consumers: Record<string, number>;
-  consumerLifecycle?: Record<string, { last_ack_at?: number; retired_at?: number; retirement_key?: string }>;
+  consumerLifecycle?: Record<string, { registered_at?: number; last_ack_at?: number; retired_at?: number; retirement_key?: string }>;
 }
 interface Segment { name: string; bytes: number; sha256: string; count: number }
 interface Manifest extends Omit<IntegrationJournalDocument, 'version' | 'events'> { version: 2; segments: Segment[] }

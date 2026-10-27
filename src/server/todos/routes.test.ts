@@ -16,6 +16,28 @@ beforeEach(async () => {
 });
 afterEach(async () => { await new Promise<void>(resolve => server.close(() => resolve())); fs.rmSync(directory, { recursive: true, force: true }); });
 const post = async (suffix: string, body: unknown) => { const response = await fetch(base + suffix, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); return { status: response.status, data: await response.json() }; };
+it('filters categories and exposes revision conflicts without altering an existing todo', async () => {
+  const { todo } = (await post('', { title: '短期', category: 'short', source: 'daily', externalId: 'one' })).data;
+  await post('', { title: '旧数据' });
+  expect((await (await fetch(base + '?category=short')).json()).todos.map((t: { id: string }) => t.id)).toEqual([todo.id]);
+  expect((await (await fetch(base + '?category=uncategorized')).json()).todos).toHaveLength(1);
+  expect((await fetch(base + '?category=bad')).status).toBe(400);
+  expect((await post('', { title: '非法分类', category: 'bad' })).status).toBe(400);
+  const updated = await post('/' + todo.id, { revision: 1, category: 'long', description: '尚待合入' });
+  expect(updated.data.todo).toMatchObject({ id: todo.id, category: 'long', description: '尚待合入', revision: 2 });
+  const conflict = await post('/' + todo.id, { revision: 1, title: '过期' });
+  expect(conflict).toMatchObject({ status: 409, data: { currentRevision: 2 } });
+  const duplicate = await post('', { title: '不覆盖', category: 'short', source: 'daily', externalId: 'one' });
+  expect(duplicate.data.todo).toEqual(updated.data.todo);
+  expect(store.snapshot().todos).toHaveLength(2);
+});
+it('accepts one of two concurrent updates and returns its revision to the rejected writer', async () => {
+  const { todo } = (await post('', { title: '竞争修改', category: 'short' })).data;
+  const writes = await Promise.all(['long', 'delegated'].map(category => post('/' + todo.id, { revision: 1, category })));
+  expect(writes.map(result => result.status).sort()).toEqual([200, 409]);
+  expect(writes.find(result => result.status === 409)?.data.currentRevision).toBe(2);
+  expect(store.get(todo.id)).toEqual(writes.find(result => result.status === 200)?.data.todo);
+});
 it('supports injection → independent execution → result report → explicit completion over real HTTP', async () => {
   const { todo } = (await post('', { title: '待办链路', source: '外部测试', externalId: 'one' })).data;
   expect((await post('', { title: '重复注入', source: '外部测试', externalId: 'one' })).data.todo.id).toBe(todo.id);

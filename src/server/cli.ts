@@ -1352,7 +1352,7 @@ async function readStdinText(): Promise<string> {
   });
 }
 
-async function postLocalJson(baseUrl: string, token: string, endpoint: string, payload: unknown, timeoutMs = 30_000): Promise<{ statusCode: number; body: string }> {
+async function postLocalJson(baseUrl: string, token: string, endpoint: string, payload: unknown, timeoutMs = 30_000, extraHeaders: Record<string, string> = {}): Promise<{ statusCode: number; body: string }> {
   const url = new URL(endpoint, baseUrl);
   const body = JSON.stringify(payload);
   const isHttps = url.protocol === 'https:';
@@ -1371,6 +1371,7 @@ async function postLocalJson(baseUrl: string, token: string, endpoint: string, p
         'Content-Type': 'application/json',
         'Content-Length': Buffer.byteLength(body),
         'X-Termdock-Local-Token': token,
+        ...extraHeaders,
       },
     }, (res) => {
       let responseBody = '';
@@ -1386,7 +1387,7 @@ async function postLocalJson(baseUrl: string, token: string, endpoint: string, p
   });
 }
 
-async function getLocalJson(baseUrl: string, token: string, endpoint: string, timeoutMs = 30_000, method: 'GET' | 'DELETE' = 'GET'): Promise<{ statusCode: number; body: string }> {
+async function getLocalJson(baseUrl: string, token: string, endpoint: string, timeoutMs = 30_000, method: 'GET' | 'DELETE' = 'GET', extraHeaders: Record<string, string> = {}): Promise<{ statusCode: number; body: string }> {
   const url = new URL(endpoint, baseUrl);
   const isHttps = url.protocol === 'https:';
   const requestImpl = isHttps ? https.request : http.request;
@@ -1402,6 +1403,7 @@ async function getLocalJson(baseUrl: string, token: string, endpoint: string, ti
       ca,
       headers: {
         'X-Termdock-Local-Token': token,
+        ...extraHeaders,
       },
     }, (res) => {
       let responseBody = '';
@@ -3682,10 +3684,13 @@ async function main(): Promise<void> {
     const state = getRunningState();
     if (!state?.localApiToken) { console.error(JSON.stringify({ ok: false, error: 'Termdock is not running' })); process.exitCode = 1; return; }
     const baseUrl = state.localUrl ?? `${state.scheme ?? 'http'}://${state.host === '0.0.0.0' ? 'localhost' : state.host}:${state.port}`;
+    const context = await detectLocalSessionContext();
+    if (process.env.TERMDOCK === '1' && !context.backendSessionId && !context.tmuxSessionName) { console.error(JSON.stringify({ ok: false, error: '无法确认 Termdock 调用会话，请在有效终端中重试' })); process.exitCode = 1; return; }
+    const todoHeaders = { 'X-Termdock-Todo-Context': encodeURIComponent(JSON.stringify(context)) };
     process.exitCode = await executeTodoCommand(options.todo, {
       request: (method, endpoint, body) => method === 'POST'
-        ? postLocalJson(baseUrl, state.localApiToken!, endpoint, body)
-        : getLocalJson(baseUrl, state.localApiToken!, endpoint),
+        ? postLocalJson(baseUrl, state.localApiToken!, endpoint, body, 30_000, todoHeaders)
+        : getLocalJson(baseUrl, state.localApiToken!, endpoint, 30_000, 'GET', todoHeaders),
       self: () => resolveCurrentLocalSessionId(baseUrl, state.localApiToken!),
       stdin: readStdinText, write: line => console.log(line),
     });

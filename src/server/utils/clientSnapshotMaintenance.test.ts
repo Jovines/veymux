@@ -64,6 +64,32 @@ it('protects multiple live servers and reclaims an expired snapshot after its le
   await expect(fs.stat(other.root)).rejects.toMatchObject({ code: 'ENOENT' });
 });
 
+it('normalizes a symlinked HOME for dry-run, current-client protection and live leases', async () => {
+  const expired = await fixture(50), leased = await fixture(50), current = await fixture(50);
+  const alias = path.join(home, 'home-alias'); await fs.symlink(home, alias);
+  const throughAlias = (file: string) => path.join(alias, path.relative(home, file));
+  const release = leaseClientSnapshot(throughAlias(leased.pinned), throughAlias(state())); releases.push(release);
+  const options = { stateDirectory: throughAlias(state()), clientDirectory: throughAlias(current.pinned), keepNewest: 0 };
+  const preview = await pruneClientSnapshots({ ...options, dryRun: true });
+  expect(preview).toContainEqual(expect.objectContaining({ path: expired.root, action: 'would-remove' }));
+  expect(preview.filter(item => item.action === 'would-remove')).toHaveLength(1);
+  expect((await fs.stat(expired.root)).isDirectory()).toBe(true);
+  await pruneClientSnapshots(options);
+  await expect(fs.stat(expired.root)).rejects.toMatchObject({ code: 'ENOENT' });
+  for (const item of [leased, current]) expect((await fs.stat(item.root)).isDirectory()).toBe(true);
+  release(); await pruneClientSnapshots(options);
+  await expect(fs.stat(leased.root)).rejects.toMatchObject({ code: 'ENOENT' });
+});
+
+it('reports a linked snapshot root as a validation failure without following it', async () => {
+  const current = await fixture(0), root = path.join(state(), 'client-snapshots'), moved = path.join(home, 'outside-snapshots');
+  await fs.rename(root, moved); await fs.symlink(moved, root);
+  expect(await pruneClientSnapshots({ stateDirectory: state(), clientDirectory: current.pinned, keepNewest: 0 })).toEqual([
+    { path: root, action: 'retained', reason: 'snapshot-root-path-validation-failed', bytes: 0 },
+  ]);
+  expect((await fs.readdir(moved)).length).toBe(1);
+});
+
 it('renews the grace period when a still-open old page imports a module', async () => {
   const old = await fixture(50), current = await fixture(0);
   touchRetainedClientModule(path.join(old.pinned, 'assets', old.asset));

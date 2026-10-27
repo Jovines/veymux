@@ -1,5 +1,9 @@
 import type { AutomationSchedule } from '../agent/automationStore.js';
 
+export const TODO_CATEGORIES = ['short', 'long', 'delegated', 'uncategorized'] as const;
+export type TodoCategory = typeof TODO_CATEGORIES[number];
+export function isTodoCategory(value: unknown): value is TodoCategory { return TODO_CATEGORIES.some(category => category === value); }
+
 export interface TodoLaunchConfig { agentSlug: string; command: string; cwd: string; prompt: string }
 export interface TodoSessionPolicy { mode: 'new' | 'reuse'; targetSessionId: string | null; beforePrompt: string; idleMinutes: number }
 export interface TodoProcessing { mode: 'manual' | 'new' | 'existing'; sessionId: string | null; config: TodoLaunchConfig | null; note: string }
@@ -15,6 +19,7 @@ export interface TodoRun {
 export interface TodoHandoffInput { todoIds: string[]; sessionId?: string; config?: TodoLaunchConfig; note: string; idempotencyKey: string }
 export interface TodoItem {
   id: string; title: string; description: string; source: string; sourceUrl: string;
+  category?: TodoCategory;
   claim?: TodoClaim | null;
   autoProcessing?: { policy: TodoProcessing; state: 'pending' | 'dispatched' | 'failed'; runId: string | null; error: string };
   externalId: string; collectorId: string | null; status: 'open' | 'completed' | 'ignored';
@@ -28,4 +33,6 @@ export interface TodoCollector {
   schedule: AutomationSchedule | null; nextRunAt: number | null; createdAt: number; updatedAt: number; revision: number;
 }
 export interface TodoSnapshot { todos: TodoItem[]; collectors: TodoCollector[]; runs: TodoRun[]; defaults: TodoLaunchConfig }
-export interface TodoCreateInput { title: string; description?: string; source?: string; sourceUrl?: string; externalId?: string; collectorId?: string; idempotencyKey?: string }
+export interface TodoCreateInput { title: string; description?: string; category?: TodoCategory; source?: string; sourceUrl?: string; externalId?: string; collectorId?: string; idempotencyKey?: string }
+export interface TodoUpdateInput { revision: number; collectorId?: string; title?: string; description?: string; category?: TodoCategory; sourceUrl?: string; externalId?: string; status?: TodoItem['status'] }
+export interface TodoCallerContext { backendSessionId?: string | null; tmuxSessionName?: string | null }

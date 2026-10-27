@@ -96,6 +96,29 @@ it('reconciles from one liveness snapshot, preserves unknown/new sessions, and n
   expect(hasSession).not.toHaveBeenCalled();
 });
 
+it('slows inactive sessions and immediately resumes sampling when focused', async () => {
+  vi.useFakeTimers();
+  const session = { mode: 'tmux', focusAggregation: { effectiveFocused: false } };
+  const sample = vi.fn(async () => []);
+  const context = routeFunctions(['subscribeTerminalSampling', 'updateClientFocusState'], `
+    const terminalSamplers = new Map();
+    const TMUX_POLL_INTERVAL = 500, ACTIVE_PROGRAM_POLL_INTERVAL = 1200;
+  `, { SharedSessionSampler, sampleTerminalSession: sample, getErrorMessage: String,
+    emitFocusSequenceIfNeeded: vi.fn(),
+    setClientFocusState: (state: { effectiveFocused: boolean }, _id: string, focused: boolean) => {
+      const changed = state.effectiveFocused !== focused; state.effectiveFocused = focused;
+      return { changed, effectiveFocused: focused };
+    },
+  });
+  const stop = context.subscribeTerminalSampling('session', session, vi.fn());
+  await vi.advanceTimersByTimeAsync(0);
+  await vi.advanceTimersByTimeAsync(9999); expect(sample).toHaveBeenCalledOnce();
+  context.updateClientFocusState('session', session, 'client', true, 'focus');
+  await vi.advanceTimersByTimeAsync(0); expect(sample).toHaveBeenCalledTimes(2);
+  await vi.advanceTimersByTimeAsync(500); expect(sample).toHaveBeenCalledTimes(3);
+  stop(); await vi.advanceTimersByTimeAsync(60_000); expect(sample).toHaveBeenCalledTimes(3);
+});
+
 class Socket extends EventEmitter {
   OPEN = 1;
   readyState = 1;
@@ -124,6 +147,7 @@ it('keeps the real WS handler PTYs through flow pauses, while unsubscribe/reconn
   const outputActivity = new TerminalOutputActivity(() => {});
   outputActivity.record(); vi.advanceTimersByTime(200); outputActivity.record(); vi.advanceTimersByTime(400);
   const session = { outputActivity, mode: 'tmux', tmuxSessionName: 'task', ptyProcess: { pid: 1 },
+    focusAggregation: { effectiveFocused: true, focusedClients: new Map() },
     clients: new Map(), cols: 80, rows: 24, cwd: '/work', activeProgram: null, agentLeftAt: null, lastPromptState: 'idle' };
   const pane = { command: 'codex', currentPath: '/work', title: 'task' };
   const layout = vi.fn(async () => ({ activePane: pane }));

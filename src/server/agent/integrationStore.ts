@@ -183,13 +183,20 @@ export class IntegrationStore {
     return Object.entries(this.doc.consumers).map(([key, sequence]) => {
       const principal = this.doc.principals.find(p => key.startsWith(`${p.id}:${p.groupId}:`));
       const group = principal?.groupId, lifecycle = this.doc.consumerLifecycle?.[key];
+      const lag = group ? (this.doc.sequences[group] ?? 0) - sequence : null;
+      const gap = group ? sequence < (this.doc.prunedThrough[group] ?? 0) : null;
+      const protects = !!principal && !principal.revoked && !lifecycle?.retired_at;
+      const lastProgress = lifecycle?.last_ack_at ?? lifecycle?.registered_at;
+      const warning = !protects ? null : gap ? 'EVENT_RETENTION_GAP'
+        : lag && (!lastProgress || Date.now() - lastProgress >= 24 * 60 * 60_000)
+          ? lastProgress ? 'EVENT_CONSUMER_ACK_STALLED' : 'EVENT_CONSUMER_ACK_AGE_UNKNOWN' : null;
       return { principal_id: principal?.id ?? null, group_id: group ?? null,
         consumer: principal ? key.slice(`${principal.id}:${principal.groupId}:`.length) : key,
         confirmed_sequence: sequence, latest_sequence: group ? this.doc.sequences[group] ?? 0 : null,
-        lag: group ? (this.doc.sequences[group] ?? 0) - sequence : null,
-        retention_gap: group ? sequence < (this.doc.prunedThrough[group] ?? 0) : null,
+        lag, retention_gap: gap, warning_code: warning, attention_required: warning !== null,
+        registered_at: lifecycle?.registered_at ?? null,
         retired_at: lifecycle?.retired_at ?? null, last_ack_at: lifecycle?.last_ack_at ?? null,
-        protects_events: !!principal && !principal.revoked && !lifecycle?.retired_at };
+        protects_events: protects };
     });
   }
   retireConsumer(principalId: string, consumer: string, expectedSequence: number, idempotencyKey: string) {
@@ -282,7 +289,8 @@ export class IntegrationStore {
     // A new consumer explicitly starts at the earliest retained fact. Existing
     // consumers never silently skip a retention gap.
     if (this.doc.consumers[key] === undefined) {
-      this.write({ ...this.doc, consumers: { ...this.doc.consumers, [key]: floor } });
+      this.write({ ...this.doc, consumers: { ...this.doc.consumers, [key]: floor },
+        consumerLifecycle: { ...this.doc.consumerLifecycle, [key]: { registered_at: Date.now() } } });
     }
     const after = cursor ? this.decode(group, cursor) : this.doc.consumers[key];
     if (after < floor) integrationError('EVENT_RETENTION_GAP', 'Confirmed cursor is older than retained history; reconcile task/session snapshots and use a new consumer', 409);

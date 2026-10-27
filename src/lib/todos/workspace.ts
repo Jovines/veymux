@@ -5,13 +5,13 @@ import type { TodoItem, TodoSnapshot } from './api';
 export type TodoFilter = 'all' | 'open' | 'review' | 'completed' | 'ignored';
 export type TodoModal = { kind: 'edit'; todo?: TodoItem } | { kind: 'recipient'; ids: string[] } | { kind: 'handoff'; ids: string[]; sessionId: string } | { kind: 'collector'; id?: string } | { kind: 'integration' } | null;
 export interface TodoView {
-  tab: 'todos' | 'collectors'; filter: TodoFilter; source: string; query: string;
+  tab: 'todos' | 'collectors'; filter: TodoFilter; source: string; collectorId?: string; query: string;
   selectedId: string | null; mobileDetail: boolean; selecting: boolean; checked: string[];
   toolsOpen: boolean;
   column: 'open' | 'completed';
   modal: TodoModal; drafts: Record<string, unknown>; requests: Record<string, string>;
 }
-export const emptyTodoView: TodoView = { tab: 'todos', filter: 'all', column: 'open', source: '', query: '', selectedId: null, mobileDetail: false, selecting: false, checked: [], toolsOpen: false, modal: null, drafts: {}, requests: {} };
+export const emptyTodoView: TodoView = { tab: 'todos', filter: 'all', column: 'open', source: '', collectorId: '', query: '', selectedId: null, mobileDetail: false, selecting: false, checked: [], toolsOpen: false, modal: null, drafts: {}, requests: {} };
 export const launchDraftId = (ids: string[]) => `launch:${JSON.stringify(ids.slice().sort())}`;
 /** A workspace outlives responsive remounts and trips to its Agent terminal. */
 export const useTodoWorkspace = create<{

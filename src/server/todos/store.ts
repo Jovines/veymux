@@ -3,16 +3,22 @@ import { canClaimTodo } from './claimEligibility.js';
 import { JsonStorageBudget, type JsonStorageOptions } from '../utils/jsonStorageBudget.js';
 import { randomUUID, randomBytes, createHash } from 'node:crypto';
 import { nextAutomationRunAt, normalizeAutomationSchedule } from '../agent/automationStore.js';
-import type { TodoCollector, TodoCreateInput, TodoHandoffInput, TodoItem, TodoLaunchConfig, TodoProcessing, TodoRun, TodoSessionPolicy, TodoSnapshot } from './types.js';
+import { isTodoCategory, type TodoUpdateInput, type TodoCollector, type TodoCreateInput, type TodoHandoffInput, type TodoItem, type TodoLaunchConfig, type TodoProcessing, type TodoRun, type TodoSessionPolicy, type TodoSnapshot } from './types.js';
 
 interface Document extends TodoSnapshot { version: 1; requests: Record<string, { hash: string; id: string }> }
-export class TodoError extends Error { constructor(message: string, readonly status = 400) { super(message); } }
+export class TodoError extends Error { constructor(message: string, readonly status = 400, readonly currentRevision?: number, readonly code?: string) { super(message); } }
 function string(value: unknown, max: number, fallback = ''): string {
   if (value === undefined) return fallback;
   if (typeof value !== 'string' || value.length > max || value.includes('\0')) throw new TodoError('内容格式或长度无效');
   return value.trim();
 }
 function title(value: unknown): string { const s = string(value, 200); if (!s) throw new TodoError('请填写标题'); return s; }
+function sourceLink(value: unknown): string {
+  const url = string(value, 4096);
+  if (url) { try { if (!['http:', 'https:'].includes(new URL(url).protocol)) throw new Error(); } catch { throw new TodoError('来源链接须为有效的 http 或 https 地址'); } }
+  return url;
+}
+function category(value: unknown) { if (!isTodoCategory(value)) throw new TodoError('分类须为 short、long、delegated 或 uncategorized'); return value; }
 export function launchConfig(input: Partial<TodoLaunchConfig>, base?: TodoLaunchConfig): TodoLaunchConfig {
   return { agentSlug: string(input.agentSlug, 100, base?.agentSlug), command: string(input.command, 4000, base?.command),
     cwd: string(input.cwd, 4096, base?.cwd), prompt: string(input.prompt, 20000, base?.prompt) };
@@ -65,17 +71,24 @@ export class TodoStore {
   }
   snapshot(): TodoSnapshot { const { requests: _, version: _v, ...snapshot } = this.doc; return structuredClone(snapshot); }
   get(id: string): TodoItem { const todo = this.doc.todos.find(t => t.id === id); if (!todo) throw new TodoError('待办不存在', 404); return structuredClone(todo); }
+  assertCollector(todo: TodoItem, collectorId: unknown): void {
+    if (collectorId !== undefined && (typeof collectorId !== 'string' || !collectorId || todo.collectorId !== collectorId)) throw new TodoError('ownership mismatch: 待办不属于此 collector', 403, undefined, 'TODO_OWNERSHIP_MISMATCH');
+  }
+  /** A handoff must never promote a collector process back to owner privileges. */
+  collectorForSession(sessionId: string): string | null {
+    const latest = [...this.doc.runs].reverse().find(run => run.kind === 'collect' && run.sessionId === sessionId);
+    return latest?.collectorId ?? null;
+  }
   collector(id: string): TodoCollector { const collector = this.doc.collectors.find(c => c.id === id); if (!collector) throw new TodoError('收集方向不存在', 404); return structuredClone(collector); }
   run(id: string): TodoRun { const run = this.doc.runs.find(r => r.id === id); if (!run) throw new TodoError('执行记录不存在', 404); return structuredClone(run); }
-  private check(revision: unknown, current: number) { if (revision !== current) throw new TodoError('记录已更新，请刷新后重试', 409); }
+  private check(revision: unknown, current: number) { if (revision !== current) throw new TodoError('记录已更新，请刷新后重试', 409, current); }
   create(input: TodoCreateInput): TodoItem {
-    const sourceUrl = string(input.sourceUrl, 4096);
-    if (sourceUrl) { try { if (!['http:', 'https:'].includes(new URL(sourceUrl).protocol)) throw new Error(); } catch { throw new TodoError('来源链接须为有效的 http 或 https 地址'); } }
+    const sourceUrl = sourceLink(input.sourceUrl);
     const collectorId = string(input.collectorId, 100) || null;
     const collectorName = collectorId ? this.doc.collectors.find(c => c.id === collectorId)?.name ?? this.doc.runs.find(r => r.collectorId === collectorId)?.name : null;
     if (collectorId && !collectorName) throw new TodoError('收集方向不存在', 404);
     const values = { title: title(input.title), description: string(input.description, 40000), source: string(input.source, 200, collectorName ?? '手动添加') || '外部注入',
-      sourceUrl, externalId: string(input.externalId, 500), collectorId };
+      sourceUrl, externalId: string(input.externalId, 500), collectorId, ...(input.category === undefined ? {} : { category: category(input.category) }) };
     const key = string(input.idempotencyKey, 200);
     const hash = this.hash(values);
     const previous = key && this.doc.requests[`create:${key}`];
@@ -89,14 +102,24 @@ export class TodoStore {
       doc.todos.unshift(todo); if (key) doc.requests[`create:${key}`] = { hash, id: todo.id }; return todo;
     });
   }
-  update(id: string, input: { revision: number; title?: string; description?: string; status?: TodoItem['status'] }): TodoItem {
+  update(id: string, input: TodoUpdateInput): TodoItem {
+    if ('source' in input || 'sourceId' in input) throw new TodoError('待办来源命名空间不可修改');
     return this.transaction(doc => {
-      const todo = doc.todos.find(t => t.id === id); if (!todo) throw new TodoError('待办不存在', 404); this.check(input.revision, todo.revision);
+      const todo = doc.todos.find(t => t.id === id); if (!todo) throw new TodoError('待办不存在', 404);
+      this.assertCollector(todo, input.collectorId); this.check(input.revision, todo.revision);
       if (input.title !== undefined) todo.title = title(input.title);
       if (input.description !== undefined) todo.description = string(input.description, 40000);
+      if (input.category !== undefined) todo.category = category(input.category);
+      if (input.sourceUrl !== undefined) todo.sourceUrl = sourceLink(input.sourceUrl);
+      if (input.externalId !== undefined) {
+        const externalId = string(input.externalId, 500);
+        if (externalId && doc.todos.some(other => other.id !== id && other.externalId === externalId
+          && (todo.collectorId ? other.collectorId === todo.collectorId : !other.collectorId && other.source === todo.source))) throw new TodoError('同一来源已存在此外部标识', 409);
+        todo.externalId = externalId;
+      }
       if (input.status !== undefined) { if (!['open', 'completed', 'ignored'].includes(input.status)) throw new TodoError('待办状态无效'); todo.status = input.status; if (input.status !== 'open') todo.claim = null; }
       todo.revision++; todo.updatedAt = Date.now(); return todo;
-    }, input.title === undefined && input.description === undefined && (input.status === 'completed' || input.status === 'ignored'));
+    }, input.title === undefined && input.description === undefined && input.category === undefined && input.sourceUrl === undefined && input.externalId === undefined && (input.status === 'completed' || input.status === 'ignored'));
   }
   defaults(input: Partial<TodoLaunchConfig>): TodoLaunchConfig { const config = launchConfig(input, this.doc.defaults); return this.transaction(doc => doc.defaults = config); }
   saveCollector(input: Partial<TodoCollector> & { name: string; config: TodoLaunchConfig }): TodoCollector {

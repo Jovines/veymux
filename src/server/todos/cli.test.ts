@@ -12,6 +12,37 @@ it('targets a specific run for reporting and never retries an uncertain write', 
   expect(io.request).toHaveBeenCalledExactlyOnceWith('POST', '/api/terminal/operations/todos/runs/run%2Fid/report', { status: 'blocked', content: '需要补充资料' });
 });
 it('shows help without a running service', async () => { const io = { request: vi.fn(), stdin: vi.fn(), write: vi.fn() }; expect(await executeTodoCommand(parseTodoCommand(['--help']), io)).toBe(0); expect(io.request).not.toHaveBeenCalled(); });
+it.each([
+  ['update'], ['update', 'id'], ['update', 'id', '--revision', '1'],
+  ['update', 'id', '--category', 'bad'], ['list', '--category', 'bad'],
+  ...['0', '-1', '1.5', '1e2', '9007199254740992'].map(revision => ['update', 'id', '--title', 'x', '--revision', revision]),
+  ['update', 'id', '--description=', '--stdin'], ['update', 'id', '--source', 'other'],
+].map(args => ({ args })))('rejects invalid updates and categories $args', ({ args }) => expect(() => parseTodoCommand(args)).toThrow());
+it('updates only supplied fields and uses an explicitly observed revision without refetching', async () => {
+  const io = { request: vi.fn(async () => ({ statusCode: 200, body: '{"todo":{"id":"id"}}' })), stdin: vi.fn(async () => '等待 alpha 合入'), write: vi.fn() };
+  expect(await executeTodoCommand(parseTodoCommand(['update', 'id', '--stdin', '--category', 'delegated', '--revision', '7', '--url=', '--external-id', 'stable-2']), io)).toBe(0);
+  expect(io.request).toHaveBeenCalledExactlyOnceWith('POST', '/api/terminal/operations/todos/id', { description: '等待 alpha 合入', category: 'delegated', revision: 7, sourceUrl: '', externalId: 'stable-2' });
+});
+it('clears descriptions explicitly without treating an empty value as an omitted field', async () => {
+  const io = { request: vi.fn(async () => ({ statusCode: 200, body: '{}' })), stdin: vi.fn(), write: vi.fn() };
+  expect(await executeTodoCommand(parseTodoCommand(['update', 'id', '--description=', '--revision', '2']), io)).toBe(0);
+  expect(io.request).toHaveBeenCalledExactlyOnceWith('POST', '/api/terminal/operations/todos/id', { description: '', revision: 2 });
+});
+it('reads a revision for a simple edit without erasing unspecified content and exposes conflicts', async () => {
+  const io = { request: vi.fn().mockResolvedValueOnce({ statusCode: 200, body: '{"todos":[{"id":"id","revision":3}]}' }).mockResolvedValueOnce({ statusCode: 409, body: '{"error":"记录已更新","currentRevision":4}' }), stdin: vi.fn(), write: vi.fn() };
+  expect(await executeTodoCommand(parseTodoCommand(['update', 'id', '--title', '只改标题']), io)).toBe(1);
+  expect(io.request).toHaveBeenLastCalledWith('POST', '/api/terminal/operations/todos/id', { title: '只改标题', revision: 3 });
+  expect(JSON.parse(io.write.mock.calls[0][0])).toMatchObject({ ok: false, currentRevision: 4 });
+  expect(io.request).toHaveBeenCalledTimes(2);
+});
+it('filters uncategorized legacy todos and combines source with category', async () => {
+  const snapshot = { todos: [{ id: 'legacy', source: 'daily' }, { id: 'short', source: 'daily', category: 'short' }, { id: 'other', source: 'other', category: 'short' }] };
+  const io = { request: vi.fn(async () => ({ statusCode: 200, body: JSON.stringify(snapshot) })), stdin: vi.fn(), write: vi.fn() };
+  await executeTodoCommand(parseTodoCommand(['list', '--category', 'uncategorized']), io);
+  expect(JSON.parse(io.write.mock.calls[0][0]).todos.map((t: { id: string }) => t.id)).toEqual(['legacy']);
+  await executeTodoCommand(parseTodoCommand(['list', '--category', 'short', '--source', 'daily']), io);
+  expect(JSON.parse(io.write.mock.calls[1][0]).todos.map((t: { id: string }) => t.id)).toEqual(['short']);
+});
 
 const collectorArgs = ['collector', 'create', '--name', '社区渠道', '--agent', 'codex', '--prompt', '筛选可执行事项，附上来源，避免重复，只收集不执行'];
 it('accepts sorted unique multiple collection times with explicit weekdays', () => {

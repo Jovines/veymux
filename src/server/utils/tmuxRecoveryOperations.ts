@@ -250,6 +250,12 @@ export class TmuxRecoveryOperationStore {
     return this.state.operations.map(summarizeRecoveryOperation);
   }
 
+  get activeLaunches(): number { return this.active; }
+
+  runningSessionIds(): string[] {
+    return this.state.operations.flatMap(operation => operation.items.filter(item => item.state === 'running').map(item => item.sessionId));
+  }
+
   async pause(id: string): Promise<TmuxRecoveryOperation | null> {
     const operation = this.state.operations.find(candidate => candidate.id === id);
     if (!operation) return null;

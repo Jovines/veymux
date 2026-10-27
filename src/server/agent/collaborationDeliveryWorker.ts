@@ -29,7 +29,6 @@ export class CollaborationDeliveryWorker {
 
   constructor(private readonly options: {
     store: CollaborationStore;
-    peers: () => string[];
     isLocal: (id: string) => boolean;
     resolve: (id: string) => Promise<CollaborationRoute>;
     onError: (error: unknown) => void;
@@ -77,7 +76,7 @@ export class CollaborationDeliveryWorker {
   private async tickOnce(): Promise<void> {
     this.lastTickAt = Date.now();
     try {
-      const ids = [...new Set([...this.options.peers(), ...this.options.store.pendingRecipients()])].filter(this.options.isLocal);
+      const ids = this.options.store.pendingRecipients().filter(this.options.isLocal);
       // Bound process probes/attachments while keeping a broken peer from
       // serially blocking the entire queue.
       let cursor = 0;
@@ -116,17 +115,15 @@ export class CollaborationDeliveryWorker {
   private async deliver(id: string): Promise<void> {
     const { store } = this.options;
     const first = store.inbox(id, { pendingOnly: true, limit: 1 })[0];
-    if (!first && Date.now() - (this.states.get(id)?.checkedAt ?? 0) < 5_000) return;
-    if (first && this.submitted.has(first.id)) {
+    // Route resolution can attach a persistent terminal backend. Membership
+    // alone must never restore historical runtimes, including after restart.
+    if (!first) return;
+    const prior = store.diagnostic(first.id);
+    if (this.submitted.has(first.id) || prior?.write_stage === 'submit_written') {
       this.complete(id, first);
       return;
     }
-    const prior = first && store.diagnostic(first.id);
-    if (first && prior?.write_stage === 'submit_written') {
-      this.complete(id, first);
-      return;
-    }
-    if (first && hasUnconfirmedTerminalWrite(prior)) {
+    if (hasUnconfirmedTerminalWrite(prior)) {
       // A retry may repeat network packets with the same id, but cannot undo
       // or safely replay an uncertain terminal paste/Enter after a restart.
       const inputCheckFailed = prior?.write_stage === 'probe_attempted'
@@ -140,10 +137,9 @@ export class CollaborationDeliveryWorker {
       this.states.set(id, { state: 'unavailable', reason, checkedAt: Date.now() });
       return;
     }
-    if (first && (store.diagnostic(first.id)?.next_retry_at ?? 0) > Date.now()) {
-      const diagnostic = store.diagnostic(first.id);
-      if (diagnostic?.route_state === 'identity-mismatch') {
-        const { attempt_count: _, write_stage: _writeStage, ...blocked } = diagnostic;
+    if ((prior?.next_retry_at ?? 0) > Date.now()) {
+      if (prior?.route_state === 'identity-mismatch') {
+        const { attempt_count: _, write_stage: _writeStage, ...blocked } = prior;
         store.recordRecipientTransport(id, blocked);
       }
       return;

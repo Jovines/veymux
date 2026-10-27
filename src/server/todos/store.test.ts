@@ -18,6 +18,41 @@ it('deduplicates injection durably by source/external ID, rejects mismatched req
   expect(() => store.create({ title: '危险链接', sourceUrl: 'javascript:alert(1)' })).toThrow('链接');
   expect(fs.statSync(file).mode & 0o777).toBe(0o600);
 });
+it('persists categories and partial updates without replacing IDs, provenance or manual processing', async () => {
+  const collector = store.saveCollector({ name: '每日 TODO', config, processing: { mode: 'manual', sessionId: null, config: null, note: '' } });
+  const original = store.create({ title: '两个缺陷', category: 'short', collectorId: collector.id, externalId: 'issue', sourceUrl: 'https://example.com/issue' });
+  vi.spyOn(Date, 'now').mockReturnValue(original.updatedAt + 1000);
+  const updated = store.update(original.id, { revision: original.revision, description: '已 RESOLVED，待合入并通知', category: 'delegated' });
+  expect(updated).toMatchObject({ id: original.id, title: original.title, category: 'delegated', revision: 2, updatedAt: original.updatedAt + 1000, createdAt: original.createdAt, collectorId: collector.id, externalId: 'issue', sourceUrl: original.sourceUrl, status: 'open' });
+  expect(updated.autoProcessing).toBeUndefined();
+  expect(store.create({ title: '重复内容', description: '不应覆盖', category: 'long', collectorId: collector.id, externalId: 'issue' })).toEqual(updated);
+  expect(store.snapshot().todos).toHaveLength(1);
+  const completed = store.update(original.id, { revision: 2, status: 'completed' });
+  const reopened = store.update(original.id, { revision: completed.revision, status: 'open' });
+  expect(new TodoStore(file).get(original.id)).toEqual(reopened);
+  expect(reopened).toMatchObject({ category: 'delegated', collectorId: collector.id, externalId: 'issue', sourceUrl: original.sourceUrl });
+  vi.restoreAllMocks();
+});
+it('rejects stale revisions, unsafe updates and external ID collisions atomically', () => {
+  const a = store.create({ title: 'A', source: 'daily', externalId: 'a', category: 'short' });
+  store.create({ title: 'B', source: 'daily', externalId: 'b' });
+  for (const patch of [{ category: 'invalid' }, { category: null }, { sourceUrl: 'javascript:alert(1)' }, { externalId: 'b' }, { externalId: 3 }]) {
+    expect(() => store.update(a.id, { revision: 1, title: '不得部分修改', ...patch } as never)).toThrow();
+    expect(store.get(a.id)).toEqual(a);
+  }
+  const updated = store.update(a.id, { revision: 1, title: 'A2', category: 'long', sourceUrl: 'https://example.com/new', externalId: 'renamed' });
+  try { store.update(a.id, { revision: 1, description: '过期覆盖' }); throw new Error('expected conflict'); }
+  catch (error) { expect(error).toMatchObject({ status: 409, currentRevision: 2 }); }
+  expect(store.get(a.id)).toEqual(updated);
+  expect(store.update(a.id, { revision: 2, description: '', sourceUrl: '', externalId: '', category: 'uncategorized' })).toMatchObject({ description: '', sourceUrl: '', externalId: '', category: 'uncategorized' });
+});
+it('reads legacy records and replays their pre-category idempotency keys', () => {
+  const original = store.create({ title: '旧事项', idempotencyKey: 'legacy' });
+  expect(original.category).toBeUndefined();
+  const reloaded = new TodoStore(file);
+  expect(reloaded.create({ title: '旧事项', idempotencyKey: 'legacy' })).toEqual(original);
+  expect(reloaded.update(original.id, { revision: 1, category: 'short' }).category).toBe('short');
+});
 it('protects edits with revisions and keeps completion independent of explicit Agent reports', () => {
   const todo = store.create({ title: '修复输入' });
   const first = store.begin('execute', todo.id, config, 'first').run;

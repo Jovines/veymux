@@ -70,16 +70,57 @@ td todo report <run-id> --status complete --file /path/to/result.txt
 
 报告绑定具体 run，迟到的旧结果不会覆盖新一轮。一个 run 的报告重复提交相同内容可重试；不同内容须新开一轮。`td todo --help` 不依赖运行中的服务。
 
+## 每日 TODO 分类与更新
+
+待办支持 `category`：`short`（短期）、`long`（长期）、`delegated`（我分配出去、待跟进）、`uncategorized`（未分类）。未带分类的老数据继续读取为未分类，无需迁移或根据标题猜测。待完成、已完成及已忽略列表分别按分类分组，空组显示「暂无」；新增和编辑可直接选择分类、修改来源链接。
+
+```sh
+td todo add --title '合入 alpha 并通知相关人' --category short \
+  --collector <collector-id> --external-id 'stable-issue-id'
+td todo list --collector <collector-id> --category short
+td todo update <todo-id> --collector <collector-id> --description '两个缺陷已解决，仍待合入和通知' \
+  --category delegated --revision 1
+```
+
+`update` 只修改提供的字段，支持 `--title`、`--description`（或 `--file` / `--stdin`）、`--category`、`--url` 和 `--external-id`；原 ID、创建时间、来源、状态及历史保留，递增 `revision` 并更新 `updatedAt`。`--description=`、`--url=`、`--external-id=` 清空对应字段；`--category uncategorized` 归回未分类。修改外部标识时，同一 collector（未关联 collector 时为同一 source）内不能与其他待办冲突；跨来源可重复。
+
+Collector 应传入上次读取的 `--revision`；过期更新以退出码 1 拒绝，JSON 带 `currentRevision`，API 返回 HTTP 409。先重新读取并核对新进展，再决定更新，不能自动重试覆盖。不传 `--revision` 的手动编辑会先读取当前 revision，再做条件写入，仍能拦截读取后发生的竞争。界面冲突保留草稿，也提供「放弃修改并重新载入」。
+
+重复 `add` 继续按 collector/source + externalId 返回原条目，不覆盖描述、分类或状态；显式 `update` 才修改，不增加隐式 upsert。完成、忽略、重新打开均保留分类与来源。收集提示词包含这些规则，`processing.mode=manual` 继续只存入清单。
+
+工作日 12:00、16:00、20:00、23:00 的收集计划可用 `--at 12:00,16:00,20:00,23:00 --weekdays 1,2,3,4,5` 或 collector JSON 配置；11:00 汇总提醒可使用独立 `td automation`。本次增加原生待办能力，不创建真实文档服务收集方向或定时提醒。
+
+## Collector 命名空间与所有权
+
+`collectorId` 是不可变归属；collector 名称及卡片标签可重命名，筛选仍使用稳定 ID。`externalId` 的唯一范围为 `(collectorId, externalId)`；无 collector 的人工条目沿用 `(source, externalId)`。更新中的 `collectorId` 是归属前置条件，不会移动条目；`source` / `sourceId` 不能通过更新改写。
+
+```sh
+td todo update <todo-id> --collector <collector-id> --revision <n> --category long
+td todo complete <todo-id> --collector <collector-id> --revision <n>
+td todo ignore <todo-id> --collector <collector-id> --revision <n>
+td todo reopen <todo-id> --collector <collector-id> --revision <n>
+```
+
+CLI 自动附带实际执行位置（backend session / tmux session）。服务端用现有会话绑定解析稳定 session ID，再从持久化的收集 run 确定 collector，不能用命令里指定的 ID 改变执行身份。TD 发起的 collector 会话执行 add/update/complete/ignore/reopen 时，必须显式提供匹配的 `--collector`；漏传返回 `TODO_COLLECTOR_REQUIRED`，指定别的 collector 或操作其他归属的 todo-id 返回 HTTP 403 / `TODO_OWNERSHIP_MISMATCH`，错误正文包含 `ownership mismatch`。归属检查先于 revision 检查，被拒条目的数据和版本不变。
+
+Collector 的 list/sources/summary 由服务端收窄到自己的命名空间（包括 todos、collectors、runs 和计数），传入其他 collector 的查询会被拒绝。`GET /?collectorId=<id>` 支持人工按稳定 ID 筛选。跨来源的批量交接记录不出现在单来源快照中。收集 Agent 只能报告本 collector 的收集 run，不能用 claim、handoff、收集配置编辑或其他操作绕过门禁。namespace 绑定在该稳定会话生命周期内保留，后续交接不会把 collector 自动提升为管理员；不同 collector 不能复用同一个已绑定收集会话，应使用独立会话。
+
+新版人工 CLI 在非 collector 会话内仍可操作清单；界面仍是用户管理入口，更新时携带条目 collectorId 做归属校验。旧 CLI / 旧本机 token 调用缺少执行上下文时，读取保留兼容，写入返回 `TODO_CALLER_CONTEXT_REQUIRED` 并要求升级，避免自动收集静默落入默认来源。收到无法解析的 Termdock 会话上下文时拒绝执行，不回退为人工身份。
+
+这是 TD 登记收集会话的服务端权限边界。本机系统用户及其管理 token 仍拥有用户管理权限；它不构成同一系统用户下可任意读取状态文件、伪造执行环境或直接改写数据的恶意进程沙箱。
+
+add/update（包括完成、忽略、重开）保留原有 `{todo}` 响应，并增加顶层 `collectorId`、`todoId`、`revision` 供审计。UI 始终显示来源标签，按来源筛选优先使用 collector ID；同名方向仍可分别筛选，改名后标签跟随显示。
+
 ## HTTP 接口
 
 统一前缀 `/api/terminal/operations/todos`。继承现有终端 API 的认证、CSRF、服务授权和加密传输规则；浏览器通过页面加密 fetch 使用。本机 CLI 使用 loopback 与私有本机 token。没有匿名写入或业务 HTTP 降级。
 
 | 方法与路径 | 内容 |
 | --- | --- |
-| `GET /` | todos、collectors、runs、defaults |
+| `GET /` | todos、collectors、runs、defaults；可用 `?category=short` 等筛选 |
 | `GET /summary` | 未完成数量 |
-| `POST /` | title、description、source、sourceUrl、externalId、collectorId、idempotencyKey |
-| `POST /:id` | revision 与 title / description / status（open、completed、ignored） |
+| `POST /` | title、description、category、source、sourceUrl、externalId、collectorId、idempotencyKey |
+| `POST /:id` | revision、可选 collectorId 归属前置条件，与 title / description / category / sourceUrl / externalId / status（open、completed、ignored）；revision 冲突返回 409 和 currentRevision |
 | `POST /handoff` | todoIds、note、idempotencyKey；已有目标传 sessionId，新建传 config；返回同一批次的持久化交接记录 |
 | `POST /:id/run` | 兼容旧版独立执行：config 与 idempotencyKey |
 | `POST /defaults` | agentSlug、command、cwd、prompt |
@@ -91,6 +132,10 @@ td todo report <run-id> --status complete --file /path/to/result.txt
 启动与注入带稳定请求标识，记录先持久化再创建终端。网络断开后应使用原 key 重试，避免重复创建。清单批量交接为一条消息与一条发送记录，所有关联待办都能跳转到同一会话。首版不提供跨服务汇总、内置来源抓取或自动验收。
 
 ## 历次验证记录
+
+- 2026-10-27 所有权补充：168 项回归通过（含 Todo、真实 CLI 子进程、调用会话上下文、相邻 automation/notify CLI、传输/色板/层级守卫），覆盖 A/B 同 external-id、显式及伪装目标归属越权拒绝、漏传 collector、不泄露被拒条目的 revision、重命名、条件更新、独立计数、旧 CLI 拒写、替代写入入口及收集会话防串用。分类/来源筛选的真实浏览器 320/390/1280 宽度测试 3 项通过，前一轮收集计划浏览器 5 项继续适用。TypeScript、完整构建通过，隔离版已重新部署到 9834，健康状态、受管进程、前端资源字节一致性及正式 CLI 分类/来源只读查询通过；未在正式清单中写入测试事项。原有并行 WIP 经比对保留。
+
+- 2026-10-27 分类与更新：148 项 Todo/传输边界/配色/层级回归通过，包含实际 CLI 经本机凭据访问隔离 HTTP 服务的 add/list/update、旧 revision 冲突、重复 add 不覆盖、complete/reopen；320、390、1280 宽度的分类编辑/分组浏览器测试 3 项及收集时间浏览器回归 5 项通过。TypeScript 与完整构建通过，已部署到 9834，health、受管进程、前端资源内容与构建产物一致性及正式 CLI 只读分类筛选通过。浏览器使用隔离数据和 API 替身；尚未实测真实文档服务来源抓取、iOS/macOS 客户端。
 
 - 首轮修复部署使用隔离源码副本，完整生产构建与 64 项回归通过。副本以本轮修复开始时的可构建快照为基础，加入最新 Todo 改动；没有改写其他并行源码。最终构建当时，另一组并行中的共享资源改动触发 `src/server/federation/requestContext.ts` → `src/shared/shareResources.ts` 的 TS6059/rootDir 错误，因此没有把这组未完成改动纳入部署。回归覆盖默认清单保留执行中及已报告事项、记住配置一键处理、新增并处理、收集方向保存并运行、目录快捷选择、跨刷新恢复选择、慢加载保留草稿、不同项目批量处理及重试、切换服务后的迟到响应，以及侧栏、加密边界、配色和层级守卫。
 - 在隔离服务中，从实际界面配置真实 Codex：保存并收集 → CLI 写入待办 → 点击处理 → 新建真实 tmux/PTY → 打开关联终端并返回 → 收到 `TD_TODO_EXEC_OK` 结果 → 用户标记完成并在已完成中找到。测试使用当前机器已有的 Codex 登录和权限配置，没有改动正式服务的用户待办。

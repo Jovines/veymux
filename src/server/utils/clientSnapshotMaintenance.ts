@@ -17,7 +17,7 @@ async function realDirectory(directory: string): Promise<boolean> {
 
 async function snapshot(directory: string): Promise<Snapshot | null> {
   const key = path.basename(directory);
-  if (!KEY.test(key) || !await realDirectory(directory)) return null;
+  if (!await realDirectory(directory)) return null;
   try {
     const names = await fs.readdir(directory);
     if (names.length !== 2 || !names.includes('dist') || !names.includes('snapshot-manifest.json')) return null;
@@ -97,25 +97,43 @@ async function leasedKeys(stateDirectory: string, reapDead: boolean): Promise<Se
 
 /** Protect every live server's pinned client, including other local ports. */
 export function leaseClientSnapshot(clientDirectory: string, stateDirectory: string): () => void {
-  const root = path.join(stateDirectory, 'client-snapshots'), directory = path.resolve(clientDirectory, '..', '..');
-  if (path.dirname(directory) !== path.resolve(root) || !KEY.test(path.basename(directory))) return () => {};
-  const leases = path.join(stateDirectory, 'client-snapshot-leases');
   try {
+    // Normalize the trusted state parent (HOME may be a link), then keep
+    // rejecting links inside the managed snapshot and lease directories.
+    const state = syncFs.realpathSync(stateDirectory);
+    const root = path.join(state, 'client-snapshots');
+    const directory = path.resolve(syncFs.realpathSync(clientDirectory), '..', '..');
+    if (path.dirname(directory) !== root || !KEY.test(path.basename(directory))) return () => {};
+    const leases = path.join(state, 'client-snapshot-leases');
     syncFs.mkdirSync(leases, { recursive: true, mode: 0o700 });
-    if (syncFs.realpathSync(leases) !== path.resolve(leases)) return () => {};
+    if (!syncFs.lstatSync(leases).isDirectory() || syncFs.realpathSync(leases) !== leases
+      || !syncFs.lstatSync(root).isDirectory() || syncFs.realpathSync(root) !== root) throw new Error('Snapshot lease path validation failed');
     const file = path.join(leases, `${process.pid}-${crypto.randomBytes(8).toString('hex')}.json`);
     syncFs.writeFileSync(file, JSON.stringify({ kind: 'termdock-client-snapshot-lease', version: 1, pid: process.pid, snapshotKey: path.basename(directory) }), { mode: 0o600, flag: 'wx' });
     const remove = () => { try { syncFs.unlinkSync(file); } catch { /* already removed */ } };
     process.once('exit', remove);
     return () => { process.off('exit', remove); remove(); };
-  } catch { return () => {}; }
+  } catch (error) {
+    console.warn('[client-snapshots] lease validation failed:', error instanceof Error ? error.message : String(error));
+    return () => {};
+  }
 }
 
 export async function pruneClientSnapshots(options: {
   stateDirectory: string; clientDirectory: string; dryRun?: boolean; now?: number; graceMs?: number; keepNewest?: number;
 }): Promise<CacheCleanupEntry[]> {
-  const root = path.join(options.stateDirectory, 'client-snapshots');
-  if (!await realDirectory(root)) return [];
+  let state: string;
+  try { state = await fs.realpath(options.stateDirectory); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    throw new Error('Snapshot state path validation failed', { cause: error });
+  }
+  const root = path.join(state, 'client-snapshots');
+  try {
+    if (!(await fs.lstat(root)).isDirectory() || await fs.realpath(root) !== root) {
+      return [{ path: root, action: 'retained', reason: 'snapshot-root-path-validation-failed', bytes: 0 }];
+    }
+  } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []; throw error; }
   const snapshots: Snapshot[] = [], result: CacheCleanupEntry[] = [];
   for (const entry of await fs.readdir(root, { withFileTypes: true })) {
     if (!entry.isDirectory() || !KEY.test(entry.name)) continue;
@@ -124,7 +142,8 @@ export async function pruneClientSnapshots(options: {
     else result.push({ path: directory, action: 'retained', reason: 'unrecognized-or-modified-snapshot', bytes: 0 });
   }
   snapshots.sort((a, b) => b.touchedAt - a.touchedAt);
-  const current = path.resolve(options.clientDirectory, '..', '..');
+  // Failing to identify the running client must not make it eligible for deletion.
+  const current = path.resolve(await fs.realpath(options.clientDirectory), '..', '..');
   const newest = new Set(snapshots.slice(0, options.keepNewest ?? 3).map(item => item.key));
   for (const item of snapshots) {
     if (item.directory === current || newest.has(item.key) || (options.now ?? Date.now()) - item.touchedAt < (options.graceMs ?? 7 * DAY)) continue;
@@ -132,7 +151,7 @@ export async function pruneClientSnapshots(options: {
       // Validate the full original build before deleting any legacy directory.
       const original = await hashGeneratedClient(item.client);
       const fresh = await snapshot(item.directory);
-      const protectedKeys = await leasedKeys(options.stateDirectory, !options.dryRun);
+      const protectedKeys = await leasedKeys(state, !options.dryRun);
       if (!fresh || fresh.touchedAt !== item.touchedAt || fresh.hash !== item.hash || original.hash !== item.hash
         || !await original.unchanged() || protectedKeys.has(item.key)) {
         result.push({ path: item.directory, action: 'retained', reason: 'modified-in-use-or-unverified-snapshot', bytes: 0 }); continue;

@@ -1,9 +1,11 @@
+import { isTodoCategory } from './types.js';
 import { Router, type Request, type Response } from 'express';
 import { collectionSessionPolicy, processingPolicy, launchConfig, TodoError, TodoStore } from './store.js';
 import { CollectionSessionLifecycle, type CollectionSessionRuntime } from './sessionLifecycle.js';
-import type { TodoHandoffInput, TodoLaunchConfig, TodoRun } from './types.js';
+import type { TodoCallerContext, TodoHandoffInput, TodoItem, TodoLaunchConfig, TodoRun } from './types.js';
 
 export interface TodoRuntime {
+  callerSession?(context: TodoCallerContext): string | null;
   collectionSessions?: CollectionSessionRuntime;
   validate(config: TodoLaunchConfig, req?: Request): Promise<TodoLaunchConfig>;
   launch(run: TodoRun, prompt: string, onSession: (id: string) => void, req?: Request): Promise<void>;
@@ -20,7 +22,7 @@ export function handoffPrompt(store: TodoStore, run: TodoRun): string {
 function shellQuote(value: string): string { return "'" + value.replace(/'/g, "'\"'\"'") + "'"; }
 export function todoPrompt(store: TodoStore, run: TodoRun): string {
   const report = `完成或受阻时，请将结果写入一个 UTF-8 文件，并调用 td todo report ${run.id} --status complete --file <文件路径>；受阻时将 complete 换为 blocked，失败时换为 failed。报告只记录本次结果，由用户决定待办是否完成。`;
-  if (run.kind === 'collect') return `${run.config.prompt}\n\n请将收集到的每条可执行待办通过本机 CLI 写入 Termdock，避免只输出列表。使用：\ntd todo add --title <标题> --description <描述> --source ${shellQuote(run.name)} --collector ${run.collectorId} --external-id <在此方向中稳定且唯一的标识>\n请附带必要上下文和可选的 --url https://... 。先用 td todo list 查看已有待办，避免重复。只收集待办，本轮不执行这些待办。\n${report}`;
+  if (run.kind === 'collect') return `${run.config.prompt}\n\n请将收集到的每条可执行待办通过本机 CLI 写入 Termdock，避免只输出列表。使用：\ntd todo add --title <标题> --description <描述> --source ${shellQuote(run.name)} --collector ${run.collectorId} --external-id <在此方向中稳定且唯一的标识>\n请附带必要上下文和可选的 --url https://... ，用 --category 分类，取值 short、long 或 delegated（短期、长期、我分配出去待跟进），无法确定时留为未分类。先用 td todo list --collector ${run.collectorId} 查看已有待办。相同 external-id 再次 add 只去重，不覆盖。已有事项有新进展时用 td todo update <todo-id> --collector ${run.collectorId} --revision <已读取的 revision> 更新描述或分类；冲突时重新读取并核对，勿盲目覆盖。只收集待办，本轮不执行这些待办。\n${report}`;
   const todo = store.get(run.todoId!);
   return `${run.config.prompt || '请处理下面这条待办，完成后说明结果和验证情况。'}\n\n待办：${todo.title}\n${todo.description}\n来源：${todo.source}\n${todo.sourceUrl ? `来源链接：${todo.sourceUrl}\n` : ''}\n待办 ID：${todo.id}\n执行记录 ID：${run.id}\n${report}`;
 }
@@ -93,12 +95,70 @@ export class TodoRunner {
 }
 export function todoRoutes(store: TodoStore, runner: TodoRunner, runtime: TodoRuntime): Router {
   const router = Router();
-  const route = (fn: (req: Request, res: Response) => unknown | Promise<unknown>) => async (req: Request, res: Response) => {
-    try { await fn(req, res); } catch (error) { res.status(error instanceof TodoError ? error.status : 400).json({ error: error instanceof Error ? error.message : String(error) }); }
+  const fail = (res: Response, error: unknown) => res.status(error instanceof TodoError ? error.status : 400).json({ error: error instanceof Error ? error.message : String(error),
+    ...(error instanceof TodoError && error.currentRevision !== undefined ? { currentRevision: error.currentRevision } : {}),
+    ...(error instanceof TodoError && error.code ? { code: error.code } : {}) });
+  // The OS owner remains administrator. Collector CLIs carry execution-location
+  // hints; scope comes from the server's durable run/session association, never
+  // from a requested collector ID. Older CLIs cannot silently create unowned work.
+  router.use((req, res, next) => {
+    try {
+      const raw = req.header('X-Termdock-Todo-Context');
+      if (!raw && req.header('X-Termdock-Local-Token') && req.method === 'POST') throw new TodoError('请升级 CLI：待办写入需要运行会话上下文', 403, undefined, 'TODO_CALLER_CONTEXT_REQUIRED');
+      if (raw) {
+        if (raw.length > 4096) throw new TodoError('调用会话上下文无效');
+        const context = JSON.parse(decodeURIComponent(raw));
+        if (!context || typeof context !== 'object' || Array.isArray(context) || Object.keys(context).some(key => !['backendSessionId', 'tmuxSessionName'].includes(key))
+          || Object.values(context).some(value => value !== null && (typeof value !== 'string' || !value || value.length > 200 || /[\r\n\0]/.test(value)))) throw new TodoError('调用会话上下文无效');
+        if (context.backendSessionId || context.tmuxSessionName) {
+          const id = runtime.callerSession?.(context);
+          if (!id) throw new TodoError('无法确认调用会话', 403);
+          res.locals.collectorId = store.collectorForSession(id);
+        }
+      }
+      const owner = res.locals.collectorId as string | undefined;
+      if (owner && req.method === 'POST') {
+        if (/^\/runs\/[^/]+\/report\/?$/.test(req.path)) {
+          const run = store.run(decodeURIComponent(req.path.split('/')[2]));
+          if (run.kind !== 'collect' || run.collectorId !== owner) throw new TodoError('ownership mismatch: 收集记录不属于此 collector', 403, undefined, 'TODO_OWNERSHIP_MISMATCH');
+        } else {
+          if ((!['/', ''].includes(req.path) && !/^\/[^/]+\/?$/.test(req.path)) || ['claim', 'handoff', 'defaults', 'collectors'].includes(req.path.split('/')[1])) throw new TodoError('collector 仅能收集和维护自己的待办', 403);
+          if (!req.body?.collectorId) throw new TodoError('collector 写入必须显式指定 --collector', 403, undefined, 'TODO_COLLECTOR_REQUIRED');
+          if (req.body.collectorId !== owner) throw new TodoError('ownership mismatch: 不能操作其他 collector', 403, undefined, 'TODO_OWNERSHIP_MISMATCH');
+        }
+      }
+      next();
+    } catch (error) { fail(res, error); }
+  });
+  const scopedSnapshot = (req: Request, res: Response) => {
+    const snapshot = store.snapshot(), requested = req.query.collectorId;
+    if (requested !== undefined && (typeof requested !== 'string' || !requested || requested.length > 100)) throw new TodoError('collectorId 无效');
+    const owner = res.locals.collectorId as string | undefined;
+    if (owner && requested && requested !== owner) throw new TodoError('ownership mismatch: 不能查询其他 collector', 403, undefined, 'TODO_OWNERSHIP_MISMATCH');
+    const collectorId = owner || requested;
+    if (collectorId) {
+      snapshot.todos = snapshot.todos.filter(todo => todo.collectorId === collectorId);
+      snapshot.collectors = snapshot.collectors.filter(collector => collector.id === collectorId);
+      const ids = new Set(snapshot.todos.map(todo => todo.id));
+      snapshot.runs = snapshot.runs.filter(run => run.collectorId === collectorId || run.todoId && ids.has(run.todoId) && (!run.handoff || run.handoff.todoIds.every(id => ids.has(id))));
+      snapshot.defaults = { agentSlug: '', command: '', cwd: '', prompt: '' };
+    }
+    return snapshot;
   };
-  router.get('/summary', route((_req, res) => res.json({ count: store.openCount() })));
-  router.get('/', route((_req, res) => res.json(store.snapshot())));
-  router.post('/', route((req, res) => { const todo = store.create(req.body ?? {}); res.json({ todo }); void runner.dispatchAutomatic(); }));
+  const mutation = (todo: TodoItem) => ({ todo, collectorId: todo.collectorId, todoId: todo.id, revision: todo.revision });
+  const route = (fn: (req: Request, res: Response) => unknown | Promise<unknown>) => async (req: Request, res: Response) => {
+    try { await fn(req, res); } catch (error) { fail(res, error); }
+  };
+  router.get('/summary', route((req, res) => res.json({ count: scopedSnapshot(req, res).todos.filter(todo => todo.status === 'open').length })));
+  router.get('/', route((req, res) => {
+    const snapshot = scopedSnapshot(req, res), category = req.query.category;
+    if (category !== undefined) {
+      if (!isTodoCategory(category)) throw new TodoError('分类须为 short、long、delegated 或 uncategorized');
+      snapshot.todos = snapshot.todos.filter(todo => (todo.category ?? 'uncategorized') === category);
+    }
+    res.json(snapshot);
+  }));
+  router.post('/', route((req, res) => { const todo = store.create(req.body ?? {}); res.json(mutation(todo)); void runner.dispatchAutomatic(); }));
   router.post('/claim', route(async (req, res) => {
     const input = req.body ?? {};
     if (!['source', 'collectorId', 'todoId'].some(key => typeof input[key] === 'string' && input[key].trim())) throw new TodoError('请先向用户确认来源，再指定 --source、--collector 或 --todo');
@@ -127,7 +187,7 @@ export function todoRoutes(store: TodoStore, runner: TodoRunner, runtime: TodoRu
   router.post('/collectors/:id/remove', route((req, res) => { store.removeCollector(req.params.id, req.body?.revision); res.json({ ok: true }); }));
   router.post('/collectors/:id/run', route(async (req, res) => res.json({ run: await runner.start('collect', req.params.id, undefined, req.body?.idempotencyKey, req) })));
   router.post('/runs/:id/report', route((req, res) => res.json({ run: store.report(req.params.id, req.body?.status, req.body?.content) })));
-  router.post('/:id', route((req, res) => res.json({ todo: store.update(req.params.id, req.body ?? {}) })));
+  router.post('/:id', route((req, res) => res.json(mutation(store.update(req.params.id, req.body ?? {})))));
   router.post('/:id/run', route(async (req, res) => res.json({ run: await runner.start('execute', req.params.id, req.body?.config, req.body?.idempotencyKey, req) })));
   return router;
 }

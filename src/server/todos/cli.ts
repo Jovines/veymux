@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { isTodoCategory } from './types.js';
 import { normalizeDailyTimes } from '../shared/dailySchedule.js';
 import { canClaimTodo } from './claimEligibility.js';
 import path from 'node:path';
@@ -6,15 +7,18 @@ import { randomUUID } from 'node:crypto';
 import type { AutomationSchedule } from '../agent/automationStore.js';
 
 export const TODO_HELP = `td todo — persistent todos on the local Termdock service
-  list [--source <name> | --collector <id>]
+  list [--source <name> | --collector <id>] [--category short|long|delegated|uncategorized]
   sources (show source names/IDs and available counts)
   claim (--source <name> | --collector <id> | --todo <id>) [--session <id>] [--lease 30]
   renew|release <todo-id> --claim <claim-id> [--lease 30]
   add --title <title> [--description <text> | --file <path> | --stdin]
     [--source <direction>] [--external-id <stable-id>] [--url <https-url>]
-    [--collector <collector-id>] [--idempotency-key <key>]
+    [--collector <collector-id>] [--category short|long|delegated|uncategorized] [--idempotency-key <key>]
+  update <todo-id> [--title <title>] [--description <text> | --file <path> | --stdin]
+    [--category short|long|delegated|uncategorized] [--url <https-url>] [--external-id <stable-id>]
+    [--collector <id>] [--revision <n>]
   report <run-id> --status complete|blocked|failed (--content <text> | --file <path> | --stdin)
-  complete|reopen|ignore <todo-id>
+  complete|reopen|ignore <todo-id> [--collector <id>] [--revision <n>]
   agents (list available Agent slugs and launch commands)
   collector list
   collector create --name <name> --agent <slug> [--command <launch-command>]
@@ -54,23 +58,31 @@ timezone (e.g. --at 09:00,14:00,20:00); weekdays: 0=Sunday through 6=Saturday (d
 while enabled and the service runs, even with the browser closed. Creation saves configuration;
 it does not immediately collect. Follow the user's requested frequency; if unspecified, save as manual.
 Example: td todo collector create --name '项目巡检' --agent codex --every 1440 --file collect.txt
-External IDs deduplicate within a source. Reports attach to the exact execution run;
+Collector execution is scoped by the server to its recorded session and stable collector ID.
+Collector mutations require --collector matching that namespace; ownership mismatches are rejected.
+Legacy CLIs without caller context must upgrade before writing; current manual CLI commands remain supported.
+External IDs deduplicate within a source; repeated add never overwrites existing content.
+Use update to edit an existing ID. Supply the revision observed during collection to reject stale
+edits (409 includes currentRevision); without --revision, update reads the latest revision before writing.
+An external ID change must remain unique within its collector/source. Empty --description=, --url=
+or --external-id= clears that field; --category uncategorized clears the classification.
+Reports attach to the exact execution run;
 only complete marks a todo completed. An Agent report never accepts a todo for the user.
 Use the running local service (same OS user); no unauthenticated HTTP fallback.`;
-export interface TodoCommand { action: 'help' | 'list' | 'add' | 'report' | 'complete' | 'reopen' | 'ignore' | 'agents' | 'collector' | 'sources' | 'claim' | 'renew' | 'release'; id?: string; collectorAction?: 'list' | 'create' | 'save' | 'schema' | 'run' | 'remove'; schedule?: AutomationSchedule; options: Record<string, string | boolean> }
+export interface TodoCommand { action: 'help' | 'list' | 'add' | 'update' | 'report' | 'complete' | 'reopen' | 'ignore' | 'agents' | 'collector' | 'sources' | 'claim' | 'renew' | 'release'; id?: string; collectorAction?: 'list' | 'create' | 'save' | 'schema' | 'run' | 'remove'; schedule?: AutomationSchedule; options: Record<string, string | boolean> }
 export function parseTodoCommand(argv: string[]): TodoCommand {
   const positional: string[] = [], options: TodoCommand['options'] = {};
-  const values = ['title', 'description', 'file', 'source', 'external-id', 'url', 'collector', 'idempotency-key', 'status', 'content', 'name', 'agent', 'command', 'cwd', 'prompt', 'every', 'at', 'weekdays', 'todo', 'session', 'claim', 'lease'];
+  const values = ['title', 'description', 'file', 'source', 'external-id', 'url', 'collector', 'idempotency-key', 'status', 'content', 'name', 'agent', 'command', 'cwd', 'prompt', 'every', 'at', 'weekdays', 'todo', 'session', 'claim', 'lease', 'category', 'revision'];
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]; if (!arg.startsWith('--')) { positional.push(arg); continue; }
     const [key, ...inline] = arg.slice(2).split('=');
     if (Object.hasOwn(options, key)) throw new Error(`Duplicate option --${key}`);
     if (['help', 'json', 'stdin', 'disabled'].includes(key)) { if (inline.length) throw new Error(`--${key} takes no value`); options[key] = true; }
-    else if (values.includes(key)) { const value = inline.length ? inline.join('=') : argv[++i]; if (!value || (!inline.length && value.startsWith('--'))) throw new Error(`--${key} requires a value`); options[key] = value; }
+    else if (values.includes(key)) { const value = inline.length ? inline.join('=') : argv[++i]; if (value === undefined || (!value && !['description', 'url', 'external-id'].includes(key)) || (!inline.length && value.startsWith('--'))) throw new Error(`--${key} requires a value`); options[key] = value; }
     else throw new Error(`Unknown option --${key}`);
   }
   const action = (options.help ? 'help' : positional.shift() ?? 'help') as TodoCommand['action'];
-  if (!['help', 'list', 'add', 'report', 'complete', 'reopen', 'ignore', 'agents', 'collector', 'sources', 'claim', 'renew', 'release'].includes(action)) throw new Error('See td todo --help');
+  if (!['help', 'list', 'add', 'update', 'report', 'complete', 'reopen', 'ignore', 'agents', 'collector', 'sources', 'claim', 'renew', 'release'].includes(action)) throw new Error('See td todo --help');
   if (action === 'help') return { action, options };
   if (action === 'collector') {
     const collectorAction = positional.shift();
@@ -97,15 +109,18 @@ export function parseTodoCommand(argv: string[]): TodoCommand {
     }
     return command;
   }
-  const allowed: Record<string, string[]> = { list: ['source', 'collector'], sources: [], claim: ['source', 'collector', 'todo', 'session', 'lease', 'idempotency-key'], renew: ['claim', 'lease'], release: ['claim'], agents: [], add: ['title', 'description', 'file', 'stdin', 'source', 'external-id', 'url', 'collector', 'idempotency-key'], report: ['status', 'content', 'file', 'stdin'], complete: [], reopen: [], ignore: [] };
+  const allowed: Record<string, string[]> = { list: ['source', 'collector', 'category'], sources: [], claim: ['source', 'collector', 'todo', 'session', 'lease', 'idempotency-key'], renew: ['claim', 'lease'], release: ['claim'], agents: [], add: ['title', 'description', 'file', 'stdin', 'source', 'external-id', 'url', 'collector', 'idempotency-key', 'category'], update: ['collector', 'title', 'description', 'file', 'stdin', 'category', 'url', 'external-id', 'revision'], report: ['status', 'content', 'file', 'stdin'], complete: ['collector', 'revision'], reopen: ['collector', 'revision'], ignore: ['collector', 'revision'] };
   for (const flag of Object.keys(options)) if (flag !== 'json' && !allowed[action].includes(flag)) throw new Error(`--${flag} is not supported by ${action}`);
   const id = !['list', 'add', 'agents', 'sources', 'claim'].includes(action) ? positional.shift() : undefined;
   if ((!['list', 'add', 'agents', 'sources', 'claim'].includes(action) && !id) || positional.length) throw new Error('Invalid arguments; see td todo --help');
   if (action === 'claim' && !['source', 'collector', 'todo'].some(k => String(options[k] ?? '').trim())) throw new Error('Confirm the source with the user, then specify --source, --collector or --todo');
   if (['renew', 'release'].includes(action) && !options.claim) throw new Error('--claim is required');
   if (options.lease && (!Number.isInteger(Number(options.lease)) || Number(options.lease) < 1 || Number(options.lease) > 1440)) throw new Error('--lease must be whole minutes from 1 to 1440');
+  if (options.category !== undefined && !isTodoCategory(options.category)) throw new Error('--category must be short, long, delegated or uncategorized');
+  if (options.revision !== undefined && (!/^[1-9]\d*$/.test(String(options.revision)) || !Number.isSafeInteger(Number(options.revision)))) throw new Error('--revision must be a positive integer');
+  if (action === 'update' && !['title', 'description', 'file', 'stdin', 'category', 'url', 'external-id'].some(k => Object.hasOwn(options, k))) throw new Error('update requires at least one field');
   if (action === 'add' && !options.title) throw new Error('--title is required');
-  if (['description', 'content', 'file', 'stdin'].filter(k => options[k]).length > 1) throw new Error('Choose one content input');
+  if (['description', 'content', 'file', 'stdin'].filter(k => Object.hasOwn(options, k)).length > 1) throw new Error('Choose one content input');
   if (action === 'report' && (!['complete', 'blocked', 'failed'].includes(String(options.status)) || !['content', 'file', 'stdin'].some(k => options[k]))) throw new Error('report requires --status and content');
   return { action, id, options };
 }
@@ -121,7 +136,7 @@ export async function executeTodoCommand(command: TodoCommand, io: {
         enabled: true, schedule: null, session: { mode: 'reuse', targetSessionId: null, beforePrompt: '/clear', idleMinutes: 10 },
         processing: { mode: 'manual', sessionId: null, config: null, note: '' }, webhook: { enabled: false } }, null, 2)); return 0;
     }
-    const request = async (method: 'GET' | 'POST', suffix = '', body?: unknown) => { const response = await io.request(method, base + suffix, body); const data = JSON.parse(response.body); if (response.statusCode < 200 || response.statusCode >= 300) throw new Error(data.error || 'Todo request failed'); return data; };
+    const request = async (method: 'GET' | 'POST', suffix = '', body?: unknown) => { const response = await io.request(method, base + suffix, body); const data = JSON.parse(response.body); if (response.statusCode < 200 || response.statusCode >= 300) throw Object.assign(new Error(data.error || 'Todo request failed'), { currentRevision: data.currentRevision, code: data.code }); return data; };
     const content = o.file ? fs.readFileSync(String(o.file), 'utf8') : o.stdin ? await io.stdin() : String(o.content ?? o.description ?? '');
     let result;
     if (command.action === 'agents') {
@@ -182,12 +197,23 @@ export async function executeTodoCommand(command: TodoCommand, io: {
       if (!todo) throw new Error('Todo not found');
       result = await request('POST', `/${encodeURIComponent(command.id!)}/release`, { claimId: o.claim, revision: todo.revision });
     } else if (command.action === 'list') {
-      result = await request('GET');
-      result.todos = result.todos.filter((t: { source: string; collectorId: string }) => (!o.source || t.source === o.source) && (!o.collector || t.collectorId === o.collector));
+      result = await request('GET', o.collector ? `?collectorId=${encodeURIComponent(String(o.collector))}` : '');
+      result.todos = result.todos.filter((t: { source: string; collectorId: string; category?: string }) => (!o.source || t.source === o.source) && (!o.collector || t.collectorId === o.collector) && (!o.category || (t.category ?? 'uncategorized') === o.category));
     }
-    else if (command.action === 'add') result = await request('POST', '', { title: o.title, description: content, source: o.source || '外部注入', sourceUrl: o.url, externalId: o['external-id'], collectorId: o.collector, idempotencyKey: o['idempotency-key'] || randomUUID() });
+    else if (command.action === 'add') result = await request('POST', '', { title: o.title, description: content, source: o.source || (o.collector ? undefined : '外部注入'), sourceUrl: o.url, category: o.category, externalId: o['external-id'], collectorId: o.collector, idempotencyKey: o['idempotency-key'] || randomUUID() });
+    else if (command.action === 'update') {
+      const revision = o.revision !== undefined ? Number(o.revision) : (await request('GET')).todos.find((t: { id: string }) => t.id === command.id)?.revision;
+      if (revision === undefined) throw new Error('Todo not found');
+      const fields = Object.fromEntries(['collector', 'title', 'category', 'url', 'external-id'].filter(k => Object.hasOwn(o, k)).map(k => [k === 'collector' ? 'collectorId' : k === 'url' ? 'sourceUrl' : k === 'external-id' ? 'externalId' : k, o[k]]));
+      if (['description', 'file', 'stdin'].some(k => Object.hasOwn(o, k))) fields.description = content;
+      result = await request('POST', `/${encodeURIComponent(command.id!)}`, { ...fields, revision });
+    }
     else if (command.action === 'report') result = await request('POST', `/runs/${encodeURIComponent(command.id!)}/report`, { status: o.status, content });
-    else { const snapshot = await request('GET'); const todo = snapshot.todos.find((t: { id: string }) => t.id === command.id); if (!todo) throw new Error('Todo not found'); result = await request('POST', `/${encodeURIComponent(command.id!)}`, { revision: todo.revision, status: command.action === 'complete' ? 'completed' : command.action === 'ignore' ? 'ignored' : 'open' }); }
+    else {
+      const revision = o.revision !== undefined ? Number(o.revision) : (await request('GET')).todos.find((t: { id: string }) => t.id === command.id)?.revision;
+      if (revision === undefined) throw new Error('Todo not found');
+      result = await request('POST', `/${encodeURIComponent(command.id!)}`, { revision, ...(o.collector ? { collectorId: o.collector } : {}), status: command.action === 'complete' ? 'completed' : command.action === 'ignore' ? 'ignored' : 'open' });
+    }
     io.write(JSON.stringify(result)); return 0;
-  } catch (error) { io.write(JSON.stringify({ ok: false, error: error instanceof Error ? error.message : String(error) })); return 1; }
+  } catch (error) { io.write(JSON.stringify({ ok: false, error: error instanceof Error ? error.message : String(error), ...(error instanceof Error && 'currentRevision' in error && error.currentRevision !== undefined ? { currentRevision: error.currentRevision } : {}), ...(error instanceof Error && 'code' in error && error.code ? { code: error.code } : {}) })); return 1; }
 }

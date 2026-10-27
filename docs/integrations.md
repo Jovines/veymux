@@ -81,6 +81,10 @@ td integration consumers
 容量阈值跨越及启动告警写入 `[integration-storage]` 日志，不包含正文或凭据。
 诊断返回事件/索引字节、预算、每组用量、段数、被拒组，以及 consumer 的确认序号、
 积压、缺口与最后确认时间（旧记录为 null，不推测历史时间）。仅本机管理员可访问。
+`attention_required` / `warning_code` 标记保留缺口、积压且 24 小时没有 ACK 进展、
+以及无法判断旧 consumer ACK 年龄的情况。新 consumer 记录 `registered_at`；
+这些诊断不改变确认水位或保留承诺。临时 probe 的调用方应在完成并对账后显式 retire，
+服务不会依据名称猜测它是否属于临时消费者。
 
 长期闲置不等于可以删除 consumer；水位为 0 的测试 consumer 同样会保护历史。
 确认某 consumer 永久停用并完成对账后，管理员才可显式结束它的保留保护：
@@ -93,6 +97,26 @@ td integration consumer retire --principal <原principal> --consumer <原consume
 该操作保留原水位及退休记录，不生成 ACK；旧 consumer 名称此后拒绝订阅和 ACK。
 水位已变化则拒绝，重试相同参数/键回读原结果。重新接入须先对账，再明确选择新名称。
 不得为了腾空间自动退休慢消费者、推进水位或代收件人确认/重放消息。
+
+协作投递器只为有待投递消息的目标解析路由、挂载 runtime；历史组成员不会因服务重启
+或后台 tick 被整批挂载。tmux 丢失后的 Agent 整批自动恢复默认关闭，需要该行为时才
+显式设置 `TD_TMUX_AUTO_RECOVERY=1`；用户提交过的恢复队列仍按原意图续跑。
+恢复队列沿用并发、内存和 Agent 数量门禁，并增加以下启动时配置：
+
+| 配置 | 默认 | 含义 |
+| --- | --- | --- |
+| `TD_TMUX_RECOVERY_MAX_CLIENTS` | 96 | 当前 tmux client 数量加运行中恢复预留量及本次 3 个 client，不得超过此值 |
+| `TD_TMUX_RECOVERY_MAX_LOAD_PER_CPU` | 0.9 | 主机一分钟 load average 除以可用 CPU 数，达到阈值暂停恢复 |
+
+主机负载门禁不等同于 tmux 单线程 CPU 利用率测量。门禁失败保留恢复队列及暂停原因，
+后续复查资源；不会为了通过门禁主动终止现有终端。未聚焦终端的浏览器元数据采样至少
+间隔 10 秒，聚焦时立即刷新；没有订阅者时停止采样。layout、进程查询和 tmux PID
+失败采用有上限的指数退避，未知观测不返回旧缓存冒充成功。
+
+`failed` 不是 runtime 已退出的证据：身份不匹配、native UUID 尚未确认，以及冷重试
+依赖的原 shell 都可能仍然存在。当前仍须经原 `session close` / `session release`
+生命周期核验归属并回收，不能仅根据 failed 标记批量 kill 或清空 binding。自动回收
+失败承载及临时 probe 的显式生命周期协议仍需后续实现。
 
 维护部署按相应机器的维护授权进行：先构建、测试，在停写窗口记录旧文件 SHA、所有
 principal/consumer/source 键、序号、消息原 ID 与外部 inbox/outbox 状态，再停止该机旧

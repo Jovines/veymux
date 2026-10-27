@@ -567,15 +567,18 @@ export class IntegrationSessions {
   }
   private async refresh(id: string, allowBindingReconciliation = true,
     presence?: { record: IntegrationSession; present: boolean }): Promise<void> {
-    const record = structuredClone(this.doc.sessions.find(s => s.session_id === id)); if (!record) return;
-    const runtimePresent = () => presence && JSON.stringify(record) === JSON.stringify(presence.record)
+    const stored = this.doc.sessions.find(s => s.session_id === id); if (!stored) return;
+    const record = structuredClone(stored), signature = JSON.stringify(record);
+    // saveRecord replaces records, so reference equality detects concurrent writes.
+    const isCurrent = () => this.doc.sessions.find(s => s.session_id === id) === stored;
+    const runtimePresent = () => presence && signature === JSON.stringify(presence.record)
       ? Promise.resolve(presence.present) : this.adapter.runtimePresent?.(record);
     if (record.rename_pending) {
       if (this.lifecycle.active(id)) return;
       try { await this.lifecycle.run(id, async () => {
         if (!this.adapter.rename) return;
         await this.adapter.rename(record);
-        if (JSON.stringify(this.doc.sessions.find(s => s.session_id === id)) !== JSON.stringify(record)) return;
+        if (!isCurrent()) return;
         record.rename_pending = false; this.saveRecord(record);
       }); } catch { /* Keep the persisted intent for a later get/restart. */ }
       return;
@@ -590,14 +593,14 @@ export class IntegrationSessions {
         if (!this.adapter.runtimePresent || await runtimePresent()) integrationError('OPERATION_OUTCOME_UNCONFIRMED', 'Runtime exists for a closed or closing session', 409);
         const next = { ...record, state: 'closed' as const, runtime_present: false, terminal_binding: null, close_intent: undefined,
           operation_uncertain: false, error_code: null, startup_input: undefined };
-        if (JSON.stringify(this.doc.sessions.find(s => s.session_id === id)) !== JSON.stringify(record)) return;
-        if (JSON.stringify(next) !== JSON.stringify(record)) this.saveRecord({ ...next, updated_at: Date.now() });
+        if (!isCurrent()) return;
+        if (JSON.stringify(next) !== signature) this.saveRecord({ ...next, updated_at: Date.now() });
       } catch (error) {
-        if (JSON.stringify(this.doc.sessions.find(s => s.session_id === id)) !== JSON.stringify(record)) return;
+        if (!isCurrent()) return;
         // Keep closed terminal, and keep unresolved intent fenced. Never kill on refresh.
         const next = { ...record, runtime_present: null, operation_uncertain: true,
           error_code: typeof (error as { code?: unknown }).code === 'string' ? (error as { code: string }).code : 'OPERATION_OUTCOME_UNCONFIRMED' };
-        if (JSON.stringify(next) !== JSON.stringify(record)) this.saveRecord({ ...next, updated_at: Date.now() });
+        if (JSON.stringify(next) !== signature) this.saveRecord({ ...next, updated_at: Date.now() });
       }
       return;
     }
@@ -613,20 +616,19 @@ export class IntegrationSessions {
           // Absent runtime metadata has been reconciled without killing a live runtime.
         } else if (present) integrationError('OPERATION_OUTCOME_UNCONFIRMED', 'A runtime exists for a released descriptor', 409);
         const next = { ...record, state: 'released' as const, runtime_present: false, terminal_binding: null, startup_input: undefined, operation_uncertain: false, error_code: null };
-        if (JSON.stringify(this.doc.sessions.find(s => s.session_id === id)) !== JSON.stringify(record)) return;
-        if (JSON.stringify(next) !== JSON.stringify(record)) this.saveRecord({ ...next, updated_at: Date.now() });
+        if (!isCurrent()) return;
+        if (JSON.stringify(next) !== signature) this.saveRecord({ ...next, updated_at: Date.now() });
       } catch (error) {
-        if (JSON.stringify(this.doc.sessions.find(s => s.session_id === id)) !== JSON.stringify(record)) return;
+        if (!isCurrent()) return;
         const next = { ...record, state: 'failed' as const, runtime_present: null, operation_uncertain: true, error_code: typeof (error as { code?: unknown }).code === 'string' ? (error as { code: string }).code : 'OPERATION_OUTCOME_UNCONFIRMED' };
-        if (JSON.stringify(next) !== JSON.stringify(record)) this.saveRecord({ ...next, updated_at: Date.now() });
+        if (JSON.stringify(next) !== signature) this.saveRecord({ ...next, updated_at: Date.now() });
       }
       return;
     }
     let observed: Awaited<ReturnType<IntegrationSessionAdapter['inspect']>>;
     try { observed = await this.adapter.inspect(record); }
     catch (error) {
-      const current = this.doc.sessions.find(s => s.session_id === id);
-      if (JSON.stringify(current) !== JSON.stringify(record)) return;
+      if (!isCurrent()) return;
       if (this.lifecycle.active(id) || this.pending.has(id)) return;
       const code = (error as { code?: unknown }).code;
       const errorCode = typeof code === 'string' ? code : 'SESSION_OBSERVATION_FAILED';
@@ -634,8 +636,7 @@ export class IntegrationSessions {
         && ['ready', 'failed'].includes(record.state) && (record.runtime_present === true || record.state === 'failed')
         && (!record.error_code || record.error_code === 'SESSION_IDENTITY_MISMATCH')
         && record.agent_native_session_id && record.terminal_binding && !record.operation_uncertain
-        && !record.close_intent && !record.rename_pending && !record.cold_retry_pending
-        && !this.pending.has(id) && !this.lifecycle.active(id)) {
+        && !record.close_intent && !record.rename_pending && !record.cold_retry_pending) {
         if (await this.reconcileRecoveredBinding(record)) return;
       }
       if (record.state !== 'failed' || record.error_code !== errorCode) this.saveRecord({ ...record, state: 'failed', error_code: errorCode,
@@ -680,8 +681,8 @@ export class IntegrationSessions {
       else input.state = Date.now() >= input.deadline ? 'timed_out' : 'pending';
       next.startup_input = input;
     }
-    if (JSON.stringify(this.doc.sessions.find(s => s.session_id === id)) !== JSON.stringify(record)) return;
-    if (JSON.stringify(next) !== JSON.stringify(record)) { next.updated_at = Date.now(); this.saveRecord(next); }
+    if (!isCurrent()) return;
+    if (JSON.stringify(next) !== signature) { next.updated_at = Date.now(); this.saveRecord(next); }
   }
   private async reconcileRecoveredBinding(expected: IntegrationSession): Promise<boolean> {
     const id = expected.session_id;

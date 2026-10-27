@@ -4,6 +4,26 @@ export const CHAT_UI_VERSION = 2;
 export interface ChatUI { version: 1 | 2; code: string; streaming?: boolean; revision?: number }
 export interface ChatUIState { revision: number; values: Record<string, unknown> }
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
+/** Validate new chat replies without guessing a rendering mode or rewriting JSON. */
+export function chatReplyFormatError(content: string, metadata?: Record<string, unknown>): string | undefined {
+  const declared = record(metadata?.openui);
+  let body: unknown;
+  try { body = JSON.parse(content); }
+  catch { return declared ? '结构化回复必须是 JSON 对象，包含可独立阅读的 text 正文。' : undefined; }
+  if (declared) {
+    if (!record(body) || typeof body.text !== 'string' || !body.text.trim() || body.text.length > 32000) {
+      return '结构化回复的 text 必须是非空 Markdown 正文，最长 32000 字符。';
+    }
+    if (body.ui !== undefined && (typeof body.ui !== 'string' || body.ui.length > 64000)) {
+      return '结构化回复的 ui 必须是界面程序字符串，最长 64000 字符。';
+    }
+    return undefined;
+  }
+  if (record(body) && typeof body.text === 'string' && Object.keys(body).every(key => key === 'text' || key === 'ui')) {
+    return '回复包含 text/ui JSON 包装，但未声明结构化格式。普通回复请直接发送 Markdown（--file 原样读取）；交互界面请按 td collab ui --text 添加 --metadata。若要展示 JSON 原文，请放入代码块。';
+  }
+  return undefined;
+}
 export function chatPresentation(content: string, metadata?: Record<string, unknown>): { content: string; ui?: ChatUI } {
   if (!record(metadata?.openui)) return { content };
   try {

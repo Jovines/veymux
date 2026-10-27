@@ -32,7 +32,8 @@ export const COLLAB_HELP = `td collab — durable messages; no agent-specific ho
   task pause|resume|retry <任务id> --revision <当前版本>
   task create 支持 --managed --coordinator <成员id> --reviewers <成员id,成员id>；子任务用 --work-type read-only|code 分类，代码默认独立目录
   ui [--text] 查看普通对话的 OpenUI 组件规范与结构化回复格式。
-  正文支持 --file <文本文件> 或 --stdin；变更支持 --idempotency-key。
+  正文支持 --file <UTF-8 正文文件> 或 --stdin，均原样读取；普通回复不包 JSON。交互格式见 ui --text。
+  变更支持 --idempotency-key。
   report|plan|review 支持 --evidence <JSON> 保存证据。
   complete 提交结果；用户在工作台回答问题与验收。报告保留成员原文与时间。
   我想…

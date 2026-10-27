@@ -22,7 +22,7 @@ describe('TD-initiated Agent launch before terminal delivery', () => {
     check = { id: 'generation-one', agentSlug: 'fixture', nativeSessionId: null, deadline: Date.now() + 120_000 };
     observed = { agentSlug: null, nativeSessionId: null };
     write = vi.fn(async () => undefined);
-    worker = new CollaborationDeliveryWorker({ store, peers: () => [], isLocal: () => true, onError: () => {}, snapshotDelayMs: 0,
+    worker = new CollaborationDeliveryWorker({ store, isLocal: () => true, onError: () => {}, snapshotDelayMs: 0,
       resolve: async () => {
         const reason = agentLaunchBlockReason(check, observed);
         if (reason) return { state: 'recovering', reason };

@@ -17,6 +17,7 @@ import { readTodoPreferences, rememberTodoChoice, todoDirectoryChoices, uniqueDi
 import { CollectorEditor, IntegrationHelp, TodoDialog, TodoEditor, resolveTodoConfig, todoGhost as ghost, todoPrimary as primary, todoSecondary as secondary } from './TodoForms';
 import { TodoRunCard, todoRunLabel } from './TodoRunCard';
 import { TodoItemCard } from './TodoItemCard';
+import { TODO_CATEGORIES, todoCategoryLabels } from '../../todos/categories';
 import { TodoHandoff, rememberTodoRecipient } from './TodoHandoff';
 import { TodoMoreMenu, type TodoMenuItem } from './TodoMoreMenu';
 import { chooseTodoRecipient } from './TodoSessionDropTarget';
@@ -150,9 +151,13 @@ export default function TodoWorkspace({ onOpenSidebar, leftSidebarVisible, activ
   });
   const sessionNameFor = (run: TodoRun) => directory.find(session => session.sessionId === run.sessionId)?.displayName
     ?? getSessionPresentation({ name: run.handoff?.sessionName || '', agent: { displayName: run.config.agentSlug || '会话' } }).displayName;
+  const collectorNames = new Map(data?.collectors.map(collector => [collector.id, collector.name]));
+  for (const todo of data?.todos ?? []) if (todo.collectorId && !collectorNames.has(todo.collectorId)) collectorNames.set(todo.collectorId, todo.source);
+  const sourceName = (todo: TodoItem) => todo.collectorId ? collectorNames.get(todo.collectorId) ?? todo.source : todo.source;
   const visible = data?.todos.filter(todo => matchesTodo(data, todo, view.filter)
     && (!view.source || todo.source === view.source)
-    && `${todo.title} ${todo.description} ${todo.source}`.toLowerCase().includes(view.query.toLowerCase())) ?? [];
+    && (!view.collectorId || todo.collectorId === view.collectorId)
+    && `${todo.title} ${todo.description} ${todo.source} ${sourceName(todo)}`.toLowerCase().includes(view.query.toLowerCase())) ?? [];
   const canBatch = (todo: TodoItem) => {
     const run = data && latestTodoRun(data, todo.id);
     return todo.status === 'open' && run?.status !== 'launching';
@@ -176,7 +181,7 @@ export default function TodoWorkspace({ onOpenSidebar, leftSidebarVisible, activ
   const modalTitle = modal?.kind === 'edit' ? edit ? '编辑待办' : '新增待办' : modal?.kind === 'handoff'
     ? '交给会话' : modal?.kind === 'collector'
     ? collector ? '编辑收集方向' : '添加收集方向' : '外部接入';
-  const toolsVisible = view.toolsOpen || view.filter !== 'all' || !!view.query || !!view.source;
+  const toolsVisible = view.toolsOpen || view.filter !== 'all' || !!view.query || !!view.source || !!view.collectorId;
   const backToList = () => patch({ tab: 'todos', mobileDetail: false, selecting: false, checked: [] });
   const columns = view.filter === 'all' ? ['open', 'completed'] as const : [view.filter === 'completed' ? 'completed' : view.filter === 'ignored' ? 'ignored' : 'open'] as const;
   const shownColumns = view.selecting ? ['open'] : !wide && view.filter === 'all' ? [view.column ?? 'open'] : columns;
@@ -222,39 +227,52 @@ export default function TodoWorkspace({ onOpenSidebar, leftSidebarVisible, activ
       {!data.collectors.length ? <Empty title="让 Agent 帮你发现下一件事" text="添加一个收集方向，写下关注的内容和筛选要求。" /> : <div className={`grid items-start gap-4 ${wide ? 'grid-cols-2' : ''}`}>{data.collectors.map(item => <CollectorCard key={item.id} collector={item} runs={data.runs.filter(run => run.collectorId === item.id)} busy={busy} onRun={() => void act(() => collect([item]))} onEdit={() => show({ kind: 'collector', id: item.id })} onOpen={openSession} onRemove={() => void act(async () => { await removeTodoCollector(item); })} />)}</div>}
     </div> : <div className="flex min-h-0 flex-1 flex-col">
       {toolsVisible && <div aria-label="搜索和筛选" className="shrink-0 space-y-2 border-b border-border/30 px-4 py-3">
-        <div className="flex items-center gap-2"><div className="relative min-w-0 flex-1"><Search size={15} className="pointer-events-none absolute left-3 top-3.5 text-muted-foreground" /><input autoFocus={view.toolsOpen} aria-label="搜索待办" className="min-h-11 w-full min-w-0 rounded-lg bg-surface-2 py-2 pl-9 pr-3 text-base outline-none focus:ring-1 focus:ring-primary sm:text-sm" placeholder="搜索待办" value={view.query} onChange={event => patch({ query: event.target.value })} /></div><button type="button" className={ghost} aria-label="清除筛选" onClick={() => patch({ query: '', source: '', filter: 'all', toolsOpen: false, checked: [] })}><X size={17} /></button></div>
+        <div className="flex items-center gap-2"><div className="relative min-w-0 flex-1"><Search size={15} className="pointer-events-none absolute left-3 top-3.5 text-muted-foreground" /><input autoFocus={view.toolsOpen} aria-label="搜索待办" className="min-h-11 w-full min-w-0 rounded-lg bg-surface-2 py-2 pl-9 pr-3 text-base outline-none focus:ring-1 focus:ring-primary sm:text-sm" placeholder="搜索待办" value={view.query} onChange={event => patch({ query: event.target.value })} /></div><button type="button" className={ghost} aria-label="清除筛选" onClick={() => patch({ query: '', source: '', collectorId: '', filter: 'all', toolsOpen: false, checked: [] })}><X size={17} /></button></div>
         <div className="flex gap-2"><select aria-label="待办状态" className="min-h-11 min-w-0 flex-1 rounded-lg bg-surface-2 px-3 text-base sm:text-sm" value={view.filter} onChange={event => patch({ filter: event.target.value as typeof view.filter, checked: [] })}><option value="all">全部待办</option><option value="open">待完成</option><option value="completed">已完成</option><option value="ignored">已忽略</option></select>
-          <select aria-label="按来源筛选" className="min-h-11 min-w-0 flex-1 rounded-lg bg-surface-2 px-3 text-base sm:text-sm" value={view.source} onChange={event => patch({ source: event.target.value, checked: [] })}><option value="">全部来源</option>{[...new Set(data.todos.map(todo => todo.source))].map(source => <option key={source}>{source}</option>)}</select></div>
+          <select aria-label="按来源筛选" className="min-h-11 min-w-0 flex-1 rounded-lg bg-surface-2 px-3 text-base sm:text-sm" value={view.collectorId ? `collector:${view.collectorId}` : view.source ? `source:${view.source}` : ""} onChange={event => patch({ source: event.target.value.startsWith("source:") ? event.target.value.slice(7) : "", collectorId: event.target.value.startsWith("collector:") ? event.target.value.slice(10) : "", checked: [] })}><option value="">全部来源</option>{[...collectorNames].map(([id, name]) => <option key={id} value={`collector:${id}`}>{name}{[...collectorNames.values()].filter(value => value === name).length > 1 ? ` · ${id.slice(0, 8)}` : ""}</option>)}{[...new Set(data.todos.filter(todo => !todo.collectorId).map(todo => todo.source))].map(source => <option key={source} value={`source:${source}`}>{source}</option>)}</select></div>
       </div>}
       {!!directory.filter(session => session.collectionRunId).length && <details className="shrink-0 border-b border-border/20 px-5 text-sm text-muted-foreground"><summary className="min-h-11 cursor-pointer py-3">收集会话 · {directory.filter(session => session.collectionRunId).length}</summary><div className="max-h-48 space-y-1 overflow-y-auto pb-3">{directory.filter(session => session.collectionRunId).map(session => <button key={session.sessionId} type="button" className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left hover:bg-surface-2" onClick={() => { window.dispatchEvent(new CustomEvent('switch-terminal-session', { detail: session.sessionId })); useCollaborationNavigation.getState().terminal(); }}><span className="min-w-0 flex-1 truncate">{session.displayName}<span className="ml-2 text-xs">{session.displaySubtitle}</span></span><span className="shrink-0 text-xs text-primary">打开终端</span></button>)}</div></details>}
       {!!collectionPending && <button type="button" className="flex min-h-11 shrink-0 items-center justify-between gap-3 px-5 text-left text-xs text-muted-foreground hover:bg-surface" onClick={manageCollectors}><span>已发起 {collectionPending} 个收集任务</span><span className="text-primary">查看</span></button>}
       {!wide && view.filter === 'all' && !view.selecting && <div role="tablist" aria-label="待办分类" className="flex shrink-0 gap-1 border-b border-border/30 px-4 pt-1">
         {(['open', 'completed'] as const).map(column => <button key={column} type="button" role="tab" aria-selected={(view.column ?? 'open') === column} className={`min-h-12 flex-1 border-b-2 px-3 text-sm ${ (view.column ?? 'open') === column ? 'border-primary text-primary' : 'border-transparent text-muted-foreground'}`} onClick={() => patch({ column })}>{columnLabel(column)} <span className="ml-1 text-xs tabular-nums">{visible.filter(todo => todo.status === column).length}</span></button>)}
       </div>}
-      {!visible.length && (view.query || view.source) ? <Empty title="没有匹配的待办" text="换个关键词，或清除筛选。" /> : <div className={`grid min-h-0 flex-1 gap-4 px-4 pb-5 sm:px-5 ${shownColumns.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+      {!visible.length && (view.query || view.source || view.collectorId) ? <Empty title="没有匹配的待办" text="换个关键词，或清除筛选。" /> : <div className={`grid min-h-0 flex-1 gap-4 px-4 pb-5 sm:px-5 ${shownColumns.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
         {shownColumns.map(column => {
           const todos = visible.filter(todo => todo.status === column);
           return <section key={column} aria-label={`${columnLabel(column)}列表`} className="flex min-h-0 min-w-0 flex-col">
             {(wide || view.filter !== 'all' || view.selecting) && <h2 className="flex min-h-14 shrink-0 items-center gap-2 text-sm font-medium">{columnLabel(column)}<span className="text-xs tabular-nums text-muted-foreground">{todos.length}</span></h2>}
             <div className={`min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain pb-6 ${!wide && view.filter === 'all' && !view.selecting ? 'pt-4' : ''}`}>
-              {!todos.length ? <Empty title={column === 'completed' ? '还没有已完成的待办' : column === 'ignored' ? '没有已忽略的待办' : data.todos.length ? '待完成已清空' : '还没有待办'} text={column === 'completed' ? '完成的事项会放在这里。' : column === 'ignored' ? '忽略的事项会保留，可重新打开。' : '点 + 记下一件事，或让 Agent 帮你收集。'} /> : todos.map(todo => {
+              {!todos.length && <Empty title={column === 'completed' ? '还没有已完成的待办' : column === 'ignored' ? '没有已忽略的待办' : data.todos.length ? '待完成已清空' : '还没有待办'} text={column === 'completed' ? '完成的事项会放在这里。' : column === 'ignored' ? '忽略的事项会保留，可重新打开。' : '点 + 记下一件事，或让 Agent 帮你收集。'} />}
+              {TODO_CATEGORIES.map(category => {
+                const grouped = todos.filter(todo => (todo.category ?? 'uncategorized') === category);
+                return <section key={category} aria-label={`${todoCategoryLabels[category]}待办`} className="space-y-3">
+                  <h3 className="flex items-center gap-2 py-2 text-sm font-medium text-muted-foreground">{todoCategoryLabels[category]}<span className="text-xs tabular-nums">{grouped.length}</span></h3>
+                  {!grouped.length && <p className="pb-2 text-xs text-muted-foreground">暂无</p>}
+                  {grouped.map(todo => {
                 const runs = data.runs.filter(run => run.todoId === todo.id || run.handoff?.todoIds.includes(todo.id));
                 const run = runs.at(-1);
-                return <TodoItemCard key={todo.id} todo={todo} runs={runs} workspace={workspace} sessionName={run ? sessionNameFor(run) : undefined} busy={busy}
+                return <TodoItemCard key={todo.id} todo={todo} sourceName={sourceName(todo)} runs={runs} workspace={workspace} sessionName={run ? sessionNameFor(run) : undefined} busy={busy}
                   expanded={view.selectedId === todo.id} selecting={view.selecting} checked={view.checked.includes(todo.id)} canSelect={canBatch(todo)} handoff={modal?.kind === 'recipient' && modal.ids.includes(todo.id) ? <div role="group" aria-label={`选择接收会话 ${todo.title}`} className="flex flex-wrap items-center gap-2"><span className="min-w-0 flex-1 text-xs text-primary">正在选择会话…</span><button type="button" className={ghost} disabled={busy} onClick={() => chooseTodoRecipient(workspace, modal.ids, '__new__')}>新建会话</button><button type="button" className={ghost} disabled={busy} onClick={() => show(null)}>取消</button></div> : undefined}
                   onReleaseClaim={() => void act(async () => { await releaseTodoClaim(todo); })} onToggle={() => select(todo)} onCheck={checked => patch({ checked: checked ? [...view.checked, todo.id] : view.checked.filter(id => id !== todo.id) })}
                   onHandoff={() => requestHandoff([todo.id])} onOpen={run => openSession(run, todo)} onStatus={next => status(todo, next)} onEdit={() => show({ kind: 'edit', todo })} />;
+                  })}
+                </section>;
               })}
             </div>
           </section>;
         })}
       </div>}
     </div>}
-    {modal && modal.kind !== 'recipient' && <TodoDialog compact={modal.kind === 'handoff'} title={modalTitle} busy={busy} error={error} onClose={() => show(null)}>
-      {modal.kind === 'edit' && <TodoEditor workspace={workspace} todo={edit} busy={busy} onCancel={() => show(null)} onSave={(input, start) => void act(async () => {
+    {modal && modal.kind !== 'recipient' && <TodoDialog compact={modal.kind === 'handoff'} title={modalTitle} busy={busy} error={error} onClose={() => show(null)} onReload={edit ? () => void act(async () => {
+      const fresh = (await listTodos()).todos.find(todo => todo.id === edit.id);
+      if (!current()) return;
+      if (!fresh) throw new Error('待办不存在，请关闭面板后刷新');
+      clearDraft(`todo:${edit.id}`); show({ kind: 'edit', todo: fresh });
+    }) : undefined}>
+      {modal.kind === 'edit' && <TodoEditor key={`${edit?.id ?? 'new'}:${edit?.revision ?? 0}`} workspace={workspace} todo={edit} busy={busy} onCancel={() => show(null)} onSave={(input, start) => void act(async () => {
         const result = edit ? await updateTodo(edit, input) : await createTodo({ ...input, idempotencyKey: key(['create', input]) });
         if (!current()) return; finish(['create', input]); clearDraft(`todo:${edit?.id ?? 'new'}`);
-        patch({ tab: 'todos', selecting: false, checked: [], filter: 'all', column: 'open', source: '', query: '', selectedId: result.todo.id, mobileDetail: false, modal: start ? { kind: 'recipient', ids: [result.todo.id] } : null });
+        patch({ tab: 'todos', selecting: false, checked: [], filter: 'all', column: 'open', source: '', collectorId: '', query: '', selectedId: result.todo.id, mobileDetail: false, modal: start ? { kind: 'recipient', ids: [result.todo.id] } : null });
         if (start && !leftSidebarVisible) onOpenSidebar();
         if (!start) setNotice('待办已保存。');
       })} />}

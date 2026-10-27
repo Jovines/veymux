@@ -7,7 +7,7 @@ import crypto from 'node:crypto';
 import { directLocalId, directRemoteAddress } from './collaborationDirectProtocol.js';
 import { hasUnconfirmedTerminalWrite } from './collaborationProtocol.js';
 import { JsonStorageBudget, type JsonStorageOptions } from '../utils/jsonStorageBudget.js';
-import { chatPresentation, validChatUIValues, type ChatUIState } from '../shared/chatPresentation.js';
+import { chatPresentation, chatReplyFormatError, validChatUIValues, type ChatUIState } from '../shared/chatPresentation.js';
 import { COLLAB_NAME_FORBIDDEN, COLLAB_LIMITS, CollaborationError, STATUS_RANK, canonicalShortId, drawCollaborationId, newCollaborationId, resolveIdPrefix, validateExtras, type IdResolution, type MessageExtras, type MessageFragment, type TransportDiagnostic } from './collaborationProtocol.js';
 
 export interface CollaborationRules { text: string; version: string; updatedAt: number; updatedBy: string }
@@ -846,6 +846,10 @@ export class CollaborationStore {
       const reply = this.getMessage(previous.ids[0]);
       if (!reply) throw new CollaborationError('IDEMPOTENCY_RECORD_GONE', 'Original reply is no longer retained', 409);
       return reply;
+    }
+    if (original.integrationOrigin.source === 'session-chat') {
+      const formatError = chatReplyFormatError(content, extras.metadata);
+      if (formatError) throw new CollaborationError('INVALID_CHAT_REPLY_FORMAT', formatError);
     }
     const now = Date.now();
     const reply: CollaborationMessage = { ...extras, id: newCollaborationId(this.takenIds(), this.drawId), sequence: this.nextSequence(),

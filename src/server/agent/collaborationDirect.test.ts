@@ -98,7 +98,7 @@ it('never captures a direct recipient screen, including shell confirmation and d
   const f = await fixture(), sent = await f.send();
   const capture = vi.fn(async () => 'Private screen'), write = vi.fn(async () => undefined);
   const resolve = vi.fn(async () => ({ state: 'offline' as const, reason: 'Disconnected' }));
-  const worker = new CollaborationDeliveryWorker({ store: f.store, peers: () => [], isLocal: () => true,
+  const worker = new CollaborationDeliveryWorker({ store: f.store, isLocal: () => true,
     resolve, onError: error => { throw error; }, snapshotDelayMs: 0 });
   await worker.run('b'); expect(write).not.toHaveBeenCalled();
   expect(f.store.receipt(sent.body.message_id).status).toBe('pending');

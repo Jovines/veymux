@@ -25,17 +25,30 @@ describe('background collaboration delivery', () => {
   });
   afterEach(() => { worker.stop(); vi.restoreAllMocks(); vi.useRealTimers(); fs.rmSync(directory, { recursive: true, force: true }); });
   function makeWorker() {
-    return new CollaborationDeliveryWorker({ store, peers: () => ['a', 'b', 'c'], isLocal: (id) => !id.startsWith('remote:'),
+    return new CollaborationDeliveryWorker({ store, isLocal: (id) => !id.startsWith('remote:'),
       resolve, onError: () => undefined, snapshotDelayMs: 0 });
   }
   function send(target = 'b', expiresAt?: number) {
     return store.send({ groupId, fromSessionId: 'a', toSessionIds: [target], kind: 'message', content: 'Please verify', expiresAt })[0]!;
   }
+  it('never resolves idle historical members on startup, ticks, or explicit wake', async () => {
+    worker.start();
+    await worker.tick();
+    await vi.advanceTimersByTimeAsync(60_000);
+    await worker.run('b');
+    expect(resolve).not.toHaveBeenCalled();
+    send();
+    await worker.tick();
+    expect(resolve.mock.calls).toEqual([['b']]);
+    expect(write).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(resolve).toHaveBeenCalledOnce();
+  });
   it.each(['shell', 'unknown-agent', 'revoked'] as const)('never writes restricted chat to %s even if shell delivery was manually confirmed', async scenario => {
     const message = store.send({ groupId, fromSessionId: 'a', toSessionIds: ['b'], kind: 'ask', content: 'ordinary text', metadata: { chatOnly: true, chatSubject: 'device' } })[0]!;
     store.confirmShell(message.id);
     resolve.mockResolvedValue({ state: 'ready', isShell: scenario === 'shell', agentSlug: scenario === 'unknown-agent' ? null : 'codex', write });
-    worker = new CollaborationDeliveryWorker({ store, peers: () => ['b'], isLocal: () => true, resolve, authorizeMessage: () => scenario !== 'revoked', onError: () => undefined });
+    worker = new CollaborationDeliveryWorker({ store, isLocal: () => true, resolve, authorizeMessage: () => scenario !== 'revoked', onError: () => undefined });
     await worker.run('b');
     expect(write).not.toHaveBeenCalled(); expect(store.getMessage(message.id)?.status).toBe('failed');
   });
@@ -319,7 +332,7 @@ describe('background collaboration delivery', () => {
     const message = send();
     const capture = vi.fn(async () => 'input box');
     resolve.mockResolvedValue({ state: 'ready', write, capture });
-    worker = new CollaborationDeliveryWorker({ store, peers: () => [], isLocal: () => true,
+    worker = new CollaborationDeliveryWorker({ store, isLocal: () => true,
       resolve, onError: () => undefined, snapshotDelayMs: 200 });
     const delivery = worker.run('b');
     await vi.advanceTimersByTimeAsync(199);
@@ -339,7 +352,7 @@ it('durable local messages in federated groups wake the worker and expose identi
   const identity = { expected: { serverPid: 1, sessionId: '$1', paneId: '%1', panePid: 2, agentSlug: 'fixture', nativeSessionId: 'old' },
     observed: [], truncated: false, recovery: 'confirmation-required' as const, reason: 'NATIVE_IDENTITY_UNCONFIRMED', rebind_command: 'td collab --session target rebind' };
   const write = vi.fn(async (_messages: CollaborationMessage[]) => undefined), resolver = vi.fn(async (): Promise<CollaborationRoute> => ({ state: 'identity-mismatch', reason: 'TMUX_PANE_CHANGED', diagnostics: identity, write }));
-  const worker = new CollaborationDeliveryWorker({ store, peers: () => [], isLocal: id => !id.startsWith('remote:'), resolve: resolver, onError: error => { throw error; } });
+  const worker = new CollaborationDeliveryWorker({ store, isLocal: id => !id.startsWith('remote:'), resolve: resolver, onError: error => { throw error; } });
   try {
     worker.start(); await worker.tick();
     const message: CollaborationMessage = store.send({ groupId: group.id, fromSessionId: 'sender', toSessionIds: ['target'], kind: 'message', content: 'Original', idempotencyKey: 'once' })[0];

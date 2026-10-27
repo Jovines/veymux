@@ -37,6 +37,21 @@ it('migrates every legacy fact and metadata field, including pre-existing retent
   expect(migrated.authenticate('bridge', f.issued.token)).toEqual(f.p);
 });
 
+it('flags retention gaps and stalled ACKs without retiring consumers or changing watermarks', () => {
+  vi.useFakeTimers();
+  try {
+    const f = setup(); f.store.append([fact(1)]);
+    expect(f.store.consumerStatus()[0]).toMatchObject({ attention_required: false, protects_events: true });
+    vi.advanceTimersByTime(24 * 60 * 60_000);
+    expect(f.store.consumerStatus()[0]).toMatchObject({ warning_code: 'EVENT_CONSUMER_ACK_STALLED', confirmed_sequence: 0, retired_at: null, protects_events: true });
+    const page = f.store.page(f.p, 'inbox'); f.store.ack(f.p, 'inbox', page.events[0]!.cursor);
+    expect(f.store.consumerStatus()[0]).toMatchObject({ warning_code: null, confirmed_sequence: 1 });
+    f.store.append([fact(2)]);
+    const doc = manifest(f.file); doc.prunedThrough.group = 2; fs.writeFileSync(f.file, JSON.stringify(doc));
+    expect(new IntegrationStore(f.file).consumerStatus()[0]).toMatchObject({ warning_code: 'EVENT_RETENTION_GAP', attention_required: true, protects_events: true, confirmed_sequence: 1 });
+  } finally { vi.useRealTimers(); }
+});
+
 it('accepts multiple groups above the former whole-file 64 MiB ceiling and preserves stable replay', () => {
   const f = setup({ maxBytes: 96 * 1024 * 1024, segmentBytes: 1024 * 1024 });
   f.store.append([fact(1, 'x'.repeat(33 * 1024 * 1024)), fact(1, 'y'.repeat(33 * 1024 * 1024), 'other')]);

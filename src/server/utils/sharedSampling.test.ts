@@ -47,6 +47,70 @@ it('samples once for 25 observers and gives all observers initial state and chan
   expect(sample).toHaveBeenCalledTimes(3);
 });
 
+it('backs off failed keys across observers without serving stale values and resets on success', async () => {
+  vi.useFakeTimers();
+  const cache = new SharedSnapshotCache<string, number>(100, 2, 1000);
+  const load = vi.fn(async () => { throw new Error('TMUX_LAYOUT_UNAVAILABLE'); });
+  for (let i = 0; i < 25; i++) await expect(cache.get('gone', load)).rejects.toThrow('TMUX_LAYOUT_UNAVAILABLE');
+  expect(load).toHaveBeenCalledOnce();
+  await vi.advanceTimersByTimeAsync(1000);
+  await expect(cache.get('gone', load)).rejects.toThrow();
+  await vi.advanceTimersByTimeAsync(1999);
+  await expect(cache.get('gone', load)).rejects.toThrow();
+  expect(load).toHaveBeenCalledTimes(2);
+  await vi.advanceTimersByTimeAsync(1);
+  expect(await cache.get('gone', async () => 1)).toBe(1);
+  await vi.advanceTimersByTimeAsync(101);
+  await expect(cache.get('gone', load)).rejects.toThrow();
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(await cache.get('gone', async () => 2)).toBe(2);
+});
+
+it('re-evaluates inactive intervals and backs off sampling failures until recovery', async () => {
+  vi.useFakeTimers();
+  let interval = 500;
+  const sample = vi.fn(async () => [{ type: 'cwd', cwd: '/ok' }]);
+  const onError = vi.fn();
+  const sampler = new SharedSessionSampler(sample, () => interval, onError);
+  const stop = sampler.subscribe(vi.fn());
+  await vi.advanceTimersByTimeAsync(0);
+  interval = 10_000;
+  await vi.advanceTimersByTimeAsync(500);
+  expect(sample).toHaveBeenCalledTimes(2);
+  await vi.advanceTimersByTimeAsync(9999);
+  expect(sample).toHaveBeenCalledTimes(2);
+  interval = 500;
+  sample.mockRejectedValueOnce(new Error('failed')).mockRejectedValueOnce(new Error('failed'));
+  await vi.advanceTimersByTimeAsync(1);
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(onError).toHaveBeenCalledTimes(2);
+  await vi.advanceTimersByTimeAsync(1999);
+  expect(sample).toHaveBeenCalledTimes(4);
+  await vi.advanceTimersByTimeAsync(1);
+  expect(sample).toHaveBeenCalledTimes(5);
+  await vi.advanceTimersByTimeAsync(500);
+  expect(sample).toHaveBeenCalledTimes(6);
+  stop(); expect(vi.getTimerCount()).toBe(0);
+});
+
+it('refreshes immediately on focus but cannot bypass failure backoff', async () => {
+  vi.useFakeTimers();
+  const sample = vi.fn(async () => [{ type: 'cwd', cwd: '/work' }]);
+  const sampler = new SharedSessionSampler(sample, () => 10_000, vi.fn());
+  const stop = sampler.subscribe(vi.fn());
+  await vi.advanceTimersByTimeAsync(0);
+  sampler.refresh(); await vi.advanceTimersByTimeAsync(0);
+  expect(sample).toHaveBeenCalledTimes(2);
+  sample.mockRejectedValueOnce(new Error('failed'));
+  sampler.refresh(); await vi.advanceTimersByTimeAsync(0);
+  for (let i = 0; i < 25; i++) sampler.refresh();
+  await vi.advanceTimersByTimeAsync(9999);
+  expect(sample).toHaveBeenCalledTimes(3);
+  await vi.advanceTimersByTimeAsync(1);
+  expect(sample).toHaveBeenCalledTimes(4);
+  stop();
+});
+
 it('never overlaps a slow sample and drops delivery after the final unsubscribe', async () => {
   vi.useFakeTimers();
   let finish!: (value: Array<{ type: string; cwd: string }>) => void;

@@ -2,6 +2,7 @@ import { prepareCodexThread, codexColdLaunchArgv, codexPreparedResumeCommand } f
 import { validateSharedChatTarget } from '../agent/sharedChatTarget.js';
 import { normalizeAgentLaunchAttempt, replayAgentLaunchAttempt, type AgentLaunchAttempt } from '../agent/agentLaunchAttempt.js';
 import { shouldAutomaticallyRecoverTmuxIncident } from '../utils/tmuxRecovery.js';
+import { assessTmuxRecoveryLoad, configuredTmuxRecoveryLoadBudget } from '../utils/tmuxRecoveryAdmission.js';
 import { isSharedCodexDaemon } from '../utils/codexSharedDaemon.js';
 import { confirmRecoveryAgent } from '../utils/recoveryAgentConfirmation.js';
 import { TmuxPaneOutputObserver } from '../utils/tmuxPaneOutput.js';
@@ -52,7 +53,7 @@ import path from 'path';
 import { createRequire } from 'module';
 import { fileURLToPath } from 'url';
 import QRCode from 'qrcode';
-import { execFile, spawn, type ChildProcess } from 'child_process';
+import { execFile, spawn } from 'child_process';
 import { createHash, randomBytes, randomUUID } from 'crypto';
 import { promisify } from 'util';
 import type { WebSocket } from 'ws';
@@ -283,7 +284,6 @@ function sharedChatMessageAllowed(message: CollaborationMessage): boolean | unde
 }
 const collaborationDeliveryWorker = new CollaborationDeliveryWorker({
   store: collaborationStore,
-  peers: () => collaborationStore.list().filter((group) => !group.deleted).flatMap((group) => group.sessionIds),
   isLocal: (id) => !id.startsWith('remote:'),
   resolve: resolveCollaborationRoute,
   authorizeMessage: sharedChatMessageAllowed,
@@ -387,14 +387,6 @@ interface PtyProcess {
   pid?: number;
 }
 
-interface TmuxControl {
-  process: ChildProcess;
-  nextSeq: number;
-  pending: Map<number, { resolve: (value: string) => void; reject: (error: Error) => void; output: string }>;
-  buffer: string;
-  dead: boolean;
-}
-
 interface TerminalSession {
   ptyProcess: PtyProcess;
   ptyBackend: string;
@@ -456,7 +448,6 @@ interface TerminalSession {
   gitAgentActivitySeen: number;
   dataDisposable?: { dispose: () => void };
   exitDisposable?: { dispose: () => void };
-  tmuxControl?: TmuxControl;
   oscSniffBuf: string;
   lastOscCwd: string | null;
   lastOscTitle: string | null;
@@ -2950,7 +2941,6 @@ export const integrationSessionAdapter: IntegrationSessionAdapter = {
       async destroy(target) {
         // Kill by immutable tmux session ID, not by a potentially reused name.
         // No process-group kill or application prompt is sent.
-        if (JSON.stringify(await observeIntegrationCloseTarget(record)) !== JSON.stringify(target)) integrationError('SESSION_CLOSE_TARGET_CHANGED', 'Close target changed before teardown', 409);
         intentionallyDeletingTmuxSessions.add(`wt-integration-${record.session_id}`);
         try { await runTmux(['kill-session', '-t', target.binding.sessionId]); }
         finally { intentionallyDeletingTmuxSessions.delete(`wt-integration-${record.session_id}`); }
@@ -3351,178 +3341,6 @@ async function runTmuxStdin(args: string[], input: string): Promise<string> {
   return stdout;
 }
 
-// ---- Persistent tmux control-mode connection ----
-// Instead of spawning a new `tmux` process per command (execFile overhead),
-// maintain a single `tmux -C attach` child process per session.  Commands
-// are written to stdin and responses are parsed from stdout using tmux's
-// control-mode protocol (%begin / %end / %exit).
-
-const TMUX_CONTROL_ENABLED = false;
-const TMUX_CONTROL_COMMAND_TIMEOUT_MS = 2000;
-
-function spawnTmuxControl(sessionName: string): TmuxControl {
-  const process = tmuxClientReaper.trackControl(spawn(getTmuxBinary(), ['-u', '-C', 'attach', '-t', sessionName], {
-    stdio: ['pipe', 'pipe', 'pipe'],
-  }));
-
-  const control: TmuxControl = {
-    process,
-    nextSeq: 0,
-    pending: new Map(),
-    buffer: '',
-    dead: false,
-  };
-
-  process.stdout?.on('data', (chunk: Buffer) => {
-    control.buffer += chunk.toString();
-    const lines = control.buffer.split('\n');
-    control.buffer = lines.pop() || '';
-
-    for (const line of lines) {
-      // %begin <seq>  — start of command output block
-      const beginMatch = line.match(/^%begin\s+(\d+)$/);
-      if (beginMatch) {
-        // Subsequent lines (until %end) are the output.
-        continue;
-      }
-
-      // %end <seq>  — end of output block
-      const endMatch = line.match(/^%end\s+(\d+)$/);
-      if (endMatch) {
-        continue;
-      }
-
-      // %exit <seq> <code>  — command finished
-      const exitMatch = line.match(/^%exit\s+(\d+)\s+(\d+)$/);
-      if (exitMatch) {
-        const seq = parseInt(exitMatch[1], 10);
-        const code = parseInt(exitMatch[2], 10);
-        const entry = control.pending.get(seq);
-        if (entry) {
-          control.pending.delete(seq);
-          if (code === 0) {
-            entry.resolve(entry.output);
-          } else {
-            entry.reject(new Error(`tmux command exited with code ${code}`));
-          }
-        }
-        continue;
-      }
-
-      // Output line between %begin and %end — attach to the most recent
-      // pending entry (the one with the matching sequence).
-      // We don't know which seq this belongs to until %end/%exit,
-      // so stash it on the newest pending entry.
-      if (control.pending.size > 0) {
-        const lastEntry = Array.from(control.pending.values()).pop();
-        if (lastEntry) {
-          lastEntry.output += (lastEntry.output ? '\n' : '') + line;
-        }
-      }
-    }
-  });
-
-  process.on('error', (err) => {
-    control.dead = true;
-    for (const [, entry] of control.pending) {
-      entry.reject(err);
-    }
-    control.pending.clear();
-  });
-
-  process.on('exit', () => {
-    control.dead = true;
-    for (const [, entry] of control.pending) {
-      entry.reject(new Error('tmux control process exited'));
-    }
-    control.pending.clear();
-  });
-
-  process.stderr?.on('data', (chunk: Buffer) => {
-    console.warn(`[tmux-control ${sessionName}] ${chunk.toString().trim()}`);
-  });
-
-  return control;
-}
-
-/**
- * Send a command through the persistent control-mode connection and wait
- * for the response.  Falls back to `execFile` if the control process is
- * dead, the write fails, or the command times out.
- */
-async function sendTmuxCommand(
-  _sessionName: string,
-  control: TmuxControl | undefined,
-  args: string[],
-): Promise<string> {
-  if (control && !control.dead) {
-    const seq = control.nextSeq++;
-    const command = args.join(' ');
-
-    try {
-      return await new Promise<string>((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          control.pending.delete(seq);
-          reject(new Error('tmux control command timed out'));
-        }, TMUX_CONTROL_COMMAND_TIMEOUT_MS);
-
-        control.pending.set(seq, {
-          resolve: (value: string) => { clearTimeout(timeout); resolve(value); },
-          reject: (err: Error) => { clearTimeout(timeout); reject(err); },
-          output: '',
-        });
-
-        control.process.stdin?.write(command + '\n');
-      });
-    } catch {
-      // Control mode failed — mark dead and fall through to execFile.
-      control.dead = true;
-    }
-  }
-
-  // Fallback: spawn a one-shot tmux process
-  return runTmux(args);
-}
-
-/**
- * Fire-and-forget variant for scroll commands where we don't need to wait
- * for a response.  Writes through the control process if available;
- * falls back to a one-shot execFile on any failure.
- */
-function sendTmuxCommandFireAndForget(
-  _sessionName: string,
-  control: TmuxControl | undefined,
-  args: string[],
-): void {
-  if (control && !control.dead) {
-    try {
-      control.process.stdin?.write(args.join(' ') + '\n');
-      return;
-    } catch {
-      control.dead = true;
-      // Fall through to execFile fallback below
-    }
-  }
-
-  // Fallback: spawn a one-shot process (fire-and-forget)
-  const child = execFile(getTmuxBinary(), args, { timeout: 5000 });
-  child.on('error', () => { /* ignore */ });
-}
-
-function destroyTmuxControl(control: TmuxControl | undefined): void {
-  if (!control) return;
-  control.dead = true;
-  for (const [, entry] of control.pending) {
-    entry.reject(new Error('tmux control process destroyed'));
-  }
-  control.pending.clear();
-  try {
-    tmuxClientReaper.stop(control.process);
-  } catch {
-    // Process may already be dead
-  }
-}
-
 function isTmuxUnavailableMessage(errorMessage: string): boolean {
   return /no such file or directory|not found|enoent/i.test(errorMessage);
 }
@@ -3873,16 +3691,20 @@ async function listLiveTmuxInventorySessions(): Promise<TmuxInventoryMeta[]> {
   }
 }
 
+const tmuxServerPidSnapshots = new SharedSnapshotCache<string, number | null>(0, 1, 1000);
 async function getTmuxServerPid(): Promise<number | null> {
-  try {
-    const raw = (await runTmux(['display-message', '-p', '#{pid}'])).trim();
-    const pid = Number.parseInt(raw, 10);
-    if (!Number.isInteger(pid) || pid <= 0) throw new Error('Invalid tmux server pid response');
-    return pid;
-  } catch (error) {
-    if (isTmuxServerMissingMessage(getErrorMessage(error))) return null;
-    throw error;
-  }
+  return tmuxServerPidSnapshots.get('server', async () => {
+    try {
+      const raw = (await runTmux(['display-message', '-p', '#{pid}'])).trim();
+      const pid = Number.parseInt(raw, 10);
+      if (!Number.isInteger(pid) || pid <= 0) throw new Error('Invalid tmux server pid response');
+      return pid;
+    } catch (error) {
+      if (isTmuxServerMissingMessage(getErrorMessage(error))) return null;
+      console.warn('[tmux-recovery] Failed to read tmux server pid:', getErrorMessage(error));
+      throw error;
+    }
+  });
 }
 
 function getTmuxRecoveryView(): SessionInventory['tmuxRecovery'] {
@@ -3928,8 +3750,7 @@ async function observeTmuxServerGeneration(liveTmuxSessions: TmuxInventoryMeta[]
   let currentServerPid: number | null = null;
   try {
     currentServerPid = await getTmuxServerPid();
-  } catch (error) {
-    console.warn('[tmux-recovery] Failed to read tmux server pid:', getErrorMessage(error));
+  } catch {
     return;
   }
   const liveSessionNames = new Set(liveTmuxSessions.map((session) => session.name));
@@ -3989,7 +3810,8 @@ async function observeTmuxServerGeneration(liveTmuxSessions: TmuxInventoryMeta[]
     tmuxRecoveryState.runtimeLostSessionIds = retainedLosses; changed = true;
   }
   if (changed) await persistTmuxRecoveryState();
-  if (shouldAutomaticallyRecoverTmuxIncident(incident, tmuxRecoveryOperations.all().map(operation => operation.incidentId))) {
+  if (process.env.TD_TMUX_AUTO_RECOVERY === '1'
+    && shouldAutomaticallyRecoverTmuxIncident(incident, tmuxRecoveryOperations.all().map(operation => operation.incidentId))) {
     // Leave this inventory build before the worker broadcasts progress. The
     // durable key coalesces concurrent observations and prevents replay.
     setTimeout(() => {
@@ -4267,8 +4089,8 @@ function enqueueTmuxIo<T>(session: TerminalSession, operation: () => Promise<T> 
   return result;
 }
 
-async function isTmuxPaneInMode(target: string, control?: TmuxControl): Promise<boolean> {
-  const paneInModeRaw = (await sendTmuxCommand(target, control, [
+async function isTmuxPaneInMode(target: string): Promise<boolean> {
+  const paneInModeRaw = (await runTmux([
     'display-message',
     '-t',
     target,
@@ -5379,8 +5201,8 @@ interface TmuxProcessSnapshotRow extends TmuxProcessRow {
 
 let processSnapshot: { rows: TmuxProcessSnapshotRow[]; fetchedAt: number } | null = null;
 let processSnapshotPromise: Promise<TmuxProcessSnapshotRow[]> | null = null;
-const ttyProcessSnapshots = new SharedSnapshotCache<string, TmuxProcessRow[]>(PROCESS_SNAPSHOT_CACHE_TTL_MS);
-const shellProgramSnapshots = new SharedSnapshotCache<string, TerminalSession['activeProgram']>(ACTIVE_PROGRAM_POLL_INTERVAL);
+const ttyProcessSnapshots = new SharedSnapshotCache<string, TmuxProcessRow[]>(PROCESS_SNAPSHOT_CACHE_TTL_MS, 256, 1000);
+const shellProgramSnapshots = new SharedSnapshotCache<string, TerminalSession['activeProgram']>(ACTIVE_PROGRAM_POLL_INTERVAL, 256, 1000);
 
 function parseProcessSnapshot(stdout: string): TmuxProcessSnapshotRow[] {
   return stdout
@@ -5681,7 +5503,10 @@ function subscribeTerminalSampling(
       session,
       sampler: new SharedSessionSampler(
         () => sampleTerminalSession(sessionId, session),
-        () => session.mode === 'tmux' ? TMUX_POLL_INTERVAL : ACTIVE_PROGRAM_POLL_INTERVAL,
+        () => {
+          const interval = session.mode === 'tmux' ? TMUX_POLL_INTERVAL : ACTIVE_PROGRAM_POLL_INTERVAL;
+          return session.focusAggregation.effectiveFocused ? interval : Math.max(interval, 10_000);
+        },
         error => console.warn(`[terminal-sampling] ${sessionId}: ${getErrorMessage(error)}`),
       ),
     };
@@ -6097,35 +5922,21 @@ async function getTmuxLayout(sessionName: string): Promise<TmuxLayout> {
   return readTmuxLayout(runTmux, sessionName);
 }
 
-let tmuxLayoutsSnapshot: { layouts: Map<string, TmuxLayout>; fetchedAt: number } | null = null;
-let tmuxLayoutsSnapshotPromise: Promise<Map<string, TmuxLayout>> | null = null;
+const tmuxLayoutsSnapshot = new SharedSnapshotCache<string, Map<string, TmuxLayout>>(TMUX_LAYOUT_CACHE_TTL_MS, 1, 1000);
+const tmuxLayoutFallbacks = new SharedSnapshotCache<string, TmuxLayout>(TMUX_LAYOUT_CACHE_TTL_MS, 256, 1000);
 
 async function buildTmuxLayoutsSnapshot(): Promise<Map<string, TmuxLayout>> {
   return readTmuxLayouts(runTmux);
 }
 
 async function getCachedTmuxLayout(sessionName: string): Promise<TmuxLayout> {
-  if (tmuxLayoutsSnapshot && Date.now() - tmuxLayoutsSnapshot.fetchedAt < TMUX_LAYOUT_CACHE_TTL_MS) {
-    const cached = tmuxLayoutsSnapshot.layouts.get(sessionName);
-    if (cached) return cached;
-  }
-
-  if (!tmuxLayoutsSnapshotPromise) {
-    tmuxLayoutsSnapshotPromise = buildTmuxLayoutsSnapshot().then((layouts) => {
-      tmuxLayoutsSnapshot = { layouts, fetchedAt: Date.now() };
-      return layouts;
-    }).finally(() => {
-      tmuxLayoutsSnapshotPromise = null;
-    });
-  }
-
-  const layouts = await tmuxLayoutsSnapshotPromise;
+  const layouts = await tmuxLayoutsSnapshot.get('all', buildTmuxLayoutsSnapshot);
   const layout = layouts.get(sessionName);
   if (layout) return layout;
 
   // A just-created session can race the global snapshot. Keep that rare path
   // correct without returning stale metadata for the new terminal.
-  return getTmuxLayout(sessionName);
+  return tmuxLayoutFallbacks.get(sessionName, () => getTmuxLayout(sessionName));
 }
 
 async function getRestoreHistory(sessionId: string, session: TerminalSession): Promise<string[]> {
@@ -6283,8 +6094,6 @@ function cleanupSession(sessionId: string, options: { killProcess: boolean; clea
   session.autoTitleTerminal.dispose();
   lastAgentStatusSnapshots.delete(sessionId);
   lastGitStatusSnapshots.delete(sessionId);
-  destroyTmuxControl(session.tmuxControl);
-  session.tmuxControl = undefined;
   for (const timer of session.flowPausedClientTimers.values()) {
     clearTimeout(timer);
   }
@@ -6546,6 +6355,7 @@ function updateClientFocusState(sessionId: string, session: TerminalSession, cli
   const result = setClientFocusState(session.focusAggregation, clientId, focused);
   if (result.changed) {
     emitFocusSequenceIfNeeded(sessionId, session, result.effectiveFocused, reason);
+    if (result.effectiveFocused) terminalSamplers.get(sessionId)?.sampler.refresh();
   }
 }
 
@@ -6985,26 +6795,6 @@ async function spawnTerminalSessionUnlocked(req: express.Request, input: SpawnTe
   // First git snapshot for the pane's spawn cwd (throttle-free).
   refreshGitStatus(sessionId, session, { minIntervalMs: 0 });
   setupPtyHandlers(sessionId, session);
-
-  if (mode === 'tmux' && tmuxSessionName) {
-    // Session was prepared before attach so the first tmux client sees the
-    // right server/session options immediately.
-    // Spawn a persistent control-mode connection so scroll commands
-    // don't pay execFile process-spawn overhead on every frame.
-    if (TMUX_CONTROL_ENABLED) {
-      let ctrl: TmuxControl | undefined;
-      try {
-        ctrl = spawnTmuxControl(tmuxSessionName);
-        // Verify the control process is healthy before we rely on it.
-        await sendTmuxCommand(tmuxSessionName, ctrl, ['display-message', '-p', 'ok']);
-        session.tmuxControl = ctrl;
-      } catch (error) {
-        // Control process failed — clean up and fall back to execFile.
-        console.warn(`Failed to start tmux control for ${tmuxSessionName}: ${getErrorMessage(error)}`);
-        if (ctrl) destroyTmuxControl(ctrl);
-      }
-    }
-  }
 
   return { sessionId, session, cols, rows };
 }
@@ -7454,13 +7244,20 @@ async function resolveTmuxRecoveryScope(scope: TmuxRecoveryScope, incident: Tmux
 
 tmuxRecoveryOperations.setRunner(restoreTmuxRecoverySession);
 const tmuxAgentResourceBudget = configuredAgentResourceBudget();
+const tmuxRecoveryLoadBudget = configuredTmuxRecoveryLoadBudget();
 tmuxRecoveryOperations.setAdmission(async (_operationId, sessionId) => {
   try {
+    const clientPids = await runTmux(['list-clients', '-F', '#{client_pid}']).catch(error => {
+      if (isTmuxServerMissingMessage(getErrorMessage(error))) return '';
+      throw error;
+    });
+    const clientCount = clientPids.trim() ? clientPids.trim().split('\n').length : 0;
+    const load = assessTmuxRecoveryLoad(clientCount, tmuxRecoveryLoadBudget, undefined, tmuxRecoveryOperations.activeLaunches * 3);
+    if (!load.admitted) return load;
     const snapshot = await collectHostResourceSnapshot();
     const managedSessions = globalSessionState.sessions.filter(item => item.mode === 'tmux' && item.tmuxSessionName);
     const liveSessions = await listLiveTmuxInventorySessions();
-    const activeRecoverySessionIds = tmuxRecoveryOperations.all().flatMap(operation => operation.items)
-      .filter(item => item.state === 'running').map(item => item.sessionId);
+    const activeRecoverySessionIds = tmuxRecoveryOperations.runningSessionIds();
     const ownedAgentSessionIds = getTermdockOwnedAgentSessionIds({ managedSessions,
       liveAgentSessions: liveSessions.filter(item => item.program && agentBySlug(item.program)).map(item => ({ name: item.name, sourceFrontendSessionId: item.sourceFrontendSessionId })),
       activeRecoverySessionIds });
@@ -7483,8 +7280,7 @@ async function sampleTmuxRecoveryHealth(): Promise<void> {
   try {
     const [snapshot, liveSessions] = await Promise.all([collectHostResourceSnapshot(), listLiveTmuxInventorySessions()]);
     const managedSessions = globalSessionState.sessions.filter(item => item.mode === 'tmux' && item.tmuxSessionName);
-    const activeRecoverySessionIds = tmuxRecoveryOperations.all().flatMap(operation => operation.items)
-      .filter(item => item.state === 'running').map(item => item.sessionId);
+    const activeRecoverySessionIds = tmuxRecoveryOperations.runningSessionIds();
     const tdOwnedAgentSessionIds = getTermdockOwnedAgentSessionIds({ managedSessions,
       liveAgentSessions: liveSessions.filter(item => item.program && agentBySlug(item.program)).map(item => ({ name: item.name, sourceFrontendSessionId: item.sourceFrontendSessionId })),
       activeRecoverySessionIds });
@@ -7818,6 +7614,11 @@ const todoCollectionSessions: NonNullable<TodoRuntime['collectionSessions']> = {
 
 const todoRuntime: TodoRuntime = {
   collectionSessions: todoCollectionSessions,
+  callerSession(context) {
+    const id = resolveFrontendSessionId(context);
+    if (!id) throw new TodoError('无法确认调用会话，请在有效的 Termdock 会话中重试', 403);
+    return id;
+  },
   async claimTarget(input) {
     const record = globalSessionState.sessions.find(candidate => input.sessionId ? candidate.sessionId === input.sessionId : input.backendSessionId && candidate.backendSessionId === input.backendSessionId);
     if (!record) throw new TodoError('找不到当前 Agent 会话，请用 --session 指定会话 ID', 409);
@@ -10215,7 +10016,7 @@ async function switchTmuxBackendSession(sessionId: string, session: TerminalSess
   const clientTty = await resolveTmuxClientTty(session.tmuxSessionName!, getPtyProcessPid(session.ptyProcess));
   if (!clientTty) throw new Error('No tmux client available for current session');
   await prepareManagedTmuxSession(target, session.cwd);
-  await sendTmuxCommand(session.tmuxSessionName!, session.tmuxControl, ['switch-client', '-c', clientTty, '-t', target]);
+  await runTmux(['switch-client', '-c', clientTty, '-t', target]);
   session.tmuxSessionName = target;
   session.lastOutputAt = 0;
   startTmuxPaneOutputActivity(sessionId, session);
@@ -10267,7 +10068,6 @@ router.post('/:sessionId/tmux', async (req, res) => {
       tmuxTarget,
       action,
       req.body as Record<string, unknown>,
-      session.tmuxControl,
     );
 
     if (result.error) {
@@ -10396,7 +10196,6 @@ async function executeTmuxAction(
   tmuxTarget: string,
   action: string,
   body: Record<string, unknown>,
-  control?: TmuxControl,
 ): Promise<{ shouldBroadcastLayout: boolean; error?: string; selection?: TmuxCopySelectionResult }> {
   let shouldBroadcastLayout = true;
 
@@ -10408,37 +10207,37 @@ async function executeTmuxAction(
     case 'select-pane': {
       const paneId = typeof body.paneId === 'string' ? body.paneId : '';
       if (!paneId) return { shouldBroadcastLayout: false, error: 'paneId is required' };
-      await sendTmuxCommand(tmuxTarget, control, ['select-pane', '-t', paneId]);
+      await runTmux(['select-pane', '-t', paneId]);
       break;
     }
     case 'select-window': {
       const windowId = typeof body.windowId === 'string' ? body.windowId : '';
       if (!windowId) return { shouldBroadcastLayout: false, error: 'windowId is required' };
-      await sendTmuxCommand(tmuxTarget, control, ['select-window', '-t', windowId]);
+      await runTmux(['select-window', '-t', windowId]);
       break;
     }
     case 'split-pane': {
       const dir = body.direction === 'h' ? '-h' : '-v';
-      await sendTmuxCommand(tmuxTarget, control, ['split-window', '-t', tmuxTarget, dir]);
+      await runTmux(['split-window', '-t', tmuxTarget, dir]);
       break;
     }
     case 'close-pane': {
       const paneId = typeof body.paneId === 'string' ? body.paneId : '';
       if (!paneId) return { shouldBroadcastLayout: false, error: 'paneId is required' };
-      await sendTmuxCommand(tmuxTarget, control, ['kill-pane', '-t', paneId]);
+      await runTmux(['kill-pane', '-t', paneId]);
       break;
     }
     case 'copy-mode': {
       const enabled = body.enabled !== false;
       if (enabled) {
         try {
-          await sendTmuxCommand(tmuxTarget, control, ['copy-mode', '-He', '-t', tmuxTarget]);
+          await runTmux(['copy-mode', '-He', '-t', tmuxTarget]);
         } catch (error) {
           if (!isAlreadyInCopyModeError(getErrorMessage(error))) throw error;
         }
       } else {
         try {
-          await sendTmuxCommand(tmuxTarget, control, ['send-keys', '-t', tmuxTarget, '-X', 'cancel']);
+          await runTmux(['send-keys', '-t', tmuxTarget, '-X', 'cancel']);
         } catch (error) {
           if (!isNotInCopyModeError(getErrorMessage(error))) throw error;
         }
@@ -10449,7 +10248,7 @@ async function executeTmuxAction(
       const direction = body.direction === 'down' ? 'down' : 'up';
       const lines = Math.max(1, Math.min(50, Math.floor(Number(body.lines) || 1)));
 
-      let inCopyMode = await isTmuxPaneInMode(tmuxTarget, control);
+      let inCopyMode = await isTmuxPaneInMode(tmuxTarget);
 
       // Down-scroll outside copy mode: already at the live prompt, nothing to do.
       if (direction === 'down' && !inCopyMode) {
@@ -10463,7 +10262,7 @@ async function executeTmuxAction(
       if (!inCopyMode) {
         // Re-check history_size on every entry — the pane may have
         // accumulated scrollback since last check.
-        const histRaw = (await sendTmuxCommand(tmuxTarget, control, [
+        const histRaw = (await runTmux([
           'display-message', '-t', tmuxTarget, '-p', '#{history_size}',
         ])).trim();
         const historySize = parseInt(histRaw, 10) || 0;
@@ -10475,18 +10274,17 @@ async function executeTmuxAction(
         exitedAtBottom.delete(tmuxTarget);
 
         try {
-          await sendTmuxCommand(tmuxTarget, control, ['copy-mode', '-He', '-t', tmuxTarget]);
+          await runTmux(['copy-mode', '-He', '-t', tmuxTarget]);
         } catch (error) {
           if (!isAlreadyInCopyModeError(getErrorMessage(error))) throw error;
         }
-        inCopyMode = await isTmuxPaneInMode(tmuxTarget, control);
+        inCopyMode = await isTmuxPaneInMode(tmuxTarget);
         if (!inCopyMode) {
           shouldBroadcastLayout = false;
           break;
         }
       }
 
-      // Scroll commands are fire-and-forget — don't wait for %exit.
       const scrollCmd = direction === 'up' ? 'scroll-up' : 'scroll-down';
       const fallbackCmds = direction === 'up'
         ? ['up-line', 'cursor-up']
@@ -10495,13 +10293,7 @@ async function executeTmuxAction(
       let sent = false;
       for (const cmd of [scrollCmd, ...fallbackCmds]) {
         try {
-          if (control && !control.dead) {
-            sendTmuxCommandFireAndForget(tmuxTarget, control, [
-              'send-keys', '-t', tmuxTarget, '-X', '-N', String(lines), cmd,
-            ]);
-          } else {
-            await runTmux(['send-keys', '-t', tmuxTarget, '-X', '-N', String(lines), cmd]);
-          }
+          await runTmux(['send-keys', '-t', tmuxTarget, '-X', '-N', String(lines), cmd]);
           sent = true;
           break;
         } catch (error) {
@@ -10514,7 +10306,7 @@ async function executeTmuxAction(
       }
 
       if (direction === 'down') {
-        const stillInCopyMode = await isTmuxPaneInMode(tmuxTarget, control);
+        const stillInCopyMode = await isTmuxPaneInMode(tmuxTarget);
         if (!stillInCopyMode) {
           exitedAtBottom.add(tmuxTarget);
         }
@@ -10524,7 +10316,7 @@ async function executeTmuxAction(
       break;
     }
     case 'new-window': {
-      await sendTmuxCommand(tmuxTarget, control, ['new-window', '-t', tmuxTarget]);
+      await runTmux(['new-window', '-t', tmuxTarget]);
       break;
     }
     case 'switch-session': {
@@ -10535,7 +10327,7 @@ async function executeTmuxAction(
         return { shouldBroadcastLayout: false, error: 'tmuxSessionName is required' };
       }
       await prepareManagedTmuxSession(targetSessionName);
-      await sendTmuxCommand(tmuxTarget, control, ['switch-client', '-t', targetSessionName]);
+      await runTmux(['switch-client', '-t', targetSessionName]);
       break;
     }
     default:
@@ -10840,7 +10632,7 @@ export function handleTerminalWebSocket(
             }
             const exitCopyMode = msg.exitCopyMode === true && session.mode === 'tmux' && !!session.tmuxSessionName;
             inputQueue.push(exitCopyMode && msg.data === '\x1b' ? [] : parts, exitCopyMode ? async () => {
-              await enqueueTmuxIo(session, () => executeTmuxAction(session.tmuxSessionName!, 'copy-mode', { enabled: false }, session.tmuxControl));
+              await enqueueTmuxIo(session, () => executeTmuxAction(session.tmuxSessionName!, 'copy-mode', { enabled: false }));
               // Preserve the confirmed copy-mode state for all observers without
               // holding the first key behind a layout query or a browser ACK.
               const target = session.tmuxSessionName!;
@@ -10909,7 +10701,6 @@ export function handleTerminalWebSocket(
               session.tmuxSessionName!,
               msg.action as string,
               msg as unknown as Record<string, unknown>,
-              session.tmuxControl,
             );
           }).catch((error): Awaited<ReturnType<typeof executeTmuxAction>> => {
             // A correlated copy failure must settle this socket's request, not

@@ -500,7 +500,7 @@ it('holds the first write through a loading viewport and delivers once without w
   const group = messages.save({ name: 'Startup', sessionIds: ['sender', created.session_id] });
   const message = messages.send({ groupId: group.id, fromSessionId: 'sender', toSessionIds: [created.session_id], kind: 'message', content: 'First task body' })[0];
   const write = vi.fn(async () => {});
-  const delivery = new CollaborationDeliveryWorker({ store: messages, peers: () => [], isLocal: () => true, onError: () => {},
+  const delivery = new CollaborationDeliveryWorker({ store: messages, isLocal: () => true, onError: () => {},
     resolve: async id => { const gate = await sessions.deliveryReadiness(id); return gate?.allowed ? { state: 'ready', write } : { state: 'recovering', reason: gate?.reason ?? 'missing guard' }; } });
   resources.push(() => delivery.stop());
   await delivery.run(created.session_id);
@@ -727,7 +727,7 @@ it.skipIf(process.platform === 'win32')('reproduces boot-time input loss in a re
     const group = messages.save({ name: 'Boot', sessionIds: ['sender', created.session_id] });
     const message = messages.send({ groupId: group.id, fromSessionId: 'sender', toSessionIds: [created.session_id], kind: 'message', content: 'FIRST-TASK-BODY' })[0];
     const write = vi.fn(async () => writeCollaborationTmuxPane(run, pane, 'FIRST-TASK-BODY', stdin));
-    const delivery = new CollaborationDeliveryWorker({ store: messages, peers: () => [], isLocal: () => true, onError: () => {},
+    const delivery = new CollaborationDeliveryWorker({ store: messages, isLocal: () => true, onError: () => {},
       resolve: async id => { const gate = await sessions.deliveryReadiness(id); return gate?.allowed ? { state: 'ready', write } : { state: 'recovering', reason: gate?.reason ?? 'missing' }; } });
     resources.push(() => delivery.stop());
     await delivery.run(created.session_id);
@@ -985,7 +985,7 @@ it('requires admin and generation over Unix API, releases pending delivery once 
   const old = f.messages.send({ groupId: f.group.id, fromSessionId: 'worker', toSessionIds: [created.session_id], kind: 'message', content: 'old' })[0];
   f.messages.markDelivered([old.id]);
   const pending = (await f.request('POST', '/send', { targetSessionId: created.session_id, message: 'new', idempotency_key: 'pending' })).body.message_id;
-  const write = vi.fn(async () => {}), worker = new CollaborationDeliveryWorker({ store: f.messages, peers: () => [], isLocal: () => true, onError: () => {},
+  const write = vi.fn(async () => {}), worker = new CollaborationDeliveryWorker({ store: f.messages, isLocal: () => true, onError: () => {},
     resolve: async id => { const guard = await f.runtime.sessions.deliveryReadiness(id); return guard && !guard.allowed ? { state: 'recovering', reason: guard.reason! } : { state: 'ready', write }; } });
   resources.push(() => worker.stop());
   await worker.run(created.session_id); expect(write).not.toHaveBeenCalled();

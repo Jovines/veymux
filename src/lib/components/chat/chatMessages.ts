@@ -37,7 +37,7 @@ export function hasReplyToLatestMessage(messages: ChatMessage[]): boolean {
 export function chatSendStatus(status: string, delivery?: ChatDelivery): string {
   if (status === 'pending' && delivery?.state === 'binding-required') return '等待恢复';
   if (status === 'pending' && delivery?.state === 'outcome-unknown') return '投递待确认';
-  return ({ pending: '待发送', delivered: '已发送', stored: '已发送', failed: '发送失败', expired: '发送失败', cancelled: '已停止投递' }[status] || '待确认');
+  return ({ pending: '发送中', delivered: '已发送', stored: '已发送', failed: '发送失败', expired: '发送失败', cancelled: '已停止投递' }[status] || '待确认');
 }
 
 /** Merge overlapping cursor pages without moving or rebuilding unchanged rows. */
