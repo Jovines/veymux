@@ -9,14 +9,14 @@ BACKEND_PORT=9835
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 # 运行时产物(pid/log)放系统临时目录,避免污染仓库
-RUNTIME_DIR="${TMPDIR:-/tmp}/termdock-dev"
+RUNTIME_DIR="${TMPDIR:-/tmp}/veymux-dev"
 mkdir -p "$RUNTIME_DIR"
 
 SERVER_PID_FILE="$RUNTIME_DIR/dev-server.pid"
 CLIENT_PID_FILE="$RUNTIME_DIR/dev-client.pid"
 SERVER_LOG_FILE="$RUNTIME_DIR/dev-server.log"
 CLIENT_LOG_FILE="$RUNTIME_DIR/dev-client.log"
-SETTINGS_FILE="$HOME/.termdock/settings.json"
+SETTINGS_FILE="$HOME/.veymux/settings.json"
 RESTART_BRIDGE_CAFFEINATE_SECONDS=300
 
 start_restart_bridge_caffeinate() {
@@ -34,7 +34,7 @@ start_restart_bridge_caffeinate() {
 
   caffeinate -i -s -t "$RESTART_BRIDGE_CAFFEINATE_SECONDS" >/dev/null 2>&1 &
   disown "$!" 2>/dev/null || true
-  echo "Keeping macOS awake for up to ${RESTART_BRIDGE_CAFFEINATE_SECONDS}s while Termdock dev restarts."
+  echo "Keeping macOS awake for up to ${RESTART_BRIDGE_CAFFEINATE_SECONDS}s while Veymux dev restarts."
 }
 
 kill_pid_and_children() {
@@ -120,7 +120,7 @@ start_service() {
 }
 
 do_stop() {
-  echo "Stopping termdock dev services..."
+  echo "Stopping veymux dev services..."
   stop_by_pid_file "$SERVER_PID_FILE" "server"
   stop_by_pid_file "$CLIENT_PID_FILE" "client"
   kill_matching_processes "tsx.*watch.*src/server/entry" "server"
@@ -129,7 +129,7 @@ do_stop() {
 }
 
 do_restart() {
-  echo "Restarting termdock dev services in background..."
+  echo "Restarting veymux dev services in background..."
 
   start_restart_bridge_caffeinate
   do_stop

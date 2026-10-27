@@ -4,7 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
-vi.mock('../../terminal/factory', () => ({ createTermdockAPI: () => ({}) }));
+vi.mock('../../terminal/factory', () => ({ createVeymuxAPI: () => ({}) }));
 vi.mock('../terminal/TerminalViewport', () => ({
   TerminalViewport: React.forwardRef(function Viewport(_props, ref) {
     const input = React.useRef<HTMLTextAreaElement>(null);

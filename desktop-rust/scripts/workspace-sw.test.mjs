@@ -22,9 +22,9 @@ test('actual platform-generated worker conforms to the current source cold-loadi
  const worker=fs.readFileSync(workerPath,'utf8');
  const built=JSON.parse(fs.readFileSync(new URL('../.workspace-dist/workspace-manifest.json',import.meta.url),'utf8'));
  const result=normalizeWorkspaceWorker(worker,Object.keys(built.files),vite);
- assert.deepEqual(workspacePrecacheUrls(result.script),result.precacheUrls);assert(result.precacheUrls.includes('index.html'));assert(result.script.includes('sw-encrypted-background.js'));assert(result.script.includes('termdock-lazy-assets-v1'));
- if(process.env.TD_PREVIEW_MAC_WORKER){
-  const mac=fs.readFileSync(process.env.TD_PREVIEW_MAC_WORKER,'utf8');const normalized=normalizeWorkspaceWorker(mac,Object.keys(built.files),vite);
+ assert.deepEqual(workspacePrecacheUrls(result.script),result.precacheUrls);assert(result.precacheUrls.includes('index.html'));assert(result.script.includes('sw-encrypted-background.js'));assert(result.script.includes('veymux-lazy-assets-v1'));
+ if(process.env.VEYMUX_PREVIEW_MAC_WORKER){
+  const mac=fs.readFileSync(process.env.VEYMUX_PREVIEW_MAC_WORKER,'utf8');const normalized=normalizeWorkspaceWorker(mac,Object.keys(built.files),vite);
   assert(normalized.removedCaseVariants.some(n=>/^assets\/App-/.test(n)));
   assert.deepEqual(new Set(normalized.precacheUrls),new Set(result.precacheUrls));
  }
@@ -35,7 +35,7 @@ test('Preview launch navigation bypasses the existing encrypted worker without a
  const self={location:{origin:'http://127.0.0.1:43000'},addEventListener:(name,listener)=>listeners.set(name,listener)};
  vm.runInNewContext(fs.readFileSync(new URL('../../public/sw-secure-api.js',import.meta.url),'utf8'),{self,URL,Map,Set,Response,Headers,TextEncoder,TextDecoder,Uint8Array,setTimeout,clearTimeout});
  let intercepted=false;
- listeners.get('fetch')({request:new Request(self.location.origin+'/api/auth/status?__td_launch=owned-fixture'),respondWith:()=>{intercepted=true;}});
+ listeners.get('fetch')({request:new Request(self.location.origin+'/api/auth/status?__veymux_launch=owned-fixture'),respondWith:()=>{intercepted=true;}});
  assert.equal(intercepted,false);
  // Ordinary business reads still enter the encrypted page handoff, never the
  // bootstrap network exception. No page/client exists in this failure case.

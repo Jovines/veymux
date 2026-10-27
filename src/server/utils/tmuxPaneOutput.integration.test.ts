@@ -10,7 +10,7 @@ import { TerminalOutputActivity } from './terminalOutputActivity.js';
 import { TmuxPaneOutputObserver } from './tmuxPaneOutput.js';
 const exec = promisify(execFile);
 it.skipIf(process.platform === 'win32')('ignores attach/reconnect/resize repaint, observes real writes without any browser, and preserves the grid', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'td-pane-output-'));
+  const root = await mkdtemp(join(tmpdir(), 'veymux-pane-output-'));
   const socket = join(root, 'tmux.sock');
   const run = async (args: string[]) => (await exec('tmux', ['-S', socket, ...args], { timeout: 5000 })).stdout;
   const script = join(root, 'quiet.mjs');
@@ -65,7 +65,7 @@ it.skipIf(process.platform === 'win32')('ignores attach/reconnect/resize repaint
 }, 10_000);
 
 it.skipIf(process.platform === 'win32')('detects a real 1 Hz terminal countdown with no browser, hover, scrolling or input', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'td-countdown-output-'));
+  const root = await mkdtemp(join(tmpdir(), 'veymux-countdown-output-'));
   const socket = join(root, 'tmux.sock');
   const run = async (args: string[]) => (await exec('tmux', ['-S', socket, ...args], { timeout: 5000 })).stdout;
   const script = join(root, 'countdown.mjs');
@@ -89,7 +89,7 @@ it.skipIf(process.platform === 'win32')('detects a real 1 Hz terminal countdown 
 
 it.skipIf(process.platform === 'win32')('observes native working and idle status that tmux strips from display output without requiring animated output', async () => {
   const { ProgramStatusTracker } = await import('../shared/programStatus.js');
-  const root = await mkdtemp(join(tmpdir(), 'td-native-status-')), socket = join(root, 'tmux.sock');
+  const root = await mkdtemp(join(tmpdir(), 'veymux-native-status-')), socket = join(root, 'tmux.sock');
   const run = async (args: string[]) => (await exec('tmux', ['-S', socket, ...args], { timeout: 5000 })).stdout;
   const script = join(root, 'status.mjs'), tracker = new ProgramStatusTracker();
   const transitions: boolean[] = [], displayed: string[] = [];

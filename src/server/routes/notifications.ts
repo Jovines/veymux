@@ -14,7 +14,7 @@ const router = Router();
 function clientIdFromRequest(req: Request): string {
   const subject = encryptedRequestSubject(req);
   if (subject) return `device:${subject}`;
-  return typeof req.cookies?.['termdock-client'] === 'string' ? req.cookies['termdock-client'] : '';
+  return typeof req.cookies?.['veymux-client'] === 'string' ? req.cookies['veymux-client'] : '';
 }
 
 function validAlertStyle(value: unknown): value is PushAlertStyle {

@@ -1,28 +1,28 @@
-.termdock-architecture-diagram svg { display: block; width: 100%; height: 100%; max-width: none !important; }
-.termdock-architecture-diagram .node { cursor: pointer; }
-.termdock-architecture-diagram .node rect,
-.termdock-architecture-diagram .node polygon { fill: var(--surface) !important; stroke: var(--border) !important; }
-.termdock-architecture-diagram .node[aria-pressed='true'] rect,
-.termdock-architecture-diagram .node[aria-pressed='true'] polygon,
-.termdock-architecture-diagram .node:focus rect { stroke: var(--primary) !important; stroke-width: 2px !important; }
-.termdock-architecture-diagram .node[data-architecture-related='true'] rect,
-.termdock-architecture-diagram .node[data-architecture-related='true'] polygon { stroke: var(--primary) !important; }
-.termdock-architecture-diagram .nodeLabel,
-.termdock-architecture-diagram .edgeLabel,
-.termdock-architecture-diagram text { color: var(--foreground) !important; fill: var(--foreground) !important; }
-.termdock-architecture-diagram .edgeLabel,
-.termdock-architecture-diagram .labelBkg { background-color: var(--surface-2) !important; fill: var(--surface-2) !important; }
-.termdock-architecture-diagram .edgeLabel rect { fill: var(--surface-2) !important; }
-.termdock-architecture-diagram .flowchart-link { stroke: var(--muted-foreground) !important; }
-.termdock-architecture-diagram marker path { fill: var(--muted-foreground) !important; stroke: var(--muted-foreground) !important; }
+.veymux-architecture-diagram svg { display: block; width: 100%; height: 100%; max-width: none !important; }
+.veymux-architecture-diagram .node { cursor: pointer; }
+.veymux-architecture-diagram .node rect,
+.veymux-architecture-diagram .node polygon { fill: var(--surface) !important; stroke: var(--border) !important; }
+.veymux-architecture-diagram .node[aria-pressed='true'] rect,
+.veymux-architecture-diagram .node[aria-pressed='true'] polygon,
+.veymux-architecture-diagram .node:focus rect { stroke: var(--primary) !important; stroke-width: 2px !important; }
+.veymux-architecture-diagram .node[data-architecture-related='true'] rect,
+.veymux-architecture-diagram .node[data-architecture-related='true'] polygon { stroke: var(--primary) !important; }
+.veymux-architecture-diagram .nodeLabel,
+.veymux-architecture-diagram .edgeLabel,
+.veymux-architecture-diagram text { color: var(--foreground) !important; fill: var(--foreground) !important; }
+.veymux-architecture-diagram .edgeLabel,
+.veymux-architecture-diagram .labelBkg { background-color: var(--surface-2) !important; fill: var(--surface-2) !important; }
+.veymux-architecture-diagram .edgeLabel rect { fill: var(--surface-2) !important; }
+.veymux-architecture-diagram .flowchart-link { stroke: var(--muted-foreground) !important; }
+.veymux-architecture-diagram marker path { fill: var(--muted-foreground) !important; stroke: var(--muted-foreground) !important; }
 
-.termdock-architecture-diagram .cluster { cursor: pointer; }
-.termdock-architecture-diagram .cluster > rect { fill: var(--surface-2) !important; stroke: var(--border) !important; }
-.termdock-architecture-diagram .cluster[aria-pressed='true'] > rect,
-.termdock-architecture-diagram .cluster:focus > rect { stroke: var(--primary) !important; stroke-width: 2px !important; }
-.termdock-architecture-diagram .flowchart-link,
-.termdock-architecture-diagram .edgeLabel,
-.termdock-architecture-diagram marker { pointer-events: none; }
-.termdock-architecture-diagram .node[data-architecture-role='external'] rect { stroke-dasharray: 5 3; }
-.termdock-architecture-diagram .node[data-architecture-role='concern'] rect { stroke: var(--destructive) !important; }
-.termdock-architecture-diagram .node[data-architecture-role='entry'] rect { stroke: var(--primary) !important; }
+.veymux-architecture-diagram .cluster { cursor: pointer; }
+.veymux-architecture-diagram .cluster > rect { fill: var(--surface-2) !important; stroke: var(--border) !important; }
+.veymux-architecture-diagram .cluster[aria-pressed='true'] > rect,
+.veymux-architecture-diagram .cluster:focus > rect { stroke: var(--primary) !important; stroke-width: 2px !important; }
+.veymux-architecture-diagram .flowchart-link,
+.veymux-architecture-diagram .edgeLabel,
+.veymux-architecture-diagram marker { pointer-events: none; }
+.veymux-architecture-diagram .node[data-architecture-role='external'] rect { stroke-dasharray: 5 3; }
+.veymux-architecture-diagram .node[data-architecture-role='concern'] rect { stroke: var(--destructive) !important; }
+.veymux-architecture-diagram .node[data-architecture-role='entry'] rect { stroke: var(--primary) !important; }

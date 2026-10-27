@@ -47,11 +47,11 @@ it('rejects invalid rates and unverified server ABIs', async () => {
 });
 
 it('ships a verified preview server independently of host scrcpy and honors explicit overrides', async () => {
-  vi.stubEnv('TERMDOCK_SCRCPY_SERVER', '');
+  vi.stubEnv('VEYMUX_SCRCPY_SERVER', '');
   try {
     expect(await resolveBundledPreviewServer()).toEqual({ serverJar: bundledPreviewServerPath, version: '3.3.4' });
     expect(await inspectLiveBitrate(bundledPreviewServerPath, '3.3.4')).toBeNull();
-    vi.stubEnv('TERMDOCK_SCRCPY_SERVER', '/custom/server');
+    vi.stubEnv('VEYMUX_SCRCPY_SERVER', '/custom/server');
     expect(await resolveBundledPreviewServer()).toBeNull();
   } finally { vi.unstubAllEnvs(); }
 });

@@ -184,14 +184,14 @@ impl Connection {
             || url.password().is_some()
             || !url
                 .fragment()
-                .is_some_and(|f| f.starts_with("termdock-invite="))
+                .is_some_and(|f| f.starts_with("veymux-invite="))
         {
             return Err("Invitation does not match this connection".into());
         }
         let encoded = url
             .fragment()
             .unwrap()
-            .strip_prefix("termdock-invite=")
+            .strip_prefix("veymux-invite=")
             .unwrap();
         let decoded = base64::engine::general_purpose::URL_SAFE_NO_PAD
             .decode(encoded)
@@ -621,7 +621,7 @@ mod tests {
         let descriptor = serde_json::json!({"v":1,"serviceId":target,"entryServiceId":entry,"entryUrl":"https://entry.test","serviceUrl":"https://target.test","code":"x".repeat(43)});
         let invitation = |d: &serde_json::Value| {
             format!(
-                "https://entry.test/#termdock-invite={}",
+                "https://entry.test/#veymux-invite={}",
                 base64::engine::general_purpose::URL_SAFE_NO_PAD
                     .encode(serde_json::to_vec(d).unwrap())
             )

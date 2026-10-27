@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { expect, it, vi } from 'vitest';
 import { TerminalClientAttachment, type AttachedPty } from './terminalClientAttachment.js';
+import { TERMINAL_VERSION_REPLY } from './terminalVersionReplies.js';
 
 function fakePty(pid: number) {
   const data = new Set<(value: string) => void>();
@@ -72,11 +73,11 @@ it('drops replayed version replies and renews query ownership on reconnect', asy
   await client.open(80, 24);
   first.emit('\x1b[>'); first.emit('q');
   client.write(reply); client.write(reply);
-  expect(first.write.mock.calls).toEqual([[reply]]);
-  // An unanswered query on the obsolete display must not authorize input on
-  // its replacement. Each observer owns only its current PTY's queries.
-  first.emit('\x1b[>q');
+  expect(first.write.mock.calls).toEqual([[TERMINAL_VERSION_REPLY]]);
+  // A partial query on an obsolete display must not complete on its replacement.
+  first.emit('\x1b[>');
   await client.open(80, 24);
+  second.emit('q');
   client.write(reply);
   expect(second.write).not.toHaveBeenCalled();
   first.emit('\x1b[>q');
@@ -84,6 +85,6 @@ it('drops replayed version replies and renews query ownership on reconnect', asy
   expect(second.write).not.toHaveBeenCalled();
   second.emit('\x1b[>q');
   client.write(reply); client.write(reply); client.write('typed');
-  expect(second.write.mock.calls).toEqual([[reply], ['typed']]);
+  expect(second.write.mock.calls).toEqual([[TERMINAL_VERSION_REPLY], ['typed']]);
   client.close();
 });

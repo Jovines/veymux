@@ -1,4 +1,4 @@
-# Termdock Agent 规则
+# Veymux Agent 规则
 
 仓库存在多人/多 Agent 并行改动。
 
@@ -41,22 +41,22 @@
 
 ## macOS 原生通知验收
 
-- 新增或修改 macOS 原生通知后，必须用 Developer ID 签名的 `/Applications/Termdock.app`
-  在一个此前未授权 Termdock 通知的用户账户上验收；确认 `com.jovines.termdock`
+- 新增或修改 macOS 原生通知后，必须用 Developer ID 签名的 `/Applications/Veymux.app`
+  在一个此前未授权 Veymux 通知的用户账户上验收；确认 `com.jovines.veymux`
   实际出现在“系统设置 → 通知”的应用列表中，并能选择横幅/提醒样式。
 - Dock 徽标、前端 `granted`、IPC 返回 `true` 都不能代替系统注册与原生投递验证；
   必须检查 Info.plist 通知声明、签名身份，并以 Electron `show` / `failed` 事件和
   macOS 通知中心的实际记录为准。
-- 安装包升级后要复测现有用户和新用户两个路径；若系统列表中没有 Termdock，优先
+- 安装包升级后要复测现有用户和新用户两个路径；若系统列表中没有 Veymux，优先
   检查安装版本、Bundle ID、Developer ID 签名和首次原生通知请求，不把问题误判为
   单纯的横幅开关。
 
 ## 工具
 
 - 搜索用 `rg`,列文件用 `rg --files`,不要 `grep -r` / `find`。
-- 改完 `src/` 用 `termdock-deploy` skill 构建和部署。遇他人 WIP 编译错时，按上面的可隔离检查与产物阻塞规则处理。
-- **改动完成后自动部署到正式端口 9834**(`termdock-deploy` skill:
-  build → `termdock --stop` → setsid 启动 → health 检查),不用再问用户。
+- 改完 `src/` 用 `veymux-deploy` skill 构建和部署。遇他人 WIP 编译错时，按上面的可隔离检查与产物阻塞规则处理。
+- **改动完成后自动部署到正式端口 9834**(`veymux-deploy` skill:
+  build → `veymux --stop` → setsid 启动 → health 检查),不用再问用户。
 
 ## 产品交互与新用户引导
 

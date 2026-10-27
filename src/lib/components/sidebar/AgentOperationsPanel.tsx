@@ -13,7 +13,7 @@ import { useCollaborationPanelDock } from '../../stores/useCollaborationPanelDoc
 import { collaborationGroupPreferences, collaborationPanelClientId, relativePanelPosition, saveCollaborationPanel } from '../../collaboration/panelPreferences';
 import { focusCollaborationInput, registerCollaborationInput } from '../../collaboration/inputTarget';
 import { escapeShellPath } from '../../desktop/shellPath';
-import { getTermdockDesktopBridge } from '../../desktop/nativeBridge';
+import { getVeymuxDesktopBridge } from '../../desktop/nativeBridge';
 import { remoteSessionAddress, type CollaborationPeerState, type CollaborationPeerService } from '../../collaboration/directory';
 import { openRemoteSession } from '../../federation/remoteSession';
 import { isConnectionInterruption, SECURE_READY_EVENT, useConnectionRecovery } from '../../federation/connectionRecovery';
@@ -67,7 +67,7 @@ type Tab = 'automation' | 'collaboration' | 'search';
 
 function workbenchPreference(key: 'tab' | 'group', value?: string): string | null {
   try {
-    const storageKey = `termdock-workbench:${window.location.origin}:${key}`;
+    const storageKey = `veymux-workbench:${window.location.origin}:${key}`;
     if (value !== undefined) localStorage.setItem(storageKey, value);
     return localStorage.getItem(storageKey);
   } catch { return null; }
@@ -195,8 +195,8 @@ function AgentOperationsPanelView({ activeSessionId, initialCollaborationGroupId
   const [viewportHeight, setViewportHeight] = useState<number | null>(null);
   useEffect(() => {
     const onError = (event: Event) => setPreferenceError(String((event as CustomEvent).detail));
-    window.addEventListener('termdock-panel-save-error', onError);
-    return () => { window.removeEventListener('termdock-panel-save-error', onError); if (!overlayOnly) useCollaborationPanelDock.getState().setDock(initialCollaborationGroupId ?? 'workbench', null); };
+    window.addEventListener('veymux-panel-save-error', onError);
+    return () => { window.removeEventListener('veymux-panel-save-error', onError); if (!overlayOnly) useCollaborationPanelDock.getState().setDock(initialCollaborationGroupId ?? 'workbench', null); };
   }, []);
   const docked = !overlayOnly && floating && panelMode === 'docked' && !!dockHost;
   useLayoutEffect(() => {
@@ -947,8 +947,8 @@ export function CollaborationTab({ fullWorkspace = false, initialView = 'tasks',
     const composer = messageComposerRef.current;
     if (!floating || !composer) return;
     const failed = (event: Event) => setError(String((event as CustomEvent).detail));
-    composer.addEventListener('termdock:file-drop-error', failed);
-    return () => composer.removeEventListener('termdock:file-drop-error', failed);
+    composer.addEventListener('veymux:file-drop-error', failed);
+    return () => composer.removeEventListener('veymux:file-drop-error', failed);
   }, [floating, selectedGroup?.id, setError]);
   const insertFiles = async (files: File[]) => {
     const groupId = selectedGroup?.id;
@@ -1197,10 +1197,10 @@ export function CollaborationTab({ fullWorkspace = false, initialView = 'tasks',
       {!messagePanel && workspaceView === 'messages' && <div className="flex gap-1 overflow-x-auto" aria-label="工作组终端">{workspaceMembers.map(session => <button type="button" key={session.sessionId} aria-pressed={session.sessionId === activeSessionId} title={`${session.displayName} · ${session.cwd || '终端会话'}`} className={`${buttonClass} min-h-9 shrink-0 ${session.sessionId === activeSessionId ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-surface-2'}`} onClick={() => void onOpenTaskSession(session).catch(error => setError(error instanceof Error ? error.message : '无法打开终端'))}>{collaborationMemberLabel(session, workspaceMembers)}</button>)}</div>}
       {!messagePanel && <div hidden={workspaceView !== 'tasks'} className={fullWorkspace ? `${workspaceView === 'tasks' ? "flex" : "hidden"} min-h-0 flex-1 flex-col` : undefined}><CollaborationTaskWorkbench paneKey={docked ? inputKey : undefined} boardNavigation={fullWorkspace ? workspaceNavigation : undefined} boardSettings={fullWorkspace ? workspaceSettings : undefined} board={fullWorkspace} key={selectedGroup.id} group={selectedGroup} sessions={sessions} agents={agents} defaultCwd={sessions.find(session => session.sessionId === activeSessionId)?.cwd ?? undefined} onTeamReady={refresh} active={active && !settingsOpen && workspaceView === 'tasks' && (!floating || floatingVisible)} onAttentionChange={setTaskAttention} onManageMembers={() => setWorkspaceView('messages')} onOpenSession={onOpenTaskSession} /></div>}
       <div hidden={workspaceView !== 'messages'} className={fullWorkspace ? "min-h-0 flex-1 overflow-auto" : undefined}>
-      <section onFocusCapture={() => focusCollaborationInput(inputKey)} onPointerDownCapture={() => focusCollaborationInput(inputKey)} data-termdock-terminal-dropzone={floating ? activeSessionId ?? "collaboration-composer" : undefined} onDragOver={event => { if (floating) event.preventDefault(); }} onDrop={event => {
+      <section onFocusCapture={() => focusCollaborationInput(inputKey)} onPointerDownCapture={() => focusCollaborationInput(inputKey)} data-veymux-terminal-dropzone={floating ? activeSessionId ?? "collaboration-composer" : undefined} onDragOver={event => { if (floating) event.preventDefault(); }} onDrop={event => {
         if (!floating) return;
         const files = Array.from(event.dataTransfer.files);
-        if (files.length && getTermdockDesktopBridge()) return;
+        if (files.length && getVeymuxDesktopBridge()) return;
         event.preventDefault(); event.stopPropagation();
         if (files.length) void insertFiles(files);
         else { const text = event.dataTransfer.getData("text/plain") || event.dataTransfer.getData("text/uri-list"); if (text) setContent(current => current + (current ? "\n" : "") + text); }

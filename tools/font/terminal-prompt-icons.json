@@ -1,5 +1,5 @@
 {
-  "description": "Small first-frame Nerd Font fallback for common shell prompts: Powerline, OS/distribution, folders, Git, locks and terminal status. Other symbols keep the full Termdock Mono fallback.",
+  "description": "Small first-frame Nerd Font fallback for common shell prompts: Powerline, OS/distribution, folders, Git, locks and terminal status. Other symbols keep the full Veymux Mono fallback.",
   "ranges": [
     [
       "E0A0",

@@ -5,7 +5,7 @@ import os from 'node:os';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { CollaborationStore } from './collaborationStore.js';
 let dir: string, file: string;
-beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'td-local-group-')); file = path.join(dir, 'groups.json'); });
+beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-local-group-')); file = path.join(dir, 'groups.json'); });
 afterEach(() => { vi.restoreAllMocks(); fs.rmSync(dir, { recursive: true, force: true }); });
 it('atomically creates an empty local group and replays its original snapshot after restart and later membership changes', () => {
   const store = new CollaborationStore(file), first = store.createEmptyLocalGroup(' Case One ', 'create-request');

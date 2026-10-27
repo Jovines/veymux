@@ -17,7 +17,7 @@ const tools = require('../../../scripts/install-utils.cjs') as {
 const { rebuildNodePty } = require('../../../scripts/ensure-node-pty.cjs') as {
   rebuildNodePty(root: string, options?: { timeout?: number }): void;
 };
-const MARKER_FILE = path.join(os.homedir(), '.termdock', '.boot-check-ok');
+const MARKER_FILE = path.join(os.homedir(), '.veymux', '.boot-check-ok');
 
 function checkNodePty(): PtyCheckResult {
   let ptyPath: string;

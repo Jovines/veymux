@@ -41,7 +41,7 @@ async function mount(width: number, delayedQuota?: Promise<Response>, workspaceW
   }
   const host = document.createElement('div'); host.id = 'root'; document.documentElement.style.setProperty('--safe-top-inset', width < 1024 ? '44px' : '0px'); document.body.append(host); root = createRoot(host); root.render(<Fixture />);
   await expect.poll(() => document.querySelector('[data-session-current-title]')?.getAttribute('data-session-current-title')).toBe(sessions[0].id);
-  return { change: (id: number) => change(id), openQuota, setTodos: (count: number) => { todos = count; window.dispatchEvent(new Event('termdock:todos-changed')); } };
+  return { change: (id: number) => change(id), openQuota, setTodos: (count: number) => { todos = count; window.dispatchEvent(new Event('veymux:todos-changed')); } };
 }
 it.each([320, 390, 844, 1280])('shows one current name and desktop quota without moving the content at width %i', async width => {
   const f = await mount(width);
@@ -59,7 +59,7 @@ it.each([320, 390, 844, 1280])('shows one current name and desktop quota without
   }
   f.setTodos(0); await expect.poll(() => document.querySelector('[data-todo-count]')).toBeNull();
   f.setTodos(137); await expect.poll(() => document.querySelector('[data-todo-count]')?.textContent).toBe('99+');
-  window.dispatchEvent(new CustomEvent('termdock:quota-update', { detail: [quota(80)] }));
+  window.dispatchEvent(new CustomEvent('veymux:quota-update', { detail: [quota(80)] }));
   await expect.poll(() => document.querySelector('[data-session-current-quota]')?.textContent).toContain('20%');
   await page.getByRole('button', { name: /^Codex ·/ }).click(); expect(f.openQuota).toHaveBeenCalledOnce();
   f.change(2);
@@ -70,7 +70,7 @@ it.each([320, 390, 844, 1280])('shows one current name and desktop quota without
   expect(header.scrollWidth).toBeLessThanOrEqual(header.clientWidth);
   expect(document.querySelector('[data-test-pager]')!.getBoundingClientRect().top).toBe(before);
   if (width < 1024) expect(document.querySelector('[data-session-current-quota]')!.getBoundingClientRect().bottom).toBeLessThanOrEqual(header.getBoundingClientRect().bottom + 1);
-  await page.screenshot({ path: `/tmp/termdock-current-title-${width}.png` });
+  await page.screenshot({ path: `/tmp/veymux-current-title-${width}.png` });
 });
 it.each([480, 680, 900])('keeps the long title, status and full quota inside a %i px desktop workspace', async workspaceWidth => {
   const f = await mount(1440, undefined, workspaceWidth);
@@ -92,7 +92,7 @@ it.each([480, 680, 900])('keeps the long title, status and full quota inside a %
   expect(text.scrollWidth).toBeGreaterThan(text.clientWidth);
   await page.getByRole('button', { name: /^Codex ·/ }).click();
   expect(f.openQuota).toHaveBeenCalledOnce();
-  await page.screenshot({ path: `/tmp/termdock-current-title-desktop-${workspaceWidth}.png` });
+  await page.screenshot({ path: `/tmp/veymux-current-title-desktop-${workspaceWidth}.png` });
 });
 it('updates the sole title and quota availability with real left/right Session swipes', async () => {
   await mount(390);

@@ -74,7 +74,7 @@ describe('classifyChildExit', () => {
     expect(decision.event).toBe('update-restart');
   });
 
-  it('td --restart（SIGHUP）：记成 manual-restart 而不是更新重启', () => {
+  it('veymux --restart（SIGHUP）：记成 manual-restart 而不是更新重启', () => {
     const decision = classifyChildExit(observation({ restartRequested: true, signal: 'SIGTERM' }));
     expect(decision.event).toBe('manual-restart');
     expect(decision.restart).toBe(true);
@@ -196,16 +196,16 @@ describe('shouldGiveUp', () => {
 
 describe('消息判别', () => {
   it('识别 ready 消息', () => {
-    expect(isReadyMessage({ type: 'termdock-ready' })).toBe(true);
-    expect(isReadyMessage({ type: 'termdock-intent' })).toBe(false);
+    expect(isReadyMessage({ type: 'veymux-ready' })).toBe(true);
+    expect(isReadyMessage({ type: 'veymux-intent' })).toBe(false);
     expect(isReadyMessage(null)).toBe(false);
   });
 
   it('识别 intent 消息，拒绝未知 intent', () => {
-    expect(isServerIntentMessage({ type: 'termdock-intent', intent: 'stop' })).toBe(true);
-    expect(isServerIntentMessage({ type: 'termdock-intent', intent: 'restart-after-update' })).toBe(true);
-    expect(isServerIntentMessage({ type: 'termdock-intent', intent: 'nonsense' })).toBe(false);
-    expect(isServerIntentMessage({ type: 'termdock-ready' })).toBe(false);
+    expect(isServerIntentMessage({ type: 'veymux-intent', intent: 'stop' })).toBe(true);
+    expect(isServerIntentMessage({ type: 'veymux-intent', intent: 'restart-after-update' })).toBe(true);
+    expect(isServerIntentMessage({ type: 'veymux-intent', intent: 'nonsense' })).toBe(false);
+    expect(isServerIntentMessage({ type: 'veymux-ready' })).toBe(false);
     expect(isServerIntentMessage(undefined)).toBe(false);
   });
 });

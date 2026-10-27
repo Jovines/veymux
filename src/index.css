@@ -18,6 +18,7 @@
   /* 主界面 chrome(安全区/tab 条/键盘栏)的沉浸底色,与终端同一块面。
      深色 = bg-2;浅色 = paper(见下方 light 块),否则终端上下会框一圈脏灰。 */
   --chrome-bg: #1C1B1A;
+  --brand-mark: #3AA99F; /* cyan-400, fixed brand color in both themes */
   --muted: #575653; /* tx-3 (base-700) */
   --muted-foreground: #878580; /* tx-2 (base-500) */
   --border: #403E3C; /* ui-3 */
@@ -121,10 +122,10 @@
    * 任何字体改动只动这里，不再散落到 index.html / 业务组件 / tailwind.config。
    *
    * --font-mono 字体链顺序（"大和全"原则）:
-   *   1. Termdock Mono             JetBrains Mono NL Nerd Font Mono 主字体，
+   *   1. Veymux Mono             JetBrains Mono NL Nerd Font Mono 主字体，
    *                                 覆盖 ASCII / Nerd Font / Powerline / 常用符号
    *   2. Noto Sans Mono CJK SC      自托管中日韩等宽（GB2312 一级 + 标点）
-   *   3. Termdock Star Symbol       Menlo 抽取的 ✦/✧ 符号子集
+   *   3. Veymux Star Symbol       Menlo 抽取的 ✦/✧ 符号子集
    *   4. Noto Sans Symbols 2        只白名单补 ⏸⏹⏺ / ✓✗
    *   5. ui-monospace, ...          系统等宽兜底
    *
@@ -141,13 +142,13 @@
    *    font-variant-emoji: text 抑制 ⏺⏸ 这类文本符号被误回退。
    */
   --font-mono:
-    'Termdock Mono',
+    'Veymux Mono',
     'Noto Sans Mono CJK SC',
-    'Termdock Star Symbol',
+    'Veymux Star Symbol',
     'Noto Sans Symbols 2',
     ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Monaco, Consolas, monospace;
 
-  --font-terminal: 'Termdock Prompt Icons', 'Termdock Maple', var(--font-mono);
+  --font-terminal: 'Veymux Prompt Icons', 'Veymux Maple', var(--font-mono);
 
   --font-sans:
     -apple-system, BlinkMacSystemFont, 'Segoe UI',
@@ -161,7 +162,7 @@ html {
   color-scheme: dark;
 }
 
-html[data-termdock-desktop='true'] {
+html[data-veymux-desktop='true'] {
   --safe-top-inset: max(env(safe-area-inset-top, 0px), 38px);
 }
 
@@ -169,7 +170,7 @@ html[data-termdock-desktop='true'] {
    header shares their y=23 centerline. Keep this in the served stylesheet for
    existing desktop shells. The header lives inside the sidebar's content
    wrapper. Overlay drawers already reserve the safe inset. */
-html[data-termdock-desktop='true'] [data-session-sidebar-pinned] [data-session-sidebar-header] {
+html[data-veymux-desktop='true'] [data-session-sidebar-pinned] [data-session-sidebar-header] {
   display: flex;
   align-items: center;
   min-height: 46px;
@@ -179,13 +180,13 @@ html[data-termdock-desktop='true'] [data-session-sidebar-pinned] [data-session-s
 
 /* Match the session-row action columns while keeping the overlay drawer's
    larger touch targets. Both icons use the same box and glyph size. */
-html[data-termdock-desktop='true'] [data-session-sidebar-pinned] [data-session-sidebar-header-action] {
+html[data-veymux-desktop='true'] [data-session-sidebar-pinned] [data-session-sidebar-header-action] {
   width: 26px;
   height: 26px;
 }
 
-html[data-termdock-desktop='true'] [data-session-sidebar-header] button,
-html[data-termdock-desktop='true'] [data-session-sidebar-header] [role='menu'] {
+html[data-veymux-desktop='true'] [data-session-sidebar-header] button,
+html[data-veymux-desktop='true'] [data-session-sidebar-header] [role='menu'] {
   -webkit-app-region: no-drag;
 }
 
@@ -193,11 +194,11 @@ html[data-termdock-desktop='true'] [data-session-sidebar-header] [role='menu'] {
 	   区域产生隐式 drag region 覆盖按钮/链接等交互元素。
 	   同时用 body::after 在顶部放一条 38px 的 drag 把手（与 --safe-top-inset
 	   等高的空白 padding 区），只此区域可拖窗口，不挡 sidebar 按钮/Tab。 */
-	html[data-termdock-desktop='true'],
-	html[data-termdock-desktop='true'] body {
+	html[data-veymux-desktop='true'],
+	html[data-veymux-desktop='true'] body {
 	  -webkit-app-region: no-drag;
 	}
-	html[data-termdock-desktop='true'] body::after {
+	html[data-veymux-desktop='true'] body::after {
 	  content: '';
 	  position: fixed;
 	  top: 0;
@@ -392,7 +393,7 @@ body {
 
 /* Leave the iPad PWA header below the native gradient's overhang. Each
    workspace reserves this once inside its own physical-viewport root. */
-html[data-termdock-ipad-pwa='true'] #root {
+html[data-veymux-ipad-pwa='true'] #root {
   padding-top: calc(var(--safe-top-inset, env(safe-area-inset-top, 0px)) + 32px);
 }
 
@@ -569,12 +570,12 @@ select:not([multiple]):not([size]) {
   background-repeat: no-repeat;
 }
 
-::highlight(termdock-file-search-match) {
+::highlight(veymux-file-search-match) {
   background-color: rgba(var(--warning-rgb), 0.24);
   color: var(--foreground);
 }
 
-::highlight(termdock-file-search-current) {
+::highlight(veymux-file-search-current) {
   background-color: var(--warning);
   color: var(--warning-foreground);
 }
@@ -758,14 +759,14 @@ input:autofill {
 }
 
 /* Preserve skeleton geometry and pulse only placeholders, never status text. */
-.td-loading-skeleton [aria-hidden='true'] {
+.veymux-loading-skeleton [aria-hidden='true'] {
   animation: pulse 2s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .animate-spin,
   .animate-pulse,
-  .td-loading-skeleton [aria-hidden='true'] {
+  .veymux-loading-skeleton [aria-hidden='true'] {
     animation: none;
   }
 }
@@ -794,8 +795,8 @@ body {
  * chrome stay predictable. Reading surfaces (including chat replies and the
  * right sidebar) restore native long-press selection/copy handles on phones.
  */
-.termdock-native-select,
-.termdock-native-select :where(
+.veymux-native-select,
+.veymux-native-select :where(
   p,
   span,
   a,
@@ -837,7 +838,7 @@ body {
   user-select: text;
 }
 
-.termdock-native-select :where(
+.veymux-native-select :where(
   button,
   button *,
   svg,
@@ -851,7 +852,7 @@ body {
   user-select: none;
 }
 
-.termdock-native-select ::selection {
+.veymux-native-select ::selection {
   background: rgb(var(--accent-rgb) / 0.28);
   color: var(--foreground);
 }
@@ -859,12 +860,12 @@ body {
 /* Touch layouts include wide iPads and landscape phones. The compatibility
    path keeps a base-height root; native iOS focus uses the CSS viewport and
    normal positioning below. The flexible terminal/list content may shrink. */
-html[data-termdock-touch-viewport='true'] {
+html[data-veymux-touch-viewport='true'] {
   height: var(--app-base-vh, 100lvh);
   width: 100vw;
 }
 
-html[data-termdock-touch-viewport='true'] body {
+html[data-veymux-touch-viewport='true'] body {
   position: fixed;
   top: 0;
   left: 0;
@@ -877,7 +878,7 @@ html[data-termdock-touch-viewport='true'] body {
   color: var(--foreground) !important;
 }
 
-html[data-termdock-touch-viewport='true'] #root {
+html[data-veymux-touch-viewport='true'] #root {
   position: fixed;
   top: 0;
   left: 0;
@@ -888,21 +889,21 @@ html[data-termdock-touch-viewport='true'] #root {
 
 /* Native focus moves the input. Only chrome and flexible content compensate
    for the page's measured displacement; no keyboard-height translation. */
-html[data-termdock-native-keyboard='true'] { height: 100lvh; --app-native-frame-height: 100lvh; }
-html[data-termdock-native-keyboard='true'] body { position: relative; height: 100lvh; }
-html[data-termdock-native-keyboard='true'] #root,
-html[data-termdock-native-keyboard='true'] iframe[data-workspace-key] { position: absolute; }
-html[data-termdock-native-keyboard='true'] #root { height: 100lvh; }
+html[data-veymux-native-keyboard='true'] { height: 100lvh; --app-native-frame-height: 100lvh; }
+html[data-veymux-native-keyboard='true'] body { position: relative; height: 100lvh; }
+html[data-veymux-native-keyboard='true'] #root,
+html[data-veymux-native-keyboard='true'] iframe[data-workspace-key] { position: absolute; }
+html[data-veymux-native-keyboard='true'] #root { height: 100lvh; }
 /* During actual native pan, the system owns the bottom edge. Retaining the
    home-indicator padding here leaves a second, empty inset above its toolbar. */
-html[data-termdock-native-keyboard='true'][data-termdock-native-pan='true'] #root { padding-bottom: 0; }
-html[data-termdock-native-keyboard='true'] [data-termdock-window-header='true'] {
+html[data-veymux-native-keyboard='true'][data-veymux-native-pan='true'] #root { padding-bottom: 0; }
+html[data-veymux-native-keyboard='true'] [data-veymux-window-header='true'] {
   transform: translateY(var(--app-native-pan, 0px));
   /* Local chrome must paint above Swiper's z-index:1 canvas after translation. */
   z-index: 20;
 }
 
-html[data-termdock-touch-viewport='true'] .terminal-viewport-container {
+html[data-veymux-touch-viewport='true'] .terminal-viewport-container {
   touch-action: none;
   overscroll-behavior: contain;
 }
@@ -917,7 +918,7 @@ html[data-termdock-touch-viewport='true'] .terminal-viewport-container {
 }
 
 /* Markdown 预览图片加载完成后的淡入（配合占位框防跳动）。 */
-.termdock-fade-in {
+.veymux-fade-in {
   animation: fade-in 0.18s ease-out;
 }
 
@@ -1078,18 +1079,18 @@ div.swiper {
   -webkit-text-fill-color: transparent;
 }
 
-/* react-diff-view — scoped Termdock palette.
+/* react-diff-view — scoped Veymux palette.
    Keep this on a local wrapper instead of :root because react-diff-view imports
    its own :root defaults and can override global variables depending on CSS
    extraction order. */
 :root,
-.termdock-diff {
+.veymux-diff {
   --diff-insert-strong: var(--success);
   --diff-delete-strong: var(--destructive);
   --diff-hunk-accent: var(--accent);
 }
 
-.termdock-diff {
+.veymux-diff {
   --diff-background-color: transparent;
   --diff-text-color: var(--foreground);
   --diff-font-family: var(--font-mono);
@@ -1113,7 +1114,7 @@ div.swiper {
   --diff-code-selected-text-color: var(--foreground);
 }
 
-html[data-theme='light'] .termdock-diff {
+html[data-theme='light'] .veymux-diff {
   --diff-code-insert-edit-background-color: rgba(var(--diff-insert-rgb), 0.34);
   --diff-code-delete-edit-background-color: rgba(var(--diff-delete-rgb), 0.34);
 }
@@ -1140,22 +1141,22 @@ html[data-theme='light'] .termdock-diff {
   border-right: 1px solid rgba(var(--diff-border-rgb), 0.32);
 }
 
-.termdock-diff .diff {
+.veymux-diff .diff {
   table-layout: auto;
 }
 
-.termdock-diff-wrap .diff {
+.veymux-diff-wrap .diff {
   table-layout: fixed;
   width: 100%;
 }
 
-.termdock-diff .diff-gutter-col {
-  width: var(--termdock-diff-gutter-width, 3ch);
+.veymux-diff .diff-gutter-col {
+  width: var(--veymux-diff-gutter-width, 3ch);
 }
 
 /* An absent side is alignment space, not a deletion. react-diff-view's
    default red omission bar incorrectly marks pure insertions as removals. */
-.termdock-diff .diff-gutter-omit::before {
+.veymux-diff .diff-gutter-omit::before {
   content: none;
 }
 
@@ -1171,11 +1172,11 @@ html[data-theme='light'] .termdock-diff {
    horizontally scrollable, so the user can swipe sideways to see
    what's beyond the viewport. We do NOT touch `.diff-gutter` because
    the line-number column should always fit. */
-.termdock-diff-scroll:not(.termdock-diff-wrap) .diff-code,
-.termdock-diff-scroll:not(.termdock-diff-wrap) .diff-code-edit,
-.termdock-diff-scroll:not(.termdock-diff-wrap) .termdock-diff-audit-explanation,
-.termdock-diff-scroll:not(.termdock-diff-wrap) pre,
-.termdock-diff-scroll:not(.termdock-diff-wrap) code {
+.veymux-diff-scroll:not(.veymux-diff-wrap) .diff-code,
+.veymux-diff-scroll:not(.veymux-diff-wrap) .diff-code-edit,
+.veymux-diff-scroll:not(.veymux-diff-wrap) .veymux-diff-audit-explanation,
+.veymux-diff-scroll:not(.veymux-diff-wrap) pre,
+.veymux-diff-scroll:not(.veymux-diff-wrap) code {
   white-space: pre !important;
   word-break: normal !important;
   overflow-wrap: normal !important;
@@ -1183,16 +1184,16 @@ html[data-theme='light'] .termdock-diff {
 
 /* Split long lines must not overflow into the opposite revision. The shared
    spacer gives even short lines the same scroll range; gutters remain fixed. */
-.termdock-diff-split-nowrap {
+.veymux-diff-split-nowrap {
   overflow-x: hidden;
 }
 
-.termdock-diff-split-nowrap .diff-code {
+.veymux-diff-split-nowrap .diff-code {
   position: relative;
   overflow: hidden;
 }
 
-.termdock-diff-split-nowrap .diff-code::after {
+.veymux-diff-split-nowrap .diff-code::after {
   content: '';
   position: absolute;
   top: 0;
@@ -1202,32 +1203,32 @@ html[data-theme='light'] .termdock-diff {
   pointer-events: none;
 }
 
-.termdock-diff-horizontal-bars {
+.veymux-diff-horizontal-bars {
   display: grid;
   grid-template-columns: 1fr 1fr;
 }
 
-.termdock-diff-horizontal-bars > div {
+.veymux-diff-horizontal-bars > div {
   height: 12px;
   min-width: 0;
   overflow-x: auto;
-  margin-left: var(--termdock-diff-gutter-width, 3ch);
+  margin-left: var(--veymux-diff-gutter-width, 3ch);
   scrollbar-width: thin;
   scrollbar-color: var(--muted) transparent;
 }
 
-.termdock-diff-horizontal-bars > div::-webkit-scrollbar {
+.veymux-diff-horizontal-bars > div::-webkit-scrollbar {
   display: block;
   width: 0;
   height: 10px;
 }
 
-.termdock-diff-horizontal-bars > div::-webkit-scrollbar-thumb {
+.veymux-diff-horizontal-bars > div::-webkit-scrollbar-thumb {
   background: var(--muted);
   border-radius: 4px;
 }
 
-.termdock-diff-horizontal-bars > div > div {
+.veymux-diff-horizontal-bars > div > div {
   width: calc(100% + var(--diff-scroll-overflow, 0px));
   height: 1px;
 }
@@ -1252,59 +1253,59 @@ html[data-theme='light'] .termdock-diff {
   font-weight: 500;
 }
 
-.termdock-diff .diff-decoration-content > * {
+.veymux-diff .diff-decoration-content > * {
   min-width: 0;
   max-width: 100%;
 }
 
-.termdock-diff-audit-explanation {
+.veymux-diff-audit-explanation {
   white-space: normal;
   word-break: break-word;
   overflow-wrap: anywhere;
 }
 
-.termdock-diff .diff-code-insert,
-.termdock-diff .diff-gutter-insert {
+.veymux-diff .diff-code-insert,
+.veymux-diff .diff-gutter-insert {
   background-color: var(--diff-code-insert-background-color) !important;
   color: var(--foreground) !important;
 }
 
-.termdock-diff .diff-gutter-insert {
+.veymux-diff .diff-gutter-insert {
   box-shadow: inset 2px 0 rgba(var(--diff-insert-rgb), 0.9);
 }
 
-.termdock-diff .diff-line:has(.diff-code-insert .diff-code-edit) .diff-code-insert,
-.termdock-diff .diff-line:has(.diff-code-insert .diff-code-edit) .diff-gutter-insert {
+.veymux-diff .diff-line:has(.diff-code-insert .diff-code-edit) .diff-code-insert,
+.veymux-diff .diff-line:has(.diff-code-insert .diff-code-edit) .diff-gutter-insert {
   background-color: rgba(var(--diff-insert-rgb), 0.1) !important;
 }
 
-.termdock-diff .diff-code-delete,
-.termdock-diff .diff-gutter-delete {
+.veymux-diff .diff-code-delete,
+.veymux-diff .diff-gutter-delete {
   background-color: var(--diff-code-delete-background-color) !important;
   color: var(--foreground) !important;
 }
 
-.termdock-diff .diff-gutter-delete {
+.veymux-diff .diff-gutter-delete {
   box-shadow: inset 2px 0 rgba(var(--diff-delete-rgb), 0.9);
 }
 
-.termdock-diff .diff-line:has(.diff-code-delete .diff-code-edit) .diff-code-delete,
-.termdock-diff .diff-line:has(.diff-code-delete .diff-code-edit) .diff-gutter-delete {
+.veymux-diff .diff-line:has(.diff-code-delete .diff-code-edit) .diff-code-delete,
+.veymux-diff .diff-line:has(.diff-code-delete .diff-code-edit) .diff-gutter-delete {
   background-color: rgba(var(--diff-delete-rgb), 0.1) !important;
 }
 
-.termdock-diff .diff-code-insert .diff-code-edit,
-.termdock-diff .diff-code-delete .diff-code-edit {
+.veymux-diff .diff-code-insert .diff-code-edit,
+.veymux-diff .diff-code-delete .diff-code-edit {
   color: var(--foreground) !important;
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
 }
 
-.termdock-diff .diff-code-insert .diff-code-edit {
+.veymux-diff .diff-code-insert .diff-code-edit {
   background-color: var(--diff-code-insert-edit-background-color) !important;
 }
 
-.termdock-diff .diff-code-delete .diff-code-edit {
+.veymux-diff .diff-code-delete .diff-code-edit {
   background-color: var(--diff-code-delete-edit-background-color) !important;
 }
 
@@ -1315,8 +1316,8 @@ html[data-theme='light'] .termdock-diff {
  * of the green/red wash instead of fighting it, and it also covers the gutter
  * rails and the word-level edit highlights.
  */
-.termdock-diff .diff-line-ref-selected > .diff-gutter,
-.termdock-diff .diff-line-ref-selected > .diff-code {
+.veymux-diff .diff-line-ref-selected > .diff-gutter,
+.veymux-diff .diff-line-ref-selected > .diff-code {
   background-image: linear-gradient(var(--diff-line-ref-tint), var(--diff-line-ref-tint));
 }
 
@@ -1333,7 +1334,7 @@ html[data-theme='light'] .termdock-diff {
  * will route horizontal pans to this element's x scrollbar and vertical
  * pans to the nearest y-scrollable ancestor.
  */
-.termdock-diff-scroll {
+.veymux-diff-scroll {
   touch-action: pan-x pan-y;
   overscroll-behavior-x: contain;
   overscroll-behavior-y: auto;
@@ -1343,7 +1344,7 @@ html[data-theme='light'] .termdock-diff {
 /* All unified hunks share one horizontal canvas. Otherwise each table only
    grows to its own longest line, leaving shorter row backgrounds and hunk
    headers behind when the file's shared scroller moves to the right. */
-.termdock-diff-scroll:not(.diff-split):not(.termdock-diff-wrap) > .termdock-diff-canvas {
+.veymux-diff-scroll:not(.diff-split):not(.veymux-diff-wrap) > .veymux-diff-canvas {
   width: max-content;
   min-width: 100%;
 }
@@ -1354,25 +1355,25 @@ html[data-theme='light'] .termdock-diff {
  * horizontal pans through nested scroll containers, so keep the x axis explicit
  * and local while allowing vertical pans to bubble to the preview scroller.
  */
-.termdock-file-preview-horizontal-scroll,
-.termdock-md-table-scroll {
+.veymux-file-preview-horizontal-scroll,
+.veymux-md-table-scroll {
   touch-action: pan-x pan-y;
   overscroll-behavior-x: contain;
   overscroll-behavior-y: auto;
   -webkit-overflow-scrolling: touch;
 }
 
-.termdock-md-table-scroll tr[data-selected='true'] > th,
-.termdock-md-table-scroll tr[data-selected='true'] > td {
+.veymux-md-table-scroll tr[data-selected='true'] > th,
+.veymux-md-table-scroll tr[data-selected='true'] > td {
   background: color-mix(in srgb, var(--primary) 16%, transparent);
   color: var(--foreground);
 }
 
-.termdock-md-table-scroll tr[data-selected='true'] > :first-child {
+.veymux-md-table-scroll tr[data-selected='true'] > :first-child {
   position: relative;
 }
 
-.termdock-md-table-scroll tr[data-selected='true'] > :first-child::before {
+.veymux-md-table-scroll tr[data-selected='true'] > :first-child::before {
   content: '';
   position: absolute;
   inset-block: 0.375rem;
@@ -1390,11 +1391,11 @@ html[data-theme='light'] .termdock-diff {
  * `word-break: break-word` is intentionally used over `break-all` so we
  * still try to break on whitespace first, keeping identifiers readable.
  */
-.termdock-diff-wrap .diff-code,
-.termdock-diff-wrap .diff-code-edit,
-.termdock-diff-wrap .termdock-diff-audit-explanation,
-.termdock-diff-wrap pre,
-.termdock-diff-wrap code {
+.veymux-diff-wrap .diff-code,
+.veymux-diff-wrap .diff-code-edit,
+.veymux-diff-wrap .veymux-diff-audit-explanation,
+.veymux-diff-wrap pre,
+.veymux-diff-wrap code {
   white-space: pre-wrap !important;
   word-break: break-word !important;
   overflow-wrap: anywhere !important;
@@ -1407,172 +1408,172 @@ html[data-theme='light'] .termdock-diff {
 
 /*
  * Prism / refractor syntax token palette (Flexoki dark).
- * Shared by the diff viewer (`.termdock-diff`) and the file preview
- * (`.termdock-code`). Colors are tuned to sit on the dark surfaces and to
+ * Shared by the diff viewer (`.veymux-diff`) and the file preview
+ * (`.veymux-code`). Colors are tuned to sit on the dark surfaces and to
  * remain readable on top of the diff insert/delete row backgrounds.
  */
-.termdock-diff .token,
-.termdock-code .token {
+.veymux-diff .token,
+.veymux-code .token {
   background: transparent;
   display: inline;
 }
-.termdock-diff .token.comment,
-.termdock-diff .token.prolog,
-.termdock-diff .token.doctype,
-.termdock-diff .token.cdata,
-.termdock-code .token.comment,
-.termdock-code .token.prolog,
-.termdock-code .token.doctype,
-.termdock-code .token.cdata {
+.veymux-diff .token.comment,
+.veymux-diff .token.prolog,
+.veymux-diff .token.doctype,
+.veymux-diff .token.cdata,
+.veymux-code .token.comment,
+.veymux-code .token.prolog,
+.veymux-code .token.doctype,
+.veymux-code .token.cdata {
   color: #878580;
   font-style: italic;
 }
-html[data-theme='light'] .termdock-diff .token.comment,
-html[data-theme='light'] .termdock-diff .token.prolog,
-html[data-theme='light'] .termdock-diff .token.doctype,
-html[data-theme='light'] .termdock-diff .token.cdata,
-html[data-theme='light'] .termdock-code .token.comment,
-html[data-theme='light'] .termdock-code .token.prolog,
-html[data-theme='light'] .termdock-code .token.doctype,
-html[data-theme='light'] .termdock-code .token.cdata {
+html[data-theme='light'] .veymux-diff .token.comment,
+html[data-theme='light'] .veymux-diff .token.prolog,
+html[data-theme='light'] .veymux-diff .token.doctype,
+html[data-theme='light'] .veymux-diff .token.cdata,
+html[data-theme='light'] .veymux-code .token.comment,
+html[data-theme='light'] .veymux-code .token.prolog,
+html[data-theme='light'] .veymux-code .token.doctype,
+html[data-theme='light'] .veymux-code .token.cdata {
   color: #6F6E69;
 }
-.termdock-diff .token.punctuation,
-.termdock-code .token.punctuation {
+.veymux-diff .token.punctuation,
+.veymux-code .token.punctuation {
   color: #9F9D96;
 }
-html[data-theme='light'] .termdock-diff .token.punctuation,
-html[data-theme='light'] .termdock-code .token.punctuation {
+html[data-theme='light'] .veymux-diff .token.punctuation,
+html[data-theme='light'] .veymux-code .token.punctuation {
   color: #6F6E69;
 }
-.termdock-diff .token.property,
-.termdock-diff .token.tag,
-.termdock-diff .token.boolean,
-.termdock-diff .token.number,
-.termdock-diff .token.constant,
-.termdock-diff .token.symbol,
-.termdock-diff .token.deleted,
-.termdock-code .token.property,
-.termdock-code .token.tag,
-.termdock-code .token.boolean,
-.termdock-code .token.number,
-.termdock-code .token.constant,
-.termdock-code .token.symbol,
-.termdock-code .token.deleted {
+.veymux-diff .token.property,
+.veymux-diff .token.tag,
+.veymux-diff .token.boolean,
+.veymux-diff .token.number,
+.veymux-diff .token.constant,
+.veymux-diff .token.symbol,
+.veymux-diff .token.deleted,
+.veymux-code .token.property,
+.veymux-code .token.tag,
+.veymux-code .token.boolean,
+.veymux-code .token.number,
+.veymux-code .token.constant,
+.veymux-code .token.symbol,
+.veymux-code .token.deleted {
   color: #D14D41;
 }
-.termdock-diff .token.selector,
-.termdock-diff .token.attr-name,
-.termdock-diff .token.string,
-.termdock-diff .token.char,
-.termdock-diff .token.builtin,
-.termdock-diff .token.inserted,
-.termdock-code .token.selector,
-.termdock-code .token.attr-name,
-.termdock-code .token.string,
-.termdock-code .token.char,
-.termdock-code .token.builtin,
-.termdock-code .token.inserted {
+.veymux-diff .token.selector,
+.veymux-diff .token.attr-name,
+.veymux-diff .token.string,
+.veymux-diff .token.char,
+.veymux-diff .token.builtin,
+.veymux-diff .token.inserted,
+.veymux-code .token.selector,
+.veymux-code .token.attr-name,
+.veymux-code .token.string,
+.veymux-code .token.char,
+.veymux-code .token.builtin,
+.veymux-code .token.inserted {
   color: #879A39;
 }
-.termdock-diff .token.operator,
-.termdock-diff .token.entity,
-.termdock-diff .token.url,
-.termdock-diff .token.variable,
-.termdock-code .token.operator,
-.termdock-code .token.entity,
-.termdock-code .token.url,
-.termdock-code .token.variable {
+.veymux-diff .token.operator,
+.veymux-diff .token.entity,
+.veymux-diff .token.url,
+.veymux-diff .token.variable,
+.veymux-code .token.operator,
+.veymux-code .token.entity,
+.veymux-code .token.url,
+.veymux-code .token.variable {
   color: #DA702C;
 }
-.termdock-diff .token.atrule,
-.termdock-diff .token.attr-value,
-.termdock-diff .token.keyword,
-.termdock-code .token.atrule,
-.termdock-code .token.attr-value,
-.termdock-code .token.keyword {
+.veymux-diff .token.atrule,
+.veymux-diff .token.attr-value,
+.veymux-diff .token.keyword,
+.veymux-code .token.atrule,
+.veymux-code .token.attr-value,
+.veymux-code .token.keyword {
   color: #4385BE;
 }
-.termdock-diff .token.function,
-.termdock-diff .token.class-name,
-.termdock-code .token.function,
-.termdock-code .token.class-name {
+.veymux-diff .token.function,
+.veymux-diff .token.class-name,
+.veymux-code .token.function,
+.veymux-code .token.class-name {
   color: #D0A215;
 }
-.termdock-diff .token.regex,
-.termdock-diff .token.important,
-.termdock-code .token.regex,
-.termdock-code .token.important {
+.veymux-diff .token.regex,
+.veymux-diff .token.important,
+.veymux-code .token.regex,
+.veymux-code .token.important {
   color: #CE5D97;
 }
-html[data-theme='light'] .termdock-diff .token.property,
-html[data-theme='light'] .termdock-diff .token.tag,
-html[data-theme='light'] .termdock-diff .token.boolean,
-html[data-theme='light'] .termdock-diff .token.number,
-html[data-theme='light'] .termdock-diff .token.constant,
-html[data-theme='light'] .termdock-diff .token.symbol,
-html[data-theme='light'] .termdock-diff .token.deleted,
-html[data-theme='light'] .termdock-code .token.property,
-html[data-theme='light'] .termdock-code .token.tag,
-html[data-theme='light'] .termdock-code .token.boolean,
-html[data-theme='light'] .termdock-code .token.number,
-html[data-theme='light'] .termdock-code .token.constant,
-html[data-theme='light'] .termdock-code .token.symbol,
-html[data-theme='light'] .termdock-code .token.deleted {
+html[data-theme='light'] .veymux-diff .token.property,
+html[data-theme='light'] .veymux-diff .token.tag,
+html[data-theme='light'] .veymux-diff .token.boolean,
+html[data-theme='light'] .veymux-diff .token.number,
+html[data-theme='light'] .veymux-diff .token.constant,
+html[data-theme='light'] .veymux-diff .token.symbol,
+html[data-theme='light'] .veymux-diff .token.deleted,
+html[data-theme='light'] .veymux-code .token.property,
+html[data-theme='light'] .veymux-code .token.tag,
+html[data-theme='light'] .veymux-code .token.boolean,
+html[data-theme='light'] .veymux-code .token.number,
+html[data-theme='light'] .veymux-code .token.constant,
+html[data-theme='light'] .veymux-code .token.symbol,
+html[data-theme='light'] .veymux-code .token.deleted {
   color: #AF3029;
 }
-html[data-theme='light'] .termdock-diff .token.selector,
-html[data-theme='light'] .termdock-diff .token.attr-name,
-html[data-theme='light'] .termdock-diff .token.string,
-html[data-theme='light'] .termdock-diff .token.char,
-html[data-theme='light'] .termdock-diff .token.builtin,
-html[data-theme='light'] .termdock-diff .token.inserted,
-html[data-theme='light'] .termdock-code .token.selector,
-html[data-theme='light'] .termdock-code .token.attr-name,
-html[data-theme='light'] .termdock-code .token.string,
-html[data-theme='light'] .termdock-code .token.char,
-html[data-theme='light'] .termdock-code .token.builtin,
-html[data-theme='light'] .termdock-code .token.inserted {
+html[data-theme='light'] .veymux-diff .token.selector,
+html[data-theme='light'] .veymux-diff .token.attr-name,
+html[data-theme='light'] .veymux-diff .token.string,
+html[data-theme='light'] .veymux-diff .token.char,
+html[data-theme='light'] .veymux-diff .token.builtin,
+html[data-theme='light'] .veymux-diff .token.inserted,
+html[data-theme='light'] .veymux-code .token.selector,
+html[data-theme='light'] .veymux-code .token.attr-name,
+html[data-theme='light'] .veymux-code .token.string,
+html[data-theme='light'] .veymux-code .token.char,
+html[data-theme='light'] .veymux-code .token.builtin,
+html[data-theme='light'] .veymux-code .token.inserted {
   color: #66800B;
 }
-html[data-theme='light'] .termdock-diff .token.operator,
-html[data-theme='light'] .termdock-diff .token.entity,
-html[data-theme='light'] .termdock-diff .token.url,
-html[data-theme='light'] .termdock-diff .token.variable,
-html[data-theme='light'] .termdock-code .token.operator,
-html[data-theme='light'] .termdock-code .token.entity,
-html[data-theme='light'] .termdock-code .token.url,
-html[data-theme='light'] .termdock-code .token.variable {
+html[data-theme='light'] .veymux-diff .token.operator,
+html[data-theme='light'] .veymux-diff .token.entity,
+html[data-theme='light'] .veymux-diff .token.url,
+html[data-theme='light'] .veymux-diff .token.variable,
+html[data-theme='light'] .veymux-code .token.operator,
+html[data-theme='light'] .veymux-code .token.entity,
+html[data-theme='light'] .veymux-code .token.url,
+html[data-theme='light'] .veymux-code .token.variable {
   color: #BC5215;
 }
-html[data-theme='light'] .termdock-diff .token.atrule,
-html[data-theme='light'] .termdock-diff .token.attr-value,
-html[data-theme='light'] .termdock-diff .token.keyword,
-html[data-theme='light'] .termdock-code .token.atrule,
-html[data-theme='light'] .termdock-code .token.attr-value,
-html[data-theme='light'] .termdock-code .token.keyword {
+html[data-theme='light'] .veymux-diff .token.atrule,
+html[data-theme='light'] .veymux-diff .token.attr-value,
+html[data-theme='light'] .veymux-diff .token.keyword,
+html[data-theme='light'] .veymux-code .token.atrule,
+html[data-theme='light'] .veymux-code .token.attr-value,
+html[data-theme='light'] .veymux-code .token.keyword {
   color: #205EA6;
 }
-html[data-theme='light'] .termdock-diff .token.function,
-html[data-theme='light'] .termdock-diff .token.class-name,
-html[data-theme='light'] .termdock-code .token.function,
-html[data-theme='light'] .termdock-code .token.class-name {
+html[data-theme='light'] .veymux-diff .token.function,
+html[data-theme='light'] .veymux-diff .token.class-name,
+html[data-theme='light'] .veymux-code .token.function,
+html[data-theme='light'] .veymux-code .token.class-name {
   color: #AD8301;
 }
-html[data-theme='light'] .termdock-diff .token.regex,
-html[data-theme='light'] .termdock-diff .token.important,
-html[data-theme='light'] .termdock-code .token.regex,
-html[data-theme='light'] .termdock-code .token.important {
+html[data-theme='light'] .veymux-diff .token.regex,
+html[data-theme='light'] .veymux-diff .token.important,
+html[data-theme='light'] .veymux-code .token.regex,
+html[data-theme='light'] .veymux-code .token.important {
   color: #A02F6F;
 }
-.termdock-diff .token.important,
-.termdock-diff .token.bold,
-.termdock-code .token.important,
-.termdock-code .token.bold {
+.veymux-diff .token.important,
+.veymux-diff .token.bold,
+.veymux-code .token.important,
+.veymux-code .token.bold {
   font-weight: 600;
 }
-.termdock-diff .token.italic,
-.termdock-code .token.italic {
+.veymux-diff .token.italic,
+.veymux-code .token.italic {
   font-style: italic;
 }
 
@@ -1591,7 +1592,7 @@ html[data-theme='light'] .termdock-code .token.important {
   transition: border-color 0.15s ease;
   /* IMPORTANT: no `overflow: hidden` on the card itself — it would
      clip the diff body's horizontal overflow (long lines + the
-     `.termdock-diff-scroll` scrollbar). The rounded corners still
+     `.veymux-diff-scroll` scrollbar). The rounded corners still
      work because the header has its own background and clips via
      the `border-radius` on the body element. */
 }
@@ -1622,26 +1623,26 @@ html[data-theme='light'] .termdock-code .token.important {
 /* Tighter touch targets for the file card body. The mobile card is a
    full-width "page" inside the diff scroller — we drop the rounded
    corners and the margin so multiple cards flow into one another. */
-.termdock-diff-card-mobile {
+.veymux-diff-card-mobile {
   border-bottom-left-radius: 0.75rem;
   border-bottom-right-radius: 0.75rem;
   overflow: hidden;
 }
 
-.termdock-diff-card-mobile > [data-diff-file-anchor] {
+.veymux-diff-card-mobile > [data-diff-file-anchor] {
   border-bottom-left-radius: inherit;
   border-bottom-right-radius: inherit;
 }
 
-.termdock-diff-card-mobile .termdock-diff-scroll:last-child,
-.termdock-diff-card-mobile .diff:last-child {
+.veymux-diff-card-mobile .veymux-diff-scroll:last-child,
+.veymux-diff-card-mobile .diff:last-child {
   border-bottom-left-radius: inherit;
   border-bottom-right-radius: inherit;
 }
 
 /* Desktop / narrow card body: match the card's bottom corners so the
    scrollbar hugs the rounded edge instead of sticking out flat. */
-.termdock-diff-card {
+.veymux-diff-card {
   border-bottom-left-radius: 0.5rem;
   border-bottom-right-radius: 0.5rem;
   overflow-x: auto;
@@ -1650,7 +1651,7 @@ html[data-theme='light'] .termdock-code .token.important {
 
 /* Outer scroller for the whole file list. We declare `touch-action:
    pan-y` so vertical pan gestures scroll THIS element, and horizontal
-   pans are left to the inner `.termdock-diff-scroll` body. Without
+   pans are left to the inner `.veymux-diff-scroll` body. Without
    this split, the outer scroller eats both axes (it's the bigger
    scroll target in the user's hand) and the inner horizontal scroll
    becomes unreachable. */
@@ -1863,17 +1864,17 @@ html[data-theme='light'] .termdock-code .token.important {
    sidebar width; otherwise the stale minimum makes the body horizontally
    scrollable by the difference between the two widths. The synchronized
    non-wrapping view also keeps both columns within the available width. */
-.diff-split.termdock-diff-wrap .diff,
-.diff-split.termdock-diff-split-nowrap .diff {
+.diff-split.veymux-diff-wrap .diff,
+.diff-split.veymux-diff-split-nowrap .diff {
   min-width: 100%;
 }
 
 .diff-split .diff-gutter-col {
-  width: var(--termdock-diff-gutter-width, 3ch);
+  width: var(--veymux-diff-gutter-width, 3ch);
 }
 
 .diff-split .diff-code-col {
-  width: calc((100% - (var(--termdock-diff-gutter-width, 3ch) * 2)) / 2);
+  width: calc((100% - (var(--veymux-diff-gutter-width, 3ch) * 2)) / 2);
 }
 
 .diff-split .diff-code {
@@ -1886,12 +1887,12 @@ html[data-theme='light'] .termdock-code .token.important {
  * padding so the +/- gutter doesn't crowd the line numbers on
  * touch screens, and bump the line height for legibility.
  */
-.termdock-diff-card-mobile .diff {
+.veymux-diff-card-mobile .diff {
   font-size: 12px;
   line-height: 1.7;
 }
 
-.termdock-diff-card-mobile .diff-gutter {
+.veymux-diff-card-mobile .diff-gutter {
   padding: 0 2px;
   min-width: 0;
   font-size: 8.5px;
@@ -1899,11 +1900,11 @@ html[data-theme='light'] .termdock-code .token.important {
 
 /* Embedded stream cards use this style on desktop as well as mobile.
    Reserve the digit width in both wrap modes; percentages overlap the code. */
-.termdock-diff-card-mobile .diff-gutter-col {
-  width: max(2.75ch, var(--termdock-diff-gutter-width, 3ch));
+.veymux-diff-card-mobile .diff-gutter-col {
+  width: max(2.75ch, var(--veymux-diff-gutter-width, 3ch));
 }
 
-.termdock-diff-card-mobile .diff-code {
+.veymux-diff-card-mobile .diff-code {
   padding: 0 7px;
 }
 
@@ -1978,15 +1979,15 @@ html[data-theme='light'] .termdock-code .token.important {
 }
 
 /* Android 投屏点击指示：一个极简的小圆点淡出，不抢画面。 */
-@keyframes termdock-tap-fade {
+@keyframes veymux-tap-fade {
   0% { transform: translate(-50%, -50%) scale(0.85); opacity: 0.5; }
   100% { transform: translate(-50%, -50%) scale(1.2); opacity: 0; }
 }
 
-.termdock-tap-fade { animation: termdock-tap-fade 260ms ease-out forwards; }
+.veymux-tap-fade { animation: veymux-tap-fade 260ms ease-out forwards; }
 
 @media (prefers-reduced-motion: reduce) {
-  .termdock-tap-fade { animation-duration: 1ms; }
+  .veymux-tap-fade { animation-duration: 1ms; }
 }
 
 /* Complete generative UI library: color aliases stay in the Flexoki token file.

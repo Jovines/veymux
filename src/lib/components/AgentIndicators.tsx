@@ -50,8 +50,8 @@ export const AGENT_COLOR_ATTENTION = 'var(--warning)';
 export const AGENT_COLOR_RUNNING = 'var(--success)';
 /** 紫色（tmux copy mode） */
 export const AGENT_COLOR_COPY_MODE = 'var(--tmux)';
-const MOBILE_ATTENTION_POSITION_KEY = 'termdock:mobile-attention-position:v1';
-const RUNNING_SESSION_POSITION_KEY = 'termdock:running-session-position:v1';
+const MOBILE_ATTENTION_POSITION_KEY = 'veymux:mobile-attention-position:v1';
+const RUNNING_SESSION_POSITION_KEY = 'veymux:running-session-position:v1';
 const MOBILE_ATTENTION_DEFAULT_PREFERENCE: MobileAttentionPreference = {
   side: 'right',
   yRatio: 0.68,

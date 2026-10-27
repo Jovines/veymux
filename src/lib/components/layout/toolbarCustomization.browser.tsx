@@ -100,7 +100,7 @@ afterEach(async () => {
   root = undefined;
   document.body.replaceChildren();
   document.documentElement.removeAttribute('style');
-  delete document.documentElement.dataset.termdockTouchViewport;
+  delete document.documentElement.dataset.veymuxTouchViewport;
   await page.viewport(390, 844);
 });
 

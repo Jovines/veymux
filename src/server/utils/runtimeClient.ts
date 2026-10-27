@@ -53,7 +53,7 @@ function hasExactClientContents(directory: string, expected: string): boolean {
 /**
  * Keep the browser bundle served by this process immutable for its lifetime.
  *
- * `npm install --global` replaces files underneath a still-running Termdock
+ * `npm install --global` replaces files underneath a still-running Veymux
  * process. Without a snapshot, Express immediately starts serving the new
  * index/assets while the in-memory server is still the old version. That can
  * pair a newer terminal protocol client with an older WebSocket server until
@@ -81,7 +81,7 @@ export function pinBundledRuntimeClientDist(
       .update(`${manifest.serverBundleHash}\0${manifest.clientBundleHash}`)
       .digest('hex')
       .slice(0, 24);
-    const snapshotsRoot = path.join(homeDir, '.termdock', 'client-snapshots');
+    const snapshotsRoot = path.join(homeDir, '.veymux', 'client-snapshots');
     const snapshotRoot = path.join(snapshotsRoot, snapshotKey);
     const snapshotClientDist = path.join(snapshotRoot, 'dist', 'client');
     if (isCompleteSnapshot(snapshotClientDist, manifest.serverBundleHash, manifest.clientBundleHash)) {
@@ -148,7 +148,7 @@ export function pinBundledRuntimeClientDist(
  */
 export function indexRetainedClientModules(homeDir = os.homedir()): Map<string, string> {
   const modules = new Map<string, string>();
-  const root = path.join(homeDir, '.termdock', 'client-snapshots');
+  const root = path.join(homeDir, '.veymux', 'client-snapshots');
   try {
     for (const snapshot of fs.readdirSync(root, { withFileTypes: true })) {
       if (!snapshot.isDirectory() || !/^[a-f0-9]{24}$/.test(snapshot.name)) continue;

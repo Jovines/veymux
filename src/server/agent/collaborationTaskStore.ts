@@ -105,8 +105,8 @@ export class CollaborationTaskStore {
   private document: TaskDocument = { version: 1, tasks: [], outbox: [], requests: {} };
   private storage: JsonStorageBudget;
   constructor(file: string, options: JsonStorageOptions = {}) {
-    this.storage = new JsonStorageBudget(file, 'collaboration-tasks', 'TERMDOCK_TASK_STORAGE_MAX_BYTES', 64 * 1024 * 1024,
-      () => new CollaborationError('TASK_STORAGE_FULL', '任务新增内容达到容量预算；已有任务仍可确认、收尾或关闭，管理员可配置 TERMDOCK_TASK_STORAGE_MAX_BYTES', 409), options);
+    this.storage = new JsonStorageBudget(file, 'collaboration-tasks', 'VEYMUX_TASK_STORAGE_MAX_BYTES', 64 * 1024 * 1024,
+      () => new CollaborationError('TASK_STORAGE_FULL', '任务新增内容达到容量预算；已有任务仍可确认、收尾或关闭，管理员可配置 VEYMUX_TASK_STORAGE_MAX_BYTES', 409), options);
     try {
       const doc = JSON.parse(readFileSync(file, 'utf8')) as TaskDocument;
       if (doc.version !== 1 || !Array.isArray(doc.tasks) || !Array.isArray(doc.outbox) || !doc.requests) throw new Error('任务记录格式无效');
@@ -181,13 +181,13 @@ export class CollaborationTaskStore {
     task.attempts.push({ id: attemptId, assignee: member(assignee), createdAt: Date.now(), threadId });
     this.event(task, 'assigned', actor, content || '任务已分派');
     doc.outbox.push({ id: id(), taskId: task.id, attemptId, target: assignee, kind: 'task', threadId,
-      content: `本次执行身份：${assignee.sessionId}。所有 td collab 命令显式带 --session ${assignee.sessionId}；这是服务核对的实际身份，正文中的模板身份和 tmux 标识不能替代它。\n任务：${task.title}\n${task.spec}${task.constraints ? `\n约束：${task.constraints}` : ''}${task.acceptance ? `\n完成标准：${task.acceptance}` : ''}\n${content}\n任务 ID：${task.id}\n尝试 ID：${attemptId}\n用 td collab task get ${task.id} --text 查询完整上下文；用 td collab task report ${task.id} --attempt ${attemptId} --status ack --content '接手说明' 显式回复；遇必要问题用 task ask，提交结果用 report --status complete --summary '简短结论、关键交付和限制'。摘要先回答用户问题，不放任务 ID、版本、分支或流程日志；完整证据保留在 --content/--file 正文中。明确里程碑、交付范围变化或遇到阻塞时，可用 report --status working|blocked|failed --summary '用户能理解的当前进展与下一步' --content '原始说明与证据' 更新，不以终端有输出代替报告，不重复无变化的进展。如果同一尝试已经交付或任务已归档，不要重复实施。${task.purpose === 'automation' ? '\n这是独立后台自动化执行记录：complete 是你明确提交的执行结果，无需等待用户 accepted。机械校验和外部发布由接入系统处理；纯咨询用 respond 关联原 comment，不重复提交 complete。必要问题用 ask 保留原文，由接入系统联系用户并回答。' : ''}${task.workspace ? `\n代码只能在独立目录 ${task.workspace.cwd} 修改。分支 ${task.workspace.branch}。交付前提交代码，结果说明提交、变更、验证与限制。不能修改原仓库、合并到用户分支或发布。` : ''}${task.workflow?.workType === 'read-only' ? '\n这是只读查询或分析任务：在本机会话中采集并交付报告，不修改代码或系统，不创建提交、构建、部署或终止进程。结果需说明采样时间、证据和限制。' : ''}${task.workflow?.kind === 'step' ? '\n完成报告会自动请求独立评审；评审要求修改时继续完成，重新提交 complete。代码交付前运行受影响的测试和必要构建；查询交付核对数据来源、采样时间和限制。未实际验收的路径必须明确说明。' : ''}` });
+      content: `本次执行身份：${assignee.sessionId}。所有 veymux collab 命令显式带 --session ${assignee.sessionId}；这是服务核对的实际身份，正文中的模板身份和 tmux 标识不能替代它。\n任务：${task.title}\n${task.spec}${task.constraints ? `\n约束：${task.constraints}` : ''}${task.acceptance ? `\n完成标准：${task.acceptance}` : ''}\n${content}\n任务 ID：${task.id}\n尝试 ID：${attemptId}\n用 veymux collab task get ${task.id} --text 查询完整上下文；用 veymux collab task report ${task.id} --attempt ${attemptId} --status ack --content '接手说明' 显式回复；遇必要问题用 task ask，提交结果用 report --status complete --summary '简短结论、关键交付和限制'。摘要先回答用户问题，不放任务 ID、版本、分支或流程日志；完整证据保留在 --content/--file 正文中。明确里程碑、交付范围变化或遇到阻塞时，可用 report --status working|blocked|failed --summary '用户能理解的当前进展与下一步' --content '原始说明与证据' 更新，不以终端有输出代替报告，不重复无变化的进展。如果同一尝试已经交付或任务已归档，不要重复实施。${task.purpose === 'automation' ? '\n这是独立后台自动化执行记录：complete 是你明确提交的执行结果，无需等待用户 accepted。机械校验和外部发布由接入系统处理；纯咨询用 respond 关联原 comment，不重复提交 complete。必要问题用 ask 保留原文，由接入系统联系用户并回答。' : ''}${task.workspace ? `\n代码只能在独立目录 ${task.workspace.cwd} 修改。分支 ${task.workspace.branch}。交付前提交代码，结果说明提交、变更、验证与限制。不能修改原仓库、合并到用户分支或发布。` : ''}${task.workflow?.workType === 'read-only' ? '\n这是只读查询或分析任务：在本机会话中采集并交付报告，不修改代码或系统，不创建提交、构建、部署或终止进程。结果需说明采样时间、证据和限制。' : ''}${task.workflow?.kind === 'step' ? '\n完成报告会自动请求独立评审；评审要求修改时继续完成，重新提交 complete。代码交付前运行受影响的测试和必要构建；查询交付核对数据来源、采样时间和限制。未实际验收的路径必须明确说明。' : ''}` });
   }
   private goalInstructions(task: CollaborationTask): string {
-    return `${this.baseGoalInstructions(task)}\n${GOAL_EXPERIENCE_GUIDE}\n启动 Agent 前，读取 task get 返回的 launchProfiles、defaultLaunchProfileId 和 roster.launchProfile。根据用户填写的 notes 判断适用任务；这些是选用建议，不是能力或性能保证。需要另一种模型或参数时，用 td collab spawn ${task.groupId} <agentSlug> --launch-profile <方案id> --cwd <项目目录> --session ${task.coordinator?.sessionId} 创建对应执行成员，再把子任务分派给它。已有成员及其代码执行会话保留创建时的启动方案，不因默认方案变更而更换模型。`;
+    return `${this.baseGoalInstructions(task)}\n${GOAL_EXPERIENCE_GUIDE}\n启动 Agent 前，读取 task get 返回的 launchProfiles、defaultLaunchProfileId 和 roster.launchProfile。根据用户填写的 notes 判断适用任务；这些是选用建议，不是能力或性能保证。需要另一种模型或参数时，用 veymux collab spawn ${task.groupId} <agentSlug> --launch-profile <方案id> --cwd <项目目录> --session ${task.coordinator?.sessionId} 创建对应执行成员，再把子任务分派给它。已有成员及其代码执行会话保留创建时的启动方案，不因默认方案变更而更换模型。`;
   }
   private baseGoalInstructions(task: CollaborationTask): string {
-    return `你是此目标的协调者，负责把目标推进到可验收交付，不亲自实施子任务。\n目标：${task.spec}\n约束：${task.constraints || '未补充'}\n完成标准：${task.acceptance || '满足用户目标，说明交付与限制'}\n任务 ID：${task.id}\n当前协调身份：${task.coordinator?.sessionId}；所有命令显式带 --session ${task.coordinator?.sessionId}，不使用 tmux 标识。\n用 td collab task get ${task.id} --json 读取 roster、子任务、完整记录和 revision。\n先报告 ack；拆分为可交付子任务，用 td collab task create --group ${task.groupId} --parent ${task.id} --title '标题' --content '完整要求' --assignee <roster里的成员sessionId> --acceptance '明确标准' --work-type read-only|code。先按目标明确分类：查询、检查、研究、分析用 read-only，复用现有执行成员会话，不创建 Git 目录；修改代码用 code，才创建独立目录。简单问题只建一个必要任务，不为了形式拆成采集、复述、汇总多份任务。子任务继承自动评审与协调者。依赖任务用 --depends-on id,id，服务在依赖评审通过后自动分派。保持分工合理，不根据终端输出推断谁有空。\n每次收到明确更新后读取最新记录，处理失败与交接。服务自动安排独立评审、返工和依赖接续；不要重复请求评审或催促正在等待回复的成员。必要的人类决策用 task ask --attempt <本轮id>；方案需要用户确认时提交 task plan，不把普通回复当授权。\n只有已交付代码任务实际包含相对 base 的提交变化时，才需创建 --work-type code --integration 的最终集成子任务，--depends-on 依赖全部代码实施任务；独立目录会包含依赖的提交。不得在原仓库自动合并或发布。\n结束本次协调用 td collab task coordinate ${task.id} --revision <最新版本> --content '已安排的工作和下一步'；有新事件服务会再次唤起你。所有子任务评审通过后报告 complete --summary '直接回答用户的简短结果和限制'；只读目标直接汇总已核对结果，不创建集成或重复汇总任务。正文保留证据、评审结论和限制，仅代码目标补充目录、分支和提交，等待用户最终验收。任何异常都要留下明确说明，不伪造完成或进度。`;
+    return `你是此目标的协调者，负责把目标推进到可验收交付，不亲自实施子任务。\n目标：${task.spec}\n约束：${task.constraints || '未补充'}\n完成标准：${task.acceptance || '满足用户目标，说明交付与限制'}\n任务 ID：${task.id}\n当前协调身份：${task.coordinator?.sessionId}；所有命令显式带 --session ${task.coordinator?.sessionId}，不使用 tmux 标识。\n用 veymux collab task get ${task.id} --json 读取 roster、子任务、完整记录和 revision。\n先报告 ack；拆分为可交付子任务，用 veymux collab task create --group ${task.groupId} --parent ${task.id} --title '标题' --content '完整要求' --assignee <roster里的成员sessionId> --acceptance '明确标准' --work-type read-only|code。先按目标明确分类：查询、检查、研究、分析用 read-only，复用现有执行成员会话，不创建 Git 目录；修改代码用 code，才创建独立目录。简单问题只建一个必要任务，不为了形式拆成采集、复述、汇总多份任务。子任务继承自动评审与协调者。依赖任务用 --depends-on id,id，服务在依赖评审通过后自动分派。保持分工合理，不根据终端输出推断谁有空。\n每次收到明确更新后读取最新记录，处理失败与交接。服务自动安排独立评审、返工和依赖接续；不要重复请求评审或催促正在等待回复的成员。必要的人类决策用 task ask --attempt <本轮id>；方案需要用户确认时提交 task plan，不把普通回复当授权。\n只有已交付代码任务实际包含相对 base 的提交变化时，才需创建 --work-type code --integration 的最终集成子任务，--depends-on 依赖全部代码实施任务；独立目录会包含依赖的提交。不得在原仓库自动合并或发布。\n结束本次协调用 veymux collab task coordinate ${task.id} --revision <最新版本> --content '已安排的工作和下一步'；有新事件服务会再次唤起你。所有子任务评审通过后报告 complete --summary '直接回答用户的简短结果和限制'；只读目标直接汇总已核对结果，不创建集成或重复汇总任务。正文保留证据、评审结论和限制，仅代码目标补充目录、分支和提交，等待用户最终验收。任何异常都要留下明确说明，不伪造完成或进度。`;
   }
   private notifyCoordinator(doc: TaskDocument, task: CollaborationTask, update?: CollaborationTaskEvent): void {
     if (!task.coordinator) return;
@@ -197,11 +197,11 @@ export class CollaborationTaskStore {
     if (update && ['answer', 'revise'].includes(update.kind) && attempt && sameMember(task.coordinator, attempt.assignee)) return;
     if (update) {
       doc.outbox.push({ id: id(), taskId: task.id, attemptId: attempt?.id ?? null, target: task.coordinator, kind: 'message', threadId: attempt?.threadId ?? task.id,
-        content: `协调任务「${task.title}」有明确更新：${update.kind}${update.reportStatus ? ` / ${update.reportStatus}` : ''}\n原始记录时间：${new Date(update.createdAt).toISOString()}\n${update.attemptId && update.attemptId !== task.activeAttemptId ? '这是历史分派的报告，请先核对当前任务。\n' : ''}${update.content.slice(0, 4000)}\n任务 ID：${task.id}\n用 td collab task get ${task.id} --text 查看完整原文与当前版本；问题回答与结果验收由用户决定。` });
+        content: `协调任务「${task.title}」有明确更新：${update.kind}${update.reportStatus ? ` / ${update.reportStatus}` : ''}\n原始记录时间：${new Date(update.createdAt).toISOString()}\n${update.attemptId && update.attemptId !== task.activeAttemptId ? '这是历史分派的报告，请先核对当前任务。\n' : ''}${update.content.slice(0, 4000)}\n任务 ID：${task.id}\n用 veymux collab task get ${task.id} --text 查看完整原文与当前版本；问题回答与结果验收由用户决定。` });
       return;
     }
     doc.outbox.push({ id: id(), taskId: task.id, attemptId: attempt?.id ?? null, target: task.coordinator, kind: 'message', threadId: attempt?.threadId ?? task.id,
-      content: `你被指定为任务「${task.title}」的协调者。\n目标：${task.spec}\n约束：${task.constraints || '未补充'}\n验收标准：${task.acceptance || '由用户决定'}\n任务 ID：${task.id}\n用 td collab task get ${task.id} --text 查看原始记录；用 task list --group ${task.groupId} 查看工作组。需要拆分时用 task create --group ${task.groupId} --parent ${task.id} --title '子任务标题' --content '任务内容'。分派前查询 revision，再用 task assign --revision；把必要的人类决策交给 task ask，不推断成员忙闲，不停止其他成员终端。` });
+      content: `你被指定为任务「${task.title}」的协调者。\n目标：${task.spec}\n约束：${task.constraints || '未补充'}\n验收标准：${task.acceptance || '由用户决定'}\n任务 ID：${task.id}\n用 veymux collab task get ${task.id} --text 查看原始记录；用 task list --group ${task.groupId} 查看工作组。需要拆分时用 task create --group ${task.groupId} --parent ${task.id} --title '子任务标题' --content '任务内容'。分派前查询 revision，再用 task assign --revision；把必要的人类决策交给 task ask，不推断成员忙闲，不停止其他成员终端。` });
   }
   create(owner: string, input: TaskCreateInput, actor: TaskMember | null, origin?: TaskOrigin): CollaborationTask {
     const purpose = taskPurpose(input.purpose);
@@ -396,7 +396,7 @@ export class CollaborationTaskStore {
         event.artifactId = artifact.id; event.target = recipient;
         const threadId = task.attempts.find(a => a.id === task.activeAttemptId)!.threadId;
         doc.outbox.push({ id: id(), taskId, attemptId: task.activeAttemptId!, target: recipient, kind: 'message', threadId,
-          content: input.kind === 'request-review' ? `请独立评审任务「${task.title}」的交付物 ${artifact.id}。\n${content}\n用 td collab task get ${task.id} --text 查看上下文；用 td collab task review ${task.id} --artifact ${artifact.id} --content '评审结论' 提交。`
+          content: input.kind === 'request-review' ? `请独立评审任务「${task.title}」的交付物 ${artifact.id}。\n${content}\n用 veymux collab task get ${task.id} --text 查看上下文；用 veymux collab task review ${task.id} --artifact ${artifact.id} --content '评审结论' 提交。`
             : `任务「${task.title}」方案 ${artifact.id} 已由用户确认。\n${content}\n任务 ID：${task.id}` });
       } else if (input.kind === 'accept') {
         if (task.workflow?.kind === 'goal' && doc.tasks.some(t => t.workflow?.rootTaskId === task.id && !['accepted', 'closed'].includes(t.status))) throw new CollaborationError('CHILD_TASKS_PENDING', '子任务尚未全部完成', 409);
@@ -421,7 +421,7 @@ export class CollaborationTaskStore {
         if (recipient && !sameMember(actor, recipient.assignee)) {
           event.target = recipient.assignee; event.deliveryId = id();
           doc.outbox.push({ id: event.deliveryId, taskId: task.id, attemptId: recipient.id, target: recipient.assignee,
-            kind: 'message', threadId: recipient.threadId, replyToEventId: event.id, content: `任务「${task.title}」${input.kind === 'revise' ? actor === null ? origin ? '外部接入要求继续跟进' : '用户要求继续跟进' : '修改要求' : '补充反馈'}：\n${content}\n任务 ID：${task.id}\n尝试 ID：${recipient.id}${input.kind === 'comment' ? `\n这是纯咨询，保留当前结果与验收。请用 td collab --session ${recipient.assignee.sessionId} task respond ${task.id} --attempt ${recipient.id} --to-event ${event.id} --content '答复' 关联回复；只有明确提交新的交付物才用 complete。` : task.workflow?.kind === 'goal' ? `\n本轮继续沿用此目标和已交付证据，只推进新增要求。\n${this.goalInstructions(task)}` : '\n按这次要求继续当前分派，重新提交 complete 和摘要；新版本会重新独立评审。'}` });
+            kind: 'message', threadId: recipient.threadId, replyToEventId: event.id, content: `任务「${task.title}」${input.kind === 'revise' ? actor === null ? origin ? '外部接入要求继续跟进' : '用户要求继续跟进' : '修改要求' : '补充反馈'}：\n${content}\n任务 ID：${task.id}\n尝试 ID：${recipient.id}${input.kind === 'comment' ? `\n这是纯咨询，保留当前结果与验收。请用 veymux collab --session ${recipient.assignee.sessionId} task respond ${task.id} --attempt ${recipient.id} --to-event ${event.id} --content '答复' 关联回复；只有明确提交新的交付物才用 complete。` : task.workflow?.kind === 'goal' ? `\n本轮继续沿用此目标和已交付证据，只推进新增要求。\n${this.goalInstructions(task)}` : '\n按这次要求继续当前分派，重新提交 complete 和摘要；新版本会重新独立评审。'}` });
           if (task.workflow?.kind === 'goal' && task.coordination) {
             task.coordination.notifiedSequence = event.sequence; task.coordination.notifiedAt = Date.now();
           }
@@ -502,7 +502,7 @@ export class CollaborationTaskStore {
         || task.dependsOn.some(id => doc.tasks.find(t => t.id === id)?.status !== 'accepted')) return;
       if (workspace) task.workspace = workspace;
       const dependencyContext = task.dependsOn.map(id => doc.tasks.find(t => t.id === id)!).map(dependency =>
-        `「${dependency.title}」：${dependency.workflow?.workType === 'read-only' ? '已验收的只读报告，作为执行上下文' : '已验收的前置交付'}；用 td collab task get ${dependency.id} --text 读取报告、证据和限制。`).join('\n');
+        `「${dependency.title}」：${dependency.workflow?.workType === 'read-only' ? '已验收的只读报告，作为执行上下文' : '已验收的前置交付'}；用 veymux collab task get ${dependency.id} --text 读取报告、证据和限制。`).join('\n');
       this.assign(doc, task, assignee, task.coordinator, `服务已接续依赖并准备执行${dependencyContext ? `\n前置任务：\n${dependencyContext}` : ''}`); delete task.scheduledAssignee;
       task.revision++; task.updatedAt = Date.now(); this.touchParent(doc, task, '已自动分派');
     });
@@ -549,7 +549,7 @@ export class CollaborationTaskStore {
           else {
             const event = this.event(task, 'request-review', null, '服务自动安排此版本独立评审'); event.artifactId = result!.id; event.target = reviewer; event.source = 'system';
             doc.outbox.push({ id: id(), taskId: task.id, attemptId: task.activeAttemptId, target: reviewer, kind: 'message', threadId: attempt!.threadId,
-              content: `本次评审身份：${reviewer.sessionId}；所有命令带 --session ${reviewer.sessionId}，不使用作者或模板身份。\n请独立评审「${task.title}」版本 ${result!.id}。用 td collab task get ${task.id} --json 查看目标、结果、摘要和证据；摘要必须与正文一致，遗漏关键限制或夸大结果需要求修改。${task.workspace ? `代码目录 ${task.workspace.cwd}，分支 ${task.workspace.branch}；只读检查此目录，不修改原仓库。` : ''}\n提交 td collab task review ${task.id} --artifact ${result!.id} --verdict pass|changes|blocked --content '结论、具体问题与证据'。pass 表示符合完成标准；changes 给出可执行修改要求；blocked 留下必须处理的原因。只按用户授权运行测试，未执行不能称通过。` });
+              content: `本次评审身份：${reviewer.sessionId}；所有命令带 --session ${reviewer.sessionId}，不使用作者或模板身份。\n请独立评审「${task.title}」版本 ${result!.id}。用 veymux collab task get ${task.id} --json 查看目标、结果、摘要和证据；摘要必须与正文一致，遗漏关键限制或夸大结果需要求修改。${task.workspace ? `代码目录 ${task.workspace.cwd}，分支 ${task.workspace.branch}；只读检查此目录，不修改原仓库。` : ''}\n提交 veymux collab task review ${task.id} --artifact ${result!.id} --verdict pass|changes|blocked --content '结论、具体问题与证据'。pass 表示符合完成标准；changes 给出可执行修改要求；blocked 留下必须处理的原因。只按用户授权运行测试，未执行不能称通过。` });
           }
           this.touchParent(doc, task, '已自动请求独立评审');
         } else if (action === 'review-passed') {
@@ -568,7 +568,7 @@ export class CollaborationTaskStore {
         } else if (action === 'wake') {
           const updates = task.events.filter(e => e.sequence > task.coordination!.notifiedSequence && e.kind !== 'coordinate');
           doc.outbox.push({ id: id(), taskId: task.id, attemptId: task.activeAttemptId, target: task.coordinator!, kind: 'message', threadId: task.id,
-            content: `当前协调身份：${task.coordinator!.sessionId}；命令带 --session ${task.coordinator!.sessionId}。\n目标「${task.title}」有新的明确事件，请继续协调：\n${updates.slice(-8).map(e => `${new Date(e.createdAt).toISOString()} ${e.content.slice(0, 1200)}`).join('\n')}\n用 td collab task get ${task.id} --json 读取完整上下文与子任务；安排必要下一步后 task coordinate ${task.id} --revision <最新版本> --content '协调说明'。自动评审和依赖已由服务接续，不要重复分派。\n当前流程指南：查询、检查、分析必须 --work-type read-only，复用 roster 现有执行成员；只有修改代码才用 code 和独立目录。只读报告由你直接汇总，不新增仅转述的汇总子任务。已评审且 HEAD 等于 base 的交付没有代码变化，不需要集成；有代码变化才安排必要集成。用户有新要求时继续本目标，交付新版本，不重做已有采样。最终汇总通过评审且无新要求时等待用户验收，不重复提交相同结果。\n${GOAL_EXPERIENCE_GUIDE}` });
+            content: `当前协调身份：${task.coordinator!.sessionId}；命令带 --session ${task.coordinator!.sessionId}。\n目标「${task.title}」有新的明确事件，请继续协调：\n${updates.slice(-8).map(e => `${new Date(e.createdAt).toISOString()} ${e.content.slice(0, 1200)}`).join('\n')}\n用 veymux collab task get ${task.id} --json 读取完整上下文与子任务；安排必要下一步后 task coordinate ${task.id} --revision <最新版本> --content '协调说明'。自动评审和依赖已由服务接续，不要重复分派。\n当前流程指南：查询、检查、分析必须 --work-type read-only，复用 roster 现有执行成员；只有修改代码才用 code 和独立目录。只读报告由你直接汇总，不新增仅转述的汇总子任务。已评审且 HEAD 等于 base 的交付没有代码变化，不需要集成；有代码变化才安排必要集成。用户有新要求时继续本目标，交付新版本，不重做已有采样。最终汇总通过评审且无新要求时等待用户验收，不重复提交相同结果。\n${GOAL_EXPERIENCE_GUIDE}` });
           task.coordination!.notifiedSequence = task.events.at(-1)!.sequence; task.coordination!.notifiedAt = Date.now();
         } else task.automationIssue = '协调通知发出后 15 分钟未收到本次协调说明，请查看终端或点击继续协调。';
         task.revision++; task.updatedAt = Date.now();

@@ -17,12 +17,12 @@ import { pickSessionAfterClose } from '../utils/sessionSelection';
 import { removeSessionFontSize } from '../terminal/sessionFontSize';
 import { useSessionDirectoryStore } from '../stores/useSessionDirectory';
 
-const LEGACY_STORAGE_KEY = 'termdock-sessions';
-const ACTIVE_SESSION_STORAGE_KEY = 'termdock-active-session';
+const LEGACY_STORAGE_KEY = 'veymux-sessions';
+const ACTIVE_SESSION_STORAGE_KEY = 'veymux-active-session';
 // 本地 session 列表缓存：用来让"返回 PWA / 冷启动"瞬间渲染 UI，避免卡在
 // HTTP GET 的蜂窝 RTT（500ms-3s）期间显示全屏 loading。数据源仍以服务端
 // inventory 为准：缓存命中后照常发起后台请求 reconcile，只有差异才更新 state。
-const SESSIONS_CACHE_STORAGE_KEY = 'termdock-sessions-cache';
+const SESSIONS_CACHE_STORAGE_KEY = 'veymux-sessions-cache';
 
 function readActiveSessionId(): string | null {
   try {
@@ -84,7 +84,7 @@ export interface PersistedSession {
   createdAt: number;
   lastActivity: number;
   // 展示名提示：缓存上次的程序名 / 目录 / 终端标题，冷启动直接显示 tab 名，
-  // 不必等 WS 连上轮询 tmux，消除「先 wt-xxx 再跳成 customcli termdock」的跳变。
+  // 不必等 WS 连上轮询 tmux，消除「先 wt-xxx 再跳成 customcli veymux」的跳变。
   activeProgram?: string | null;
   cwd?: string | null;
   shellTitle?: string | null;

@@ -37,9 +37,9 @@ jobs:
           const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
           const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'));
           if (!/^\d+\.\d+\.\d+$/.test(process.env.EXPECTED_VERSION)
-            || pkg.name !== 'termdock' || pkg.version !== process.env.EXPECTED_VERSION
+            || pkg.name !== 'veymux' || pkg.version !== process.env.EXPECTED_VERSION
             || lock.version !== pkg.version || lock.packages[''].version !== pkg.version) {
-            throw new Error('Requested release must match the committed termdock package and lockfile');
+            throw new Error('Requested release must match the committed veymux package and lockfile');
           }
           JS
       - uses: actions/setup-node@v6
@@ -193,14 +193,14 @@ jobs:
           import fs from 'node:fs';
           import crypto from 'node:crypto';
           const [pack] = JSON.parse(fs.readFileSync('npm-package/pack.json', 'utf8'));
-          if (pack.name !== 'termdock' || pack.version !== process.env.EXPECTED_VERSION
-            || pack.filename !== `termdock-${pack.version}.tgz`) throw new Error('Unexpected release package');
+          if (pack.name !== 'veymux' || pack.version !== process.env.EXPECTED_VERSION
+            || pack.filename !== `veymux-${pack.version}.tgz`) throw new Error('Unexpected release package');
           const bytes = fs.readFileSync(`npm-package/${pack.filename}`);
           const integrity = `sha512-${crypto.createHash('sha512').update(bytes).digest('base64')}`;
           if (integrity !== pack.integrity || bytes.length !== pack.size) throw new Error('Release package integrity mismatch');
           JS
       - name: Publish the verified package using OIDC
-        run: npm publish "./npm-package/termdock-${EXPECTED_VERSION}.tgz" --access public
+        run: npm publish "./npm-package/veymux-${EXPECTED_VERSION}.tgz" --access public
       - name: Verify the registry package and latest tag
         id: registry
         run: node .github/scripts/verify-npm-publication.mjs npm-package/pack.json --upload-accepted

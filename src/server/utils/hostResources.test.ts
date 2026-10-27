@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { assessAgentResourceBudget, configuredAgentResourceBudget, getTermdockOwnedAgentSessionIds, parseHostResourcesForTest } from './hostResources.js';
+import { assessAgentResourceBudget, configuredAgentResourceBudget, getVeymuxOwnedAgentSessionIds, parseHostResourcesForTest } from './hostResources.js';
 
 it('parses Linux memory, pressure, D-state, agent and browser observations', () => {
   const parsed = parseHostResourcesForTest({
@@ -47,16 +47,16 @@ it('uses Linux memory PSI as an admission gate and fails closed if PSI is unavai
 
 it('exposes bounded PSI thresholds as environment configuration', () => {
   expect(configuredAgentResourceBudget({} as NodeJS.ProcessEnv)).toMatchObject({ maxMemoryPressureSomeAvg10: 10, maxMemoryPressureFullAvg10: 1 });
-  expect(configuredAgentResourceBudget({ TD_AGENT_MAX_MEMORY_PSI_SOME_AVG10: '25', TD_AGENT_MAX_MEMORY_PSI_FULL_AVG10: '2.5' } as NodeJS.ProcessEnv))
+  expect(configuredAgentResourceBudget({ VEYMUX_AGENT_MAX_MEMORY_PSI_SOME_AVG10: '25', VEYMUX_AGENT_MAX_MEMORY_PSI_FULL_AVG10: '2.5' } as NodeJS.ProcessEnv))
     .toMatchObject({ maxMemoryPressureSomeAvg10: 25, maxMemoryPressureFullAvg10: 2.5 });
-  expect(() => configuredAgentResourceBudget({ TD_AGENT_MAX_MEMORY_PSI_FULL_AVG10: '101' } as NodeJS.ProcessEnv)).toThrow();
+  expect(() => configuredAgentResourceBudget({ VEYMUX_AGENT_MAX_MEMORY_PSI_FULL_AVG10: '101' } as NodeJS.ProcessEnv)).toThrow();
 });
 
-it('counts only live Agent sessions owned by Termdock records plus active recovery reservations', () => {
-  const owned = getTermdockOwnedAgentSessionIds({
+it('counts only live Agent sessions owned by Veymux records plus active recovery reservations', () => {
+  const owned = getVeymuxOwnedAgentSessionIds({
     managedSessions: [
-      { sessionId: 'td-1', tmuxSessionName: 'managed-one' },
-      { sessionId: 'td-2', tmuxSessionName: 'managed-two' },
+      { sessionId: 'veymux-1', tmuxSessionName: 'managed-one' },
+      { sessionId: 'veymux-2', tmuxSessionName: 'managed-two' },
       { sessionId: 'missing', tmuxSessionName: 'not-running' },
     ],
     liveAgentSessions: [
@@ -64,7 +64,7 @@ it('counts only live Agent sessions owned by Termdock records plus active recove
       { name: 'managed-two' },
       { name: 'external' },
     ],
-    activeRecoverySessionIds: ['pending-launch', 'td-1'],
+    activeRecoverySessionIds: ['pending-launch', 'veymux-1'],
   });
-  expect([...owned].sort()).toEqual(['td-1', 'td-2']);
+  expect([...owned].sort()).toEqual(['veymux-1', 'veymux-2']);
 });

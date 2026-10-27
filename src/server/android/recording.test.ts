@@ -12,7 +12,7 @@ vi.mock('node:child_process', () => ({ spawn: vi.fn() }));
 const cleanup: Array<() => Promise<unknown>> = [];
 afterEach(async () => { for (const fn of cleanup.splice(0)) await fn(); vi.resetAllMocks(); });
 async function setup(failure = false) {
-  const dir = await fs.mkdtemp(join(tmpdir(), 'td-recording-unit-'));
+  const dir = await fs.mkdtemp(join(tmpdir(), 'veymux-recording-unit-'));
   const manager = new AndroidRecordings(dir);
   cleanup.push(async () => { await manager.stopAll(); await fs.rm(dir, { recursive: true, force: true }); });
   vi.mocked(spawn).mockImplementation(((_bin: string, args: string[]) => {

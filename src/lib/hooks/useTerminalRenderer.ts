@@ -5,7 +5,7 @@ import {
   type TerminalRendererMode,
 } from '../terminal/renderer';
 
-const SETTINGS_STORAGE_KEY = 'termdock-settings';
+const SETTINGS_STORAGE_KEY = 'veymux-settings';
 
 interface UseTerminalRendererReturn {
   rendererMode: TerminalRendererMode;

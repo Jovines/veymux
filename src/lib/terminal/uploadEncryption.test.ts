@@ -25,7 +25,7 @@ describe('file upload encryption boundary', () => {
     });
     vi.stubGlobal('fetch', vi.fn(async (input, init) => {
       if (input === '/api/csrf-token') return NativeResponse.json({ csrfToken: 'secure-channel' });
-      const request = new Request(new URL(String(input), 'https://termdock.invalid'), init);
+      const request = new Request(new URL(String(input), 'https://veymux.invalid'), init);
       const parsed = await request.formData();
       const file = parsed.get('files') as File;
       expect(file.name).toBe('phone.txt');

@@ -30,7 +30,7 @@ function finish(task: CollaborationTask) {
   store.advance(owner);
   return store.get(task.id)!;
 }
-beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'termdock-workflow-')); store = new CollaborationTaskStore(join(dir, 'tasks.json')); });
+beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'veymux-workflow-')); store = new CollaborationTaskStore(join(dir, 'tasks.json')); });
 afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
 
 describe('classified collaboration workflows', () => {
@@ -141,7 +141,7 @@ describe('classified collaboration workflows', () => {
     store.activateScheduled(code.id, code.revision, worker);
     const message = store.pending(code.id).find(outbox => outbox.kind === 'task')!;
     expect(message.content).toContain('已验收的只读报告，作为执行上下文');
-    expect(message.content).toContain(`td collab task get ${audit.id} --text`);
+    expect(message.content).toContain(`veymux collab task get ${audit.id} --text`);
     expect(store.get(code.id)?.automationIssue).toBeUndefined();
   });
   it('runs the service scheduler without preparing another terminal for read-only work', async () => {

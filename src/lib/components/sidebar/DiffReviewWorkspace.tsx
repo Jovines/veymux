@@ -124,7 +124,7 @@ export function DiffReviewWorkspace({
   listPrefix,
   aiContent,
   listContainerClassName = 'px-2 py-2',
-  detailContainerClassName = 'termdock-native-select termdock-diff-stream-scroller min-h-0',
+  detailContainerClassName = 'veymux-native-select veymux-diff-stream-scroller min-h-0',
   renderListHeader,
   renderMobileDetailHeader,
   externalSwiperRef,

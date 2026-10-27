@@ -1,3 +1,4 @@
+import './brandMigration.js';
 import { readClipboardFiles } from './clipboardFiles.js';
 import { sessionAddress } from './collaborationFederation.js';
 import { prepareServiceFrontend, selectServiceFrontend } from './bundledFrontend.js';
@@ -81,15 +82,15 @@ import {
 const execFileAsync = promisify(execFile);
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(currentDir, '..');
-const termdockDir = path.join(os.homedir(), '.termdock');
-const desktopConfigPath = path.join(termdockDir, 'desktop.json');
-const serverStatePath = path.join(termdockDir, 'server.json');
+const veymuxDir = path.join(os.homedir(), '.veymux');
+const desktopConfigPath = path.join(veymuxDir, 'desktop.json');
+const serverStatePath = path.join(veymuxDir, 'server.json');
 const DEFAULT_LOCAL_URL = 'http://localhost:9834';
 const PROTOCOL_VERSION = 1;
 const HEALTH_TIMEOUT_MS = 3_500;
 const SERVICE_RECOVERY_PROBE_TIMEOUT_MS = 5_000;
 const RESTORE_LOAD_TIMEOUT_MS = 15_000;
-const localServiceCertificatePath = path.join(termdockDir, 'certs', 'termdock-local.pem');
+const localServiceCertificatePath = path.join(veymuxDir, 'certs', 'veymux-local.pem');
 const sessionTrustedCertificateTargets = new Set<string>();
 const certificateTrustRequests = new CertificateTrustRequests();
 const sessionTrustedLeafByOrigin = new Map<string, string>();
@@ -118,7 +119,7 @@ function triggerLocalNetworkPermission(): void {
     }
   };
   socket.once('error', close);
-  socket.send(Buffer.from('Termdock'), 5353, '224.0.0.251', close);
+  socket.send(Buffer.from('Veymux'), 5353, '224.0.0.251', close);
 }
 
 let mainWindow: BrowserWindow | null = null;
@@ -129,7 +130,7 @@ const localServiceSetup = new LocalServiceSetupController(getLocalServiceStatus,
   }
 });
 let startupRestoreActive = false;
-let startupProgressMessage = '正在启动 Termdock Desktop…';
+let startupProgressMessage = '正在启动 Veymux Desktop…';
 const serviceWindows = new Map<string, BrowserWindow>();
 const serviceWindowPeers = new WeakMap<BrowserWindow, string>();
 const windowServiceOrigins = new WeakMap<BrowserWindow, string>();
@@ -381,7 +382,7 @@ function constrainFloatingPosition(
 function createFloatingWidget(position: { x: number; y: number } | null): BrowserWindow {
   const bounds = constrainFloatingPosition(position);
   const window = new BrowserWindow({
-    title: 'Termdock Status',
+    title: 'Veymux Status',
     type: 'panel',
     width: FLOATING_WIDGET_WIDTHS[2],
     height: FLOATING_WIDGET_HEIGHT,
@@ -629,7 +630,7 @@ function normalizeDesktopPreferences(value: unknown): DesktopPreferences {
 
 function normalizeServiceUrl(raw: string): string {
   const value = raw.trim();
-  if (!value) throw new Error('请输入 Termdock 服务地址');
+  if (!value) throw new Error('请输入 Veymux 服务地址');
   const parsed = new URL(value.includes('://') ? value : `http://${value}`);
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
     throw new Error('服务地址只支持 http:// 或 https://');
@@ -664,7 +665,7 @@ function certificateDetail(target: string, certificate: DownloadedCertificateAut
     `服务证书 SHA-256：${certificate.leafFingerprint256}`,
     `有效期：${certificate.validFrom} — ${certificate.validTo}`,
     '',
-    '继续后仅 Termdock 会信任该目标使用的这张 CA，不会修改 macOS 系统钥匙串。请只信任你确认属于该服务的证书。',
+    '继续后仅 Veymux 会信任该目标使用的这张 CA，不会修改 macOS 系统钥匙串。请只信任你确认属于该服务的证书。',
   ].join('\n');
 }
 
@@ -711,7 +712,7 @@ async function confirmCertificateTrust(target: string): Promise<DownloadedCertif
     title: '信任 HTTPS 服务证书',
     message: existingTrust
       ? '此服务的 CA 证书已发生变化'
-      : '此服务使用了 Termdock 尚未信任的 HTTPS 证书',
+      : '此服务使用了 Veymux 尚未信任的 HTTPS 证书',
     detail: `${certificateDetail(target, certificate)}${existingTrust
       ? `\n\n此前信任的 CA SHA-256：${existingTrust.fingerprint256}`
       : ''}`,
@@ -741,8 +742,8 @@ async function requestLocalNetworkPermissionRetry(target: string): Promise<boole
   const result = await showDesktopMessageBox({
     type: 'warning',
     title: '需要本地网络权限',
-    message: 'macOS 阻止了 Termdock 访问局域网服务',
-    detail: `目标：${target}\n\n请在系统提示中选择“允许”。如果之前选择过“不允许”，请前往“系统设置 → 隐私与安全性 → 本地网络”开启 Termdock。`,
+    message: 'macOS 阻止了 Veymux 访问局域网服务',
+    detail: `目标：${target}\n\n请在系统提示中选择“允许”。如果之前选择过“不允许”，请前往“系统设置 → 隐私与安全性 → 本地网络”开启 Veymux。`,
     buttons: ['已允许，重试', '打开系统设置', '取消'],
     defaultId: 0,
     cancelId: 2,
@@ -791,7 +792,7 @@ function readDesktopConfig(): DesktopConfig {
 }
 
 function writeDesktopConfig(config: DesktopConfig): void {
-  fs.mkdirSync(termdockDir, { recursive: true, mode: 0o700 });
+  fs.mkdirSync(veymuxDir, { recursive: true, mode: 0o700 });
   const temporaryPath = `${desktopConfigPath}.${process.pid}.tmp`;
   fs.writeFileSync(temporaryPath, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
   fs.renameSync(temporaryPath, desktopConfigPath);
@@ -835,7 +836,7 @@ async function fetchWithTimeout(url: string): Promise<Response> {
   const timer = setTimeout(() => controller.abort(), HEALTH_TIMEOUT_MS);
   try {
     // Electron's network stack follows the macOS Keychain trust store. Node's
-    // global fetch does not, so a healthy local service using Termdock's
+    // global fetch does not, so a healthy local service using Veymux's
     // mkcert certificate could otherwise be reported as a failed start.
     return await net.fetch(url, {
       signal: controller.signal,
@@ -900,7 +901,7 @@ async function probeServiceWithCertificateAuthority(
     }
     const health = healthResponse.json as { status?: unknown } | null;
     if (health?.status !== 'ok') {
-      return { ok: false, url, error: '目标地址不是可识别的 Termdock 服务' };
+      return { ok: false, url, error: '目标地址不是可识别的 Veymux 服务' };
     }
 
     try {
@@ -914,8 +915,8 @@ async function probeServiceWithCertificateAuthority(
           version?: unknown;
           protocolVersion?: unknown;
         } | null;
-        if (metadata?.product && metadata.product !== 'termdock') {
-          return { ok: false, url, error: '目标服务的产品标识不是 Termdock' };
+        if (metadata?.product && metadata.product !== 'veymux') {
+          return { ok: false, url, error: '目标服务的产品标识不是 Veymux' };
         }
         return {
           ok: true,
@@ -927,7 +928,7 @@ async function probeServiceWithCertificateAuthority(
         };
       }
     } catch {
-      // Older Termdock releases do not expose /api/meta.
+      // Older Veymux releases do not expose /api/meta.
     }
     return { ok: true, url };
   } catch (error) {
@@ -950,7 +951,7 @@ async function probeService(rawUrl: string): Promise<ServiceProbe> {
     }
     const health = await healthResponse.json() as { status?: unknown };
     if (health.status !== 'ok') {
-      return { ok: false, url, error: '目标地址不是可识别的 Termdock 服务' };
+      return { ok: false, url, error: '目标地址不是可识别的 Veymux 服务' };
     }
 
     try {
@@ -961,8 +962,8 @@ async function probeService(rawUrl: string): Promise<ServiceProbe> {
           version?: unknown;
           protocolVersion?: unknown;
         };
-        if (metadata.product && metadata.product !== 'termdock') {
-          return { ok: false, url, error: '目标服务的产品标识不是 Termdock' };
+        if (metadata.product && metadata.product !== 'veymux') {
+          return { ok: false, url, error: '目标服务的产品标识不是 Veymux' };
         }
         return {
           ok: true,
@@ -974,7 +975,7 @@ async function probeService(rawUrl: string): Promise<ServiceProbe> {
         };
       }
     } catch {
-      // Older Termdock releases do not expose /api/meta. A valid health
+      // Older Veymux releases do not expose /api/meta. A valid health
       // response is enough to allow a backwards-compatible connection.
     }
     return { ok: true, url };
@@ -1033,7 +1034,7 @@ async function probeServiceWithLocalNetworkPermission(
 
   if (options.interactive === false) return probe;
   if (!(await requestLocalNetworkPermissionRetry(probe.url))) {
-    return { ...probe, error: 'Termdock 尚未获得 macOS 本地网络权限' };
+    return { ...probe, error: 'Veymux 尚未获得 macOS 本地网络权限' };
   }
   probe = await probeService(rawUrl);
   return probe;
@@ -1188,19 +1189,19 @@ async function connectWindow(
       if (isLocalNetworkTarget(parsed) && looksLikeLocalNetworkPermissionError(error)) {
         if (await requestLocalNetworkPermissionRetry(probe.url)) continue;
         workspaceWindow.destroy();
-        return { ...probe, ok: false, error: 'Termdock 尚未获得 macOS 本地网络权限' };
+        return { ...probe, ok: false, error: 'Veymux 尚未获得 macOS 本地网络权限' };
       }
       workspaceWindow.destroy();
       await showDesktopMessageBox({
         type: 'error',
-        title: '连接 Termdock 服务失败',
+        title: '连接 Veymux 服务失败',
         message: `无法打开 ${probe.url}`,
         detail: message,
       });
       return { ...probe, ok: false, error: message };
     }
   }
-  return { ...probe, ok: false, error: 'Termdock 窗口已关闭' };
+  return { ...probe, ok: false, error: 'Veymux 窗口已关闭' };
 }
 
 async function showConnectionCenter(): Promise<void> {
@@ -1280,7 +1281,7 @@ async function recoverServiceWindow(window: BrowserWindow, reason: string): Prom
 
 function createDesktopWindow(options?: { serviceOrigin: string; label: string }): BrowserWindow {
   const serviceSession = options
-    ? session.fromPartition(`persist:termdock-service-${crypto
+    ? session.fromPartition(`persist:veymux-service-${crypto
       .createHash('sha256')
       .update(options.serviceOrigin)
       .digest('hex')
@@ -1294,7 +1295,7 @@ function createDesktopWindow(options?: { serviceOrigin: string; label: string })
     ? screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea
     : { width: options ? 1500 : 1280, height: 820 };
   const window = new BrowserWindow({
-    title: options ? `Termdock — ${options.label}` : 'Termdock — 连接中心',
+    title: options ? `Veymux — ${options.label}` : 'Veymux — 连接中心',
     show: false,
     ...workspaceBounds,
     minWidth: 760,
@@ -1329,7 +1330,7 @@ function createDesktopWindow(options?: { serviceOrigin: string; label: string })
   if (options) {
     window.webContents.on('page-title-updated', (event) => {
       event.preventDefault();
-      window.setTitle(`Termdock — ${options.label}`);
+      window.setTitle(`Veymux — ${options.label}`);
     });
   }
   window.webContents.setWindowOpenHandler(({ url }) => {
@@ -1372,21 +1373,21 @@ function createDesktopWindow(options?: { serviceOrigin: string; label: string })
   window.webContents.on('did-finish-load', () => {
     if (!windowServiceOrigins.has(window)) return;
     void window.webContents.insertCSS(`
-      html[data-termdock-desktop='true'] {
+      html[data-veymux-desktop='true'] {
         --safe-top-inset: max(env(safe-area-inset-top, 0px), 38px) !important;
       }
-      html[data-termdock-desktop='true'] #root {
+      html[data-veymux-desktop='true'] #root {
         padding-top: 0 !important;
       }
-      html[data-termdock-desktop='true'] body::after {
+      html[data-veymux-desktop='true'] body::after {
         display: none !important;
       }
-      html[data-termdock-desktop='true'] #root main > div > div:first-child {
+      html[data-veymux-desktop='true'] #root main > div > div:first-child {
         padding-left: 80px !important;
         position: relative;
         -webkit-app-region: no-drag;
       }
-      html[data-termdock-desktop='true'] #root main > div > div:first-child::before {
+      html[data-veymux-desktop='true'] #root main > div > div:first-child::before {
         content: '';
         position: absolute;
         top: 0;
@@ -1397,35 +1398,35 @@ function createDesktopWindow(options?: { serviceOrigin: string; label: string })
         pointer-events: none;
         -webkit-app-region: drag;
       }
-      html[data-termdock-desktop='true'] #root .h-full.flex.flex-col.app-chrome-bg.border-r > .shrink-0.border-b {
+      html[data-veymux-desktop='true'] #root .h-full.flex.flex-col.app-chrome-bg.border-r > .shrink-0.border-b {
         padding-left: 80px !important;
         -webkit-app-region: drag;
       }
-      html[data-termdock-desktop='true'] #root button,
-      html[data-termdock-desktop='true'] #root a,
-      html[data-termdock-desktop='true'] #root input,
-      html[data-termdock-desktop='true'] #root textarea,
-      html[data-termdock-desktop='true'] #root select,
-      html[data-termdock-desktop='true'] #root [data-rbd-draggable-id] {
+      html[data-veymux-desktop='true'] #root button,
+      html[data-veymux-desktop='true'] #root a,
+      html[data-veymux-desktop='true'] #root input,
+      html[data-veymux-desktop='true'] #root textarea,
+      html[data-veymux-desktop='true'] #root select,
+      html[data-veymux-desktop='true'] #root [data-rbd-draggable-id] {
         -webkit-app-region: no-drag;
       }
-      html[data-termdock-desktop='true'] [data-sidebar='right'] {
+      html[data-veymux-desktop='true'] [data-sidebar='right'] {
         padding-top: 0 !important;
       }
-      html[data-termdock-desktop='true'] [data-sidebar='right'][style*='pointer-events: auto'] {
+      html[data-veymux-desktop='true'] [data-sidebar='right'][style*='pointer-events: auto'] {
         transform: none !important;
       }
-      html[data-termdock-desktop='true'] [data-sidebar='right'] > div:first-child {
+      html[data-veymux-desktop='true'] [data-sidebar='right'] > div:first-child {
         -webkit-app-region: no-drag;
       }
-      html[data-termdock-desktop='true'] [data-sidebar='right'] > div:first-child > div:first-child > .min-w-0.flex-1 {
+      html[data-veymux-desktop='true'] [data-sidebar='right'] > div:first-child > div:first-child > .min-w-0.flex-1 {
         -webkit-app-region: drag;
       }
-      html[data-termdock-desktop='true'] [data-sidebar='right'] div:has(> [data-right-search]) + div:has(> button[aria-pressed]) {
+      html[data-veymux-desktop='true'] [data-sidebar='right'] div:has(> [data-right-search]) + div:has(> button[aria-pressed]) {
         width: fit-content !important;
         margin-left: auto !important;
       }
-      html[data-termdock-desktop='true'] [data-sidebar='right'] div:has(> [data-right-search]) + div:has(> button[aria-pressed]) > button {
+      html[data-veymux-desktop='true'] [data-sidebar='right'] div:has(> [data-right-search]) + div:has(> button[aria-pressed]) > button {
         flex: none !important;
         padding: 0.125rem 0.5rem !important;
         font-size: 10px !important;
@@ -1516,7 +1517,7 @@ function installIpcHandlers(): void {
         try { model = (await execFileAsync('/usr/sbin/sysctl', ['-n', 'hw.model'], { timeout: 3000 })).stdout.trim(); } catch { /* Optional hardware information. */ }
       }
       return { system: process.platform === 'darwin' ? `macOS ${process.getSystemVersion()}` : `${os.type()} ${os.release()}`,
-        client: `Termdock ${app.getVersion()}`, model, arch: process.arch, cpu: os.cpus()[0]?.model || '', hostname: os.hostname(), mode: '桌面客户端' };
+        client: `Veymux ${app.getVersion()}`, model, arch: process.arch, cpu: os.cpus()[0]?.model || '', hostname: os.hostname(), mode: '桌面客户端' };
     })();
   });
   ipcMain.handle('desktop:snapshot', () => snapshot());
@@ -1693,13 +1694,13 @@ function installIpcHandlers(): void {
   ipcMain.handle('desktop:install-update', () => installDownloadedDesktopUpdate());
   ipcMain.handle('desktop:show-connection-center', () => showConnectionCenter());
   ipcMain.handle('desktop:reveal-data-directory', async () => {
-    fs.mkdirSync(termdockDir, { recursive: true, mode: 0o700 });
-    const error = await shell.openPath(termdockDir);
+    fs.mkdirSync(veymuxDir, { recursive: true, mode: 0o700 });
+    const error = await shell.openPath(veymuxDir);
     if (error) throw new Error(error);
   });
   ipcMain.handle('desktop:open-notification-settings', async () => {
     await shell.openExternal(
-      'x-apple.systempreferences:com.apple.Notifications-Settings.extension?bundleId=com.jovines.termdock',
+      'x-apple.systempreferences:com.apple.Notifications-Settings.extension?bundleId=com.jovines.veymux',
     );
   });
   ipcMain.handle('desktop:prepare-notification-test', (event) => {
@@ -1796,7 +1797,7 @@ function installMenu(): void {
       if (!probe.ok) {
         void showDesktopMessageBox({
           type: 'error',
-          title: '连接 Termdock 服务失败',
+          title: '连接 Veymux 服务失败',
           message: `无法打开 ${probe.url}`,
           detail: probe.error,
         });
@@ -1824,7 +1825,7 @@ function installMenu(): void {
     }));
   const menu = Menu.buildFromTemplate([
     {
-      label: 'Termdock',
+      label: 'Veymux',
       submenu: [
         { role: 'about' },
         { type: 'separator' },
@@ -1844,10 +1845,10 @@ function installMenu(): void {
           click: () => void checkForDesktopUpdates({ presentNativeDialogs: true }),
         },
         {
-          label: '打开 Termdock 数据目录',
+          label: '打开 Veymux 数据目录',
           click: () => {
-            fs.mkdirSync(termdockDir, { recursive: true, mode: 0o700 });
-            void shell.openPath(termdockDir);
+            fs.mkdirSync(veymuxDir, { recursive: true, mode: 0o700 });
+            void shell.openPath(veymuxDir);
           },
         },
         { type: 'separator' },
@@ -2024,7 +2025,7 @@ app.whenReady().then(async () => {
     void showConnectionCenter();
   });
 }).catch((error) => {
-  void dialog.showErrorBox('Termdock 启动失败', error instanceof Error ? error.message : String(error));
+  void dialog.showErrorBox('Veymux 启动失败', error instanceof Error ? error.message : String(error));
   app.quit();
 });
 

@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import { migrateProjectData } from '../utils/brandMigration.js';
 import path from 'node:path';
 import os from 'node:os';
 import { createHash, randomUUID } from 'node:crypto';
@@ -23,6 +24,7 @@ export class ArchitectureStore {
   async bounded(relative: string, create = false): Promise<string> {
     if (!relative || relative.startsWith('/') || /[\\\x00-\x1f]/.test(relative) || relative.split('/').some(part => !part || part === '.' || part === '..')) throw new Error('Unsafe architecture path');
     const root = await fs.realpath(this.root);
+    migrateProjectData(root);
     let current = root;
     const parts = relative.split('/');
     for (let index = 0; index < parts.length; index++) {
@@ -43,7 +45,7 @@ export class ArchitectureStore {
     finally { await fs.rm(temp, { force: true }); }
   }
   private async locked<T>(operation: () => Promise<T>): Promise<T> {
-    const lock = await this.bounded('.termdock/architecture.lock', true);
+    const lock = await this.bounded('.veymux/architecture.lock', true);
     let handle: fs.FileHandle | undefined;
     const deadline = Date.now() + 10_000;
     while (!handle) {
@@ -82,7 +84,7 @@ export class ArchitectureStore {
       return { gitCommit: gitCommit.trim(), gitBranch: gitBranch.trim() };
     } catch { return {}; }
   }
-  private historyDirectory(file: string): string { return `.termdock/architecture-history/${digest(file).slice(0, 24)}`; }
+  private historyDirectory(file: string): string { return `.veymux/architecture-history/${digest(file).slice(0, 24)}`; }
   private async archive(file: string, previous: StoredArchitecture): Promise<void> {
     if (!previous.document) return;
     const folder = this.historyDirectory(file);
@@ -166,7 +168,7 @@ export class ArchitectureStore {
     return { ...fields, meta };
   }
   private async validateOmmMerge(files: Record<string, string>): Promise<void> {
-    const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'termdock-omm-import-'));
+    const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'veymux-omm-import-'));
     try {
       const stage = new ArchitectureStore(temporary), merged = { ...(await this.exportOmmBundle()).files, ...files };
       for (const [name, value] of Object.entries(merged)) await stage.atomic(`.omm/${name}`, value);
@@ -253,7 +255,7 @@ export class ArchitectureStore {
     if (language !== undefined) { if (!/^[a-z]{2}(?:-[A-Z]{2})?$/.test(language)) throw new Error('Invalid language'); config.language = language; await this.locked(() => this.atomic('.omm/config.yaml', YAML.stringify(config))); }
     return { language: typeof config?.language === 'string' ? config.language : 'en' };
   }
-  async exportOmmBundle(document?: ArchitectureDocument): Promise<{ format: 'termdock-omm-bundle'; version: 1; files: Record<string, string> }> {
+  async exportOmmBundle(document?: ArchitectureDocument): Promise<{ format: 'veymux-omm-bundle'; version: 1; files: Record<string, string> }> {
     const files: Record<string, string> = {};
     if (!document) {
       for (const element of await this.ommElements()) {
@@ -286,11 +288,11 @@ export class ArchitectureStore {
       }
     }
     if (Buffer.byteLength(JSON.stringify(files), 'utf8') > 5_000_000) throw new Error('Export exceeds the architecture limit');
-    return { format: 'termdock-omm-bundle', version: 1, files };
+    return { format: 'veymux-omm-bundle', version: 1, files };
   }
   async importOmmBundle(input: unknown, expectedRevision?: string | null): Promise<void> {
     const bundle = input as { format?: unknown; version?: unknown; files?: unknown };
-    if (bundle?.format !== 'termdock-omm-bundle' || bundle.version !== 1 || !bundle.files || typeof bundle.files !== 'object' || Array.isArray(bundle.files)) throw new Error('Invalid .omm bundle');
+    if (bundle?.format !== 'veymux-omm-bundle' || bundle.version !== 1 || !bundle.files || typeof bundle.files !== 'object' || Array.isArray(bundle.files)) throw new Error('Invalid .omm bundle');
     const files = Object.entries(bundle.files);
     if (!files.length || files.length > 16_801 || Buffer.byteLength(JSON.stringify(input), 'utf8') > 5_000_000) throw new Error('Invalid .omm bundle size');
     for (const [name, value] of files) {

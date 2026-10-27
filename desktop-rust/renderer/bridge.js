@@ -1,6 +1,6 @@
 (() => {
   'use strict';
-  const boot = window.__TD_PREVIEW_BOOT__;
+  const boot = window.__VEYMUX_PREVIEW_BOOT__;
   if (!boot || window !== window.top || location.origin !== boot.origin) return;
   const invoke = (op, args = {}) => window.__TAURI_INTERNALS__.invoke('preview_dispatch', { op, args });
   // Bounded startup diagnostics contain fixed categories only, never URLs,
@@ -12,7 +12,7 @@
       const open = indexedDB.open.bind(indexedDB);
       indexedDB.open = (...args) => {
         const request = open(...args);
-        if(args[0]==='termdock-device-identity'){
+        if(args[0]==='veymux-device-identity'){
           report('identity-open');
           for(const name of ['success','error','blocked'])request.addEventListener(name,()=>report('identity-'+name),{once:true});
         }
@@ -42,16 +42,16 @@
         report(document.querySelector('.xterm')?'terminal-mounted':'terminal-absent');
         report(document.hidden?'document-hidden':'document-visible');
         const label=document.querySelector('[data-startup-status]')?.textContent;
-        report(label==='Loading Termdock'?'status-loading':label==='Preparing terminal engine'?'status-engine':'status-other');
+        report(label==='Loading Veymux'?'status-loading':label==='Preparing terminal engine'?'status-engine':'status-other');
         report(document.getElementById('root')?.childNodes.length?'root-mounted':'root-empty');
         if(document.querySelector('input[type=password]'))report('login-visible');
-        if(document.querySelector('[data-termdock-terminal-dropzone]'))report('native-mounted');
+        if(document.querySelector('[data-veymux-terminal-dropzone]'))report('native-mounted');
       },5000);
     },{once:true});
   }
   const normalizeOpenRejection = reason => {
     const detail = typeof reason === 'string' ? reason : reason?.message || String(reason);
-    console.error('[Termdock Preview] openConnection rejected:', detail);
+    console.error('[Veymux Preview] openConnection rejected:', detail);
     if (/cannot discover service/i.test(detail)) return {code:'PREVIEW_DISCOVERY_FAILED',message:'暂时无法连接服务。请检查地址、网络或证书指纹后重试。'};
     if (/pinned (?:target|service) identity/i.test(detail)) return {code:'PREVIEW_IDENTITY_REJECTED',message:'无法验证服务证书或身份。请核对服务地址和已保存的证书指纹。'};
     if (/certificate|\bcert\b|\btls\b|unknownissuer|pinned target identity|fingerprint/i.test(detail)) return {code:'PREVIEW_CERTIFICATE_REJECTED',message:'无法验证服务证书或身份。请核对服务地址和已保存的证书指纹。'};
@@ -61,11 +61,11 @@
   // Private diagnostic tap, absent in normal launches. It never gates a drag.
   let ownedChrome = null, chromePageIndex = 0, chromeRequestIndex = 0, chromeObservations = [], chromeObservationScheduled = false;
   let documentEpoch = null;
-  window.addEventListener('termdock:window-document-epoch', event => {
+  window.addEventListener('veymux:window-document-epoch', event => {
     const value = event.detail?.epoch;
     if (typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)) documentEpoch = value;
   });
-  if (boot.ownedWindowChrome === true) window.addEventListener('termdock:owned-window-chrome', event => {
+  if (boot.ownedWindowChrome === true) window.addEventListener('veymux:owned-window-chrome', event => {
     const value = event.detail;
     if (!Number.isSafeInteger(value?.ownerGeneration) || value.ownerGeneration < 1 || !Number.isSafeInteger(value.documentGeneration) || value.documentGeneration < 0) return;
     if (ownedChrome && (value.ownerGeneration < ownedChrome.ownerGeneration || (value.ownerGeneration === ownedChrome.ownerGeneration && value.documentGeneration <= ownedChrome.documentGeneration))) return;
@@ -107,7 +107,7 @@
     const index = origin === location.origin ? boot.defaultRoute : boot.origins.indexOf(origin);
     if (index < 0) throw new TypeError('This service window has no route to that origin');
     if (url.pathname !== '/api/federation/relay' && url.search) throw new TypeError('Unexpected discovery query');
-    return `${socket ? location.origin.replace('http:', 'ws:') : location.origin}/__td_route/${index}${url.pathname}${url.search}`;
+    return `${socket ? location.origin.replace('http:', 'ws:') : location.origin}/__veymux_route/${index}${url.pathname}${url.search}`;
   }
   // The page captures this transport before installing encrypted fetch. There
   // is no upload implementation and no fallback to ordinary business HTTP.
@@ -139,12 +139,12 @@
   // Never seed credentials, pairing codes or the entry's identity as the target.
   if (boot.connection.targetPeerId) {
     const target = { ...boot.connection, serviceName: boot.connection.label };
-    sessionStorage.setItem('termdock-secure-target-v1', JSON.stringify(target));
+    sessionStorage.setItem('veymux-secure-target-v1', JSON.stringify(target));
   }
   }
   const MAX_FILE_BYTES = 128 * 1024 * 1024, CHUNK_BYTES = 256 * 1024;
   const activeReads = new Set(), activeWrites = new Set(), activeDownloadCancels = new Set(); let closing = false, nativeDropOperationSequence = 0;
-  const targetStamp = () => boot.local ? 'center' : sessionStorage.getItem('termdock-secure-target-v1');
+  const targetStamp = () => boot.local ? 'center' : sessionStorage.getItem('veymux-secure-target-v1');
   async function readSelection(op, args, signal, valid = () => true) {
     const stamp = targetStamp();
     if (closing || signal?.aborted || !valid()) throw new Error('File read cancelled or window closed');
@@ -188,7 +188,7 @@
       }
       sameTarget(); return output;
     } catch (error) {
-      if (strictMovie && Array.isArray(selection?.files) && selection.files.some(file => (typeof file.type === 'string' && file.type.startsWith('video/')) || /\.(?:mov|mp4|m4v|webm|mpeg|mpg)$/i.test(file.name))) throw new Error('TERMDOCK_CLIPBOARD_VIDEO_ERROR:' + String(error.message || error));
+      if (strictMovie && Array.isArray(selection?.files) && selection.files.some(file => (typeof file.type === 'string' && file.type.startsWith('video/')) || /\.(?:mov|mp4|m4v|webm|mpeg|mpg)$/i.test(file.name))) throw new Error('VEYMUX_CLIPBOARD_VIDEO_ERROR:' + String(error.message || error));
       throw error;
     } finally {
       signal?.removeEventListener('abort', cancel);
@@ -203,7 +203,7 @@
     let batch, seq = 0, receipt, written = 0, complete = false;
     const cancel = () => { cancelled=true;cancelSource();if(batch)void invoke('downloadCancel', {batch}).catch(()=>{}); };
     const secureChanged=event=>{if(event?.type==='auth:unauthorized'||targetStamp()!==stamp)cancel();};
-    for(const name of ['termdock:secure-state','auth:unauthorized'])window.addEventListener(name,secureChanged);
+    for(const name of ['veymux:secure-state','auth:unauthorized'])window.addEventListener(name,secureChanged);
     signal?.addEventListener('abort', cancel, {once:true});
     activeDownloadCancels.add(cancel);
     try {
@@ -233,7 +233,7 @@
       complete=true;return 'saved';
     } finally {
       signal?.removeEventListener('abort',cancel);activeDownloadCancels.delete(cancel);if(batch)activeWrites.delete(batch);
-      for(const name of ['termdock:secure-state','auth:unauthorized'])window.removeEventListener(name,secureChanged);
+      for(const name of ['veymux:secure-state','auth:unauthorized'])window.removeEventListener(name,secureChanged);
       if(!complete)cancel();
     }
   }
@@ -274,10 +274,10 @@
     // A repeated accelerator arriving in the replacement document must not
     // restart a restore which has not yet released its startup surface.
     try{
-      const recent=Number(sessionStorage.getItem('termdock-preview-reload-at'));
-      const startup=typeof document==='undefined'?null:document.getElementById('termdock-startup');
+      const recent=Number(sessionStorage.getItem('veymux-preview-reload-at'));
+      const startup=typeof document==='undefined'?null:document.getElementById('veymux-startup');
       if(!boot.local&&recent>0&&Date.now()-recent<10000&&startup&&!startup.hidden)return Promise.resolve();
-      sessionStorage.setItem('termdock-preview-reload-at',String(Date.now()));
+      sessionStorage.setItem('veymux-preview-reload-at',String(Date.now()));
     }catch{}
     reloadTask=Promise.resolve().then(async()=>{
       if(!force||!navigator.serviceWorker?.getRegistration)return;
@@ -327,7 +327,7 @@
       }
     }).catch(()=>{});
   }
-  const invitationMarker='termdock-secure-preview-invitation-v1';
+  const invitationMarker='veymux-secure-preview-invitation-v1';
   const invitationFingerprint=()=>crypto.subtle.digest('SHA-256',new TextEncoder().encode(boot.invitation)).then(bytes=>Array.from(new Uint8Array(bytes),byte=>byte.toString(16).padStart(2,'0')).join(''));
   const serviceConnection=async()=>{
     const value={...boot.connection,invitation:boot.invitation};if(!boot.invitation)return value;
@@ -357,7 +357,7 @@
       try{sessionStorage.removeItem(invitationMarker);}catch{/* Explicit acceptance still validates the service. */}
       callback(invitation);
     }).catch(()=>{});
-    const stop=subscribe('termdock:preview-invitation',()=>{if(!boot.invitation)last=undefined;pull();});pull();
+    const stop=subscribe('veymux:preview-invitation',()=>{if(!boot.invitation)last=undefined;pull();});pull();
     return()=>{active=false;stop();};
   };
   let confirmation;
@@ -381,7 +381,7 @@
       let unsubscribe;const finish=(approved,restore=true)=>{
         if(confirmation!==finish)return;
         const ownsFocus=panel.contains(document.activeElement)||document.activeElement===backdrop,windowFocused=document.hasFocus();
-        confirmation=undefined;unsubscribe?.();document.removeEventListener('keydown',key,true);for(const name of ['pagehide','termdock:secure-state','auth:unauthorized'])window.removeEventListener(name,expired);backdrop.remove();panel.remove();
+        confirmation=undefined;unsubscribe?.();document.removeEventListener('keydown',key,true);for(const name of ['pagehide','veymux:secure-state','auth:unauthorized'])window.removeEventListener(name,expired);backdrop.remove();panel.remove();
         if(restore&&ownsFocus&&windowFocused&&!document.hidden&&!closing&&available(previous))previous.focus?.({preventScroll:true});resolve(approved);
       };
       const expired=()=>finish(false,false),key=event=>{
@@ -389,10 +389,10 @@
         if(event.key==='Escape'){event.preventDefault();event.stopImmediatePropagation();finish(false);}
         if(event.key==='Tab'){const outside=!panel.contains(document.activeElement);if(event.shiftKey&&(document.activeElement===cancel||outside)){event.preventDefault();accept.focus();}else if(!event.shiftKey&&(document.activeElement===accept||outside)){event.preventDefault();cancel.focus();}}
       };
-      confirmation=finish;cancel.onclick=()=>finish(false);backdrop.onclick=()=>finish(false);accept.onclick=()=>finish(true);document.addEventListener('keydown',key,true);for(const name of ['pagehide','termdock:secure-state','auth:unauthorized'])window.addEventListener(name,expired);
+      confirmation=finish;cancel.onclick=()=>finish(false);backdrop.onclick=()=>finish(false);accept.onclick=()=>finish(true);document.addEventListener('keydown',key,true);for(const name of ['pagehide','veymux:secure-state','auth:unauthorized'])window.addEventListener(name,expired);
       document.body.append(backdrop,panel);
       // The ordinary overlay observer/receipt controls first paint and focus.
-      queueMicrotask(()=>{if(confirmation!==finish)return;const life=window.termdockPreviewLifecycle;let focused=false;const focus=()=>{if(confirmation!==finish||focused||!document.hasFocus()||document.hidden||!available(cancel))return;const active=document.activeElement;if(panel.contains(active)){focused=true;return;}if(active!==previous&&active!==document.body)return;focused=true;cancel.focus({preventScroll:true});};if(life)unsubscribe=life.subscribe(value=>{if(value.overlayReady)focus();});else focus();});
+      queueMicrotask(()=>{if(confirmation!==finish)return;const life=window.veymuxPreviewLifecycle;let focused=false;const focus=()=>{if(confirmation!==finish||focused||!document.hasFocus()||document.hidden||!available(cancel))return;const active=document.activeElement;if(panel.contains(active)){focused=true;return;}if(active!==previous&&active!==document.body)return;focused=true;cancel.focus({preventScroll:true});};if(life)unsubscribe=life.subscribe(value=>{if(value.overlayReady)focus();});else focus();});
     });
   };
   let feedback;
@@ -403,8 +403,8 @@
     text.className='break-words';text.textContent=message;close.type='button';close.textContent='×';close.setAttribute('aria-label','Close');close.className='shrink-0 text-primary';close.onclick=()=>{panel.remove();if(feedback===panel)feedback=undefined;};
     panel.append(text,close);feedback=panel;document.body.append(panel);
   };
-  for(const name of ['pagehide','termdock:secure-state','auth:unauthorized'])window.addEventListener(name,()=>{feedback?.remove();feedback=undefined;});
-  window.termdockDesktop = Object.freeze({
+  for(const name of ['pagehide','veymux:secure-state','auth:unauthorized'])window.addEventListener(name,()=>{feedback?.remove();feedback=undefined;});
+  window.veymuxDesktop = Object.freeze({
     platform: boot.platform,
     capabilities:Object.freeze({webWorkspace:true}),
     openExternal: value => {
@@ -427,14 +427,14 @@
     snapshot: () => invoke('snapshot'),
     ...(boot.local ? {
       takeServiceConnectionReview: () => invoke('takeConnectionReview'),
-      onServiceConnectionReview: callback => subscribe('termdock:preview-connection-review', callback),
+      onServiceConnectionReview: callback => subscribe('veymux:preview-connection-review', callback),
       certificatePins: () => invoke('certificatePins'),
       inspectCertificate: origin => invoke('inspectCertificate', {origin}),
       trustCertificate: async (origin, fingerprint, receipt) => {
         try { return await invoke('trustCertificate', {origin, fingerprint, receipt}); }
         catch (reason) {
           const detail = typeof reason === 'string' ? reason : reason?.message || String(reason);
-          console.error('[Termdock Preview] certificate trust rejected:', detail);
+          console.error('[Veymux Preview] certificate trust rejected:', detail);
           const error = new Error(/PREVIEW_CERTIFICATE_CHANGED/.test(detail) ? '服务证书在确认期间发生变化，请重新核对新指纹。' : '无法保存此地址的证书信任，请检查连接中心状态后重试。');
           if (/PREVIEW_CERTIFICATE_CHANGED/.test(detail)) error.code = 'PREVIEW_CERTIFICATE_CHANGED';
           throw error;
@@ -453,9 +453,9 @@
     removeConnection: id => invoke('removeConnection', {id}).then(() => invoke('snapshot')),
     updateDesktopPreferences: preferences => invoke('preferences', {preferences}).then(() => invoke('snapshot')),
     desktopStatus: () => invoke('desktopStatus'),
-    onDesktopStatus: callback => subscribe('termdock:preview-status', callback),
-    onLocalServiceSetup: callback => subscribe('termdock:preview-setup', callback),
-    onStartupProgress: callback => subscribe('termdock:preview-startup', callback),
+    onDesktopStatus: callback => subscribe('veymux:preview-status', callback),
+    onLocalServiceSetup: callback => subscribe('veymux:preview-setup', callback),
+    onStartupProgress: callback => subscribe('veymux:preview-startup', callback),
     focusNextService: (scope = 'attention') => invoke('focusNext', {scope}),
     setFloatingMetricCount: count => invoke('floatingSize', {count}),
     disableFloatingWidget: () => invoke('preferences', {preferences: {floatingWidgetEnabled: false}}).then(() => invoke('snapshot')),
@@ -467,7 +467,7 @@
     saveServiceConnection: connection => invoke('saveConnection', { connection }),
     importServiceConnection: connection => invoke('importConnection', { connection }),
     removeServiceConnection: id => invoke('removeConnection', { id }),
-    onServiceConnections: callback => subscribe('termdock:preview-connections', callback),
+    onServiceConnections: callback => subscribe('veymux:preview-connections', callback),
     openServiceConnection: async (connection, invitation) => {
       try { return await invoke('openConnection', { connection, invitation }); }
       catch (reason) { const normalized = normalizeOpenRejection(reason); const error = new Error(normalized.message); error.code = normalized.code; throw error; }
@@ -482,7 +482,7 @@
     desktopUpdateState: () => invoke('updateState'),
     checkDesktopUpdate: () => invoke('checkUpdate'),
     installDesktopUpdate: () => invoke('installUpdate'),
-    onDesktopUpdateState: callback => subscribe('termdock:preview-update', callback),
+    onDesktopUpdateState: callback => subscribe('veymux:preview-update', callback),
     readClipboardImage: async options => { const files = await readSelection('clipboardImage', undefined, options?.signal); if (!files.length) return null; if (files.length !== 1 || !files[0].bytes) throw new Error('Invalid native clipboard image'); return files[0].bytes; },
     readClipboardFiles: async (options = {}) => { const {signal,...nativeOptions} = options; return readSelection('clipboardFiles', {options:nativeOptions}, signal); },
     saveDownloadBlob,
@@ -496,41 +496,41 @@
       const clear = target => {
         for (const key of ['nativeFileDrag','nativeFileDropState','nativeFileDropOperation','nativeFileDropProgress','nativeFileDropCancellable']) delete target.dataset[key];
       };
-      const hit = payload => document.elementFromPoint?.(payload.x,payload.y)?.closest('[data-termdock-terminal-dropzone]');
-      const stopHover = subscribe('termdock:preview-drag', payload => {
+      const hit = payload => document.elementFromPoint?.(payload.x,payload.y)?.closest('[data-veymux-terminal-dropzone]');
+      const stopHover = subscribe('veymux:preview-drag', payload => {
         if (hovered && ['local','remote'].includes(hovered.dataset.nativeFileDropState)) clear(hovered);
         hovered = payload.phase === 'leave' ? null : hit(payload);
         if (payload.phase === 'enter') localHover = payload.local === true;
         if (hovered && !controllers.has(hovered)) { hovered.dataset.nativeFileDrag='true'; hovered.dataset.nativeFileDropState=localHover?'local':'remote'; }
       });
-      const stopDrop = subscribe('termdock:preview-files', async payload => {
+      const stopDrop = subscribe('veymux:preview-files', async payload => {
         if(hovered&&['local','remote'].includes(hovered.dataset.nativeFileDropState))clear(hovered);hovered=null;
         const viewId = typeof payload.sessionKey === 'string' ? payload.sessionKey : '';
         const target = viewId
-          ? [...document.querySelectorAll('[data-termdock-terminal-dropzone]')].find(element => element.dataset.termdockTerminalDropzone === viewId)
+          ? [...document.querySelectorAll('[data-veymux-terminal-dropzone]')].find(element => element.dataset.veymuxTerminalDropzone === viewId)
           : hit(payload);
         if (!target) return;
         controllers.get(target)?.abort();
         const controller = new AbortController(); controllers.set(target,controller);
-        const targetSessionKey=target.dataset.termdockTerminalDropzone||'';
-        const currentPeer=()=>JSON.parse(sessionStorage.getItem('termdock-secure-target-v1')||'null')?.targetPeerId;
-        const peer=currentPeer(),operation=String(++nativeDropOperationSequence),ownerKey=target.dataset.termdockTerminalOwner,stamp=targetStamp();
-        const ownsDropState=()=>target.isConnected!==false && target.dataset.termdockTerminalDropzone===targetSessionKey && target.dataset.nativeFileDropOperation===operation;
-        const isCurrent=()=>!closing&&!controller.signal.aborted&&ownsDropState()&&target.dataset.termdockTerminalOwner===ownerKey&&targetStamp()===stamp&&currentPeer()===peer;
-        const discardStaleDrop=()=>{if(isCurrent())return false;if(ownsDropState()&&!(controller.signal.aborted&&['cancelled','error'].includes(target.dataset.nativeFileDropState)&&target.dataset.termdockTerminalOwner===ownerKey&&targetStamp()===stamp))clear(target);return true;};
+        const targetSessionKey=target.dataset.veymuxTerminalDropzone||'';
+        const currentPeer=()=>JSON.parse(sessionStorage.getItem('veymux-secure-target-v1')||'null')?.targetPeerId;
+        const peer=currentPeer(),operation=String(++nativeDropOperationSequence),ownerKey=target.dataset.veymuxTerminalOwner,stamp=targetStamp();
+        const ownsDropState=()=>target.isConnected!==false && target.dataset.veymuxTerminalDropzone===targetSessionKey && target.dataset.nativeFileDropOperation===operation;
+        const isCurrent=()=>!closing&&!controller.signal.aborted&&ownsDropState()&&target.dataset.veymuxTerminalOwner===ownerKey&&targetStamp()===stamp&&currentPeer()===peer;
+        const discardStaleDrop=()=>{if(isCurrent())return false;if(ownsDropState()&&!(controller.signal.aborted&&['cancelled','error'].includes(target.dataset.nativeFileDropState)&&target.dataset.veymuxTerminalOwner===ownerKey&&targetStamp()===stamp))clear(target);return true;};
         const timedStatus=phase=>{
           target.dataset.nativeFileDropState=phase;delete target.dataset.nativeFileDropCancellable;delete target.dataset.nativeFileDropProgress;
           window.setTimeout(()=>{if(ownsDropState()&&target.dataset.nativeFileDropState===phase)clear(target);},3000);
         };
-        const cancel=event=>{if(event.target?.closest?.('[data-termdock-terminal-dropzone]')!==target||!ownsDropState())return;controller.abort();clear(target);target.dataset.nativeFileDropOperation=operation;target.dataset.nativeFileDrag='true';timedStatus('cancelled');};
+        const cancel=event=>{if(event.target?.closest?.('[data-veymux-terminal-dropzone]')!==target||!ownsDropState())return;controller.abort();clear(target);target.dataset.nativeFileDropOperation=operation;target.dataset.nativeFileDrag='true';timedStatus('cancelled');};
         const expire=()=>{if(!isCurrent()){controller.abort();discardStaleDrop();}};
         const leave=()=>{controller.abort();discardStaleDrop();};
         target.dataset.nativeFileDropOperation=operation;target.dataset.nativeFileDrag='true';target.dataset.nativeFileDropState='preparing';target.dataset.nativeFileDropCancellable='true';delete target.dataset.nativeFileDropProgress;
-        window.addEventListener('termdock:file-drop-cancel',cancel);
-        window.addEventListener('termdock:secure-state',expire);
+        window.addEventListener('veymux:file-drop-cancel',cancel);
+        window.addEventListener('veymux:secure-state',expire);
         window.addEventListener('auth:unauthorized',leave);
         window.addEventListener('pagehide',leave);
-        const timeout=window.setTimeout(()=>{if(isCurrent()){controller.abort();timedStatus('error');target.dispatchEvent(new CustomEvent('termdock:file-drop-error',{bubbles:true,detail:'文件处理超时，请重试'}));}},120000);
+        const timeout=window.setTimeout(()=>{if(isCurrent()){controller.abort();timedStatus('error');target.dispatchEvent(new CustomEvent('veymux:file-drop-error',{bubbles:true,detail:'文件处理超时，请重试'}));}},120000);
         try {
           const files=await readSelection('dropFiles',{token:payload.token,targetPeerId:peer,viewId:viewId||undefined},controller.signal,isCurrent);
           if(discardStaleDrop())return;
@@ -558,17 +558,17 @@
           if(isCurrent())timedStatus(upload.length?'uploaded':'inserted');
         }catch(error){
           if(controller.signal.aborted||discardStaleDrop())return;
-          timedStatus('error');target.dispatchEvent(new CustomEvent('termdock:file-drop-error',{bubbles:true,detail:String(error.message||error)}));
+          timedStatus('error');target.dispatchEvent(new CustomEvent('veymux:file-drop-error',{bubbles:true,detail:String(error.message||error)}));
         }finally{
           window.clearTimeout(timeout);if(controllers.get(target)===controller)controllers.delete(target);
-          window.removeEventListener('termdock:file-drop-cancel',cancel);window.removeEventListener('termdock:secure-state',expire);window.removeEventListener('auth:unauthorized',leave);window.removeEventListener('pagehide',leave);
+          window.removeEventListener('veymux:file-drop-cancel',cancel);window.removeEventListener('veymux:secure-state',expire);window.removeEventListener('auth:unauthorized',leave);window.removeEventListener('pagehide',leave);
         }
       });
       return ()=>{stopHover();stopDrop();};
     },
     reportServiceActivity: activity => { void invoke('reportActivity', { activity }).catch(() => {}); },
     focusService: origin => invoke('focusService', { origin }),
-    onServiceActivity: callback => subscribe('termdock:preview-activity', callback),
+    onServiceActivity: callback => subscribe('veymux:preview-activity', callback),
   });
   if (!boot.local) {
     let request, timer, channel;
@@ -579,16 +579,16 @@
       const submitted=request;
       channel = new MessageChannel();
       channel.port1.onmessage = event => {
-        if (event.data?.type !== 'termdock:focus-session-ack' || request!==submitted) return;
+        if (event.data?.type !== 'veymux:focus-session-ack' || request!==submitted) return;
         const receipt=request; request=undefined;stop();
         void invoke('focusReceipt',{requestId:receipt.requestId}).catch(()=>{});
       };
       // The existing App acknowledges this message only after its session
       // focus handler is mounted. No worker control or business request is needed.
-      navigator.serviceWorker.dispatchEvent(new MessageEvent('message',{data:{type:'termdock:focus-session',sessionId:request.sessionId,targetPeerId:request.targetPeerId},ports:[channel.port2]}));
+      navigator.serviceWorker.dispatchEvent(new MessageEvent('message',{data:{type:'veymux:focus-session',sessionId:request.sessionId,targetPeerId:request.targetPeerId},ports:[channel.port2]}));
       timer=window.setTimeout(deliver,250);
     };
-    window.addEventListener('termdock:preview-focus-request', event => {
+    window.addEventListener('veymux:preview-focus-request', event => {
       const value=event.detail;
       if (typeof value?.requestId!=='string' || typeof value.sessionId!=='string' || value.sessionId.length>512) return;
       request=value;deliver();
@@ -596,11 +596,11 @@
     window.addEventListener('pagehide',()=>{request=undefined;stop();});
   }
   // Local UI has no transport wrapper; native callbacks share the service contract.
-  delete window.__TD_PREVIEW_BOOT__;
-  window.addEventListener('termdock:preview-error', event => { const notice = document.querySelector('#notice'); if (notice) {notice.textContent=event.detail;notice.hidden=false;notice.classList.add('error');} });
+  delete window.__VEYMUX_PREVIEW_BOOT__;
+  window.addEventListener('veymux:preview-error', event => { const notice = document.querySelector('#notice'); if (notice) {notice.textContent=event.detail;notice.hidden=false;notice.classList.add('error');} });
   window.addEventListener('DOMContentLoaded', () => {
-    document.documentElement.dataset.termdockDesktop = 'true';
-    document.documentElement.dataset.termdockPreview = 'true';
+    document.documentElement.dataset.veymuxDesktop = 'true';
+    document.documentElement.dataset.veymuxPreview = 'true';
     // Match AppKit and WK's resize/backing-store fill to the actual CSS token.
     // Otherwise exposed pixels during live resize use the system white default.
     const syncWindowBackground = () => {
@@ -628,7 +628,7 @@
       const target = event.target;
       // WK does not provide Electron's app-region handling. Only explicit
       // shell chrome may start a drag; interactive descendants retain input.
-      if (target.closest('button,a,input,textarea,select,form,summary,label,[contenteditable]:not([contenteditable="false"]),[draggable="true"],[data-rbd-draggable-id],[data-rbd-drag-handle-draggable-id],[data-split-pane-title],[data-panel-drag-title],.split-pane-drag-handle,[data-no-drag],[data-tauri-no-drag],[data-tauri-drag-region="false"],[data-termdock-terminal-dropzone],.xterm,[role="button"],[role="link"],[role="tab"],[role="menu"],[role="menuitem"],[role="menuitemcheckbox"],[role="menuitemradio"],[role="textbox"],[role="combobox"],[role="listbox"],[role="option"],[role="slider"],[role="spinbutton"],[role="checkbox"],[role="radio"],[role="switch"],[role="treeitem"],[role="scrollbar"]')) return;
+      if (target.closest('button,a,input,textarea,select,form,summary,label,[contenteditable]:not([contenteditable="false"]),[draggable="true"],[data-rbd-draggable-id],[data-rbd-drag-handle-draggable-id],[data-split-pane-title],[data-panel-drag-title],.split-pane-drag-handle,[data-no-drag],[data-tauri-no-drag],[data-tauri-drag-region="false"],[data-veymux-terminal-dropzone],.xterm,[role="button"],[role="link"],[role="tab"],[role="menu"],[role="menuitem"],[role="menuitemcheckbox"],[role="menuitemradio"],[role="textbox"],[role="combobox"],[role="listbox"],[role="option"],[role="slider"],[role="spinbutton"],[role="checkbox"],[role="radio"],[role="switch"],[role="treeitem"],[role="scrollbar"]')) return;
       if (!documentEpoch) return;
       const selection = document.getSelection?.();
       if (selection?.type === 'Range' && !selection.isCollapsed) return;
@@ -670,7 +670,7 @@
           && root.style.height === 'var(--app-vh, 100vh)' && box.width >= width - 2 && box.height >= height - 2
           && box.left <= 1 && box.top <= 1;
       })();
-      const rail = boot.local ? target.closest('[data-termdock-window-rail="true"]') : null;
+      const rail = boot.local ? target.closest('[data-veymux-window-rail="true"]') : null;
       const brand = rail?.querySelector(':scope > .brand[data-tauri-drag-region]');
       let railBlank = false;
       if (target === rail && rail?.isConnected && brand?.isConnected) {
@@ -682,7 +682,7 @@
       }
       const dragRegion=target.closest('[data-tauri-drag-region]');
       const broadCenterRegion=!!centerShell&&!!dragRegion&&(dragRegion===centerShell||dragRegion.parentElement===centerShell);
-      const header=broadCenterRegion?null:target.closest('[data-tauri-drag-region],.widget,[data-termdock-window-header="true"],[data-session-sidebar-pinned] [data-session-sidebar-header]');
+      const header=broadCenterRegion?null:target.closest('[data-tauri-drag-region],.widget,[data-veymux-window-header="true"],[data-session-sidebar-pinned] [data-session-sidebar-header]');
       if (!railBlank && !header && !centerBlank && !loginRoot) return;
       if (!ownedChrome) { void invoke('dragWindow',{documentEpoch}); return; }
       const stamp=ownedChrome,requestIndex=++chromeRequestIndex;
@@ -697,12 +697,12 @@
     document.addEventListener('dblclick', event => {
       if (event.detail !== 2 || !(event.target instanceof Element) || event.defaultPrevented) return;
       const target=event.target;
-      if (target.closest('button,a,input,textarea,select,form,summary,label,[contenteditable]:not([contenteditable="false"]),[draggable="true"],[data-rbd-draggable-id],[data-rbd-drag-handle-draggable-id],[data-split-pane-title],[data-panel-drag-title],.split-pane-drag-handle,[data-no-drag],[data-tauri-no-drag],[data-tauri-drag-region="false"],[data-termdock-terminal-dropzone],.xterm,[role="button"],[role="link"],[role="tab"],[role="menu"],[role="menuitem"],[role="menuitemcheckbox"],[role="menuitemradio"],[role="textbox"],[role="combobox"],[role="listbox"],[role="option"],[role="slider"],[role="spinbutton"],[role="checkbox"],[role="radio"],[role="switch"],[role="treeitem"],[role="scrollbar"]')) return;
-      const rail=boot.local?target.closest('[data-termdock-window-rail="true"]'):null;
+      if (target.closest('button,a,input,textarea,select,form,summary,label,[contenteditable]:not([contenteditable="false"]),[draggable="true"],[data-rbd-draggable-id],[data-rbd-drag-handle-draggable-id],[data-split-pane-title],[data-panel-drag-title],.split-pane-drag-handle,[data-no-drag],[data-tauri-no-drag],[data-tauri-drag-region="false"],[data-veymux-terminal-dropzone],.xterm,[role="button"],[role="link"],[role="tab"],[role="menu"],[role="menuitem"],[role="menuitemcheckbox"],[role="menuitemradio"],[role="textbox"],[role="combobox"],[role="listbox"],[role="option"],[role="slider"],[role="spinbutton"],[role="checkbox"],[role="radio"],[role="switch"],[role="treeitem"],[role="scrollbar"]')) return;
+      const rail=boot.local?target.closest('[data-veymux-window-rail="true"]'):null;
       const brand=rail?.querySelector(':scope > .brand[data-tauri-drag-region]');
       let railBlank=false;
       if(target===rail&&rail?.isConnected&&brand?.isConnected){const box=rail.getBoundingClientRect(),start=brand.getBoundingClientRect();railBlank=[box.left,box.right,box.top,box.bottom,start.top,event.clientX,event.clientY].every(Number.isFinite)&&box.right>box.left&&start.top>box.top&&start.top<=box.bottom&&event.clientX>=box.left&&event.clientX<box.right&&event.clientY>=box.top&&event.clientY<start.top;}
-      const header=target.closest('[data-tauri-drag-region],.widget,[data-termdock-window-header="true"],[data-session-sidebar-pinned] [data-session-sidebar-header]');
+      const header=target.closest('[data-tauri-drag-region],.widget,[data-veymux-window-header="true"],[data-session-sidebar-pinned] [data-session-sidebar-header]');
       if(railBlank||header)void invoke('titlebarDoubleClick');
     });
     document.addEventListener('keydown', event => {

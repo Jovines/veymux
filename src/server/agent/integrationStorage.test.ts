@@ -8,7 +8,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { IntegrationStore, type IntegrationPolicy, type IntegrationStorageOptions } from './integrationStore.js';
 
 let directory: string;
-beforeEach(() => { directory = fs.mkdtempSync(path.join(os.tmpdir(), 'td-segments-')); });
+beforeEach(() => { directory = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-segments-')); });
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); fs.rmSync(directory, { recursive: true, force: true }); });
 const policy: IntegrationPolicy = { id: 'bridge', groupId: 'group', permissions: ['events.read'], launchProfiles: [] };
 const fact = (n: number, text = '汉'.repeat(100), group = 'group') => ({ sourceKey: `source:${group}:${n}`, sourceVersion: '1', eventId: `original-${group}-${n}`,
@@ -148,7 +148,7 @@ it('validates configuration and exact serialized UTF-8 byte boundaries', () => {
   expect(exactStore.storageStatus().event_bytes).toBe(exact);
   expect(() => new IntegrationStore(path.join(directory, 'small.json'), 10000, { maxBytes: exact - 1 }).append([fact(1)]))
     .toThrow(expect.objectContaining({ code: 'EVENT_STORAGE_FULL' }));
-  vi.stubEnv('TERMDOCK_INTEGRATION_EVENT_MAX_BYTES', 'garbage');
+  vi.stubEnv('VEYMUX_INTEGRATION_EVENT_MAX_BYTES', 'garbage');
   expect(() => new IntegrationStore(f.file)).toThrow(expect.objectContaining({ code: 'INVALID_EVENT_STORAGE_CONFIG' }));
 });
 

@@ -58,8 +58,8 @@ async function fixture(mode: 'direct' | 'relay', full = true, sharedView = false
   guacd.listen(0, '127.0.0.1'); await once(guacd, 'listening');
   cleanups.push(() => { for (const socket of connections) socket.destroy(); guacd.close(); });
   const address = guacd.address(); if (!address || typeof address === 'string') throw new Error('No guacd');
-  vi.stubEnv('TERMDOCK_GUACD_PORT', String(address.port));
-  const directory = mkdtempSync(join(tmpdir(), 'termdock-rdp-test-'));
+  vi.stubEnv('VEYMUX_GUACD_PORT', String(address.port));
+  const directory = mkdtempSync(join(tmpdir(), 'veymux-rdp-test-'));
   cleanups.push(() => rmSync(directory, { recursive: true, force: true }));
   const settingsFile = join(directory, 'settings.json');
   const credentialStore = new ComputerCredentialStore(directory);
@@ -138,11 +138,11 @@ describe('RDP over the authenticated encrypted transport', () => {
   });
   it.each(['direct', 'relay'] as const)('orders pending before display and authenticated over %s, and closes its observer on cancellation', async mode => {
     let report!: Parameters<typeof observeLogin>[2]; const close = vi.fn();
-    observeLogin.mockImplementationOnce(async (_address, _port, result) => { report = result; return { clientName: 'td-auth-fixture', close }; });
+    observeLogin.mockImplementationOnce(async (_address, _port, result) => { report = result; return { clientName: 'veymux-auth-fixture', close }; });
     const f = await fixture(mode); await f.open(); f.send(f.start);
     expect(JSON.parse(String((await f.take('rdp', 'ws-data')).data))).toEqual({ type: 'authentication', state: 'pending' });
     expect(JSON.parse(String((await f.take('rdp', 'ws-data')).data)).instructions).toContainEqual(['ready', 'rdp-id']);
-    expect(f.configurations[0]).toMatchObject({ 'client-name': 'td-auth-fixture', password: f.start.password });
+    expect(f.configurations[0]).toMatchObject({ 'client-name': 'veymux-auth-fixture', password: f.start.password });
     report('authenticated');
     expect(JSON.parse(String((await f.take('rdp', 'ws-data')).data))).toEqual({ type: 'authentication', state: 'authenticated' });
     expect(f.wire.every(chunk => !chunk.includes(f.start.password) && !chunk.includes(f.start.username))).toBe(true);
@@ -152,7 +152,7 @@ describe('RDP over the authenticated encrypted transport', () => {
   });
   it.each(['direct', 'relay'] as const)('keeps legacy Guacamole operation after optional journal unavailability over %s', async mode => {
     let report!: Parameters<typeof observeLogin>[2];
-    observeLogin.mockImplementationOnce(async (_address, _port, result) => { report = result; return { clientName: 'td-auth-fixture', close: vi.fn() }; });
+    observeLogin.mockImplementationOnce(async (_address, _port, result) => { report = result; return { clientName: 'veymux-auth-fixture', close: vi.fn() }; });
     const f = await fixture(mode); await f.open(); f.send(f.start);
     expect(JSON.parse(String((await f.take('rdp', 'ws-data')).data))).toMatchObject({ type: 'authentication', state: 'pending' });
     await f.take('rdp', 'ws-data'); report('unavailable');
@@ -162,7 +162,7 @@ describe('RDP over the authenticated encrypted transport', () => {
   });
   it.each(['direct', 'relay'] as const)('closes and releases guacd on journal PAM failure over %s without exposing credentials', async mode => {
     let report!: Parameters<typeof observeLogin>[2]; const close = vi.fn();
-    observeLogin.mockImplementationOnce(async (_address, _port, result) => { report = result; return { clientName: 'td-auth-fixture', close }; });
+    observeLogin.mockImplementationOnce(async (_address, _port, result) => { report = result; return { clientName: 'veymux-auth-fixture', close }; });
     const f = await fixture(mode); await f.open(); f.send(f.start);
     await f.take('rdp', 'ws-data'); await f.take('rdp', 'ws-data'); report('failed');
     expect(await f.take('rdp', 'ws-close')).toMatchObject({ code: 4401, reason: 'COMPUTER_AUTH_FAILED' });
@@ -172,7 +172,7 @@ describe('RDP over the authenticated encrypted transport', () => {
   });
   it('closes a matched authentication timeout and cancels the observer', async () => {
     let report!: Parameters<typeof observeLogin>[2]; const close = vi.fn();
-    observeLogin.mockImplementationOnce(async (_address, _port, result) => { report = result; return { clientName: 'td-auth-fixture', close }; });
+    observeLogin.mockImplementationOnce(async (_address, _port, result) => { report = result; return { clientName: 'veymux-auth-fixture', close }; });
     const f = await fixture('direct'); await f.open(); f.send(f.start);
     await f.take('rdp', 'ws-data'); await f.take('rdp', 'ws-data'); report('timeout');
     expect(await f.take('rdp', 'ws-close')).toMatchObject({ code: 4408, reason: 'COMPUTER_CONNECT_TIMEOUT' });
@@ -185,18 +185,18 @@ describe('RDP over the authenticated encrypted transport', () => {
     await vi.waitFor(() => expect(observeLogin).toHaveBeenCalledOnce());
     f.channel.send({ type: 'ws-close', id: 'rdp' });
     await f.take('rdp', 'ws-close');
-    resolve({ clientName: 'td-auth-fixture', close });
+    resolve({ clientName: 'veymux-auth-fixture', close });
     await vi.waitFor(() => expect(close).toHaveBeenCalledOnce()); expect(f.configurations).toEqual([]); expect(f.connections.size).toBe(0);
   });
   it.each(['direct', 'relay'] as const)('waits for the local XRDP login result over %s and returns rejected credentials to the app', async mode => {
     let result!: Parameters<typeof observeLocalXrdpLogin>[2]; const close = vi.fn();
     vi.mocked(observeLocalXrdpLogin).mockImplementation(async (_address, _port, callback) => {
-      result = callback; return { clientName: 'td-login-test', close };
+      result = callback; return { clientName: 'veymux-login-test', close };
     });
     const f = await fixture(mode); await f.open(); f.send(f.start);
     expect(JSON.parse(String((await f.take('rdp', 'ws-data')).data))).toEqual({ type: 'authentication', state: 'pending' });
     await f.take('rdp', 'ws-data');
-    expect(f.configurations[0]).toMatchObject({ 'client-name': 'td-login-test', password: f.start.password });
+    expect(f.configurations[0]).toMatchObject({ 'client-name': 'veymux-login-test', password: f.start.password });
     result('authenticated');
     expect(JSON.parse(String((await f.take('rdp', 'ws-data')).data))).toEqual({ type: 'authentication', state: 'authenticated' });
     f.channel.send({ type: 'ws-close', id: 'rdp' }); await vi.waitFor(() => expect(close).toHaveBeenCalled());
@@ -293,7 +293,7 @@ describe('RDP over the authenticated encrypted transport', () => {
     const refused = createServer(); refused.listen(0, '127.0.0.1'); await once(refused, 'listening');
     const address = refused.address(); if (!address || typeof address === 'string') throw new Error('No refusal fixture port');
     await new Promise<void>((resolve, reject) => refused.close(error => error ? reject(error) : resolve()));
-    vi.stubEnv('TERMDOCK_GUACD_PORT', String(address.port));
+    vi.stubEnv('VEYMUX_GUACD_PORT', String(address.port));
     await f.open(); f.send(f.start);
     expect(await f.take('rdp', 'ws-close')).toMatchObject({ reason: 'COMPUTER_RDP_BACKEND_UNAVAILABLE' });
     await f.open('127.0.0.1', 'retry');

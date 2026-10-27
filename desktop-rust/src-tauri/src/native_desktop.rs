@@ -14,24 +14,24 @@ mod mac {
     };
     static APP: OnceLock<AppHandle> = OnceLock::new();
     extern "C" {
-        fn td_notifications_init(cb: extern "C" fn(*mut c_void, *const c_char), ctx: *mut c_void);
-        fn td_notification_show(
+        fn veymux_notifications_init(cb: extern "C" fn(*mut c_void, *const c_char), ctx: *mut c_void);
+        fn veymux_notification_show(
             raw: *const c_char,
             cb: extern "C" fn(*mut c_void, *const c_char),
             ctx: *mut c_void,
         );
-        fn td_notification_attention();
-        fn td_menu_configure() -> bool;
-        fn td_preview_service_menus() -> *mut c_char;
-        fn td_clipboard_read(directory: *const c_char, image: bool) -> *mut c_char;
-        fn td_clipboard_helper_limits() -> bool;
-        fn td_clipboard_read_owned(directory:*const c_char,image:bool,name:*const c_char)->*mut c_char;
-        fn td_clipboard_fixture_create(kind:*const c_char)->*mut c_char;
-        fn td_clipboard_fixture_release(name:*const c_char);
-        fn td_clipboard_fixture_verify_png(path:*const c_char,values:*mut u64)->bool;
-        fn td_clipboard_child_rss(pid: i32) -> u64;
-        fn td_string_free(value: *mut c_char);
-        fn td_panel_configure(window: *mut c_void);
+        fn veymux_notification_attention();
+        fn veymux_menu_configure() -> bool;
+        fn veymux_preview_service_menus() -> *mut c_char;
+        fn veymux_clipboard_read(directory: *const c_char, image: bool) -> *mut c_char;
+        fn veymux_clipboard_helper_limits() -> bool;
+        fn veymux_clipboard_read_owned(directory:*const c_char,image:bool,name:*const c_char)->*mut c_char;
+        fn veymux_clipboard_fixture_create(kind:*const c_char)->*mut c_char;
+        fn veymux_clipboard_fixture_release(name:*const c_char);
+        fn veymux_clipboard_fixture_verify_png(path:*const c_char,values:*mut u64)->bool;
+        fn veymux_clipboard_child_rss(pid: i32) -> u64;
+        fn veymux_string_free(value: *mut c_char);
+        fn veymux_panel_configure(window: *mut c_void);
     }
     extern "C" fn clicked(_: *mut c_void, raw: *const c_char) {
         let Ok(payload) =
@@ -52,14 +52,14 @@ mod mac {
     pub fn init(app: &AppHandle) {
         let _ = APP.set(app.clone());
         unsafe {
-            td_notifications_init(clicked, std::ptr::null_mut());
+            veymux_notifications_init(clicked, std::ptr::null_mut());
         }
     }
     pub async fn close_stable<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<(), String> {
         for attempt in 0..60 {
             let (tx, rx) = tokio::sync::oneshot::channel();
             app.run_on_main_thread(move || {
-                let id = objc2_foundation::NSString::from_str("com.jovines.termdock");
+                let id = objc2_foundation::NSString::from_str("com.jovines.veymux");
                 let applications = objc2_app_kit::NSRunningApplication::runningApplicationsWithBundleIdentifier(&id);
                 let running = applications.iter().filter(|a| !a.isTerminated()).collect::<Vec<_>>();
                 if attempt == 0 { for application in &running { application.terminate(); } }
@@ -68,13 +68,13 @@ mod mac {
             if rx.await.map_err(|e| e.to_string())? { return Ok(()); }
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         }
-        Err("请先退出正在运行的 Termdock 正式版，再重试迁移；服务和终端会话可以继续运行".into())
+        Err("请先退出正在运行的 Veymux 正式版，再重试迁移；服务和终端会话可以继续运行".into())
     }
     pub async fn wait_stable<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<(), String> {
         for _ in 0..60 {
             let (tx,rx)=tokio::sync::oneshot::channel();
             app.run_on_main_thread(move || {
-                let id=objc2_foundation::NSString::from_str("com.jovines.termdock");
+                let id=objc2_foundation::NSString::from_str("com.jovines.veymux");
                 let applications=objc2_app_kit::NSRunningApplication::runningApplicationsWithBundleIdentifier(&id);
                 let _=tx.send(applications.iter().any(|a| !a.isTerminated() && a.isFinishedLaunching()));
             }).map_err(|e|e.to_string())?;
@@ -89,7 +89,7 @@ mod mac {
         app.run_on_main_thread(move || {
             let context = Box::into_raw(Box::new(tx));
             unsafe {
-                td_notification_show(raw.as_ptr(), finished, context.cast());
+                veymux_notification_show(raw.as_ptr(), finished, context.cast());
             }
         })
         .map_err(|e| e.to_string())?;
@@ -110,17 +110,17 @@ mod mac {
         let mut cases=Vec::new();let executable=std::env::current_exe().map_err(|_|"Missing same signed executable")?;
         for kind in ["png","tiff","jpeg","pdf","pdf-too-large"]{
             if args.get(3).is_some_and(|selected|selected!=kind){continue;}
-            let format=CString::new(kind).unwrap();let raw=unsafe{td_clipboard_fixture_create(format.as_ptr())};
+            let format=CString::new(kind).unwrap();let raw=unsafe{veymux_clipboard_fixture_create(format.as_ptr())};
             if raw.is_null(){cases.push(json!({"format":kind,"ok":false,"phase":"synthetic-image-setup"}));continue;}
-            let setup=serde_json::from_slice::<Value>(unsafe{CStr::from_ptr(raw)}.to_bytes());unsafe{td_string_free(raw);}
+            let setup=serde_json::from_slice::<Value>(unsafe{CStr::from_ptr(raw)}.to_bytes());unsafe{veymux_string_free(raw);}
             let setup=setup.map_err(|_|"Invalid synthetic setup receipt")?;
-            let name=setup["name"].as_str().filter(|name|name.starts_with("termdock-preview-owned-")&&name.len()<=96).ok_or("Invalid owned pasteboard receipt")?;
+            let name=setup["name"].as_str().filter(|name|name.starts_with("veymux-preview-owned-")&&name.len()<=96).ok_or("Invalid owned pasteboard receipt")?;
             let board=CString::new(name).map_err(|_|"Invalid owned pasteboard name")?;
             let directory=crate::clipboard_collector::private_directory(Some(root)).map_err(|_|"Cannot create private fixture output")?;
             let arguments=["--preview-clipboard-fixture-helper".into(),"image".into(),directory.path().as_os_str().to_owned(),std::ffi::OsString::from(name)];
-            let result=runtime.block_on(crate::clipboard_collector::collect_report(&executable,&arguments,||true,|pid|{let value=unsafe{td_clipboard_child_rss(pid as i32)};(value>0).then_some(value)},Default::default()));
+            let result=runtime.block_on(crate::clipboard_collector::collect_report(&executable,&arguments,||true,|pid|{let value=unsafe{veymux_clipboard_child_rss(pid as i32)};(value>0).then_some(value)},Default::default()));
             // Clear only this generated named board; never read or write general.
-            unsafe{td_clipboard_fixture_release(board.as_ptr());}
+            unsafe{veymux_clipboard_fixture_release(board.as_ptr());}
             match result {
                 Err(error)=>cases.push(json!({"format":kind,"ok":false,"error":error.message,"diagnostics":error.diagnostics})),
                 Ok(output)=>{
@@ -135,7 +135,7 @@ mod mac {
                         let path=Path::new(path);let inside=path.canonicalize().ok().zip(directory.path().canonicalize().ok()).is_some_and(|(path,root)|path.starts_with(root));
                         if inside&&path.symlink_metadata().is_ok_and(|entry|entry.is_file()&&!entry.file_type().is_symlink()){
                             bytes=path.metadata().map(|entry|entry.len()).unwrap_or(0);
-                            if bytes>0&&bytes<=128*1024*1024 {let encoded=CString::new(path.as_os_str().as_encoded_bytes()).map_err(|_|"Invalid generated file name")?;valid=unsafe{td_clipboard_fixture_verify_png(encoded.as_ptr(),metrics.as_mut_ptr())};}
+                            if bytes>0&&bytes<=128*1024*1024 {let encoded=CString::new(path.as_os_str().as_encoded_bytes()).map_err(|_|"Invalid generated file name")?;valid=unsafe{veymux_clipboard_fixture_verify_png(encoded.as_ptr(),metrics.as_mut_ptr())};}
                         }
                     }
                     let ok=valid&&metrics[2]==1&&if kind=="pdf" { metrics[0]==metrics[1]&&(metrics[0]==8||metrics[0]==16) } else {metrics==[8,8,1]};cases.push(json!({"format":kind,"ok":ok,"outputType":"image/png","logicalPagePoints":if kind=="pdf"{Some([8,8])}else{None},"backingScale":if kind=="pdf"{Some(metrics[0] as f64/8.)}else{None},"dimensions":{"width":metrics[0],"height":metrics[1]},"imageCount":metrics[2],"outputBytes":bytes,"metadataBytes":output.bytes.len(),"metadataError":metadata.get("error").and_then(Value::as_str).map(|_|"Image collector reported a controlled image error"),"diagnostics":output.diagnostics}));
@@ -143,7 +143,7 @@ mod mac {
             }
         }
         let ok=cases.iter().all(|case|case["ok"]==true);
-        let report=json!({"source":option_env!("TERMDOCK_PREVIEW_SOURCE_REVISION"),"mode":"same-signed-helper-owned-named-pasteboard","ok":ok,"cases":cases,"generalPasteboardRead":false,"generalPasteboardWritten":false,"realPTY":false,"realUpload":false});
+        let report=json!({"source":option_env!("VEYMUX_PREVIEW_SOURCE_REVISION"),"mode":"same-signed-helper-owned-named-pasteboard","ok":ok,"cases":cases,"generalPasteboardRead":false,"generalPasteboardWritten":false,"realPTY":false,"realUpload":false});
         let bytes=serde_json::to_vec_pretty(&report).map_err(|_|"Cannot serialize fixture report")?;
         if bytes.len()>32768{return Err("Fixture report exceeds bound".into());}
         std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(root.join("clipboard-fixture-report.json")).and_then(|mut file|file.write_all(&bytes)).map_err(|_|"Cannot persist private fixture report")?;
@@ -163,16 +163,16 @@ mod mac {
         marker("directory");
         let allowed=crate::clipboard_collector::valid_private_directory(directory);
         if !allowed{std::process::exit(2);}
-        let board=if owned{let name=&args[4];if name.len()>96||!name.starts_with("termdock-preview-owned-"){std::process::exit(2);}Some(CString::new(name.as_bytes()).unwrap_or_else(|_|std::process::exit(2)))}else{None};
-        if !unsafe{td_clipboard_helper_limits()}{std::process::exit(2);}
+        let board=if owned{let name=&args[4];if name.len()>96||!name.starts_with("veymux-preview-owned-"){std::process::exit(2);}Some(CString::new(name.as_bytes()).unwrap_or_else(|_|std::process::exit(2)))}else{None};
+        if !unsafe{veymux_clipboard_helper_limits()}{std::process::exit(2);}
         let path=CString::new(directory.as_os_str().as_encoded_bytes()).unwrap_or_else(|_|std::process::exit(2));
         marker("read");
         // Main-thread same executable, no Tauri/Node/windows/user config.
-        let raw=unsafe{if let Some(board)=board{td_clipboard_read_owned(path.as_ptr(),args[2]=="image",board.as_ptr())}else{td_clipboard_read(path.as_ptr(),args[2]=="image")}};
+        let raw=unsafe{if let Some(board)=board{veymux_clipboard_read_owned(path.as_ptr(),args[2]=="image",board.as_ptr())}else{veymux_clipboard_read(path.as_ptr(),args[2]=="image")}};
         if raw.is_null(){std::process::exit(2);}
         marker("metadata");let output=unsafe{CStr::from_ptr(raw)}.to_bytes();marker("stdout");
         let result=if output.len()<=256*1024{std::io::stdout().write_all(output).and_then(|_|std::io::stdout().flush())}else{Err(std::io::Error::other("Clipboard metadata exceeds its bound"))};
-        unsafe{td_string_free(raw);}if result.is_err(){std::process::exit(2);}marker("done");true
+        unsafe{veymux_string_free(raw);}if result.is_err(){std::process::exit(2);}marker("done");true
     }
     pub async fn clipboard(
         _: &AppHandle,
@@ -187,7 +187,7 @@ mod mac {
             &arguments,
             current,
             |pid| {
-                let rss = unsafe { td_clipboard_child_rss(pid as i32) };
+                let rss = unsafe { veymux_clipboard_child_rss(pid as i32) };
                 (rss > 0).then_some(rss)
             },
             Default::default(),
@@ -198,20 +198,20 @@ mod mac {
     }
     pub fn attention(app: &AppHandle) {
         let _ = app.run_on_main_thread(|| unsafe {
-            td_notification_attention();
+            veymux_notification_attention();
         });
     }
     /// Opt-in caller is already on AppKit. Own/free the C strdup result once.
     pub fn service_menus_on_main() -> Result<Value, String> {
-        let raw=unsafe{td_preview_service_menus()};if raw.is_null(){return Err("Service menus require AppKit main thread".into());}
+        let raw=unsafe{veymux_preview_service_menus()};if raw.is_null(){return Err("Service menus require AppKit main thread".into());}
         let bytes=unsafe{CStr::from_ptr(raw)}.to_bytes();
         let result=if bytes.len()>16384 {Err("Service menu evidence exceeds bound".into())}else{serde_json::from_slice(bytes).map_err(|e|e.to_string())};
-        unsafe{td_string_free(raw);}result
+        unsafe{veymux_string_free(raw);}result
     }
     pub fn configure_menu(app: &AppHandle) -> Result<(), String> {
         let (tx, rx) = std::sync::mpsc::sync_channel(1);
         app.run_on_main_thread(move || {
-            let result = if unsafe { td_menu_configure() } {
+            let result = if unsafe { veymux_menu_configure() } {
                 Ok(())
             } else {
                 Err("Preview zoom menu was not found".to_owned())
@@ -225,7 +225,7 @@ mod mac {
         if let Ok(raw) = window.ns_window() {
             let address = raw as usize;
             let _ = window.run_on_main_thread(move || unsafe {
-                td_panel_configure(address as *mut c_void);
+                veymux_panel_configure(address as *mut c_void);
             });
         }
     }

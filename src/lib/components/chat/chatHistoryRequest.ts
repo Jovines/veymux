@@ -40,7 +40,7 @@ function start(id: string, revision?: string, warming = false, query: ChatHistor
 /** Start history alongside the lazy module, without keeping inactive requests. */
 export function preloadChatHistory(id: string): () => void {
   const key = keyFor(id);
-  if (readChatSnapshot(`termdock:chat:${key}`)) return () => {};
+  if (readChatSnapshot(`veymux:chat:${key}`)) return () => {};
   const entry = start(id, undefined, true);
   if (entry.consumed) return () => {};
   entry.warm = true;

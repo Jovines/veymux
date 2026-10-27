@@ -19,5 +19,5 @@
 
 ### Fixed
 
-- Fixed desktop file drops inserting a Mac-local path into terminals hosted by LAN or public Termdock services.
+- Fixed desktop file drops inserting a Mac-local path into terminals hosted by LAN or public Veymux services.
 - Fixed interrupted Agent sessions losing enough metadata to resume their native conversation safely.

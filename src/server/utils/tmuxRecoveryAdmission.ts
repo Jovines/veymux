@@ -1,10 +1,10 @@
 import os from 'node:os';
 
 export function configuredTmuxRecoveryLoadBudget(env: NodeJS.ProcessEnv = process.env) {
-  const maxClients = Number(env.TD_TMUX_RECOVERY_MAX_CLIENTS?.trim() || 96);
-  if (!Number.isSafeInteger(maxClients) || maxClients < 3) throw new Error('TD_TMUX_RECOVERY_MAX_CLIENTS must be an integer of at least 3');
-  const maxLoadPerCpu = Number(env.TD_TMUX_RECOVERY_MAX_LOAD_PER_CPU?.trim() || 0.9);
-  if (!Number.isFinite(maxLoadPerCpu) || maxLoadPerCpu <= 0) throw new Error('TD_TMUX_RECOVERY_MAX_LOAD_PER_CPU must be positive');
+  const maxClients = Number(env.VEYMUX_TMUX_RECOVERY_MAX_CLIENTS?.trim() || 96);
+  if (!Number.isSafeInteger(maxClients) || maxClients < 3) throw new Error('VEYMUX_TMUX_RECOVERY_MAX_CLIENTS must be an integer of at least 3');
+  const maxLoadPerCpu = Number(env.VEYMUX_TMUX_RECOVERY_MAX_LOAD_PER_CPU?.trim() || 0.9);
+  if (!Number.isFinite(maxLoadPerCpu) || maxLoadPerCpu <= 0) throw new Error('VEYMUX_TMUX_RECOVERY_MAX_LOAD_PER_CPU must be positive');
   return { maxClients, maxLoadPerCpu };
 }
 

@@ -1,5 +1,5 @@
 /**
- * launcher（`td` / `td --status` / `td --stop`）看向 supervisor 的那一侧。
+ * launcher（`veymux` / `veymux --status` / `veymux --stop`）看向 supervisor 的那一侧。
  *
  * 与 supervisor.ts 分开是为了单向依赖：supervisor 是独立入口，不能反过来
  * 依赖 CLI 的进程；CLI 只是它的客户端。
@@ -8,9 +8,9 @@
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { isProcessRunning, readJsonFile, SUPERVISOR_STATE_PATH } from './termdockState.js';
+import { isProcessRunning, readJsonFile, SUPERVISOR_STATE_PATH } from './veymuxState.js';
 import { isSupervisorState, type SupervisorState } from './supervisorProtocol.js';
-import { STOP_GRACE_MS } from './termdockState.js';
+import { STOP_GRACE_MS } from './veymuxState.js';
 
 export interface SpawnSupervisorOptions {
   childEntry: string;
@@ -53,7 +53,7 @@ export interface SupervisorStatus {
  * **进程死了也不删状态文件**：`gave-up` 正是它死的原因，那份记录就是结论本身；
  * 别的 phase 下进程没了则意味着"supervisor 自己崩了，服务现在无人监督"——
  * 两件事都必须能被告知用户。陈旧的判断交给调用方（它才知道自己在问什么），
- * 真正的清理留给 `td --stop`。
+ * 真正的清理留给 `veymux --stop`。
  */
 export function getSupervisorStatus(statePath: string = SUPERVISOR_STATE_PATH): SupervisorStatus | null {
   const raw = readJsonFile<unknown>(statePath);
@@ -114,9 +114,9 @@ export function spawnSupervisor(options: SpawnSupervisorOptions): Promise<Superv
     child.on('message', (message: unknown) => {
       if (!message || typeof message !== 'object' || !('type' in message)) return;
       const typed = message as { type: string; reason?: string; detail?: string };
-      if (typed.type === 'termdock-ready') {
+      if (typed.type === 'veymux-ready') {
         finish({ ok: true, pid: child.pid });
-      } else if (typed.type === 'termdock-startup-failed') {
+      } else if (typed.type === 'veymux-startup-failed') {
         finish({ ok: false, reason: typed.reason, detail: typed.detail });
       }
     });
@@ -159,7 +159,7 @@ export async function stopSupervisor(pid: number, graceMs = STOP_GRACE_MS): Prom
   return !isProcessRunning(pid);
 }
 
-/** `td --restart`：让 supervisor 重启子进程，但继续监督。 */
+/** `veymux --restart`：让 supervisor 重启子进程，但继续监督。 */
 export function signalSupervisorRestart(pid: number): boolean {
   try {
     process.kill(pid, 'SIGHUP');

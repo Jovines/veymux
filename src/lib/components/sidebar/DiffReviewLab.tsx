@@ -9,7 +9,7 @@ import type { DiffNavigatorGroup } from './DiffFileNavigator';
 // exact condition that makes an unanchored list jump when scrolling up.
 
 const FILE_COUNT = 40;
-const REPO_ROOT = '/tmp/termdock-diff-review-lab';
+const REPO_ROOT = '/tmp/veymux-diff-review-lab';
 
 function buildDiff(path: string, lineCount: number, longLines = false): string {
   const lines: string[] = [

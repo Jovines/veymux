@@ -87,10 +87,10 @@ pub async fn install_stable<R: tauri::Runtime>(app: &tauri::AppHandle<R>, bytes:
         .parent().and_then(|p| p.parent()).ok_or("Missing application bundle")?.to_owned();
     if current.extension().and_then(|s| s.to_str()) != Some("app") { return Err("请从已安装的 Preview 应用执行迁移".into()); }
     let parent = current.parent().ok_or("Missing application directory")?;
-    let temporary = tempfile::Builder::new().prefix(".termdock-migration-").tempdir_in(parent).map_err(|e| format!("应用目录不可写；请将正式版安装到此目录后重试：{e}"))?;
+    let temporary = tempfile::Builder::new().prefix(".veymux-migration-").tempdir_in(parent).map_err(|e| format!("应用目录不可写；请将正式版安装到此目录后重试：{e}"))?;
     let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(std::io::Cursor::new(bytes)));
     archive.unpack(temporary.path()).map_err(|e| e.to_string())?;
-    let staged = temporary.path().join("Termdock.app");
+    let staged = temporary.path().join("Veymux.app");
     fn command(tool: &str, args: &[&std::ffi::OsStr]) -> Result<String, String> {
         let out = std::process::Command::new(tool).args(args).output().map_err(|e| e.to_string())?;
         if !out.status.success() { return Err(format!("{tool}: {}", String::from_utf8_lossy(&out.stderr))); }
@@ -105,12 +105,12 @@ pub async fn install_stable<R: tauri::Runtime>(app: &tauri::AppHandle<R>, bytes:
     }
     command("/usr/bin/xcrun", &["stapler".as_ref(), "validate".as_ref(), staged.as_os_str()])?;
     command("/usr/sbin/spctl", &["-a".as_ref(), "-t".as_ref(), "exec".as_ref(), staged.as_os_str()])?;
-    let target = parent.join("Termdock.app");
+    let target = parent.join("Veymux.app");
     if target.is_symlink() { return Err("请将正式版安装到真实应用目录后重试迁移".into()); }
     let reuse=if target.exists() {
         let info=plist::Value::from_file(target.join("Contents/Info.plist")).map_err(|e|e.to_string())?;
         let info=info.as_dictionary().ok_or("Invalid installed App plist")?;
-        if info.get("CFBundleIdentifier").and_then(|v|v.as_string())!=Some("com.jovines.termdock") { return Err("目标位置已有其他应用；已保留原应用".into()); }
+        if info.get("CFBundleIdentifier").and_then(|v|v.as_string())!=Some("com.jovines.veymux") { return Err("目标位置已有其他应用；已保留原应用".into()); }
         version_number(info.get("CFBundleShortVersionString").and_then(|v|v.as_string()).ok_or("Missing installed App version")?)? >= version_number(&version)?
     } else { false };
     if reuse {
@@ -122,13 +122,13 @@ pub async fn install_stable<R: tauri::Runtime>(app: &tauri::AppHandle<R>, bytes:
     // Ask only the other GUI to quit. Detached services and PTYs are untouched.
     crate::native_desktop::close_stable(app).await?;
     let own_config=app.path().app_config_dir().map_err(|e|e.to_string())?;
-    prepare_handoff(&own_config.parent().ok_or("Missing application support directory")?.join("com.jovines.termdock/connections.json"))?;
+    prepare_handoff(&own_config.parent().ok_or("Missing application support directory")?.join("com.jovines.veymux/connections.json"))?;
     let trash = std::path::PathBuf::from(std::env::var_os("HOME").ok_or("Missing home directory")?).join(".Trash");
     fs::create_dir_all(&trash).map_err(|e| e.to_string())?;
-    let saved = trash.join(format!("Termdock-before-rust-{}.app", uuid::Uuid::new_v4()));
+    let saved = trash.join(format!("Veymux-before-rust-{}.app", uuid::Uuid::new_v4()));
     if !reuse && target.exists() {
         command("/usr/bin/ditto", &[target.as_os_str(), saved.as_os_str()])?;
-        eprintln!("Termdock migration backup: {}", saved.display());
+        eprintln!("Veymux migration backup: {}", saved.display());
     }
     let rollback = temporary.path().join("previous.app");
     if !reuse {
@@ -153,12 +153,12 @@ pub async fn install_stable<R: tauri::Runtime>(app: &tauri::AppHandle<R>, bytes:
         if rollback.exists() { fs::rename(&rollback, &target).map_err(|e| e.to_string())?; }
         return Err(error);
     }
-    let previous_preview = trash.join(format!("Termdock-Preview-before-stable-{}.app", uuid::Uuid::new_v4()));
+    let previous_preview = trash.join(format!("Veymux-Preview-before-stable-{}.app", uuid::Uuid::new_v4()));
     // Keep the previous signed Preview recoverable, while its old app path no
     // longer offers a second client after the explicit migration succeeds.
     match fs::rename(&current, &previous_preview) {
-        Ok(()) => eprintln!("Termdock Preview backup: {}", previous_preview.display()),
-        Err(error) => eprintln!("Termdock installed; Preview cleanup deferred: {error}"),
+        Ok(()) => eprintln!("Veymux Preview backup: {}", previous_preview.display()),
+        Err(error) => eprintln!("Veymux installed; Preview cleanup deferred: {error}"),
     }
     app.exit(0);
     Ok(())
@@ -186,7 +186,7 @@ mod tests {
     }
     #[test]
     fn failed_replacement_restores_original_and_first_install_requires_no_old_app() {
-        let dir=tempfile::tempdir().unwrap();let target=dir.path().join("Termdock.app");let staged=dir.path().join("new.app");let rollback=dir.path().join("old.app");
+        let dir=tempfile::tempdir().unwrap();let target=dir.path().join("Veymux.app");let staged=dir.path().join("new.app");let rollback=dir.path().join("old.app");
         fs::create_dir(&staged).unwrap();fs::write(staged.join("identity"),"rust").unwrap();
         replace_bundle(&staged,&target,&rollback).unwrap();assert_eq!(fs::read_to_string(target.join("identity")).unwrap(),"rust");
         assert!(replace_bundle(&staged,&target,&rollback).is_err());assert!(target.exists());

@@ -243,7 +243,7 @@ describe('computer targets', () => {
     await act(async () => {});
     if (protocol === 'rdp' && rdpAvailable === false) {
       await screen.findByPlaceholderText('已保存，留空直接连接');
-      await screen.findByText(/运行当前 Termdock 服务的电脑/);
+      await screen.findByText(/运行当前 Veymux 服务的电脑/);
       expect(mocks.clients).toHaveLength(0);
       expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('/credentials/use'))).toBe(false);
       expect((screen.getByRole('button', { name: '连接' }) as HTMLButtonElement).disabled).toBe(true);
@@ -343,7 +343,7 @@ describe('computer targets', () => {
   });
   it('keeps actual trackpad taps active while the phone keyboard is open, without taking its focus', async () => {
     vi.stubGlobal('innerWidth', 390);
-    localStorage.setItem('termdock:computer-touch-mode:v1', 'trackpad');
+    localStorage.setItem('veymux:computer-touch-mode:v1', 'trackpad');
     vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
     await ready(); fireEvent.change(screen.getByLabelText('RDP 用户名'), { target: { value: 'qiao' } });
     fireEvent.change(screen.getByLabelText('密码'), { target: { value: 'secret' } }); fireEvent.click(screen.getByRole('button', { name: '连接' }));
@@ -484,15 +484,15 @@ describe('computer targets', () => {
     expect((screen.getByLabelText('连接协议') as HTMLSelectElement).value).toBe('rdp');
     expect((screen.getByLabelText('RDP 端口') as HTMLInputElement).value).toBe('3389');
     expect(screen.getByText(/在 Ubuntu 打开/)).toBeTruthy();
-    expect(screen.getByText(/运行当前 Termdock 服务的电脑/)).toBeTruthy();
+    expect(screen.getByText(/运行当前 Veymux 服务的电脑/)).toBeTruthy();
     expect(screen.getByText('高级设置').closest('details')!.open).toBe(false);
     expect(screen.getByText('如何连接电脑').closest('details')!.open).toBe(false);
     expect(screen.getByLabelText('连接协议').closest('details')!.open).toBe(false);
   });
 
   it('keeps a saved remote Mac target on an Ubuntu service, and switches both address and system for local control', async () => {
-    localStorage.setItem('termdock:computer-host:ubuntu-service', 'mac.local');
-    localStorage.setItem('termdock:computer-platform:ubuntu-service', 'mac');
+    localStorage.setItem('veymux:computer-host:ubuntu-service', 'mac.local');
+    localStorage.setItem('veymux:computer-platform:ubuntu-service', 'mac');
     await ready();
     expect((screen.getByLabelText('电脑地址') as HTMLInputElement).value).toBe('mac.local');
     expect((screen.getByLabelText('目标系统') as HTMLSelectElement).value).toBe('mac');
@@ -522,7 +522,7 @@ describe('computer targets', () => {
     ]);
     expect(mocks.hosts).toEqual(['127.0.0.1']);
     await waitFor(() => expect(mocks.preferences?.local.platform).toBe(platform));
-    expect(localStorage.getItem('termdock:computer-password:ubuntu-service')).toBeNull();
+    expect(localStorage.getItem('veymux:computer-password:ubuntu-service')).toBeNull();
   });
 
   it('passes RDP credentials only to the session, remembers connection settings, and clears the password', async () => {

@@ -16,7 +16,7 @@ export class TerminalClientAttachment {
   private epoch = 0;
   private process: AttachedPty | null = null;
   private subscriptions: Array<{ dispose(): void }> = [];
-  private versionReplies = new TerminalVersionReplies();
+  private versionReplies = new TerminalVersionReplies(data => this.process?.write(data));
 
   constructor(
     private readonly spawn: (cols: number, rows: number) => Promise<AttachedPty>,
@@ -65,7 +65,7 @@ export class TerminalClientAttachment {
 
   close(): void {
     this.epoch += 1;
-    this.versionReplies = new TerminalVersionReplies();
+    this.versionReplies = new TerminalVersionReplies(data => this.process?.write(data));
     this.disposeSubscriptions();
     const process = this.process;
     this.process = null;

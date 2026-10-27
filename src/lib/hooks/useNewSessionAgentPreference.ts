@@ -6,7 +6,7 @@ import {
   type AgentLauncherInfo,
 } from '../terminal/api';
 
-const AGENT_PREFERENCE_KEY = 'termdock:new-session-agent:v1';
+const AGENT_PREFERENCE_KEY = 'veymux:new-session-agent:v1';
 
 export type NewSessionAgentPreference = AgentLauncherInfo | null;
 
@@ -73,18 +73,18 @@ export function useNewSessionAgentPreference() {
         // Keep the cached preference when the server is temporarily unavailable.
       });
     };
-    if (performance.getEntriesByName('termdock:startup:initial-viewport-presented').length > 0) {
+    if (performance.getEntriesByName('veymux:startup:initial-viewport-presented').length > 0) {
       start();
       return;
     }
-    window.addEventListener('termdock:initial-viewport-presented', start, { once: true });
-    return () => window.removeEventListener('termdock:initial-viewport-presented', start);
+    window.addEventListener('veymux:initial-viewport-presented', start, { once: true });
+    return () => window.removeEventListener('veymux:initial-viewport-presented', start);
   }, [refresh]);
 
   useEffect(() => {
     const changed = () => { void refresh().catch(() => {}); };
-    window.addEventListener('termdock:new-session-preference-changed', changed);
-    return () => window.removeEventListener('termdock:new-session-preference-changed', changed);
+    window.addEventListener('veymux:new-session-preference-changed', changed);
+    return () => window.removeEventListener('veymux:new-session-preference-changed', changed);
   }, [refresh]);
 
   const selectAgent = useCallback(async (next: NewSessionAgentPreference) => {
@@ -93,7 +93,7 @@ export function useNewSessionAgentPreference() {
     cacheNewSessionAgentPreference(next);
     try {
       await updateSettings({ newSessionAgentSlug: next?.slug ?? null });
-      window.dispatchEvent(new Event('termdock:new-session-preference-changed'));
+      window.dispatchEvent(new Event('veymux:new-session-preference-changed'));
     } catch (error) {
       setPreference(previous);
       cacheNewSessionAgentPreference(previous);

@@ -1,23 +1,23 @@
 # 参与贡献 / Contributing
 
-欢迎帮助 Termdock 变得更好。问题反馈、文档、翻译、Agent 插件、设备体验报告与代码贡献都欢迎；中文和英文都可以。
+欢迎帮助 Veymux 变得更好。问题反馈、文档、翻译、Agent 插件、设备体验报告与代码贡献都欢迎；中文和英文都可以。
 
 Contributions of code, documentation, translations, Agent plugins, and device feedback are welcome. You can use Chinese or English in issues and pull requests.
 
 ## 报告问题 / Report a bug
 
-先搜索 [Issues](https://github.com/Jovines/termdock/issues)，确认是否已有相同问题。提交时请提供：
+先搜索 [Issues](https://github.com/Jovines/veymux/issues)，确认是否已有相同问题。提交时请提供：
 
-- Termdock CLI 版本（`td --version`）、macOS 应用版本（如适用）。
+- Veymux CLI 版本（`veymux --version`）、macOS 应用版本（如适用）。
 - 服务机操作系统与 Node.js 版本，以及客户端浏览器、系统和打开方式（网页 / PWA / 桌面应用）。
 - 最小复现步骤、预期行为、实际行为，以及相关日志或截图。
 - 连接方式：本机、局域网、公网或入口中继；是否首次加载、后台恢复或升级后出现。
 
 Search existing issues first. Include the service and client versions, a minimal reproduction, expected and actual behavior, relevant logs, and the connection route. Say whether this occurs on first load, after backgrounding, or after an upgrade.
 
-日志与截图请隐藏密码、Cookie、令牌、私钥、邀请链接与私人数据。不要在公开 issue 中粘贴完整的 `~/.termdock` 配置目录。
+日志与截图请隐藏密码、Cookie、令牌、私钥、邀请链接与私人数据。不要在公开 issue 中粘贴完整的 `~/.veymux` 配置目录。
 
-Remove credentials, cookies, tokens, keys, invitations, and private data from logs and screenshots. Do not upload your full `~/.termdock` directory to a public issue.
+Remove credentials, cookies, tokens, keys, invitations, and private data from logs and screenshots. Do not upload your full `~/.veymux` directory to a public issue.
 
 ## 功能建议 / Suggest a feature
 
@@ -30,8 +30,8 @@ Describe the workflow, the current obstacle, and the outcome you need. Discuss s
 需要 Node.js 22+、npm 和 tmux。`node-pty` 编译依赖见 [README](README.md#运行环境)。Fork 仓库后克隆自己的副本，或克隆上游用于本地开发：
 
 ```bash
-git clone https://github.com/Jovines/termdock.git
-cd termdock
+git clone https://github.com/Jovines/veymux.git
+cd veymux
 npm install
 npm run dev
 ```

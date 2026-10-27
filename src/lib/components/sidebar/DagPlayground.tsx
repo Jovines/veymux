@@ -1,7 +1,7 @@
 import type { ChangeWalkthrough } from '../../terminal/api';
 import { ChangeWalkthroughPanel } from './ChangeWalkthroughPanel';
 
-const REPO_ROOT = '/tmp/termdock-dag-playground';
+const REPO_ROOT = '/tmp/veymux-dag-playground';
 
 const sampleWalkthrough: ChangeWalkthrough = {
   version: 1,

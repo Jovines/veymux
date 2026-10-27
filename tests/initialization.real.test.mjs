@@ -8,11 +8,11 @@ import { execFileSync } from 'node:child_process';
 import { ensureMkcert, setupLocalHttps, inspectLocalCertificate, localCertificateNeedsRefresh } from '../src/server/utils/localHttpsSetup.ts';
 
 test('official mkcert download, isolated CA, real TLS, renewal and stable CA identity', { timeout: 180_000 }, async t => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'termdock real initialization '));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux real initialization '));
   const old = process.env.CAROOT; process.env.CAROOT = path.join(root, 'private CA');
   t.after(() => { if (old === undefined) delete process.env.CAROOT; else process.env.CAROOT = old; fs.rmSync(root, { recursive: true, force: true }); });
   const mkcert = await ensureMkcert({ home: root, find: () => null, log: console.log });
-  const options = { directory: path.join(root, 'certs'), names: ['localhost', '127.0.0.1', '::1', '*.termdock.local'], mkcert, installCa: false };
+  const options = { directory: path.join(root, 'certs'), names: ['localhost', '127.0.0.1', '::1', '*.veymux.local'], mkcert, installCa: false };
   const first = await setupLocalHttps(options), before = inspectLocalCertificate(first.files, options.names);
   assert.equal(localCertificateNeedsRefresh(options.directory, options.names), false);
   const server = https.createServer({ cert: fs.readFileSync(first.files.cert), key: fs.readFileSync(first.files.key) }, (_req, res) => res.end('INIT_TLS_OK'));
@@ -36,15 +36,15 @@ if (process.platform === 'linux') {
   try { execFileSync('docker', ['info'], { stdio: 'ignore', timeout: 10_000 }); docker = true; } catch { /* Optional container coverage. */ }
 }
 test('minimal Debian generates a CA and leaf without sudo, OpenSSL or certutil', { skip: !docker, timeout: 180_000 }, async t => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'termdock minimal Linux '));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux minimal Linux '));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const mkcert = await ensureMkcert({ home: root, find: () => null });
   execFileSync('docker', ['run', '--rm', '--network', 'none', '--read-only', '--cap-drop', 'ALL',
     '--user', `${process.getuid()}:${process.getgid()}`, '--env', 'CAROOT=/audit/CA', '--workdir', '/audit',
     '--mount', `type=bind,src=${root},dst=/audit`, '--mount', `type=bind,src=${mkcert},dst=/usr/local/bin/mkcert,readonly`,
     'debian:bookworm', '/bin/sh', '-ec',
-    'for tool in sudo openssl certutil; do if command -v "$tool" >/dev/null 2>&1; then exit 42; fi; done; mkcert -cert-file /audit/termdock-local.pem -key-file /audit/termdock-local-key.pem localhost 127.0.0.1 ::1; cp /audit/CA/rootCA.pem /audit/rootCA.pem'],
+    'for tool in sudo openssl certutil; do if command -v "$tool" >/dev/null 2>&1; then exit 42; fi; done; mkcert -cert-file /audit/veymux-local.pem -key-file /audit/veymux-local-key.pem localhost 127.0.0.1 ::1; cp /audit/CA/rootCA.pem /audit/rootCA.pem'],
   { stdio: 'pipe', timeout: 150_000 });
-  const files = { cert: path.join(root, 'termdock-local.pem'), key: path.join(root, 'termdock-local-key.pem'), ca: path.join(root, 'rootCA.pem') };
+  const files = { cert: path.join(root, 'veymux-local.pem'), key: path.join(root, 'veymux-local-key.pem'), ca: path.join(root, 'rootCA.pem') };
   inspectLocalCertificate(files, ['localhost', '127.0.0.1', '::1']);
 });

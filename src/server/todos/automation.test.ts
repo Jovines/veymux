@@ -11,7 +11,7 @@ import { executeTodoCommand, parseTodoCommand } from './cli.js';
 let directory: string, store: TodoStore, runner: TodoRunner, runtime: TodoRuntime, server: Server, origin: string;
 const config = { agentSlug: 'fixture', command: 'fixture', cwd: '/tmp', prompt: '收集可执行事项' };
 beforeEach(async () => {
-  directory = fs.mkdtempSync(path.join(os.tmpdir(), 'td-source-')); store = new TodoStore(path.join(directory, 'todos.json'));
+  directory = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-source-')); store = new TodoStore(path.join(directory, 'todos.json'));
   runtime = { validate: vi.fn(async c => c), launch: vi.fn(async (run, _prompt, created) => { created('new-' + run.id); }),
     target: vi.fn(async () => ({ name: '已有 Agent', config, mode: 'tmux' as const })), deliver: vi.fn(async () => {}),
     claimTarget: vi.fn(async input => ({ sessionId: input.sessionId ?? 'current-agent', name: '领取 Agent', config })) };

@@ -41,7 +41,7 @@ it('cancels a pane preview on a missing release and permits the next deliberate 
 it('stops a split resize and unlocks gestures on blur', async () => {
   const { host } = await setup();
   const lock = vi.fn();
-  document.addEventListener('termdock:gesture-lock', lock);
+  document.addEventListener('veymux:gesture-lock', lock);
   fireEvent.pointerDown(screen.getAllByRole('separator')[0], { buttons: 1 });
   fireEvent.pointerMove(host, { buttons: 1, clientX: 300 });
   const pane = host.querySelector<HTMLElement>('[data-layout-pane="a"]')!;
@@ -50,5 +50,5 @@ it('stops a split resize and unlocks gestures on blur', async () => {
   fireEvent.pointerMove(host, { buttons: 1, clientX: 700 });
   expect(pane.style.width).toBe(heldWidth);
   expect(lock.mock.calls.at(-1)?.[0].detail).toEqual({ locked: false });
-  document.removeEventListener('termdock:gesture-lock', lock);
+  document.removeEventListener('veymux:gesture-lock', lock);
 });

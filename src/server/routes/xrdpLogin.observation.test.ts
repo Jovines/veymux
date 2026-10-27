@@ -23,12 +23,12 @@ afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe('trusted XRDP journal correlation', () => {
   it('ignores forged units, unmatched processes and malformed records; matches fragmented trusted metadata', () => {
-    const result = vi.fn(); const journal = new XrdpLoginJournal('td-fixture', result);
+    const result = vi.fn(); const journal = new XrdpLoginJournal('veymux-fixture', result);
     expect(() => journal.receive('invalid JSON\nnull\n[]\n42\n"text"\n')).not.toThrow();
-    journal.receive(record(marker('td-fixture'), '123', 'other.service') + record('login successful for user fixture'));
-    journal.receive(record(marker('td-other')) + record('login failed for user fixture'));
+    journal.receive(record(marker('veymux-fixture'), '123', 'other.service') + record('login successful for user fixture'));
+    journal.receive(record(marker('veymux-other')) + record('login failed for user fixture'));
     expect(result).not.toHaveBeenCalled();
-    const match = record(marker('td-fixture'));
+    const match = record(marker('veymux-fixture'));
     journal.receive(match.slice(0, 20)); journal.receive(match.slice(20));
     journal.receive(record('login failed for user neighbour', '999'));
     expect(journal.matched).toBe(true); expect(result).not.toHaveBeenCalled();
@@ -37,15 +37,15 @@ describe('trusted XRDP journal correlation', () => {
     expect(result.mock.calls).toEqual([['authenticated']]);
   });
   it('reports matched PAM failure once and ignores late success', () => {
-    const result = vi.fn(); const journal = new XrdpLoginJournal('td-fixture', result);
-    journal.receive(record(marker('td-fixture')) + record('login failed for user fixture') + record('login successful for user fixture'));
+    const result = vi.fn(); const journal = new XrdpLoginJournal('veymux-fixture', result);
+    journal.receive(record(marker('veymux-fixture')) + record('login failed for user fixture') + record('login successful for user fixture'));
     expect(result.mock.calls).toEqual([['failed']]);
   });
   it('bounds incomplete input and suppresses cancelled callbacks', () => {
-    const result = vi.fn(); const journal = new XrdpLoginJournal('td-fixture', result);
+    const result = vi.fn(); const journal = new XrdpLoginJournal('veymux-fixture', result);
     journal.receive('x'.repeat(256 * 1024 + 1)); expect(result).toHaveBeenCalledWith('unavailable');
-    const cancelled = vi.fn(); const other = new XrdpLoginJournal('td-fixture', cancelled);
-    other.cancel(); other.receive(record(marker('td-fixture')) + record('login successful for user fixture')); other.finish('timeout');
+    const cancelled = vi.fn(); const other = new XrdpLoginJournal('veymux-fixture', cancelled);
+    other.cancel(); other.receive(record(marker('veymux-fixture')) + record('login successful for user fixture')); other.finish('timeout');
     expect(cancelled).not.toHaveBeenCalled();
   });
 });
@@ -64,7 +64,7 @@ describe('optional local XRDP observer lifecycle', () => {
   });
   it('decodes fragmented UTF8, kills the child after authentication and cancels timeout', async () => {
     const result = vi.fn(); const observer = (await observeLocalXrdpLogin('127.0.0.1', 3390, result))!;
-    expect(observer.clientName).toMatch(/^td-[a-f0-9]{12}$/);
+    expect(observer.clientName).toMatch(/^veymux-[a-f0-9]{12}$/);
     const data = Buffer.from(record(marker(observer.clientName)) + record('login successful for user 测试'));
     const split = data.indexOf(Buffer.from('测')) + 1;
     processFixture.stdout.emit('data', data.subarray(0, split)); processFixture.stdout.emit('data', data.subarray(split));

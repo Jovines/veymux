@@ -3,7 +3,7 @@ import { collaborationServiceLabel } from '../collaboration/display';
 import { listServiceConnections, observeServiceConnections } from '../services/serviceDirectory';
 import { CollaborationDirectory, remoteSessionAddress, type CollaborationDirectoryData } from '../collaboration/directory';
 import { selectedTarget } from '../federation/clientScope';
-import { getTermdockDesktopBridge } from '../desktop/nativeBridge';
+import { getVeymuxDesktopBridge } from '../desktop/nativeBridge';
 import { prepareEncryptedDownload } from './secureDownload';
 import { clearTerminalSnapshots } from '../utils/terminalSnapshotCache';
 import { currentSecureClient, readWithSecureReconnect, secureSocket } from '../federation/browserIntegration';
@@ -113,10 +113,10 @@ export interface QuotaStatus {
   updatedAt: number;
 }
 
-export type TermdockUpdateStatus = 'idle' | 'checking' | 'current' | 'installing' | 'ready' | 'restarting' | 'error';
+export type VeymuxUpdateStatus = 'idle' | 'checking' | 'current' | 'installing' | 'ready' | 'restarting' | 'error';
 
-export interface TermdockUpdateState {
-  status: TermdockUpdateStatus;
+export interface VeymuxUpdateState {
+  status: VeymuxUpdateStatus;
   currentVersion: string;
   latestVersion: string | null;
   source: 'official' | 'configured' | null;
@@ -124,23 +124,23 @@ export interface TermdockUpdateState {
   error: string | null;
 }
 
-export async function getTermdockUpdateState(): Promise<TermdockUpdateState> {
+export async function getVeymuxUpdateState(): Promise<VeymuxUpdateState> {
   const response = await fetch('/api/terminal/update');
   if (!response.ok) throw new TerminalApiError('Failed to load update state', response.status);
-  return response.json() as Promise<TermdockUpdateState>;
+  return response.json() as Promise<VeymuxUpdateState>;
 }
 
-export async function checkTermdockUpdate(): Promise<TermdockUpdateState> {
+export async function checkVeymuxUpdate(): Promise<VeymuxUpdateState> {
   const csrfTokenHeader = await getCsrfToken();
   const response = await fetch('/api/terminal/update/check', {
     method: 'POST',
     headers: { 'X-XSRF-TOKEN': csrfTokenHeader },
   });
   if (!response.ok) throw new TerminalApiError('Failed to check for updates', response.status);
-  return response.json() as Promise<TermdockUpdateState>;
+  return response.json() as Promise<VeymuxUpdateState>;
 }
 
-export async function confirmTermdockUpdateRestart(isCurrent?: () => boolean, expectedVersion?: string): Promise<TermdockUpdateState> {
+export async function confirmVeymuxUpdateRestart(isCurrent?: () => boolean, expectedVersion?: string): Promise<VeymuxUpdateState> {
   if (isCurrent && !isCurrent()) throw new TerminalApiError('Update confirmation expired');
   const csrfTokenHeader = await getCsrfToken();
   if (isCurrent && !isCurrent()) throw new TerminalApiError('Update confirmation expired');
@@ -150,7 +150,7 @@ export async function confirmTermdockUpdateRestart(isCurrent?: () => boolean, ex
     ...(expectedVersion === undefined ? {} : { body: JSON.stringify({ version: expectedVersion }) }),
   });
   if (!response.ok) {
-    const body = await response.json().catch(() => ({ error: 'Failed to restart Termdock' }));
+    const body = await response.json().catch(() => ({ error: 'Failed to restart Veymux' }));
     // Another client or a manual restart can consume a pending update while
     // this page still shows its reminder. Reconcile without replaying the POST.
     if (response.status === 409) {
@@ -162,14 +162,14 @@ export async function confirmTermdockUpdateRestart(isCurrent?: () => boolean, ex
       if (!body.code) {
         // Older services only send error text. Read their authoritative state;
         // installation/supervision errors must remain visible and never retry.
-        const state = await getTermdockUpdateState().catch(() => null);
+        const state = await getVeymuxUpdateState().catch(() => null);
         if (isCurrent && !isCurrent()) throw new TerminalApiError('Update confirmation expired');
         if (state && state.status !== 'error' && (state.status !== 'ready' || expectedVersion !== undefined && state.latestVersion !== expectedVersion)) return state;
       }
     }
-    throw new TerminalApiError(body.error || 'Failed to restart Termdock', response.status);
+    throw new TerminalApiError(body.error || 'Failed to restart Veymux', response.status);
   }
-  return response.json() as Promise<TermdockUpdateState>;
+  return response.json() as Promise<VeymuxUpdateState>;
 }
 
 /**
@@ -367,8 +367,8 @@ async function readJsonResponseWithTimeout<T>(
   return JSON.parse(raw) as T;
 }
 
-if (typeof window !== 'undefined' && !(window as any).__termdockFetchPatched) {
-  (window as any).__termdockFetchPatched = true;
+if (typeof window !== 'undefined' && !(window as any).__veymuxFetchPatched) {
+  (window as any).__veymuxFetchPatched = true;
   const originalFetch = window.fetch.bind(window);
   window.fetch = async (...args: Parameters<typeof fetch>) => {
     const response = await originalFetch(...args);
@@ -959,7 +959,7 @@ export function connectTerminalStream(
 
         // Handle quota-status broadcast
         if (msg.type === 'quota-status' && Array.isArray(msg.providers)) {
-          window.dispatchEvent(new CustomEvent('termdock:quota-update', {
+          window.dispatchEvent(new CustomEvent('veymux:quota-update', {
             detail: msg.providers as QuotaResult[],
           }));
           return;
@@ -2840,7 +2840,7 @@ export async function readImagePreviewBlob(filePath: string, signal?: AbortSigna
 
 export function readPreviewSourcePath(response: Response, fallback: string): string {
   try {
-    const value = decodeURIComponent(response.headers.get('X-Termdock-Source-Path') || '');
+    const value = decodeURIComponent(response.headers.get('X-Veymux-Source-Path') || '');
     return value.startsWith('/') && !/[\r\n\0]/.test(value) ? value : fallback;
   } catch { return fallback; }
 }
@@ -2982,7 +2982,7 @@ export async function downloadFile(filePath: string, signal?: AbortSignal): Prom
       ?? filePath.split('/').pop()?.split('\\').pop()
       ?? 'download';
 
-    const previewStream = getTermdockDesktopBridge()?.saveDownloadStream;
+    const previewStream = getVeymuxDesktopBridge()?.saveDownloadStream;
     if (previewStream && response.body) {
       const header=response.headers?.get?.('Content-Length');
       const expected=header!==null&&header!==undefined&&/^\d+$/.test(header)?Number(header):undefined;
@@ -3003,7 +3003,7 @@ export async function downloadFile(filePath: string, signal?: AbortSignal): Prom
 /** Save bytes already fetched through the page, using the native save flow. */
 export async function saveDownloadBlob(blob: Blob, filename: string, signal?: AbortSignal): Promise<DownloadResult> {
   if (signal?.aborted) return 'canceled';
-  const previewSave = getTermdockDesktopBridge()?.saveDownloadBlob;
+  const previewSave = getVeymuxDesktopBridge()?.saveDownloadBlob;
   if (previewSave) return previewSave(blob, filename, signal);
   // Prefer the File System Access API when available.
   const showSaveFilePicker = (window as unknown as {
@@ -4230,7 +4230,7 @@ export function subscribeCollaborationGroups(listener: (data: CollaborationGroup
 }
 
 export function retryCollaborationPeers(): void {
-  window.dispatchEvent(new Event('termdock:collaboration-enroll'));
+  window.dispatchEvent(new Event('veymux:collaboration-enroll'));
   currentCollaborationDirectory().refreshPeers(true);
 }
 

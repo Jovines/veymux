@@ -52,7 +52,7 @@ describe('Markdown lightbox encrypted downloads', () => {
     const nativeUpload = vi.fn();
     const write = vi.fn(async (_blob: Blob) => {}), close = vi.fn(async () => {});
     const picker = vi.fn(async () => ({ createWritable: async () => ({ write, close }) }));
-    Object.assign(window, { showSaveFilePicker: picker, termdockDesktop: { uploadClipboardImage: nativeUpload, uploadDroppedFiles: nativeUpload } });
+    Object.assign(window, { showSaveFilePicker: picker, veymuxDesktop: { uploadClipboardImage: nativeUpload, uploadDroppedFiles: nativeUpload } });
     integration.installEncryptedFetch();
     vi.stubGlobal('fetch', window.fetch);
     const { downloadMarkdownImage } = await import('../components/sidebar/markdownImageDownload');

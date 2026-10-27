@@ -7,7 +7,7 @@ import { CollaborationStore } from './collaborationStore';
 let dir: string;
 afterEach(() => { vi.restoreAllMocks(); if (dir) fs.rmSync(dir, { recursive: true, force: true }); });
 function fixture() {
-  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'td-resolve-write-')); const file = path.join(dir, 'messages.json');
+  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-resolve-write-')); const file = path.join(dir, 'messages.json');
   const store = new CollaborationStore(file), group = store.save({ name: 'Resolution', sessionIds: ['source', 'target'] });
   const [message] = store.send({ groupId: group.id, fromSessionId: 'source', toSessionIds: ['target'], kind: 'ask', content: 'Original' });
   const diagnostic = { relay_online: null, peer_reachable: true, attempt_count: 1, next_retry_at: null, last_error: 'DELIVERY_OUTCOME_UNCONFIRMED', checked_at: Date.now(), write_stage: 'paste_written' as const };

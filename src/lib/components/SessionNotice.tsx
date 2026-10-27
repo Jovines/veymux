@@ -10,7 +10,7 @@ import { useTerminalStore } from '../stores/useTerminalStore';
 import { getWorkspaceHost, isWorkspaceActive, WORKSPACE_VISIBILITY_EVENT } from '../services/workspaceHost';
 import { useI18n } from '../i18n';
 
-const NOTICE_EVENT = 'termdock:session-notice';
+const NOTICE_EVENT = 'veymux:session-notice';
 interface Notice extends ControlSessionNoticeEvent { key: string; open: () => boolean }
 
 /** Mounted after secure access, including in retained service workspaces. */
@@ -42,7 +42,7 @@ export function SessionNoticeBridge() {
       ?? getSessionSnapshotPresentation({ sessionId: event.sessionId, name: event.sessionName }).displayName;
     const detail: Notice = { ...event, sessionName, key: `${targetPeerId ?? 'local'}:${event.id}`, open: () => {
       if (targetPeerId && host) return host.focusSession(targetPeerId, event.sessionId);
-      window.dispatchEvent(new CustomEvent('termdock:focus-session', { detail: event.sessionId }));
+      window.dispatchEvent(new CustomEvent('veymux:focus-session', { detail: event.sessionId }));
       return true;
     } };
     // Same-origin workspaces share a single visible notice surface in the host.

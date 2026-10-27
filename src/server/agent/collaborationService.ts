@@ -128,7 +128,7 @@ export class CollaborationService {
     if (!peer || this.effectiveScope(peer.serviceId) !== undefined) return null;
     const observed = this.observations.get(peer.serviceId);
     if (!observed?.sessions.some(session => session.sessionId === target.id)) return null;
-    if (observed.directContacts !== true) throw new CollaborationError('DIRECT_CONTACTS_UPGRADE_REQUIRED', '远端服务尚不支持组外直接联系，请升级远端 Termdock', 409);
+    if (observed.directContacts !== true) throw new CollaborationError('DIRECT_CONTACTS_UPGRADE_REQUIRED', '远端服务尚不支持组外直接联系，请升级远端 Veymux', 409);
     return id;
   }
 

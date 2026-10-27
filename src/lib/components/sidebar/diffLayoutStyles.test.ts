@@ -12,11 +12,11 @@ function ruleBody(selector: string): string {
 describe('diff layout styles', () => {
   it('lets wrapped split diffs fit a narrow pinned sidebar without horizontal overflow', () => {
     const splitRule = ruleBody('.diff-split .diff');
-    const wrappedSplitRule = ruleBody('.diff-split.termdock-diff-wrap .diff');
+    const wrappedSplitRule = ruleBody('.diff-split.veymux-diff-wrap .diff');
 
     expect(splitRule).toMatch(/min-width:\s*48rem\s*;/);
     expect(wrappedSplitRule).toMatch(/min-width:\s*100%\s*;/);
-    expect(css.indexOf('.diff-split.termdock-diff-wrap .diff'))
+    expect(css.indexOf('.diff-split.veymux-diff-wrap .diff'))
       .toBeGreaterThan(css.indexOf('.diff-split .diff'));
   });
 });

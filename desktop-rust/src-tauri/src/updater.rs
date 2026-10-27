@@ -52,7 +52,7 @@ fn validate_channel(endpoint: Option<&str>, key: Option<&str>, stable: bool) -> 
         || !endpoint.username().is_empty()
         || endpoint.password().is_some()
         || endpoint.fragment().is_some()
-        || (if stable { endpoint.as_str() != "https://github.com/Jovines/termdock/releases/download/stable-channel/latest.json" } else { !endpoint.path().contains("preview") })
+        || (if stable { endpoint.as_str() != "https://github.com/Jovines/veymux/releases/download/stable-channel/latest.json" } else { !endpoint.path().contains("preview") })
     {
         return Err("更新地址必须是构建固定的 HTTPS 渠道".into());
     }
@@ -93,15 +93,15 @@ impl Updater {
             value["error"] = json!(error);
             value.clone()
         };
-        crate::shell::announce(app, "termdock:preview-update", snapshot.clone());
+        crate::shell::announce(app, "veymux:preview-update", snapshot.clone());
         snapshot
     }
     pub async fn check<R: tauri::Runtime>(&self, app: &AppHandle<R>) -> Value {
         self.check_channel(
             app,
             stable_channel(
-                option_env!("TERMDOCK_STABLE_UPDATE_ENDPOINT"),
-                option_env!("TERMDOCK_STABLE_UPDATE_PUBLIC_KEY"),
+                option_env!("VEYMUX_STABLE_UPDATE_ENDPOINT"),
+                option_env!("VEYMUX_STABLE_UPDATE_PUBLIC_KEY"),
             ),
         )
         .await
@@ -135,17 +135,17 @@ impl Updater {
             };
             if update.download_url.scheme() != "https"
                 || update.download_url.host_str() != Some("github.com")
-                || update.download_url.path() != format!("/Jovines/termdock/releases/download/v{}/Termdock_{}_aarch64.app.tar.gz", update.version, update.version)
+                || update.download_url.path() != format!("/Jovines/veymux/releases/download/v{}/Veymux_{}_aarch64.app.tar.gz", update.version, update.version)
             {
                 return Err(
-                    "更新资产必须是正式发布的签名 Termdock .app.tar.gz"
+                    "更新资产必须是正式发布的签名 Veymux .app.tar.gz"
                         .into(),
                 );
             }
             {
                 let mut state = self.state.lock().unwrap();
                 state["latestVersion"] = json!(update.version);
-                state["releaseName"] = json!(format!("Termdock {}", update.version));
+                state["releaseName"] = json!(format!("Veymux {}", update.version));
             }
             self.publish(app, "downloading", None);
             let bytes = update
@@ -326,8 +326,8 @@ mod tests {
     #[test]
     fn stable_channel_is_exact_and_does_not_accept_service_selected_or_preview_endpoints() {
         let key=public_test_key();
-        assert!(stable_channel(Some("https://github.com/Jovines/termdock/releases/download/stable-channel/latest.json"),Some(&key)).is_ok());
-        for endpoint in ["http://github.com/Jovines/termdock/releases/download/stable-channel/latest.json", "https://example.test/stable-channel/latest.json", "https://github.com/Jovines/termdock/releases/download/preview-channel/preview.json", "https://github.com/Jovines/termdock/releases/download/stable-channel/latest.json?other=1"] {
+        assert!(stable_channel(Some("https://github.com/Jovines/veymux/releases/download/stable-channel/latest.json"),Some(&key)).is_ok());
+        for endpoint in ["http://github.com/Jovines/veymux/releases/download/stable-channel/latest.json", "https://example.test/stable-channel/latest.json", "https://github.com/Jovines/veymux/releases/download/preview-channel/preview.json", "https://github.com/Jovines/veymux/releases/download/stable-channel/latest.json?other=1"] {
             assert!(stable_channel(Some(endpoint),Some(&key)).is_err());
         }
     }

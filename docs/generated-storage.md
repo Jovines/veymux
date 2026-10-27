@@ -2,12 +2,12 @@
 
 服务启动后及每 6 小时自动检查一次。升级后的首次启动也使用同一套规则，
 因此可以处理旧版本遗留的数据。清理不阻塞健康检查；单次检查失败保留现场。
-最近一次结果写入 `~/.termdock/storage-maintenance.json`，记录删除路径、
+最近一次结果写入 `~/.veymux/storage-maintenance.json`，记录删除路径、
 跳过原因及实际回收的字节数。
 
 ## 前端版本快照
 
-`~/.termdock/client-snapshots/` 保存不可变的网页构建，避免升级时运行中的
+`~/.veymux/client-snapshots/` 保存不可变的网页构建，避免升级时运行中的
 服务与前端版本混用。仅服务端变化、前端构建哈希相同的升级复用原快照。
 
 保留当前服务及其他运行中服务持有的快照、最近 3 份快照、最近 7 天创建或
@@ -18,11 +18,11 @@
 
 ## 任务工作目录
 
-`~/.termdock/task-workspaces/` 下的源码、Git 分支、提交、任务记录、未提交
+`~/.veymux/task-workspaces/` 下的源码、Git 分支、提交、任务记录、未提交
 修改和未跟踪文件不由后台维护删除。不会执行 `git clean`、`reset` 或强制
 删除工作树，也不自动删除 `node_modules`、`dist`、最终应用和安装包。
 
-目前仅在 Linux 上回收已注册的 Termdock 任务工作树中的 Cargo 中间缓存：
+目前仅在 Linux 上回收已注册的 Veymux 任务工作树中的 Cargo 中间缓存：
 由已跟踪的 `Cargo.toml` 定位 `target/{debug,release}`，检查 Cargo 的
 `CACHEDIR.TAG`，仅选择 `deps`、`incremental`、`build`、`.fingerprint`。
 候选目录必须被 Git 忽略、不含已跟踪文件，目录内容及使用时间检查通过。

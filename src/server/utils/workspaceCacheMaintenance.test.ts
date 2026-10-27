@@ -13,7 +13,7 @@ const children: ChildProcess[] = [];
 const git = async (cwd: string, args: string[]) => exec('git', ['-C', cwd, ...args]);
 describe.skipIf(process.platform !== 'linux')('managed Cargo cache cleanup', () => {
   beforeEach(async () => {
-    home = await fs.mkdtemp(path.join(os.tmpdir(), 'td-work-cache-')); stateDirectory = path.join(home, '.termdock');
+    home = await fs.mkdtemp(path.join(os.tmpdir(), 'veymux-work-cache-')); stateDirectory = path.join(home, '.veymux');
     const repo = path.join(home, 'repo'); await fs.mkdir(repo);
     await git(repo, ['init']); await git(repo, ['config', 'user.email', 'test@example.local']); await git(repo, ['config', 'user.name', 'Test']);
     await fs.writeFile(path.join(repo, 'Cargo.toml'), '[package]\nname="fixture"\nversion="0.1.0"\n');
@@ -22,7 +22,7 @@ describe.skipIf(process.platform !== 'linux')('managed Cargo cache cleanup', () 
     await git(repo, ['add', 'Cargo.toml', '.gitignore', 'source.txt']); await git(repo, ['commit', '-m', 'base']);
     const name = `${'a'.repeat(32)}-${'b'.repeat(8)}`;
     workspace = path.join(stateDirectory, 'task-workspaces', 'c'.repeat(32), name); await fs.mkdir(path.dirname(workspace), { recursive: true });
-    await git(repo, ['worktree', 'add', '-b', `termdock/task/${name}`, workspace]);
+    await git(repo, ['worktree', 'add', '-b', `veymux/task/${name}`, workspace]);
     profile = path.join(workspace, 'target', 'debug'); await fs.mkdir(path.join(profile, 'deps'), { recursive: true });
     await fs.writeFile(path.join(workspace, 'target', 'CACHEDIR.TAG'), 'Signature: 8a477f597d28d172789f06886806bc55\n# Cargo cache\n');
     await fs.writeFile(path.join(profile, '.cargo-lock'), '');

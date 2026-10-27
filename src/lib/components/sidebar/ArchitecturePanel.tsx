@@ -15,7 +15,7 @@ import { ArchitectureInspector } from './ArchitectureInspector';
 import { ArchitectureNodePreview } from './ArchitectureNodePreview';
 import { useSidebarStore } from '../../stores/useSidebarStore';
 
-function selectionKey(root: string): string { return `termdock.architecture.selection:${root}`; }
+function selectionKey(root: string): string { return `veymux.architecture.selection:${root}`; }
 function savedSelection(root: string | null): string {
   try {
     const value = root ? sessionStorage.getItem(selectionKey(root)) : null;
@@ -139,14 +139,14 @@ export function ArchitecturePanel({ rootPath, active, onInsertPrompt, onOpenFile
   }, [rootPath, active, refresh, file]);
 
   const watchRoots = JSON.stringify(rootPath ? [...new Set([
-    `${rootPath}/.termdock`, `${rootPath}/.termdock/architectures`, `${rootPath}/.omm`,
+    `${rootPath}/.veymux`, `${rootPath}/.veymux/architectures`, `${rootPath}/.omm`,
     ...(file === '.omm' ? document?.perspectives.flatMap(view => [`${rootPath}/.omm/${view.id}`, ...view.nodes.flatMap(node => node.documentPath ? [`${rootPath}/.omm/${node.documentPath}`] : [])]) ?? [] : []),
   ])].slice(0, 128).sort() : []);
   useEffect(() => {
     if (!active || !rootPath) return;
     const controller = new AbortController(); let debounce: ReturnType<typeof setTimeout> | undefined;
     void watchFileSystem(JSON.parse(watchRoots) as string[], events => {
-      if (events.some(event => event.type === 'rescan-required' || event.path?.includes('/.omm/') || event.path?.includes('/.termdock/'))) {
+      if (events.some(event => event.type === 'rescan-required' || event.path?.includes('/.omm/') || event.path?.includes('/.veymux/'))) {
         clearTimeout(debounce); debounce = setTimeout(() => setRefresh(value => value + 1), 300);
       }
     }, controller.signal).catch(() => { /* Saved-document polling remains active through watcher disconnections. */ });

@@ -15,7 +15,7 @@ import { PasswordLoginFailure, passwordLoginFailure } from './passwordLoginFailu
 import { ConnectionAccessError, connectionAccessError, relayAuthorizationError } from './accessFailure';
 export { getIdentity } from './deviceIdentity';
 
-export const SECURE_STATE_EVENT = 'termdock:secure-state';
+export const SECURE_STATE_EVENT = 'veymux:secure-state';
 let active: SecureClient | undefined;
 let connecting: Promise<SecureClient> | undefined;
 let entryClient: SecureClient | undefined;
@@ -112,7 +112,7 @@ async function authenticateServicePasswordDirect(url: string, password: string):
   // Preview's transport uses a private loopback document. Its native boundary
   // binds this proof to the exact approved upstream Origin for old servers;
   // ordinary browsers and Electron keep their existing document binding.
-  const preview = typeof window !== 'undefined' ? window.termdockDesktop as (typeof window.termdockDesktop & { previewCapabilities?: unknown; passwordBootstrapOrigin?: (url: string) => string }) : undefined;
+  const preview = typeof window !== 'undefined' ? window.veymuxDesktop as (typeof window.veymuxDesktop & { previewCapabilities?: unknown; passwordBootstrapOrigin?: (url: string) => string }) : undefined;
   let proofOrigin = location.origin;
   if (preview?.previewCapabilities && preview.passwordBootstrapOrigin) {
     const candidate = preview.passwordBootstrapOrigin(url);
@@ -202,7 +202,7 @@ export async function connectServiceAddress(address: string, password?: string):
   if (response.status === 403) return { passwordRequired: true };
   if (!response.ok) throw new Error('这台服务暂时不可用，请稍后重试。');
   const { serviceIdentity } = await response.json();
-  if (typeof serviceIdentity !== 'string' || !serviceIdentity) throw new Error('这不是可连接的 Termdock 服务。');
+  if (typeof serviceIdentity !== 'string' || !serviceIdentity) throw new Error('这不是可连接的 Veymux 服务。');
   if (saved?.targetPeerId && saved.targetPeerId !== serviceIdentity) throw new Error('这台服务的身份已改变。请先移除旧记录，再重新添加。');
   await connectDevice({ url, targetPeerId: serviceIdentity, serviceName: saved?.label || new URL(url).host, serviceOrigin: url });
   return {};
@@ -808,7 +808,7 @@ export async function addServiceAddress(service: import('../services/serviceDire
       await readDeviceAuthorization(candidate);
     } catch (error) {
       if (error instanceof DeviceAuthorizationRequired) throw new Error('这台服务尚未授权当前设备，请先恢复设备授权。');
-      throw new Error('无法验证这个地址。请确认能访问该地址、HTTPS 证书受信任，且运行的是同一台 Termdock 服务。');
+      throw new Error('无法验证这个地址。请确认能访问该地址、HTTPS 证书受信任，且运行的是同一台 Veymux 服务。');
     }
     const current = await latestService();
     const routes = nextRoutes(current);

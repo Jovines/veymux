@@ -26,7 +26,7 @@ export function ChatChartReference({ data, children }: {
   const selected = selection?.source === source && data.rows[selection.index] ? selection.index : undefined;
   const select = (index: number) => { if (data.rows[index]) setSelection({ source, index }); };
   const action = 'inline-flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-lg px-2 text-xs hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
-  return <div data-chat-chart className="termdock-native-select min-w-0 space-y-2">
+  return <div data-chat-chart className="veymux-native-select min-w-0 space-y-2">
     {children(select)}
     {!!data.rows.length && <>
       {selected !== undefined && <div className="flex items-start gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-xs leading-6">

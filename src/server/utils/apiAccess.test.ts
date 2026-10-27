@@ -12,9 +12,9 @@ import path from 'path';
 let home: string;
 beforeEach(async () => {
   vi.resetModules();
-  home = fs.mkdtempSync(path.join(os.tmpdir(), 'termdock-gate-test-'));
+  home = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-gate-test-'));
   vi.spyOn(os, 'homedir').mockReturnValue(home);
-  vi.stubEnv('TERMDOCK_PASSWORD', 'test-only-long-password');
+  vi.stubEnv('VEYMUX_PASSWORD', 'test-only-long-password');
   ({ apiAccessGate, isTrustedLocalRequest } = await import('./apiAccess.js'));
 });
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); fs.rmSync(home, { recursive: true, force: true }); });
@@ -35,8 +35,8 @@ describe('default-private API gate', () => {
         expect(response.status, route).toBe(401);
       }
       expect((await fetch(base + '/api/auth/status')).status).toBe(200);
-      expect((await fetch(base + '/api/terminal/client-state', { headers: { 'X-Termdock-Local-Token': 'local-test-token' } })).status).toBe(200);
-      expect((await fetch(base + '/api/terminal/client-state', { headers: { 'X-Termdock-Local-Token': 'local-test-token', Origin: 'https://attacker.example' } })).status).toBe(401);
+      expect((await fetch(base + '/api/terminal/client-state', { headers: { 'X-Veymux-Local-Token': 'local-test-token' } })).status).toBe(200);
+      expect((await fetch(base + '/api/terminal/client-state', { headers: { 'X-Veymux-Local-Token': 'local-test-token', Origin: 'https://attacker.example' } })).status).toBe(401);
     } finally {
       await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
     }

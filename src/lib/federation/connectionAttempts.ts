@@ -7,7 +7,7 @@ export interface ConnectionAttempt<T> {
   key: string;
   run(signal: AbortSignal): Promise<T>;
 }
-const HISTORY_PREFIX = 'termdock-secure-last-path:';
+const HISTORY_PREFIX = 'veymux-secure-last-path:';
 const PATH_LIFETIME_MS = 10 * 60_000;
 
 export function preferredConnectionPath(serviceId: string): string | undefined {
@@ -49,8 +49,8 @@ export function raceConnectionAttempts<T>(attempts: ConnectionAttempt<T>[], disp
       const started = performance.now();
       const measure = (ok: boolean) => {
         try {
-          if (performance.getEntriesByName('termdock:connection-path').length > 64) performance.clearMeasures('termdock:connection-path');
-          performance.measure('termdock:connection-path', { start: started, end: performance.now(), detail: { path: attempt.key.startsWith('relay:') ? 'relay' : 'direct', ok } });
+          if (performance.getEntriesByName('veymux:connection-path').length > 64) performance.clearMeasures('veymux:connection-path');
+          performance.measure('veymux:connection-path', { start: started, end: performance.now(), detail: { path: attempt.key.startsWith('relay:') ? 'relay' : 'direct', ok } });
         } catch { /* Optional timing APIs must never change connection results. */ }
       };
       const controller = new AbortController(); controllers.add(controller); pending++;

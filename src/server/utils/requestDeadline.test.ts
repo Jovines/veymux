@@ -7,7 +7,7 @@ import { requestDeadlineMiddleware } from './requestDeadline.js';
 import { writeErrorLog } from './serverLogger.js';
 
 // These tests deliberately trigger errors on a real HTTP server. Keep the
-// simulated incidents out of the running service's ~/.termdock/errors.log.
+// simulated incidents out of the running service's ~/.veymux/errors.log.
 vi.mock('./serverLogger.js', () => ({ writeErrorLog: vi.fn() }));
 
 const DEADLINE_MS = 60;

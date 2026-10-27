@@ -37,7 +37,7 @@ async function dial(url: string, waitForReady = false) {
 describe('live bitrate encrypted stream', () => {
   it.each([false, true])('works without a service worker, including relay-only target=%s and offline failure', async relayed => {
     vi.stubGlobal('CloseEvent', class extends Event { code = 1000; reason = ''; });
-    const directory = mkdtempSync(join(tmpdir(), 'td-recording-transport-'));
+    const directory = mkdtempSync(join(tmpdir(), 'veymux-recording-transport-'));
     cleanup.push(() => rmSync(directory, { recursive: true, force: true }));
     const app = express(); app.use(express.json()); app.use('/api/android', router);
     const runtime = await createFederationRuntime(app, directory, { terminal() {}, control() {}, android: handleAndroidWebSocket });

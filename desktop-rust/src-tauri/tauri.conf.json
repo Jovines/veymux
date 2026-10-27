@@ -1,9 +1,9 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Termdock",
-  "mainBinaryName": "Termdock",
+  "productName": "Veymux",
+  "mainBinaryName": "Veymux",
   "version": "1.4.362",
-  "identifier": "com.jovines.termdock",
+  "identifier": "com.jovines.veymux",
   "build": {
     "frontendDist": "../.renderer-dist"
   },
@@ -27,7 +27,7 @@
       "infoPlist": "Info.plist"
     },
     "icon": [
-      "../../desktop/assets/Termdock.icns",
+      "../../desktop/assets/Veymux.icns",
       ".runtime-icons/icon.png"
     ],
     "resources": {

@@ -1,4 +1,4 @@
-import { getTermdockDesktopBridge } from '../desktop/nativeBridge';
+import { getVeymuxDesktopBridge } from '../desktop/nativeBridge';
 import { readTerminalClipboardFiles, readTerminalClipboardImage, readTerminalClipboardVideos, TerminalClipboardVideoError } from './clipboardImage';
 
 export type ClipboardContent = { kind: 'files'; files: File[]; paths: string[] } | { kind: 'text'; text: string } | { kind: 'empty' };
@@ -6,7 +6,7 @@ export interface ClipboardEventContent { files: File[]; text: string }
 /** Without an active reader (notably LAN HTTP), leave the browser's native
  * paste event intact so its clipboardData can carry images and text. */
 export function canReadClipboardContent(): boolean {
-  const bridge = getTermdockDesktopBridge();
+  const bridge = getVeymuxDesktopBridge();
   return !!(bridge?.readClipboardFiles || bridge?.readClipboardImage || navigator.clipboard?.read || navigator.clipboard?.readText);
 }
 /** Snapshot synchronously: browsers may clear clipboardData after the event. */
@@ -24,7 +24,7 @@ export async function readClipboardContent(event?: ClipboardEventContent, isCurr
     return value;
   };
   check(null);
-  const bridge = getTermdockDesktopBridge();
+  const bridge = getVeymuxDesktopBridge();
   if (!event && !canReadClipboardContent() && globalThis.isSecureContext === false) {
     throw new Error('HTTP 页面无法主动读取剪贴板。请使用 Ctrl/Cmd+V、选择文件，或切换 HTTPS / Mac 客户端。');
   }

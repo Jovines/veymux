@@ -2,9 +2,9 @@ import { useLayoutEffect, useRef, useSyncExternalStore } from 'react';
 import { useConnectionRecovery } from '../federation/connectionRecovery';
 import { useI18n } from '../i18n';
 
-const startupVisible = () => document.getElementById('termdock-startup')?.hidden === false;
+const startupVisible = () => document.getElementById('veymux-startup')?.hidden === false;
 function subscribeStartupVisibility(listener: () => void) {
-  const surface = document.getElementById('termdock-startup');
+  const surface = document.getElementById('veymux-startup');
   if (!surface) return () => {};
   const observer = new MutationObserver(listener);
   observer.observe(surface, { attributes: true, attributeFilter: ['hidden'] });
@@ -32,7 +32,7 @@ function reconcileStartup() {
   const generation = ++revision;
   requestAnimationFrame(() => {
     if (generation !== revision) return;
-    const surface = document.getElementById('termdock-startup');
+    const surface = document.getElementById('veymux-startup');
     if (!surface) return;
     const visible = [...holders].find(([marker]) => marker.isConnected
       && !marker.closest('[aria-hidden="true"], [hidden]')
@@ -72,7 +72,7 @@ export function StartupHandoff() {
   return null;
 }
 
-export function StartupScreen({ status = 'Loading Termdock', detail, actionLabel, onAction }: Partial<StartupPresentation> & { className?: string }) {
+export function StartupScreen({ status = 'Loading Veymux', detail, actionLabel, onAction }: Partial<StartupPresentation> & { className?: string }) {
   const connection = useConnectionRecovery();
   const { locale } = useI18n();
   if (connection !== 'ready') {

@@ -65,7 +65,7 @@ it('does not move focus back to navigation after the user has started editing', 
 
 it('offers embedding only in the message view and saves its unsent draft before switching', async () => {
   api.groups.mockResolvedValue({ groups: [{ id: 'main-fixture', name: '消息协作', sessionIds: ['fixture-member'], createdAt: 1, updatedAt: 1 }], sessions: [] });
-  const open = vi.fn(); window.addEventListener('termdock:open-collaboration-messages', open);
+  const open = vi.fn(); window.addEventListener('veymux:open-collaboration-messages', open);
   render(<CollaborationMainWorkspace groupId="main-fixture" activeSessionId="terminal" onOpenSidebar={() => {}} defaultSessionMode="shell" />);
   await screen.findByRole('heading', { name: '任务看板' });
   expect(screen.queryByRole('button', { name: '放到终端旁' })).toBeNull();
@@ -76,7 +76,7 @@ it('offers embedding only in the message view and saves its unsent draft before 
   expect(useCollaborationNavigation.getState().drafts['main-fixture'].content).toBe('保留消息草稿');
   expect(api.send).not.toHaveBeenCalled();
   expect(api.updateSettings).toHaveBeenCalledWith(expect.objectContaining({ collaborationPanel: expect.objectContaining({ state: expect.objectContaining({ groups: { 'main-fixture': expect.objectContaining({ dock: { sessionId: 'terminal', side: 'right' } }) } }) }) }));
-  window.removeEventListener('termdock:open-collaboration-messages', open);
+  window.removeEventListener('veymux:open-collaboration-messages', open);
 });
 
 it('enters member messages directly when opened from the launcher', async () => {

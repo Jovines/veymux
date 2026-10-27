@@ -814,11 +814,11 @@ const TerminalViewportInner = React.forwardRef<TerminalController, TerminalViewp
     const [pasteError, setPasteError] = React.useState<string | null>(null);
     React.useEffect(() => {
       const receive = (event: Event) => {
-        const zone = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-termdock-terminal-dropzone]') : null;
-        if (zone?.dataset.termdockTerminalDropzone === sessionKey) setPasteError(String((event as CustomEvent).detail));
+        const zone = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-veymux-terminal-dropzone]') : null;
+        if (zone?.dataset.veymuxTerminalDropzone === sessionKey) setPasteError(String((event as CustomEvent).detail));
       };
-      window.addEventListener('termdock:file-drop-error', receive);
-      return () => window.removeEventListener('termdock:file-drop-error', receive);
+      window.addEventListener('veymux:file-drop-error', receive);
+      return () => window.removeEventListener('veymux:file-drop-error', receive);
     }, [sessionKey]);
     const debugTerminal = React.useMemo(() => createDebugLogger('terminal'), []);
 
@@ -1570,10 +1570,10 @@ const TerminalViewportInner = React.forwardRef<TerminalController, TerminalViewp
     React.useEffect(() => {
       const cancelStale = () => { const work = pasteWorkRef.current; if (work && !work.current()) work.controller.abort(); };
       cancelStale();
-      window.addEventListener('termdock:secure-state', cancelStale);
+      window.addEventListener('veymux:secure-state', cancelStale);
       const cancel = () => pasteWorkRef.current?.controller.abort();
       window.addEventListener('auth:unauthorized', cancel);
-      return () => { window.removeEventListener('termdock:secure-state', cancelStale); window.removeEventListener('auth:unauthorized', cancel); };
+      return () => { window.removeEventListener('veymux:secure-state', cancelStale); window.removeEventListener('auth:unauthorized', cancel); };
     });
     React.useEffect(() => { pasteMountedRef.current = true; return () => { pasteMountedRef.current = false; pasteWorkRef.current?.controller.abort(); }; }, []);
 
@@ -1746,13 +1746,13 @@ const TerminalViewportInner = React.forwardRef<TerminalController, TerminalViewp
 
       window.visualViewport?.addEventListener('resize', repositionAfterLayout);
       window.visualViewport?.addEventListener('scroll', repositionAfterLayout);
-      document.addEventListener('termdock:viewport-keyboard-change', repositionAfterLayout);
+      document.addEventListener('veymux:viewport-keyboard-change', repositionAfterLayout);
       return () => {
         if (firstFrame !== null) window.cancelAnimationFrame(firstFrame);
         if (secondFrame !== null) window.cancelAnimationFrame(secondFrame);
         window.visualViewport?.removeEventListener('resize', repositionAfterLayout);
         window.visualViewport?.removeEventListener('scroll', repositionAfterLayout);
-        document.removeEventListener('termdock:viewport-keyboard-change', repositionAfterLayout);
+        document.removeEventListener('veymux:viewport-keyboard-change', repositionAfterLayout);
       };
     }, [enableTouchScroll]);
 
@@ -2050,7 +2050,7 @@ const TerminalViewportInner = React.forwardRef<TerminalController, TerminalViewp
 
     const notifyGestureLock = React.useCallback((locked: boolean) => {
       document.dispatchEvent(
-        new CustomEvent('termdock:gesture-lock', { detail: { locked } })
+        new CustomEvent('veymux:gesture-lock', { detail: { locked } })
       );
     }, []);
 
@@ -2104,11 +2104,11 @@ const TerminalViewportInner = React.forwardRef<TerminalController, TerminalViewp
 
       window.visualViewport?.addEventListener('resize', handleViewportChange);
       window.visualViewport?.addEventListener('scroll', handleViewportChange);
-      document.addEventListener('termdock:viewport-keyboard-change', handleViewportChange);
+      document.addEventListener('veymux:viewport-keyboard-change', handleViewportChange);
       return () => {
         window.visualViewport?.removeEventListener('resize', handleViewportChange);
         window.visualViewport?.removeEventListener('scroll', handleViewportChange);
-        document.removeEventListener('termdock:viewport-keyboard-change', handleViewportChange);
+        document.removeEventListener('veymux:viewport-keyboard-change', handleViewportChange);
       };
     }, [enableTouchScroll, nativeInputHost, isViewportKeyboardLikelyOpen]);
 
@@ -3824,7 +3824,7 @@ const TerminalViewportInner = React.forwardRef<TerminalController, TerminalViewp
           const fitAddon = new FitAddon();
           terminal.loadAddon(fitAddon);
           const nativeWebLinkHandler = createNativeWebLinkHandler(
-            window.termdockDesktop,
+            window.veymuxDesktop,
             url => { window.open(url); },
           );
           // Prefer the complete TUI-wrapped URL over the addon's partial row.
@@ -4661,8 +4661,8 @@ const TerminalViewportInner = React.forwardRef<TerminalController, TerminalViewp
     return (
       <div
         ref={containerRef}
-        data-termdock-terminal-dropzone={sessionKey}
-        data-termdock-terminal-owner={getPasteOwnerKey?.() ?? sessionKey}
+        data-veymux-terminal-dropzone={sessionKey}
+        data-veymux-terminal-owner={getPasteOwnerKey?.() ?? sessionKey}
         className={`relative h-full w-full terminal-viewport-container ${className || ''}`}
         style={{
           backgroundColor: theme.background,
@@ -5080,7 +5080,7 @@ const TerminalViewportInner = React.forwardRef<TerminalController, TerminalViewp
                 // Browser paste events can expose videos as Files or file
                 // items even when the async clipboard API cannot read them.
                 const { files, text } = clipboardEventContent(event.clipboardData);
-                if (window.termdockDesktop?.readClipboardFiles || files.length) {
+                if (window.veymuxDesktop?.readClipboardFiles || files.length) {
                   event.preventDefault();
                   void readClipboardIntoTerminal(event.currentTarget, { files, text });
                   return;
@@ -5088,7 +5088,7 @@ const TerminalViewportInner = React.forwardRef<TerminalController, TerminalViewp
                 if (!text) {
                   // Some clipboard formats are absent from the paste payload
                   // but readable through the native or async clipboard API.
-                  if (window.termdockDesktop || typeof navigator.clipboard?.read === 'function') {
+                  if (window.veymuxDesktop || typeof navigator.clipboard?.read === 'function') {
                     event.preventDefault();
                     void readClipboardIntoTerminal(event.currentTarget);
                   }

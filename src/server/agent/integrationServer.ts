@@ -12,17 +12,17 @@ import type { CollaborationService } from './collaborationService.js';
 import type { TaskOrigin, TaskOperation, TaskCreateInput } from './collaborationTaskTypes.js';
 import { IntegrationStore, INTEGRATION_PROTOCOL, INTEGRATION_OPERATIONS, atomicJson, integrationError, type IntegrationPermission, type IntegrationPrincipal, type IntegrationEvent, type IntegrationStorageOptions } from './integrationStore.js';
 import { IntegrationSessions, publicIntegrationSession, type IntegrationSessionAdapter } from './integrationSessions.js';
-import { getTermdockVersion } from '../utils/version.js';
+import { getVeymuxVersion } from '../utils/version.js';
 import { SessionAccessStore } from '../federation/sessionAccess.js';
 
 export function integrationSocketPath(port: number, home = homedir()): string {
-  const preferred = path.join(home, '.termdock', `integration-${port}.sock`);
+  const preferred = path.join(home, '.veymux', `integration-${port}.sock`);
   // Darwin's sockaddr_un is shorter than Linux's. Node can truncate a long
   // pathname while binding, leaving chmod and clients looking at another name.
   if (Buffer.byteLength(preferred) < 100) return preferred;
   const owner = process.getuid?.() ?? 'user';
   const key = createHash('sha256').update(home).digest('hex').slice(0, 16);
-  return path.join('/tmp', `td-integration-${owner}-${key}`, `${port}.sock`);
+  return path.join('/tmp', `veymux-integration-${owner}-${key}`, `${port}.sock`);
 }
 export interface IntegrationRuntimeOptions {
   directory: string; socketPath: string; adminToken?: string;
@@ -83,16 +83,16 @@ export class IntegrationRuntime {
     this.stops.push(options.messages.subscribe(changed('messages')), options.taskStore.subscribe(changed('tasks')), this.sessions.subscribe(changed('sessions')));
     const app = express(); app.use(express.json({ limit: '2mb' }));
     app.use((req, res, next) => {
-      if (req.headers['x-termdock-integration-protocol'] !== String(INTEGRATION_PROTOCOL)) { res.status(409).json({ ...this.error(new CollaborationError('INCOMPATIBLE_INTEGRATION_PROTOCOL', 'Unsupported integration protocol', 409)), protocol: INTEGRATION_PROTOCOL }); return; }
+      if (req.headers['x-veymux-integration-protocol'] !== String(INTEGRATION_PROTOCOL)) { res.status(409).json({ ...this.error(new CollaborationError('INCOMPATIBLE_INTEGRATION_PROTOCOL', 'Unsupported integration protocol', 409)), protocol: INTEGRATION_PROTOCOL }); return; }
       next();
     });
     const run = (handler: (req: express.Request, res: express.Response) => unknown | Promise<unknown>): express.RequestHandler => async (req, res) => {
       try { const value = await handler(req, res); if (!res.headersSent) res.json(value); }
       catch (error) { res.status(error instanceof CollaborationError ? error.httpStatus : 500).json(this.error(error)); }
     };
-    const principal = (req: express.Request) => this.store.authenticate(String(req.headers['x-termdock-integration-id'] ?? ''), String(req.headers.authorization ?? '').replace(/^Bearer /, ''));
+    const principal = (req: express.Request) => this.store.authenticate(String(req.headers['x-veymux-integration-id'] ?? ''), String(req.headers.authorization ?? '').replace(/^Bearer /, ''));
     const admin = (req: express.Request) => {
-      const given = Buffer.from(String(req.headers['x-termdock-local-token'] ?? '')), expected = Buffer.from(options.adminToken ?? '');
+      const given = Buffer.from(String(req.headers['x-veymux-local-token'] ?? '')), expected = Buffer.from(options.adminToken ?? '');
       if (!expected.length || given.length !== expected.length || !timingSafeEqual(given, expected)) integrationError('INTEGRATION_ADMIN_REQUIRED', 'Local administration credential is required', 401);
     };
     app.get('/admin/storage', run(req => { admin(req); return { ...this.store.storageStatus(),
@@ -288,7 +288,7 @@ export class IntegrationRuntime {
     this.server = createServer(app);
   }
   capabilities() {
-    return { integration_protocol: INTEGRATION_PROTOCOL, server_version: getTermdockVersion(), service_id:this.options.serviceId, local_only: true,
+    return { integration_protocol: INTEGRATION_PROTOCOL, server_version: getVeymuxVersion(), service_id:this.options.serviceId, local_only: true,
       integration_principal: true, group_scoped_permissions: true, durable_event_push: true, session_access_tickets: true, session_access_readers:true,
       session_access_exclusive: true, session_access_state: true,
       event_ack_semantics: 'durable_received', correlated_task_responses: true, accepted_task_comments: true,
@@ -324,7 +324,7 @@ export class IntegrationRuntime {
       tmux_recovery_resource_admission: true, tmux_recovery_resource_admission_min_version: '1.4.325',
       tmux_recovery_pause_status: true, tmux_recovery_pause_status_min_version: '1.4.326',
       tmux_recovery_memory_psi_admission: true, tmux_recovery_memory_psi_admission_min_version: '1.4.326',
-      tmux_recovery_td_owned_resident_admission: true, tmux_recovery_td_owned_resident_admission_min_version: '1.4.326',
+      tmux_recovery_veymux_owned_resident_admission: true, tmux_recovery_veymux_owned_resident_admission_min_version: '1.4.326',
       session_recovery_binding_reconcile: process.platform === 'linux', session_recovery_binding_reconcile_min_version: '1.4.328',
       session_release_batch: true, session_release_batch_min_version: '1.4.325',
       permissions: INTEGRATION_OPERATIONS };
@@ -421,7 +421,7 @@ export class IntegrationRuntime {
   }
   private messageExtras(raw: Record<string, any>) {
     if (typeof raw.idempotency_key !== 'string' || !raw.idempotency_key.trim()) integrationError('IDEMPOTENCY_KEY_REQUIRED', 'Integration message mutations require an explicit idempotency key');
-    if (raw.task || raw.task_envelope || raw.metadata?.termdockTask) integrationError('INTEGRATION_OPERATION_DENIED', 'Ordinary messages cannot forge task envelopes', 403);
+    if (raw.task || raw.task_envelope || raw.metadata?.veymuxTask) integrationError('INTEGRATION_OPERATION_DENIED', 'Ordinary messages cannot forge task envelopes', 403);
     return { idempotencyKey: raw.idempotency_key, responseKind: raw.response_kind, metadata: raw.metadata, expiresAt: raw.expires_at };
   }
   private origin(p: IntegrationPrincipal, input: unknown): TaskOrigin {
@@ -460,7 +460,7 @@ export class IntegrationRuntime {
           task_id: task.id, attempt_id: delivery.attemptId, message_id: delivery.messageId, source: 'system', payload: { delivery } } });
       }
       for (const { message, receipt } of sources.has('messages') ? this.options.messages.snapshotMessagesWithReceipts(groups) : []) {
-        const link = message.metadata?.termdockTask as { taskId?: string; attemptId?: string; replyToEventId?: string } | undefined;
+        const link = message.metadata?.veymuxTask as { taskId?: string; attemptId?: string; replyToEventId?: string } | undefined;
         const context = { group_id: message.groupId, task_id: link?.taskId ?? null, attempt_id: link?.attemptId ?? null,
           reply_to_event_id: link?.replyToEventId ?? null, message_id: message.id, source: message.integrationOrigin ? 'integration' : message.fromSessionId ? 'member' : 'system',
           actor: message.integrationOrigin ? { integration_id: message.integrationOrigin.integrationId } : message.fromSessionId ? { session_id: message.fromSessionId } : null,
@@ -543,7 +543,7 @@ export class IntegrationRuntime {
   async listen(): Promise<void> {
     fs.mkdirSync(path.dirname(this.options.socketPath), { recursive: true, mode: 0o700 });
     const directory = path.dirname(this.options.socketPath);
-    if (directory.startsWith('/tmp/td-integration-')) {
+    if (directory.startsWith('/tmp/veymux-integration-')) {
       const stat = fs.lstatSync(directory);
       if (!stat.isDirectory() || (process.getuid && stat.uid !== process.getuid())) {
         integrationError('INTEGRATION_SOCKET_DIRECTORY_INVALID', 'Socket directory must be private and owned by this user');

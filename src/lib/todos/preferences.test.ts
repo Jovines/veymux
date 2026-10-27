@@ -8,7 +8,7 @@ it('remembers successful choices across reloads, scopes them to the service, and
   rememberTodoChoice('one', { agentSlug: 'claude', command: 'claude', cwd: '/work/two', prompt: 'different instructions' });
   expect(readTodoPreferences('one')).toEqual({ choice: { agentSlug: 'claude', command: 'claude', cwd: '/work/two' }, directories: ['/work/two', '/work/one'] });
   expect(readTodoPreferences('two')).toEqual({ directories: [] });
-  expect(localStorage.getItem('termdock:todo-preferences:v1:one')).not.toContain('instructions');
+  expect(localStorage.getItem('veymux:todo-preferences:v1:one')).not.toContain('instructions');
 });
 it('keeps current and previously used directories available and removes duplicate paths', () => {
   rememberTodoChoice('one', { agentSlug: 'codex', command: 'codex', cwd: '/work/recent', prompt: '' });
@@ -16,8 +16,8 @@ it('keeps current and previously used directories available and removes duplicat
   expect(todoDirectoryChoices('/work/current/', ['/work/current', '/work/session'], data, 'one')).toEqual(['/work/current', '/work/recent', '/work/default', '/work/run', '/work/session', '/work/collector']);
 });
 it('recovers from invalid stored preferences without blocking forms', () => {
-  localStorage.setItem('termdock:todo-preferences:v1:broken', '{');
+  localStorage.setItem('veymux:todo-preferences:v1:broken', '{');
   expect(readTodoPreferences('broken')).toEqual({ directories: [] });
-  localStorage.setItem('termdock:todo-preferences:v1:broken', JSON.stringify({ choice: { cwd: 42 }, directories: [null, false, '/valid/'] }));
+  localStorage.setItem('veymux:todo-preferences:v1:broken', JSON.stringify({ choice: { cwd: 42 }, directories: [null, false, '/valid/'] }));
   expect(readTodoPreferences('broken')).toEqual({ choice: undefined, directories: ['/valid'] });
 });

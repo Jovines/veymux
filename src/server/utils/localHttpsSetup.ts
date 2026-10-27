@@ -33,7 +33,7 @@ const runTool: RunTool = async (file, args, options) => {
 
 export async function downloadVerifiedExecutable(url: string, sha256: string, target: string, fetcher = fetch): Promise<void> {
   const response = await fetcher(url, { signal: AbortSignal.timeout(120_000) });
-  if (!response.ok) throw new Error(`mkcert download returned HTTP ${response.status}. Install mkcert manually and retry td --setup-local-https.`);
+  if (!response.ok) throw new Error(`mkcert download returned HTTP ${response.status}. Install mkcert manually and retry veymux --setup-local-https.`);
   if (Number(response.headers.get('content-length')) > 20 * 1024 * 1024) throw new Error('mkcert download is unexpectedly large');
   const chunks: Uint8Array[] = []; let size = 0;
   if (!response.body) throw new Error('Empty mkcert download');
@@ -65,7 +65,7 @@ export async function ensureMkcert(options: {
 } = {}): Promise<string> {
   const find = options.find ?? findExecutable, run = options.run ?? runTool;
   const home = options.home ?? os.homedir();
-  const target = path.join(home, '.termdock/bin/mkcert');
+  const target = path.join(home, '.veymux/bin/mkcert');
   // Check our own location explicitly, including when HOME/PATH is restricted.
   const existing = find('mkcert') || (fs.existsSync(target) ? target : null);
   if (existing) {
@@ -81,12 +81,12 @@ export async function ensureMkcert(options: {
   try {
     await (options.download ?? downloadVerifiedExecutable)(url, checksum, target);
     await run(target, ['--version'], { timeout: 5000 });
-  } catch (error) { throw new Error(`Could not prepare mkcert: ${String(error)}. Install mkcert manually and retry td --setup-local-https.`, { cause: error }); }
+  } catch (error) { throw new Error(`Could not prepare mkcert: ${String(error)}. Install mkcert manually and retry veymux --setup-local-https.`, { cause: error }); }
   return target;
 }
 
 export function localHttpsPaths(directory: string) {
-  return { cert: path.join(directory, 'termdock-local.pem'), key: path.join(directory, 'termdock-local-key.pem'), ca: path.join(directory, 'rootCA.pem') };
+  return { cert: path.join(directory, 'veymux-local.pem'), key: path.join(directory, 'veymux-local-key.pem'), ca: path.join(directory, 'rootCA.pem') };
 }
 
 export function inspectLocalCertificate(files: ReturnType<typeof localHttpsPaths>, names: string[], now = Date.now()) {
@@ -157,7 +157,7 @@ export async function setupLocalHttps(options: {
       catch { /* An explicit setup may repair a damaged CA; automatic renewal may not replace it. */ }
     }
     const caChanged = hadCa && oldFingerprint !== verified.ca.fingerprint256;
-    if (caChanged && options.allowCaChange === false) throw new Error('Automatic renewal would replace the trusted CA. Restore its mkcert CAROOT/private key, or explicitly run td --setup-local-https to replace it and trust it again.');
+    if (caChanged && options.allowCaChange === false) throw new Error('Automatic renewal would replace the trusted CA. Restore its mkcert CAROOT/private key, or explicitly run veymux --setup-local-https to replace it and trust it again.');
     const keys = ['cert', 'key', 'ca'] as const;
     const backups = new Map(keys.map(key => [key, fs.existsSync(files[key]) ? fs.readFileSync(files[key]) : undefined]));
     for (const key of keys) fs.chmodSync(candidate[key], 0o600);

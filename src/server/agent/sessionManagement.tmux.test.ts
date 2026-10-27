@@ -7,7 +7,7 @@ import { closeSessionRuntime, foregroundProcessInstance, processStartIdentity, t
 const exec = promisify(execFile), sockets: string[] = [];
 afterEach(async () => { for (const socket of sockets.splice(0)) await exec('tmux', ['-L', socket, 'kill-server']).catch(() => {}); });
 it.skipIf(process.platform !== 'linux')('closes the exact real tmux shell and observes process exit before removing registration', async () => {
-  const socket = `td-management-${randomUUID().slice(0, 8)}`; sockets.push(socket);
+  const socket = `veymux-management-${randomUUID().slice(0, 8)}`; sockets.push(socket);
   const tmux = (args: string[]) => exec('tmux', ['-L', socket, ...args], { timeout: 3000 });
   await tmux(['new-session', '-d', '-s', 'owner', '-x', '80', '-y', '24', '/bin/sh']);
   const fields = (await tmux(['display-message', '-p', '-t', 'owner', '#{pid}|#{session_id}|#{pane_id}|#{pane_pid}'])).stdout.trim().split('|');

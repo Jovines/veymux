@@ -12,7 +12,7 @@ import { chatProgramName } from '../shared/chatProgramPolicy';
 const clean: (() => void)[] = [];
 afterEach(() => clean.splice(0).reverse().forEach(fn => fn()));
 it('shares a canonical Session preference across clients and reloads, without affecting another Session', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'td-mode-')); clean.push(() => rmSync(dir, { recursive: true, force: true }));
+  const dir = mkdtempSync(join(tmpdir(), 'veymux-mode-')); clean.push(() => rmSync(dir, { recursive: true, force: true }));
   const path = join(dir, 'modes.json'), store = new SessionViewModeStore(path);
   const app = express(); app.use(express.json()); app.use((req, _res, next) => { markEncryptedRequest(req, String(req.headers['test-device'] || 'first')); next(); });
   const mirror = vi.fn(async () => {});
@@ -33,7 +33,7 @@ it('shares a canonical Session preference across clients and reloads, without af
   expect(resolveAccessRequest('PUT', '/api/terminal/frontend/view-mode')).toEqual({ action: 'session.view', sessionId: 'frontend' });
 });
 it('checks live and proposed commands without changing the preference, and keeps the endpoint encrypted', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'td-mode-eligibility-')); clean.push(() => rmSync(dir, { recursive: true, force: true }));
+  const dir = mkdtempSync(join(tmpdir(), 'veymux-mode-eligibility-')); clean.push(() => rmSync(dir, { recursive: true, force: true }));
   const store = new SessionViewModeStore(join(dir, 'modes.json'));
   let live = 'cat codex.md';
   const app = express(); app.use((req, _res, next) => { if (req.headers['test-device']) markEncryptedRequest(req, 'owner'); next(); });

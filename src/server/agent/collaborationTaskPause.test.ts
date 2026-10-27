@@ -15,7 +15,7 @@ let dir: string, store: CollaborationTaskStore;
 const apply = (id: string, operation: Omit<TaskOperation, 'idempotencyKey'>, actor: TaskMember | null = null) =>
   store.apply(id, { ...operation, idempotencyKey: randomUUID() }, actor);
 
-beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'termdock-paused-decisions-')); store = new CollaborationTaskStore(join(dir, 'tasks.json')); });
+beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'veymux-paused-decisions-')); store = new CollaborationTaskStore(join(dir, 'tasks.json')); });
 afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
 
 it.each(['root', 'step'] as const)('persists answers and approved plans but gates the real flush while the %s is paused', async pauseAt => {

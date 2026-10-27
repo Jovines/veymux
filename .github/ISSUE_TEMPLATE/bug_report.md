@@ -18,7 +18,7 @@ assignees: ''
 
 ## Environment / 环境
 
-- Termdock CLI version (`td --version`):
+- Veymux CLI version (`veymux --version`):
 - macOS app version (if applicable / 如适用):
 - Service OS and Node.js version / 服务系统与 Node.js 版本:
 - Client OS and browser version / 客户端系统与浏览器版本:
@@ -29,4 +29,4 @@ assignees: ''
 ## Logs or screenshots / 日志或截图
 
 <!-- Remove passwords, cookies, tokens, invitation links, private keys and personal data. -->
-<!-- 隐藏密码、Cookie、令牌、邀请链接、私钥与私人数据，不要上传整个 ~/.termdock。 -->
+<!-- 隐藏密码、Cookie、令牌、邀请链接、私钥与私人数据，不要上传整个 ~/.veymux。 -->

@@ -37,7 +37,7 @@ vi.mock('../terminal/TerminalViewport', async () => ({
     return <div data-testid={`viewport-${props.sessionId}`} />;
   }),
 }));
-vi.mock('../../terminal/factory', () => ({ createTermdockAPI: () => ({
+vi.mock('../../terminal/factory', () => ({ createVeymuxAPI: () => ({
   sendInput: env.send,
   connect: (id: string, handlers: TerminalHandlers) => {
     env.streams.set(id, handlers);
@@ -146,7 +146,7 @@ it('cancels without input and keeps collaboration routing local', async () => {
   } finally { unregister(); }
 });
 it('keeps a context draft local and confirms its acceptance without terminal input', async () => {
-  localStorage.setItem('termdock:right-sidebar:context-draft-enabled:v1', 'true');
+  localStorage.setItem('veymux:right-sidebar:context-draft-enabled:v1', 'true');
   mount(); const insert = await prepare(); fireEvent.click(insert);
   await screen.findByText('Review the current input or context draft, then send it to your Agent.');
   expect(env.send).not.toHaveBeenCalled();
@@ -220,8 +220,8 @@ it.each(['screenshot', 'recording'])('inserts Android %s from the sidebar into i
   expect(env.send.mock.calls[0]).toEqual(['backend-alpha', kind === 'screenshot' ? '\x1b[200~/tmp/shot.png \x1b[201~' : '\x1b[200~/tmp/screen.mp4 \x1b[201~']);
 });
 it.each([false, true])('delivers the context draft from its visible action with explicit submit=%s', async submit => {
-  localStorage.setItem('termdock:right-sidebar:context-draft-enabled:v1', 'true');
-  localStorage.setItem('termdock:right-sidebar:context-draft-text:v1', JSON.stringify('draft line 1\ndraft line 2'));
+  localStorage.setItem('veymux:right-sidebar:context-draft-enabled:v1', 'true');
+  localStorage.setItem('veymux:right-sidebar:context-draft-text:v1', JSON.stringify('draft line 1\ndraft line 2'));
   useSidebarStore.setState({ rightTab: 'files' });
   mount({ width: 390, suspended: true, allowOwnedPaste: true });
   fireEvent.click(await screen.findByRole('button', { name: submit ? 'Send draft' : 'Insert' }));

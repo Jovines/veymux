@@ -47,7 +47,7 @@ describe('desktop service metadata', () => {
   it('accepts a route-only invitation only for its exact pinned entry and target', () => {
     const connection = serviceConnection({ url: 'https://b.example', targetPeerId: peer, entryServiceId: entry });
     const descriptor = { v: 1, routeOnly: true, serviceId: peer, entryServiceId: entry, entryUrl: connection.url, routeCode: 'x'.repeat(43) };
-    const url = connection.url + '/#termdock-invite=' + Buffer.from(JSON.stringify(descriptor)).toString('base64url');
+    const url = connection.url + '/#veymux-invite=' + Buffer.from(JSON.stringify(descriptor)).toString('base64url');
     expect(invitationForService(url, connection)).toBe(url);
     expect(() => invitationForService(url, { ...connection, targetPeerId: entry })).toThrow();
   });

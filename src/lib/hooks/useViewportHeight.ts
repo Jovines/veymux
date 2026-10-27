@@ -10,8 +10,8 @@ interface UseViewportHeightOptions {
 
 const KEYBOARD_OPEN_THRESHOLD_PX = 80;
 const BASE_WIDTH_CHANGE_THRESHOLD_PX = 60;
-const KEYBOARD_CHANGE_EVENT = 'termdock:viewport-keyboard-change';
-export const VIEWPORT_LAYOUT_CHANGE_EVENT = 'termdock:viewport-layout-change';
+const KEYBOARD_CHANGE_EVENT = 'veymux:viewport-keyboard-change';
+export const VIEWPORT_LAYOUT_CHANGE_EVENT = 'veymux:viewport-layout-change';
 const MIN_BOOTSTRAP_VIEWPORT_HEIGHT_PX = 240;
 const DEFAULT_BOOTSTRAP_VIEWPORT_HEIGHT_PX = 640;
 const DEFAULT_BOOTSTRAP_VIEWPORT_WIDTH_PX = 360;
@@ -138,7 +138,7 @@ const getIOSStandaloneSafeAreaFallback = (): SafeAreaInsets => {
   const logicalHeight = Math.max(screenWidth, screenHeight);
 
   if (logicalWidth >= 700) {
-    const nativeStatusBar = viewportWindow().document.documentElement.dataset.termdockPwaStatusBar === 'default';
+    const nativeStatusBar = viewportWindow().document.documentElement.dataset.veymuxPwaStatusBar === 'default';
     return { top: nativeStatusBar ? 0 : 20, right: 0, bottom: 20, left: 0 };
   }
 
@@ -161,13 +161,13 @@ const getIOSStandaloneSafeAreaFallback = (): SafeAreaInsets => {
 export function syncInitialViewportCssVars(cssVarName = '--app-vh'): void {
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
 
-  document.documentElement.dataset.termdockTouchViewport = String(
+  document.documentElement.dataset.veymuxTouchViewport = String(
     usesTouchTerminalLayout() || viewportWindow().innerWidth <= 768,
   );
-  document.documentElement.dataset.termdockNativeKeyboard = String(usesNativeKeyboardLayout());
-  document.documentElement.dataset.termdockNativePan = 'false';
-  document.documentElement.dataset.termdockIpadPwa = String(
-    document.documentElement.dataset.termdockPwaStatusBar === 'default' && isStandaloneDisplay(),
+  document.documentElement.dataset.veymuxNativeKeyboard = String(usesNativeKeyboardLayout());
+  document.documentElement.dataset.veymuxNativePan = 'false';
+  document.documentElement.dataset.veymuxIpadPwa = String(
+    document.documentElement.dataset.veymuxPwaStatusBar === 'default' && isStandaloneDisplay(),
   );
 
   const visualViewportHeight = toPositivePx(viewportWindow().visualViewport?.height);
@@ -346,11 +346,11 @@ export function useViewportHeight(options: UseViewportHeightOptions = {}): numbe
 
     const syncViewportHeight = (source = 'event') => {
       rafId = null;
-      document.documentElement.dataset.termdockNativeKeyboard = String(usesNativeKeyboardLayout());
+      document.documentElement.dataset.veymuxNativeKeyboard = String(usesNativeKeyboardLayout());
       const nativePan = usesNativeKeyboardLayout() ? measureNativePagePan() : 0;
       document.documentElement.style.setProperty('--app-native-pan', `${nativePan}px`);
-      document.documentElement.dataset.termdockNativePan = String(nativePan > 0);
-      document.documentElement.dataset.termdockTouchViewport = String(
+      document.documentElement.dataset.veymuxNativePan = String(nativePan > 0);
+      document.documentElement.dataset.veymuxTouchViewport = String(
         usesTouchTerminalLayout() || viewportWindow().innerWidth <= 768,
       );
       const nextHeight = getViewportHeight();

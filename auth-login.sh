@@ -3,25 +3,25 @@
 set -euo pipefail
 umask 077
 
-HOST="${TERMDOCK_HOST:-localhost}"
-PORT="${TERMDOCK_PORT:-9834}"
-BASE_URL="${TERMDOCK_URL:-http://${HOST}:${PORT}}"
-COOKIE_JAR="${TERMDOCK_COOKIE_JAR:-$HOME/.termdock/automation.cookies}"
-CACERT="${TERMDOCK_CACERT:-}"
+HOST="${VEYMUX_HOST:-localhost}"
+PORT="${VEYMUX_PORT:-9834}"
+BASE_URL="${VEYMUX_URL:-http://${HOST}:${PORT}}"
+COOKIE_JAR="${VEYMUX_COOKIE_JAR:-$HOME/.veymux/automation.cookies}"
+CACERT="${VEYMUX_CACERT:-}"
 
 usage() {
   cat <<'EOF'
 Usage: auth-login.sh [--url <base-url>] [--host <host>] [--port <port>] [--cacert <path>] [--cookie-jar <path>]
 
-Login to Termdock using existing password and persist session cookie for automation.
+Login to Veymux using existing password and persist session cookie for automation.
 
 Env:
-  TERMDOCK_PASSWORD   Required when auth is enabled.
-  TERMDOCK_URL        Full base URL (e.g. https://jovn.termdock.local:9834)
-  TERMDOCK_HOST       Default host when TERMDOCK_URL is unset (default: localhost)
-  TERMDOCK_PORT       Default port when TERMDOCK_URL is unset (default: 9834)
-  TERMDOCK_CACERT     CA certificate for HTTPS curl requests
-  TERMDOCK_COOKIE_JAR Cookie jar path (default: ~/.termdock/automation.cookies)
+  VEYMUX_PASSWORD   Required when auth is enabled.
+  VEYMUX_URL        Full base URL (e.g. https://jovn.veymux.local:9834)
+  VEYMUX_HOST       Default host when VEYMUX_URL is unset (default: localhost)
+  VEYMUX_PORT       Default port when VEYMUX_URL is unset (default: 9834)
+  VEYMUX_CACERT     CA certificate for HTTPS curl requests
+  VEYMUX_COOKIE_JAR Cookie jar path (default: ~/.veymux/automation.cookies)
 EOF
 }
 
@@ -71,9 +71,9 @@ fi
 
 mkdir -p "$(dirname "$COOKIE_JAR")"
 
-status_body="$(mktemp -t termdock-auth-status.XXXXXX)"
-status_with_cookie_body="$(mktemp -t termdock-auth-status-cookie.XXXXXX)"
-login_body="$(mktemp -t termdock-auth-login.XXXXXX)"
+status_body="$(mktemp -t veymux-auth-status.XXXXXX)"
+status_with_cookie_body="$(mktemp -t veymux-auth-status-cookie.XXXXXX)"
+login_body="$(mktemp -t veymux-auth-login.XXXXXX)"
 cleanup() {
   rm -f "$status_body" "$status_with_cookie_body" "$login_body"
 }
@@ -99,13 +99,13 @@ if [ -s "$COOKIE_JAR" ]; then
   fi
 fi
 
-if [ -z "${TERMDOCK_PASSWORD:-}" ]; then
-  printf 'No valid automation cookie found, and TERMDOCK_PASSWORD is empty.\n' >&2
-  printf 'Set TERMDOCK_PASSWORD to refresh login, e.g. export TERMDOCK_PASSWORD="<your-existing-termdock-password>"\n' >&2
+if [ -z "${VEYMUX_PASSWORD:-}" ]; then
+  printf 'No valid automation cookie found, and VEYMUX_PASSWORD is empty.\n' >&2
+  printf 'Set VEYMUX_PASSWORD to refresh login, e.g. export VEYMUX_PASSWORD="<your-existing-veymux-password>"\n' >&2
   exit 1
 fi
 
-payload="$(node -e 'console.log(JSON.stringify({ password: process.env.TERMDOCK_PASSWORD || "" }))')"
+payload="$(node -e 'console.log(JSON.stringify({ password: process.env.VEYMUX_PASSWORD || "" }))')"
 login_code="$(curl "${CURL_OPTS[@]}" -o "$login_body" -w '%{http_code}' \
   -H 'Content-Type: application/json' \
   -c "$COOKIE_JAR" \

@@ -86,10 +86,10 @@ pub fn publish(app: &AppHandle) {
         let value = summary(app, Some(window.label()));
         emit(
             window,
-            "termdock:preview-activity",
+            "veymux:preview-activity",
             value["services"].clone(),
         );
-        emit(window, "termdock:preview-status", value);
+        emit(window, "veymux:preview-status", value);
     }
     if let Err(error) = refresh_tray(app) {
         eprintln!("Preview tray: {error}");
@@ -194,7 +194,7 @@ pub fn install_menu(app: &AppHandle) -> Result<(), String> {
         if group == "应用" {
             for (id, label) in [
                 ("check-update", "检查更新…"),
-                ("data-directory", "打开 Termdock 数据目录"),
+                ("data-directory", "打开 Veymux 数据目录"),
             ] {
                 submenu
                     .append(
@@ -295,7 +295,7 @@ pub fn menu_event(app: &AppHandle, id: &str) {
         }
         "data-directory" => {
             let _ = crate::local_service::home()
-                .and_then(|h| open::that(h.join(".termdock")).map_err(|e| e.to_string()));
+                .and_then(|h| open::that(h.join(".veymux")).map_err(|e| e.to_string()));
         }
         "check-update" => {
             let app = app.clone();
@@ -358,7 +358,7 @@ pub fn menu_event(app: &AppHandle, id: &str) {
                 tauri::async_runtime::spawn(async move {
                     if let Err(error) = shell::open_connection(&app, c, None).await {
                         let _ = shell::show_center(&app);
-                        shell::announce(&app, "termdock:preview-error", json!(error));
+                        shell::announce(&app, "veymux:preview-error", json!(error));
                     }
                 });
             }
@@ -366,14 +366,14 @@ pub fn menu_event(app: &AppHandle, id: &str) {
         id => {
             if let Some(window) = focused(app) {
                 match id {
-                    "settings" => emit(&window, "termdock:open-settings", Value::Null),
+                    "settings" => emit(&window, "veymux:open-settings", Value::Null),
                     "reload" => {
-                        let _ = window.eval("window.termdockDesktop?.reloadWorkspace ? void window.termdockDesktop.reloadWorkspace() : location.reload()");
+                        let _ = window.eval("window.veymuxDesktop?.reloadWorkspace ? void window.veymuxDesktop.reloadWorkspace() : location.reload()");
                     }
                     "force-reload" => {
                         // Assets use no-store at the boundary. Refresh the signed
                         // app's current worker too; never disable background support.
-                        let _=window.eval("window.termdockDesktop?.reloadWorkspace ? void window.termdockDesktop.reloadWorkspace({force:true}) : location.reload()");
+                        let _=window.eval("window.veymuxDesktop?.reloadWorkspace ? void window.veymuxDesktop.reloadWorkspace({force:true}) : location.reload()");
                     }
                     "zoom-in" | "zoom-out" | "reset-zoom" => {
                         let shell = state(app);
@@ -390,7 +390,7 @@ pub fn menu_event(app: &AppHandle, id: &str) {
                         #[cfg(target_os = "macos")]
                         shell::align_titlebar(&window, *zoom);
                     }
-                    command => emit(&window, "termdock:native-command", json!(command)),
+                    command => emit(&window, "veymux:native-command", json!(command)),
                 }
             } else if id == "close-session" {
                 if let Some(w) = app.get_webview_window("center") {

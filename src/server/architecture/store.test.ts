@@ -17,32 +17,32 @@ const sample = (): ArchitectureDocument => ({ version: 1, generatedAt: '2026-10-
   { id: 'security', title: 'Security', summary: 'Encryption', nodes: [{ id: 'encryption', title: 'Encryption', summary: 'AEAD', files: [], note: 'Protect inputs.' }], edges: [] },
 ] });
 let root: string, store: ArchitectureStore;
-beforeEach(async () => { root = await fs.mkdtemp(path.join(os.tmpdir(), 'termdock-architecture-test-')); store = new ArchitectureStore(root); });
+beforeEach(async () => { root = await fs.mkdtemp(path.join(os.tmpdir(), 'veymux-architecture-test-')); store = new ArchitectureStore(root); });
 afterEach(async () => { await fs.rm(root, { recursive: true, force: true }); });
 describe('architecture persistence and upstream interchange', () => {
   it('saves rich recursive documents, retains semantic history and rejects concurrent stale edits', async () => {
-    const first = await store.save('.termdock/architecture.json', sample(), null);
+    const first = await store.save('.veymux/architecture.json', sample(), null);
     const updated = updateArchitectureField(first.document!, 'overall', 'server', 'description', '# Server\n\nChanged description.');
-    const results = await Promise.allSettled([store.save('.termdock/architecture.json', updated, first.revision), store.save('.termdock/architecture.json', updateArchitectureField(first.document!, 'overall', 'server', 'description', 'Another edit'), first.revision)]);
+    const results = await Promise.allSettled([store.save('.veymux/architecture.json', updated, first.revision), store.save('.veymux/architecture.json', updateArchitectureField(first.document!, 'overall', 'server', 'description', 'Another edit'), first.revision)]);
     expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1);
     const failed = results.find(result => result.status === 'rejected') as PromiseRejectedResult;
     expect(failed.reason).toBeInstanceOf(ArchitectureConflict);
     const second = await store.read();
     expect(second.document!.meta!.updateCount).toBe(2);
     expect(second.document!.perspectives[0].nodes.find(node => node.id === 'auth')!.meta!.updateCount).toBe(1);
-    const history = await store.history('.termdock/architecture.json');
+    const history = await store.history('.veymux/architecture.json');
     expect(history).toHaveLength(1);
     expect(history[0].changes).toEqual(expect.arrayContaining([expect.objectContaining({ node: 'server', fields: expect.arrayContaining(['description']) })]));
-    expect((await store.historical('.termdock/architecture.json', history[0].id)).perspectives[0].nodes[0].description).toContain('API and worker');
-    await store.save('.termdock/architecture.json', { ...second.document!, summary: 'Updated project overview' }, second.revision);
-    const overviewHistory = await store.history('.termdock/architecture.json');
+    expect((await store.historical('.veymux/architecture.json', history[0].id)).perspectives[0].nodes[0].description).toContain('API and worker');
+    await store.save('.veymux/architecture.json', { ...second.document!, summary: 'Updated project overview' }, second.revision);
+    const overviewHistory = await store.history('.veymux/architecture.json');
     expect(overviewHistory[0].changes).toContainEqual({ perspective: '', title: 'Project overview', kind: 'changed', fields: ['summary'] });
     expect((await store.read()).document!.perspectives[0].meta).toEqual(second.document!.perspectives[0].meta);
   });
   it('does not create revisions, change update counts or rewrite fields for unchanged content', async () => {
-    const first = await store.save('.termdock/architecture.json', sample());
-    expect(await store.save('.termdock/architecture.json', sample(), first.revision)).toEqual(first);
-    expect(await store.history('.termdock/architecture.json')).toEqual([]);
+    const first = await store.save('.veymux/architecture.json', sample());
+    expect(await store.save('.veymux/architecture.json', sample(), first.revision)).toEqual(first);
+    expect(await store.history('.veymux/architecture.json')).toEqual([]);
     await store.writeOmmField('overall', 'description', 'Description');
     const before = await store.read('.omm');
     expect(await store.writeOmmField('overall', 'description', 'Description', before.revision)).toEqual(before);
@@ -73,7 +73,7 @@ describe('architecture persistence and upstream interchange', () => {
     const many = Array.from({ length: 201 }, (_, index) => `node${index}["Node"]`).join('\n');
     await expect(store.importOmmBundle({ ...bundle, files: { 'overall/description.md': 'changed', 'overall/diagram.mmd': `graph LR\n${many}` } })).rejects.toThrow('limit');
     expect(await store.exportOmmBundle()).toEqual(before);
-    const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'termdock-outside-test-'));
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'veymux-outside-test-'));
     try { await fs.symlink(outside, path.join(root, '.omm', 'escape')); await expect(store.writeOmmField('escape', 'note', 'secret')).rejects.toThrow('symlink'); expect(await fs.readdir(outside)).toEqual([]); } finally { await fs.rm(outside, { recursive: true, force: true }); }
   });
   it('edits diagrams without losing retained descendant documents and rejects deleting referenced nodes', () => {
@@ -88,7 +88,7 @@ describe('architecture persistence and upstream interchange', () => {
     const io = { write: (value: string) => output.push(value), stdin: async () => JSON.stringify(sample()) };
     const run = (...args: string[]) => runArchitectureCli([...args, '--project', root], io);
     expect(await run('save', '-')).toBe(0);
-    expect(await run('export', '--format', 'omm', '--file', '.termdock/architecture.json')).toBe(0);
+    expect(await run('export', '--format', 'omm', '--file', '.veymux/architecture.json')).toBe(0);
     await store.importOmmBundle(JSON.parse(output.at(-1)!));
     expect(await run('read', 'overall/server/api/auth', 'todo', '--format', 'omm')).toBe(0); expect(output.at(-1)).toBe('- [ ] Audit');
     expect(await run('tree', '--format', 'omm')).toBe(0); expect(output.join('\n')).toContain('    api');
@@ -108,8 +108,8 @@ describe('architecture persistence and upstream interchange', () => {
     expect(await run('prompt', '--format', 'omm')).toBe(0);
     expect(output.at(-1)).toContain('分析当前项目并递归更新');
     expect(await run('setup', 'codex')).toBe(0);
-    expect(await fs.readFile(path.join(root, '.agents/skills/termdock-architecture/SKILL.md'), 'utf8')).toContain('inspect the actual code for EVERY node');
+    expect(await fs.readFile(path.join(root, '.agents/skills/veymux-architecture/SKILL.md'), 'utf8')).toContain('inspect the actual code for EVERY node');
     expect(await run('setup', 'codex', '--teardown')).toBe(0);
-    await expect(fs.stat(path.join(root, '.agents/skills/termdock-architecture/SKILL.md'))).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(fs.stat(path.join(root, '.agents/skills/veymux-architecture/SKILL.md'))).rejects.toMatchObject({ code: 'ENOENT' });
   });
 });

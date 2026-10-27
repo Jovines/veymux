@@ -13,7 +13,7 @@ import { secureSocket } from '../federation/browserIntegration';
 // lazily on first subscribe so SSR / non-browser contexts are safe.
 
 import type { PersistedTerminalClientSession, SessionInventory } from '../terminal';
-import type { ServerHealthState, TermdockUpdateState } from '../terminal/api';
+import type { ServerHealthState, VeymuxUpdateState } from '../terminal/api';
 
 export interface ClientStateSnapshot {
   sessions: PersistedTerminalClientSession[];
@@ -51,7 +51,7 @@ export interface ControlPinnedExplorerRootsEvent {
 
 export interface ControlUpdateStateEvent {
   type: 'update-state';
-  state: TermdockUpdateState;
+  state: VeymuxUpdateState;
 }
 
 export interface ControlServerHealthEvent {
@@ -200,7 +200,7 @@ function connect(): void {
 
   ws.onmessage = (event) => {
     lastServerPingAt = Date.now();
-    let msg: { sessions?: { sessionId: string; index: import('../../server/shared/sessionChatAttention').SessionChatIndex }[]; type?: string; state?: ClientStateSnapshot | TermdockUpdateState | ServerHealthState; inventory?: SessionInventory; seq?: number; key?: string; updatedAt?: number; text?: string; origin?: string | null; pinnedExplorerRoots?: unknown; id?: unknown; sessionId?: unknown; sessionName?: unknown; message?: unknown; title?: unknown; createdAt?: unknown } | null = null;
+    let msg: { sessions?: { sessionId: string; index: import('../../server/shared/sessionChatAttention').SessionChatIndex }[]; type?: string; state?: ClientStateSnapshot | VeymuxUpdateState | ServerHealthState; inventory?: SessionInventory; seq?: number; key?: string; updatedAt?: number; text?: string; origin?: string | null; pinnedExplorerRoots?: unknown; id?: unknown; sessionId?: unknown; sessionName?: unknown; message?: unknown; title?: unknown; createdAt?: unknown } | null = null;
     try {
       msg = JSON.parse(event.data as string);
     } catch {
@@ -224,11 +224,11 @@ function connect(): void {
       return;
     }
     if (msg.type === 'update-state') {
-      const state = msg.state as Partial<TermdockUpdateState> | undefined;
+      const state = msg.state as Partial<VeymuxUpdateState> | undefined;
       if (!state || typeof state.status !== 'string' || typeof state.currentVersion !== 'string') return;
       const updateEvent: ControlUpdateStateEvent = {
         type: 'update-state',
-        state: state as TermdockUpdateState,
+        state: state as VeymuxUpdateState,
       };
       for (const listener of sync.listeners) {
         try { listener(updateEvent); } catch (error) {

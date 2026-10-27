@@ -216,10 +216,10 @@ export class CollaborationStore {
    *  below actually skips it; production always uses the CSPRNG default. */
   constructor(private readonly filePath: string, private readonly drawId: () => string = drawCollaborationId,
     options: JsonStorageOptions & { historyBytes?: number } = {}) {
-    this.storage = new JsonStorageBudget(filePath, 'collaboration-messages', 'TERMDOCK_MESSAGE_STORAGE_MAX_BYTES', 512 * 1024 * 1024,
-      () => new CollaborationError('MESSAGE_STORAGE_FULL', '消息新增内容达到容量预算；待投递消息、投递确认和消费水位保留，请消费已有消息或调整 TERMDOCK_MESSAGE_STORAGE_MAX_BYTES', 503), options);
-    this.historyBytes = options.historyBytes ?? Number(process.env.TERMDOCK_MESSAGE_HISTORY_BYTES ?? 64 * 1024 * 1024);
-    if (!Number.isSafeInteger(this.historyBytes) || this.historyBytes < 1) throw new CollaborationError('INVALID_STORAGE_CONFIG', 'TERMDOCK_MESSAGE_HISTORY_BYTES must be a positive safe integer');
+    this.storage = new JsonStorageBudget(filePath, 'collaboration-messages', 'VEYMUX_MESSAGE_STORAGE_MAX_BYTES', 512 * 1024 * 1024,
+      () => new CollaborationError('MESSAGE_STORAGE_FULL', '消息新增内容达到容量预算；待投递消息、投递确认和消费水位保留，请消费已有消息或调整 VEYMUX_MESSAGE_STORAGE_MAX_BYTES', 503), options);
+    this.historyBytes = options.historyBytes ?? Number(process.env.VEYMUX_MESSAGE_HISTORY_BYTES ?? 64 * 1024 * 1024);
+    if (!Number.isSafeInteger(this.historyBytes) || this.historyBytes < 1) throw new CollaborationError('INVALID_STORAGE_CONFIG', 'VEYMUX_MESSAGE_HISTORY_BYTES must be a positive safe integer');
     let initializeChatAttention = false;
     try {
       const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8')) as Partial<CollaborationDocument>;
@@ -614,7 +614,7 @@ export class CollaborationStore {
     const recipients = group.sessionIds.filter(id => id !== updatedBy);
     if (recipients.length) {
       this.send({ groupId, fromSessionId: updatedBy, toSessionIds: recipients, kind: 'message',
-        content: `群规已${text.trim() ? '更新' : '清空'}（${instructions.version}），无需回复。\n查看群规:td collab rules get ${group.id} --text`,
+        content: `群规已${text.trim() ? '更新' : '清空'}（${instructions.version}），无需回复。\n查看群规:veymux collab rules get ${group.id} --text`,
       }); // Persists the revision and its notifications together.
     } else {
       this.persist();
@@ -835,7 +835,7 @@ export class CollaborationStore {
       extras.metadata = { ...extras.metadata, openui: { ...(extras.metadata?.openui as object), revision: 0 } };
       extras.responseKind = initialUI.streaming ? 'progress' : extras.responseKind ?? 'result';
     }
-    if (extras.task || extras.metadata?.termdockTask) throw new CollaborationError('INVALID_INTEGRATION_REPLY', 'Ordinary integration replies cannot carry task envelopes');
+    if (extras.task || extras.metadata?.veymuxTask) throw new CollaborationError('INVALID_INTEGRATION_REPLY', 'Ordinary integration replies cannot carry task envelopes');
     if (!extras.idempotencyKey) throw new CollaborationError('INVALID_IDEMPOTENCY_KEY', 'Integration replies require an idempotency key');
     if (typeof content !== 'string' || !content.trim()) throw new CollaborationError('INVALID_MESSAGE', 'Reply content must not be empty');
     if (Buffer.byteLength(content) > COLLAB_LIMITS.message_bytes) throw new CollaborationError('MESSAGE_TOO_LARGE', 'Reply exceeds 1 MiB', 413);
@@ -874,7 +874,7 @@ export class CollaborationStore {
       || reply.toPrincipalId !== original.integrationOrigin.integrationId) throw new CollaborationError('NOT_MESSAGE_RECIPIENT', 'Only the original recipient can update this chat reply', 403);
     const extras = validateExtras(input), previous = chatPresentation(reply.content, reply.metadata).ui;
     const next = typeof content === 'string' ? chatPresentation(content, extras.metadata).ui : null;
-    if (!extras.idempotencyKey || extras.task || extras.metadata?.termdockTask || extras.expiresAt != null || !Number.isSafeInteger(revision) || Number(revision) < 0
+    if (!extras.idempotencyKey || extras.task || extras.metadata?.veymuxTask || extras.expiresAt != null || !Number.isSafeInteger(revision) || Number(revision) < 0
       || !next || next.version !== 2 || Buffer.byteLength(content) > COLLAB_LIMITS.message_bytes) throw new CollaborationError('INVALID_UI_UPDATE', 'A UI update requires version 2 content, revision and an idempotency key');
     const key = JSON.stringify([original.groupId, `chat-ui-update:${sessionId}:${replyId}`, extras.idempotencyKey]);
     const hash = crypto.createHash('sha256').update(stableJson([originalId, replyId, revision, content, extras.metadata])).digest('hex');

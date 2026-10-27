@@ -22,7 +22,7 @@ function fixture(failedDevices: string[] = []) {
     Buffer,
     setTimeout,
     fs: { constants: fs.constants, openSync, writeSync, closeSync: vi.fn(), existsSync: () => true,
-      readFileSync: () => Buffer.from('TERMDOCK=1\0') },
+      readFileSync: () => Buffer.from('VEYMUX=1\0') },
     process: { env: { TMUX: 'socket,1,0', TMUX_PANE: '%1' } },
     execFileSync: () => '/dev/pts/101\t101\n/dev/pts/102\t102\n',
   });

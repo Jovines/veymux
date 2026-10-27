@@ -18,7 +18,7 @@ async function responseError(response: Response, fallback: string): Promise<Erro
   return new Error(typeof body?.error === 'string' && body.error ? body.error : fallback);
 }
 
-/** Upload native desktop drops to the Termdock service loaded in this window. */
+/** Upload native desktop drops to the Veymux service loaded in this window. */
 export async function uploadDroppedFiles(
   files: File[],
   fetchRequest: typeof fetch = fetch,
@@ -59,7 +59,7 @@ export async function uploadDroppedFiles(
 
 export function buildClipboardImageFilename(uploadedAt = new Date()): string {
   const timestamp = uploadedAt.toISOString().replace(/[:.]/g, '-');
-  return `termdock-clipboard-${timestamp}.png`;
+  return `veymux-clipboard-${timestamp}.png`;
 }
 
 /** Upload a PNG read by the native desktop shell to the active service. */

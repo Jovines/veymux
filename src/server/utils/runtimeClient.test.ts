@@ -7,7 +7,7 @@ import { pinBundledRuntimeClientDist } from './runtimeClient.js';
 const temporaryDirectories: string[] = [];
 
 function tempDirectory(): string {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'termdock-runtime-client-'));
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-runtime-client-'));
   temporaryDirectories.push(directory);
   return directory;
 }

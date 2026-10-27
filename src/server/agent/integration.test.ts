@@ -28,7 +28,7 @@ import type { TaskOperation } from './collaborationTaskTypes.js';
 let dir: string;
 const resources: Array<() => unknown | Promise<unknown>> = [];
 const serviceId = `12D3KooW${'a'.repeat(40)}`, worker = { serviceId, sessionId: 'worker' };
-beforeEach(() => { dir = fs.mkdtempSync(path.join(tmpdir(), 'td-int-')); });
+beforeEach(() => { dir = fs.mkdtempSync(path.join(tmpdir(), 'veymux-int-')); });
 afterEach(async () => { for (const close of resources.splice(0).reverse()) await close(); fs.rmSync(dir, { recursive: true, force: true }); vi.useRealTimers(); });
 function policy(groupId = 'group'): IntegrationPolicy {
   return { id: 'bridge', groupId, permissions: ['task.read', 'task.create', 'task.assign', 'task.comment', 'task.revise', 'task.answer', 'events.read', 'session.create', 'session.read', 'session.restore'],
@@ -182,7 +182,7 @@ async function runtimeFixture(sessionAdapter?: IntegrationSessionAdapter, eventS
   const options = { directory: dir, socketPath: path.join(dir, 'api.sock'), adminToken: 'local-admin', messages, taskStore, tasks, peers, sessions: sessionAdapter ?? adapter().api, eventStorage };
   const runtime = new IntegrationRuntime({ ...options, serviceId }); await runtime.listen(); resources.push(() => runtime.close());
   const issued = runtime.store.provision(policy(group.id));
-  const headers = { 'x-termdock-integration-protocol': '1', 'x-termdock-integration-id': 'bridge', authorization: `Bearer ${issued.token}`, 'Content-Type': 'application/json' };
+  const headers = { 'x-veymux-integration-protocol': '1', 'x-veymux-integration-id': 'bridge', authorization: `Bearer ${issued.token}`, 'Content-Type': 'application/json' };
   const request = (method: string, route: string, body?: unknown, requestHeaders: Record<string, string> = headers) => new Promise<{ status: number; body: any }>((resolve, reject) => {
     const data = body === undefined ? undefined : JSON.stringify(body);
     const req = http.request({ socketPath: options.socketPath, method, path: route, headers: { ...requestHeaders, ...(data ? { 'Content-Length': Buffer.byteLength(data) } : {}) } }, res => {
@@ -266,7 +266,7 @@ it('creates scoped background records, returns current execution in summaries an
     tmux_recovery_resource_admission: true, tmux_recovery_resource_admission_min_version: '1.4.325',
     tmux_recovery_pause_status: true, tmux_recovery_pause_status_min_version: '1.4.326',
     tmux_recovery_memory_psi_admission: true, tmux_recovery_memory_psi_admission_min_version: '1.4.326',
-    tmux_recovery_td_owned_resident_admission: true, tmux_recovery_td_owned_resident_admission_min_version: '1.4.326',
+    tmux_recovery_veymux_owned_resident_admission: true, tmux_recovery_veymux_owned_resident_admission_min_version: '1.4.326',
     session_recovery_binding_reconcile: process.platform === 'linux', session_recovery_binding_reconcile_min_version: '1.4.328',
     session_launch_reload_fence: true, session_launch_reload_fence_min_version: '1.4.346',
     session_shell_startup_wait: true, session_shell_startup_wait_min_version: '1.4.346',
@@ -302,7 +302,7 @@ it('restricts cross-terminal restore diagnostics to the real administrator socke
   expect(failed.body.session).toMatchObject({ error_code: 'NATIVE_SESSION_OWNER_UNCONFIRMED', restore_diagnostics_available: true });
   expect(JSON.stringify(failed.body)).not.toContain('outside-td');
   expect(await f.request('GET', `/admin/sessions/${id}/restore-diagnostics`)).toMatchObject({ status: 401 });
-  const headers = { 'x-termdock-integration-protocol': '1', 'x-termdock-local-token': 'local-admin' };
+  const headers = { 'x-veymux-integration-protocol': '1', 'x-veymux-local-token': 'local-admin' };
   const probes = (fake.api.inspect as ReturnType<typeof vi.fn>).mock.calls.length;
   expect(await f.request('GET', `/admin/sessions/${id}/restore-diagnostics`, undefined, headers)).toMatchObject({ status: 200,
     body: { session_id: id, diagnostics: { candidates: [{ session_id: 'outside-td', pane_id: '%115', reason: 'NATIVE_SESSION_ID_MISSING' }] } } });
@@ -345,7 +345,7 @@ it('keeps a real socket subscription and durable ACK usable during capacity back
   function manifestConsumers() { return JSON.parse(fs.readFileSync(path.join(dir, 'integrations.json'), 'utf8')).consumers; }
 });
 it('exposes capacity/consumer diagnostics and fenced retirement only to the local administrator', async () => {
-  const f = await runtimeFixture(), admin = { 'Content-Type': 'application/json', 'x-termdock-integration-protocol': '1', 'x-termdock-local-token': 'local-admin' };
+  const f = await runtimeFixture(), admin = { 'Content-Type': 'application/json', 'x-veymux-integration-protocol': '1', 'x-veymux-local-token': 'local-admin' };
   const p = f.runtime.store.authenticate('bridge', f.issued.token); f.runtime.store.page(p, 'probe');
   expect(await f.request('GET', '/admin/storage')).toMatchObject({ status: 401 });
   expect(await f.request('GET', '/admin/consumers')).toMatchObject({ status: 401 });
@@ -362,7 +362,7 @@ it('routes storage/consumer administration CLI through its isolated local socket
   while (fs.existsSync(integrationSocketPath(port))) port++;
   const socket = integrationSocketPath(port), calls: Array<{ method?: string; route?: string; body: unknown }> = [];
   const server = http.createServer((req, res) => {
-    expect(req.headers['x-termdock-local-token']).toBe('test-admin');
+    expect(req.headers['x-veymux-local-token']).toBe('test-admin');
     let raw = ''; req.on('data', chunk => { raw += chunk; }); req.on('end', () => {
       calls.push({ method: req.method, route: req.url, body: raw ? JSON.parse(raw) : null });
       res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ ok: true }));
@@ -391,7 +391,7 @@ it('commits another group from the same source scan even when one group has an o
 });
 it('denies scope violations, principal impersonation, user acceptance and unsent ACKs on the real endpoint', async () => {
   const f = await runtimeFixture();
-  expect(await f.request('GET', '/capabilities', undefined, { ...{ 'Content-Type': 'application/json' }, 'x-termdock-integration-protocol': '999' } as any)).toMatchObject({ status: 409 });
+  expect(await f.request('GET', '/capabilities', undefined, { ...{ 'Content-Type': 'application/json' }, 'x-veymux-integration-protocol': '999' } as any)).toMatchObject({ status: 409 });
   expect(await f.request('GET', '/admin/principals')).toMatchObject({ status: 401 });
   expect(await f.request('POST', '/tasks', { input: { groupId: 'other', title: 'No', spec: 'No', idempotencyKey: 'x' } })).toMatchObject({ status: 403 });
   const created = await f.request('POST', '/tasks', { input: { title: 'Task', spec: 'Run', idempotencyKey: 'x', assigneeSessionId: 'worker' } });
@@ -406,7 +406,7 @@ it('denies scope violations, principal impersonation, user acceptance and unsent
 
 it('requires administration for a policy update and exposes the configured condition with the original credential', async () => {
   const f = await runtimeFixture();
-  const adminHeaders = { 'Content-Type': 'application/json', 'x-termdock-integration-protocol': '1', 'x-termdock-local-token': 'local-admin' };
+  const adminHeaders = { 'Content-Type': 'application/json', 'x-veymux-integration-protocol': '1', 'x-veymux-local-token': 'local-admin' };
   const updated = policy(f.group.id);
   updated.launchProfiles[0].startupInput = { allOf: ['MODEL READY', '❯'], noneOf: ['model: loading'], stableMs: 1000, timeoutMs: 120000 };
   expect(await f.request('POST', '/admin/principals/bridge/policy', updated)).toMatchObject({ status: 401 });
@@ -431,10 +431,10 @@ it('reconciles a source commit missed during service shutdown and replays the sa
 
 it('passes the exact native UUID, model flags and quoted paths through a real shell without executing argument contents', () => {
   const wrapper = path.join(dir, 'wrapper'), output = path.join(dir, 'argv.json');
-  fs.writeFileSync(wrapper, '#!/usr/bin/env node\nrequire("fs").writeFileSync(process.env.TD_TEST_ARGV, JSON.stringify(process.argv.slice(2)));\n', { mode: 0o700 });
+  fs.writeFileSync(wrapper, '#!/usr/bin/env node\nrequire("fs").writeFileSync(process.env.VEYMUX_TEST_ARGV, JSON.stringify(process.argv.slice(2)));\n', { mode: 0o700 });
   const record = { profile: { ...policy().launchProfiles[0], executable: wrapper, argv: ['-m', "model'variant", '-c', '$(touch INTEGRATION_INJECTION)', '-C', '{cwd}'] }, cwd: path.join(dir, "quote' space"), agent_native_session_id: 'native-uuid' } as IntegrationSession;
   fs.mkdirSync(record.cwd);
-  execFileSync('/bin/sh', ['-c', integrationLaunchCommand(record, true)], { cwd: dir, env: { ...process.env, TD_TEST_ARGV: output } });
+  execFileSync('/bin/sh', ['-c', integrationLaunchCommand(record, true)], { cwd: dir, env: { ...process.env, VEYMUX_TEST_ARGV: output } });
   expect(JSON.parse(fs.readFileSync(output, 'utf8'))).toEqual(['resume', 'native-uuid', '-m', "model'variant", '-c', '$(touch INTEGRATION_INJECTION)', '-C', record.cwd]);
   expect(fs.existsSync(path.join(dir, 'INTEGRATION_INJECTION'))).toBe(false);
   expect(() => permittedCwd(policy().launchProfiles[0], path.join(dir, '\ncommand'))).toThrow();
@@ -477,7 +477,7 @@ it('returns the original comment receipt after later events and an uncertain ide
 it('returns the actual grant and refuses create/assignment escalation for a read-only principal', async () => {
   const f = await runtimeFixture();
   const issued = f.runtime.store.provision({ ...policy(f.group.id), id: 'readonly', permissions: ['task.read', 'events.read'], launchProfiles: [] });
-  const headers = { 'x-termdock-integration-protocol': '1', 'x-termdock-integration-id': 'readonly', authorization: `Bearer ${issued.token}`, 'Content-Type': 'application/json' };
+  const headers = { 'x-veymux-integration-protocol': '1', 'x-veymux-integration-id': 'readonly', authorization: `Bearer ${issued.token}`, 'Content-Type': 'application/json' };
   expect(await f.request('GET', '/capabilities', undefined, headers)).toMatchObject({ status: 200, body: { principal: { id: 'readonly', group_id: f.group.id, permissions: ['task.read', 'events.read'], launch_profiles: [] } } });
   expect(await f.request('POST', '/tasks', { input: { title: 'No', spec: 'No', idempotencyKey: 'no' } }, headers)).toMatchObject({ status: 403, body: { code: 'INTEGRATION_PERMISSION_DENIED' } });
   expect(await f.request('POST', '/sessions', { launch_profile: 'agent', cwd: dir, idempotency_key: 'no' }, headers)).toMatchObject({ status: 403 });
@@ -580,7 +580,7 @@ it('preflights administrator diagnostic capability and reads without posting or 
   let supported = false; const requests: string[] = [];
   const report = { session_id: 'target', operation_id: 'last-operation', diagnostics: { candidates: [{ pane_id: '%115', reason: 'NATIVE_SESSION_ID_MISSING' }] } };
   const server = http.createServer((req, res) => {
-    expect(req.method).toBe('GET'); expect(req.headers['x-termdock-local-token']).toBe('private-admin'); requests.push(req.url!);
+    expect(req.method).toBe('GET'); expect(req.headers['x-veymux-local-token']).toBe('private-admin'); requests.push(req.url!);
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(req.url === '/admin/capabilities' ? { session_restore_diagnostics: supported } : report));
   });
@@ -625,7 +625,7 @@ it('adds a startup guard to a legacy exact restore without changing its stored l
   expect(record.agent_native_session_id).toBe('original-native');
 });
 it.skipIf(process.platform !== 'linux')('recovers the live plugin UUID after store restart and keeps exact-running restore a no-op in real tmux', async () => {
-  const exec = promisify(execFile), socket = `td-native-${process.pid}-${randomUUID().slice(0, 8)}`;
+  const exec = promisify(execFile), socket = `veymux-native-${process.pid}-${randomUUID().slice(0, 8)}`;
   const run = async (args: string[]) => (await exec('tmux', ['-L', socket, ...args], { timeout: 5000 })).stdout;
   const executable = path.join(dir, 'fixture-agent'), nativeId = '01a12546-8000-72c0-b47b-5fcc4a0bf2a9';
   // A native fixture blocks on a FIFO while retaining the declared resume
@@ -698,7 +698,7 @@ it.skipIf(process.platform !== 'linux')('recovers the live plugin UUID after sto
 }, 15000);
 
 it.skipIf(process.platform === 'win32')('reproduces boot-time input loss in a real tmux pane and protects the first task write', async () => {
-  const exec = promisify(execFile), socket = `td-startup-${process.pid}-${randomUUID().slice(0, 8)}`;
+  const exec = promisify(execFile), socket = `veymux-startup-${process.pid}-${randomUUID().slice(0, 8)}`;
   const run = async (args: string[]) => (await exec('tmux', ['-L', socket, ...args], { timeout: 5000 })).stdout;
   const stdin = (args: string[], input: string) => new Promise<string>((resolve, reject) => {
     const child = execFile('tmux', ['-L', socket, ...args], { timeout: 5000 }, (error, stdout) => error ? reject(error) : resolve(stdout));
@@ -787,7 +787,7 @@ it('fails closed on principal scope, operation grants, forged task envelopes and
   expect(await f.request('POST', '/send', { ...body, group_id: 'other' })).toMatchObject({ status: 403 });
   expect(await f.request('POST', '/send', { ...body, toSessionIds: ['worker', 'outsider'] })).toMatchObject({ status: 404 });
   expect(f.messages.snapshotMessages()).toEqual([]);
-  expect(await f.request('POST', '/send', { ...body, metadata: { termdockTask: { taskId: 'fake' } } })).toMatchObject({ status: 403 });
+  expect(await f.request('POST', '/send', { ...body, metadata: { veymuxTask: { taskId: 'fake' } } })).toMatchObject({ status: 403 });
   expect(await f.request('POST', '/send', { ...body, kind: 'task' })).toMatchObject({ status: 403 });
   expect(await f.request('POST', '/send', { ...body, idempotency_key: undefined })).toMatchObject({ status: 400, body: { code: 'IDEMPOTENCY_KEY_REQUIRED' } });
   const message = (await f.request('POST', '/send', body)).body.message_id;
@@ -801,7 +801,7 @@ it('fails closed on principal scope, operation grants, forged task envelopes and
   expect(await f.request('GET', '/tasks')).toMatchObject({ status: 403 });
   expect(await f.request('GET', '/message?after-id=missing')).toMatchObject({ status: 404, body: { code: 'MESSAGE_NOT_FOUND' } });
   const second = f.runtime.store.provision({ ...updated, id: 'second' });
-  const headers = { 'x-termdock-integration-protocol': '1', 'x-termdock-integration-id': 'second', authorization: `Bearer ${second.token}`, 'Content-Type': 'application/json' };
+  const headers = { 'x-veymux-integration-protocol': '1', 'x-veymux-integration-id': 'second', authorization: `Bearer ${second.token}`, 'Content-Type': 'application/json' };
   expect(await f.request('POST', '/reply', { messageId: message, content: 'Wrong identity', idempotency_key: 'wrong' }, headers)).toMatchObject({ status: 409, body: { code: 'NO_REPLY_TARGET' } });
   const separate = await f.request('POST', '/send', { ...body, origin: { integrationId: 'bridge' } }, headers);
   expect(separate.body.message_id).not.toBe(message);
@@ -811,15 +811,15 @@ it('fails closed on principal scope, operation grants, forged task envelopes and
 });
 
 it('keeps principal CLI help offline and preflights old services before sending, then executes the documented send route', async () => {
-  const oldFile = process.env.TERMDOCK_INTEGRATION_CREDENTIAL_FILE;
-  resources.push(() => { if (oldFile === undefined) delete process.env.TERMDOCK_INTEGRATION_CREDENTIAL_FILE; else process.env.TERMDOCK_INTEGRATION_CREDENTIAL_FILE = oldFile; });
-  delete process.env.TERMDOCK_INTEGRATION_CREDENTIAL_FILE;
+  const oldFile = process.env.VEYMUX_INTEGRATION_CREDENTIAL_FILE;
+  resources.push(() => { if (oldFile === undefined) delete process.env.VEYMUX_INTEGRATION_CREDENTIAL_FILE; else process.env.VEYMUX_INTEGRATION_CREDENTIAL_FILE = oldFile; });
+  delete process.env.VEYMUX_INTEGRATION_CREDENTIAL_FILE;
   const output: string[] = [], io = { write: (line: string) => output.push(line), stdin: async () => 'stdin prompt' };
   expect(await runIntegrationCollab(parseCollaborationCommand(['--principal', 'bridge', 'send', '--help']), 59999, io)).toBe(0);
   expect(output.join('')).toContain('message.send'); expect(output.join('')).toContain('response-kind result');
   expect(output.join('')).toContain('integration_message_send/reply/history');
   const file = path.join(dir, 'cli-credential.json'); fs.writeFileSync(file, JSON.stringify({ id: 'bridge', token: 'private-test-token', protocol: 1 }), { mode: 0o600 });
-  process.env.TERMDOCK_INTEGRATION_CREDENTIAL_FILE = file;
+  process.env.VEYMUX_INTEGRATION_CREDENTIAL_FILE = file;
   let supported = false; const requests: string[] = [];
   const server = http.createServer((req, res) => {
     requests.push(req.url!); expect(req.headers.authorization).toBe('Bearer private-test-token');
@@ -989,7 +989,7 @@ it('requires admin and generation over Unix API, releases pending delivery once 
     resolve: async id => { const guard = await f.runtime.sessions.deliveryReadiness(id); return guard && !guard.allowed ? { state: 'recovering', reason: guard.reason! } : { state: 'ready', write }; } });
   resources.push(() => worker.stop());
   await worker.run(created.session_id); expect(write).not.toHaveBeenCalled();
-  const route = `/admin/sessions/${created.session_id}/startup-input/clear`, admin = { 'Content-Type': 'application/json', 'x-termdock-integration-protocol': '1', 'x-termdock-local-token': 'local-admin' };
+  const route = `/admin/sessions/${created.session_id}/startup-input/clear`, admin = { 'Content-Type': 'application/json', 'x-veymux-integration-protocol': '1', 'x-veymux-local-token': 'local-admin' };
   expect(await f.request('POST', route, { generation: 1 })).toMatchObject({ status: 401, body: { code: 'INTEGRATION_ADMIN_REQUIRED' } });
   expect(await f.request('POST', route, {}, admin)).toMatchObject({ status: 409, body: { code: 'INVALID_SESSION_GENERATION' } });
   expect((await f.request('GET', '/capabilities')).body).toMatchObject({ session_startup_input_clear: true, session_startup_input_clear_min_version: '1.4.310' });
@@ -1049,7 +1049,7 @@ it('exposes authenticated cold retry and admin-only launch diagnostics on the re
     agent_launch_generation_consistency: true, agent_launch_generation_consistency_min_version: '1.4.322', terminal_input_check_diagnostics: true });
   const route = `/admin/sessions/${id}/restore-diagnostics`;
   expect(await f.request('GET', route)).toMatchObject({ status: 401 });
-  const admin = { 'x-termdock-integration-protocol': '1', 'x-termdock-local-token': 'local-admin' };
+  const admin = { 'x-veymux-integration-protocol': '1', 'x-veymux-local-token': 'local-admin' };
   expect(await f.request('GET', route, undefined, admin)).toMatchObject({ status: 200, body: { launch_diagnostics: { phase: 'queue_wait', reason_code: 'UNCLASSIFIED_LAUNCH_ERROR' }, launch_diagnostics_history: [] } });
   const grant = policy(f.group.id); grant.permissions = grant.permissions.filter(permission => permission !== 'session.create'); f.runtime.store.update(grant);
   const retry = { generation: 1, idempotency_key: 'retry' };
@@ -1073,8 +1073,8 @@ it('documents cold retry and refuses incompatible services before making a retry
   expect(await runIntegrationCollab(parseCollaborationCommand(['--principal', 'bridge', 'session', 'retry-cold', '--help']), 59999, io)).toBe(0);
   expect(output.join('')).toContain('不是恢复未知原生历史');
   const credential = path.join(dir, 'retry-credential.json'); fs.writeFileSync(credential, JSON.stringify({ id: 'bridge', token: 'test-private-token', protocol: 1 }), { mode: 0o600 });
-  const original = process.env.TERMDOCK_INTEGRATION_CREDENTIAL_FILE; process.env.TERMDOCK_INTEGRATION_CREDENTIAL_FILE = credential;
-  resources.push(() => { if (original === undefined) delete process.env.TERMDOCK_INTEGRATION_CREDENTIAL_FILE; else process.env.TERMDOCK_INTEGRATION_CREDENTIAL_FILE = original; });
+  const original = process.env.VEYMUX_INTEGRATION_CREDENTIAL_FILE; process.env.VEYMUX_INTEGRATION_CREDENTIAL_FILE = credential;
+  resources.push(() => { if (original === undefined) delete process.env.VEYMUX_INTEGRATION_CREDENTIAL_FILE; else process.env.VEYMUX_INTEGRATION_CREDENTIAL_FILE = original; });
   let supported = false; const calls: string[] = [];
   const server = http.createServer((req, res) => {
     calls.push(req.url!); res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -1120,7 +1120,7 @@ it('scoped management grants require no empty terminal; close retains messages a
   expect(renamed).toMatchObject({ status: 200, body: { session: { name: 'Fast', generation: 2, operation_id: created.body.session.operation_id, rename_pending: false } } });
   expect(await f.request('POST', `/sessions/${id}/close`, close)).toMatchObject({ status: 403 });
   const foreign = f.runtime.store.provision({ ...grant, id: 'other' });
-  expect(await f.request('POST', `/sessions/${id}/rename`, { ...rename, generation: 2 }, { 'Content-Type': 'application/json', authorization: `Bearer ${foreign.token}`, 'x-termdock-integration-id': 'other', 'x-termdock-integration-protocol': '1' })).toMatchObject({ status: 404, body: { code: 'INTEGRATION_SESSION_NOT_FOUND' } });
+  expect(await f.request('POST', `/sessions/${id}/rename`, { ...rename, generation: 2 }, { 'Content-Type': 'application/json', authorization: `Bearer ${foreign.token}`, 'x-veymux-integration-id': 'other', 'x-veymux-integration-protocol': '1' })).toMatchObject({ status: 404, body: { code: 'INTEGRATION_SESSION_NOT_FOUND' } });
   const original = f.messages.send({ groupId: f.group.id, fromSessionId: null, toSessionIds: [id], integrationOrigin: { integrationId: 'bridge', source: 'fixture' }, kind: 'message', content: 'historical request' })[0];
   f.messages.markDelivered([original.id]);
   const audit = f.messages.storeIntegrationReply(original.id, id, 'historical result', { responseKind: 'result', idempotencyKey: 'result' });
@@ -1145,8 +1145,8 @@ it('scoped management grants require no empty terminal; close retains messages a
   expect(readClaims).toMatchObject({readOnly:true,sessionId:id});
   expect(f.runtime.sessionAccess.allows(readClaims,reader.deviceId,'session.input',id)).toBe(false);
   const otherPrincipal=f.runtime.store.authenticate('other',foreign.token);otherPrincipal.permissions.push('session.access');f.runtime.store.update(otherPrincipal);
-  expect(await f.request('POST',`/sessions/${id}/access-readers`,{fence:2,leases:[]},{'Content-Type':'application/json',authorization:`Bearer ${foreign.token}`,'x-termdock-integration-id':'other','x-termdock-integration-protocol':'1'})).toMatchObject({status:404});
-  expect(await f.request('GET', `/sessions/${id}/access-state`, undefined, {'Content-Type':'application/json',authorization:`Bearer ${foreign.token}`,'x-termdock-integration-id':'other','x-termdock-integration-protocol':'1'})).toMatchObject({ status: 404, body: { code: 'INTEGRATION_SESSION_NOT_FOUND' } });
+  expect(await f.request('POST',`/sessions/${id}/access-readers`,{fence:2,leases:[]},{'Content-Type':'application/json',authorization:`Bearer ${foreign.token}`,'x-veymux-integration-id':'other','x-veymux-integration-protocol':'1'})).toMatchObject({status:404});
+  expect(await f.request('GET', `/sessions/${id}/access-state`, undefined, {'Content-Type':'application/json',authorization:`Bearer ${foreign.token}`,'x-veymux-integration-id':'other','x-veymux-integration-protocol':'1'})).toMatchObject({ status: 404, body: { code: 'INTEGRATION_SESSION_NOT_FOUND' } });
   grant.permissions = grant.permissions.filter(p => p !== 'session.forget'); f.runtime.store.update(grant);
   expect(await f.request('POST', `/sessions/${id}/close`, { ...close, generation: '2' })).toMatchObject({ status: 409, body: { code: 'INVALID_SESSION_GENERATION' } });
   const closed = await f.request('POST', `/sessions/${id}/close`, close);
@@ -1175,8 +1175,8 @@ it('rename/close CLI validates required flags and fails closed against old capab
   for (const args of [['rename', 'id', '--generation', '1'], ['close', 'id'], ['close', 'id', '--generation', '1', '--name', 'bad'], ['rename', 'id', '--generation', '0', '--name', 'bad']]) expect(() => parseCollaborationCommand(['--principal', 'bridge', 'session', ...args, '--idempotency-key', 'key'])).toThrow();
   const credentialFile = path.join(dir, 'credential');
   fs.writeFileSync(credentialFile, JSON.stringify({ id: 'bridge', protocol: 1, token: 'private-token' }), { mode: 0o600 });
-  const original = process.env.TERMDOCK_INTEGRATION_CREDENTIAL_FILE; process.env.TERMDOCK_INTEGRATION_CREDENTIAL_FILE = credentialFile;
-  resources.push(() => { if (original === undefined) delete process.env.TERMDOCK_INTEGRATION_CREDENTIAL_FILE; else process.env.TERMDOCK_INTEGRATION_CREDENTIAL_FILE = original; });
+  const original = process.env.VEYMUX_INTEGRATION_CREDENTIAL_FILE; process.env.VEYMUX_INTEGRATION_CREDENTIAL_FILE = credentialFile;
+  resources.push(() => { if (original === undefined) delete process.env.VEYMUX_INTEGRATION_CREDENTIAL_FILE; else process.env.VEYMUX_INTEGRATION_CREDENTIAL_FILE = original; });
   const calls: string[] = []; let supported = false;
   const server = http.createServer((req, res) => {
     calls.push(req.url!); res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -1207,7 +1207,7 @@ it('exposes fresh close target facts only to the administrator and leaves sessio
   const before = f.runtime.sessions.snapshot();
   expect(await f.request('GET', route)).toMatchObject({ status: 401, body: { code: 'INTEGRATION_ADMIN_REQUIRED' } });
   expect(closeDiagnostics).not.toHaveBeenCalled();
-  const headers = { 'x-termdock-integration-protocol': '1', 'x-termdock-local-token': 'local-admin' };
+  const headers = { 'x-veymux-integration-protocol': '1', 'x-veymux-local-token': 'local-admin' };
   expect(await f.request('GET', route, undefined, headers)).toMatchObject({ status: 200,
     body: { session_id: id, generation: 1, close_diagnostics: { checked_at: 123, terminal_registration_present: false, code: 'SESSION_CLOSE_OWNERSHIP_UNCONFIRMED' } } });
   expect(f.runtime.sessions.snapshot()).toEqual(before);
@@ -1235,7 +1235,7 @@ it('validates and gates the read-only administrator close-diagnostics CLI', asyn
 });
 it('only local administrators can create empty groups without a terminal; body scope is strict and a new principal can use it', async () => {
   const f = await runtimeFixture(), body = { name: 'Case', idempotency_key: 'case-group' };
-  const headers = { 'Content-Type': 'application/json', 'x-termdock-integration-protocol': '1', 'x-termdock-local-token': 'local-admin' };
+  const headers = { 'Content-Type': 'application/json', 'x-veymux-integration-protocol': '1', 'x-veymux-local-token': 'local-admin' };
   expect(await f.request('POST', '/admin/groups', body)).toMatchObject({ status: 401, body: { code: 'INTEGRATION_ADMIN_REQUIRED' } });
   const before = f.messages.list().length;
   for (const extra of [{ sessionIds: [] }, { federated: true }, { id: 'chosen' }, { launchProfiles: [] }, { principal: 'bridge' }]) expect(await f.request('POST', '/admin/groups', { ...body, ...extra }, headers)).toMatchObject({ status: 400, body: { code: 'INVALID_GROUP_CREATE_REQUEST' } });
@@ -1257,7 +1257,7 @@ it('administrator group CLI validates scope, gates old services and uses the pri
   expect(await runIntegrationAdmin(['group', 'create', '--help'], 59999, 'private-admin', write)).toBe(0); expect(output.join('')).toContain('admin_local_group_create=true');
   let supported = false; const calls: string[] = [];
   const server = http.createServer((req, res) => {
-    expect(req.headers['x-termdock-local-token']).toBe('private-admin'); expect(req.headers.authorization).toBeUndefined(); calls.push(req.url!);
+    expect(req.headers['x-veymux-local-token']).toBe('private-admin'); expect(req.headers.authorization).toBeUndefined(); calls.push(req.url!);
     res.writeHead(200, { 'Content-Type': 'application/json' });
     if (req.url === '/admin/capabilities') { res.end(JSON.stringify({ admin_local_group_create: supported })); return; }
     let raw = ''; req.on('data', chunk => { raw += chunk; }); req.on('end', () => {
@@ -1273,7 +1273,7 @@ it('administrator group CLI validates scope, gates old services and uses the pri
 });
 it('administrator-only metadata rename serializes competing revisions and exposes current/applied snapshots without changing principal or runtime', async () => {
   const f = await runtimeFixture(), group = f.group;
-  const headers = { 'Content-Type': 'application/json', 'x-termdock-integration-protocol': '1', 'x-termdock-local-token': 'local-admin' };
+  const headers = { 'Content-Type': 'application/json', 'x-veymux-integration-protocol': '1', 'x-veymux-local-token': 'local-admin' };
   const route = `/admin/groups/${group.id}`, body = { name: 'Short', expected_updated_at: group.updatedAt, idempotency_key: 'rename' };
   const principalBefore = f.runtime.store.authenticate('bridge', f.issued.token);
   expect(await f.request('GET', route)).toMatchObject({ status: 401, body: { code: 'INTEGRATION_ADMIN_REQUIRED' } });
@@ -1301,7 +1301,7 @@ it('administrator-only metadata rename serializes competing revisions and expose
 });
 it('administrator group archive is reversible, hides only default discovery, and keeps routing/history intact', async () => {
   const f = await runtimeFixture(), group = f.group;
-  const headers = { 'Content-Type': 'application/json', 'x-termdock-integration-protocol': '1', 'x-termdock-local-token': 'local-admin' };
+  const headers = { 'Content-Type': 'application/json', 'x-veymux-integration-protocol': '1', 'x-veymux-local-token': 'local-admin' };
   const route = `/admin/groups/${group.id}`;
   const [message] = f.messages.send({ groupId: group.id, fromSessionId: null, toSessionIds: [group.sessionIds[0]!], kind: 'message', content: 'preserved' });
   const archiveBody = { expected_updated_at: group.updatedAt, idempotency_key: 'archive-one' };
@@ -1333,7 +1333,7 @@ it('metadata CLI gates unsupported services, validates exact arguments and prese
   let supported = false, conflict = false; const calls: string[] = [];
   const result = { group: { id: 'group-id', name: 'Current', updatedAt: 14 }, applied: { id: 'group-id', name: 'Short', updatedAt: 13 }, replayed: true };
   const server = http.createServer((req, res) => {
-    calls.push(req.url!); expect(req.headers['x-termdock-local-token']).toBe('private-admin'); expect(req.headers.authorization).toBeUndefined();
+    calls.push(req.url!); expect(req.headers['x-veymux-local-token']).toBe('private-admin'); expect(req.headers.authorization).toBeUndefined();
     if (conflict && req.method === 'POST') { res.writeHead(409, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ code: 'GROUP_CHANGED', currentUpdatedAt: 14, error: 'Group changed', privateField: 'must-not-propagate' })); req.resume(); return; }
     res.writeHead(200, { 'Content-Type': 'application/json' });
     if (req.url === '/admin/capabilities') { res.end(JSON.stringify({ admin_local_group_rename: supported })); return; }

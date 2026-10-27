@@ -1,7 +1,7 @@
 import http from 'node:http';
 import os from 'node:os';
 
-const GITHUB_RELEASE_API = 'https://api.github.com/repos/Jovines/termdock/releases/latest';
+const GITHUB_RELEASE_API = 'https://api.github.com/repos/Jovines/veymux/releases/latest';
 
 interface GitHubReleaseAsset {
   name?: unknown;
@@ -51,7 +51,7 @@ export async function buildGitHubUpdateFeed(
     signal: AbortSignal.timeout(20_000),
     headers: {
       Accept: 'application/vnd.github+json',
-      'User-Agent': `Termdock/${currentVersion}`,
+      'User-Agent': `Veymux/${currentVersion}`,
     },
   });
   if (!response.ok) throw new Error(`GitHub release check failed (HTTP ${response.status})`);
@@ -61,14 +61,14 @@ export async function buildGitHubUpdateFeed(
   if (!isNewerRelease(currentVersion, tag)) return { status: 204 };
 
   const version = tag.replace(/^v/, '');
-  const assetName = `Termdock-${platform}-${arch}-${version}.zip`;
+  const assetName = `Veymux-${platform}-${arch}-${version}.zip`;
   const assets = Array.isArray(release.assets) ? release.assets as GitHubReleaseAsset[] : [];
   // Legacy clients select the compatibility ZIP. Once running this bridge,
   // select the notarized Rust DMG on macOS 14+; Darwin 23 is macOS 14. Keep the bridge
   // operational on 12/13 and explain the new requirement without a download loop.
-  const rustName = `Termdock-Rust-${platform}-${arch}-${version}.zip`;
+  const rustName = `Veymux-Rust-${platform}-${arch}-${version}.zip`;
   const rust = assets.find((candidate) => candidate.name === rustName);
-  const rustDmg = assets.find((candidate) => candidate.name === `Termdock_${version}_aarch64.dmg`);
+  const rustDmg = assets.find((candidate) => candidate.name === `Veymux_${version}_aarch64.dmg`);
   const darwinMajor = Number(darwinRelease.split('.')[0]);
   if ((rust || rustDmg) && platform === 'darwin' && (!Number.isSafeInteger(darwinMajor) || darwinMajor < 23)) {
     return { status: 204, minimumSystemVersion: '14' };
@@ -78,7 +78,7 @@ export async function buildGitHubUpdateFeed(
   const url = typeof asset?.browser_download_url === 'string' ? asset.browser_download_url : '';
   const digest = typeof asset?.digest === 'string' ? asset.digest : '';
   const size = typeof asset?.size === 'number' ? asset.size : 0;
-  if (!url.startsWith('https://github.com/Jovines/termdock/releases/download/')) {
+  if (!url.startsWith('https://github.com/Jovines/veymux/releases/download/')) {
     throw new Error(`GitHub release ${tag} is missing ${assetName}`);
   }
   const sha256 = digest.match(/^sha256:([0-9a-f]{64})$/i)?.[1];

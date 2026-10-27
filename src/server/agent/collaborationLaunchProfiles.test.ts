@@ -16,7 +16,7 @@ afterEach(() => { for (const d of temporary.splice(0)) fs.rmSync(d, { recursive:
 
 describe('collaboration launch profiles', () => {
   it('delivers quoted model and parameter arguments unchanged to the launched process', () => {
-    const d = fs.mkdtempSync(path.join(os.tmpdir(), 'td-profile-argv-')); temporary.push(d);
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-profile-argv-')); temporary.push(d);
     const file = path.join(d, 'capture.cjs');
     fs.writeFileSync(file, 'process.stdout.write(JSON.stringify(process.argv.slice(2)))');
     const configured = { ...fast, command: `node '${file}' --model 'example model' --config 'reasoning=high'` };
@@ -26,7 +26,7 @@ describe('collaboration launch profiles', () => {
   });
   it('uses an explicit profile including its model arguments and collaboration permissions', () => {
     const launch = resolveCollaborationLaunch(group, { agentSlug: 'claude', launchProfileId: 'deep' });
-    expect(buildCollaborationSpawnCommand({ slug: launch.agentSlug, command: launch.profile!.command })).toBe(`${deep.command} --allowedTools "Bash(td collab *)"`);
+    expect(buildCollaborationSpawnCommand({ slug: launch.agentSlug, command: launch.profile!.command })).toBe(`${deep.command} --allowedTools "Bash(veymux collab *)"`);
     expect(launch.profile?.notes).toBe(deep.notes);
   });
   it('uses a matching default and allows an explicit plain launcher without changing agent type', () => {
@@ -49,7 +49,7 @@ describe('collaboration launch profiles', () => {
     expect(() => validateLaunchProfiles(profiles, defaultId)).toThrow(/启动方案无效/);
   });
   it('persists profiles and keeps a running member’s original configuration through edits and removal', () => {
-    const d = fs.mkdtempSync(path.join(os.tmpdir(), 'td-profiles-')); temporary.push(d);
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-profiles-')); temporary.push(d);
     const file = path.join(d, 'groups.json'), store = new CollaborationStore(file);
     const saved = store.save({ name: '协作', sessionIds: ['worker'], ...group });
     store.setMemberLaunchProfile(saved.id, 'worker', fast);
@@ -70,7 +70,7 @@ describe('collaboration launch profiles', () => {
       members: () => [{ id: 'lead', cwd: '/repo', role: '自动协调者 (codex)', launchProfileKey: launchProfileKey({ ...fast, command: 'codex --model different' }) }], spawn: async () => 'never' })).rejects.toThrow(/已有自动配置/);
   });
   it('retains the member launch snapshot when moving to a different group', () => {
-    const d = fs.mkdtempSync(path.join(os.tmpdir(), 'td-profile-move-')); temporary.push(d);
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-profile-move-')); temporary.push(d);
     const store = new CollaborationStore(path.join(d, 'groups.json'));
     const source = store.save({ name: '源组', sessionIds: ['worker'], ...group });
     const target = store.save({ name: '目标组', sessionIds: [] });

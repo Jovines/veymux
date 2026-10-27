@@ -25,7 +25,7 @@ export interface TerminalSettings {
 // This key is also read by the server-side config reconciler in settings.ts.
 // Changing it requires a coordinated deploy — old clients would silently lose
 // their font / renderer / theme preferences and fall back to defaults.
-export const TERMINAL_SETTINGS_STORAGE_KEY = 'termdock-settings';
+export const TERMINAL_SETTINGS_STORAGE_KEY = 'veymux-settings';
 
 export const MIN_TERMINAL_FONT_SIZE = 6;
 export const MAX_TERMINAL_FONT_SIZE = 100;

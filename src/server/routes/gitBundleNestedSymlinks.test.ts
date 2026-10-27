@@ -23,7 +23,7 @@ afterEach(() => {
 });
 
 function fixture() {
-  const directory = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'td-linked-repos-')));
+  const directory = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-linked-repos-')));
   temporaryDirectories.push(directory);
   const workspace = path.join(directory, 'workspace');
   makeRepo(workspace);

@@ -13,10 +13,14 @@ import { resolveMarkdownLocalLinkTarget } from '../markdown/MarkdownPreview';
 import { CodeBlock } from './ChatMarkdownBridge';
 import { ChatUIDatePicker } from './ChatUIDatePicker';
 import { ChatMarkdown } from './ChatMarkdown';
+import { ChatUIImages, ChatUIMediaRetryContext, ChatUIImageChoiceContext } from './ChatUIImages';
 import { chatUISchemas } from '../../../server/shared/chatUILibrary';
 
 export const FullUIContext = createContext({ canWrite: false, canReadPath: (_path: string): boolean => false, openFile: (_path: string) => {} });
 const IMAGE_KEYS = new Set(['src', 'bgImageSrc', 'imageSrc', 'imageUrl']);
+const IMAGE_COMPONENTS = new Set(['Image', 'ImageBlock', 'ImageGallery']);
+const isRuntimeNode = (value: object) => '__openuiReactive' in value || 'steps' in value
+  || ('type' in value && value.type === 'element' && 'typeName' in value && IMAGE_COMPONENTS.has(String(value.typeName)));
 /** Convert local images before mounting vendor components: native img/background
  * requests cannot inherit the page's encrypted fetch wrapper. */
 async function prepareMedia(value: unknown, base: string | null, canReadPath: (path: string) => boolean, signal: AbortSignal, urls: string[], key = ''): Promise<unknown> {
@@ -40,27 +44,31 @@ async function prepareMedia(value: unknown, base: string | null, canReadPath: (p
   }
   if (Array.isArray(value)) return Promise.all(value.map(child => prepareMedia(child, base, canReadPath, signal, urls)));
   if (value && typeof value === 'object') {
-    // Preserve runtime reactive bindings and action ASTs; only plain props carry images.
-    if ('__openuiReactive' in value || 'steps' in value) return value;
+    // Dedicated image nodes prepare their own media, keeping failures and
+    // retries local. Other vendor subcomponents may consume nested image
+    // fields directly, so those still need preparation by their parent.
+    if (isRuntimeNode(value)) return value;
     return Object.fromEntries(await Promise.all(Object.entries(value).map(async ([name, child]) => [name, await prepareMedia(child, base, canReadPath, signal, urls, name)])));
   }
   return value;
 }
-const hasImages = (value: unknown): boolean => !!value && typeof value === 'object' && Object.entries(value).some(([key, child]) => IMAGE_KEYS.has(key) && typeof child === 'string' && !!child || hasImages(child));
+const hasImages = (value: unknown): boolean => !!value && typeof value === 'object' && !isRuntimeNode(value) && Object.entries(value).some(([key, child]) => IMAGE_KEYS.has(key) && typeof child === 'string' && !!child || hasImages(child));
 function MediaComponent({ component: Component, ...input }: ComponentRenderProps & { component: ComponentType<ComponentRenderProps> }) {
   const { canReadPath } = useContext(FullUIContext), navigation = useChatFileNavigation();
   const source = JSON.stringify(input.props);
   const [prepared, setPrepared] = useState<{ source: string; props?: Record<string, unknown>; error?: string }>();
+  const [attempt, setAttempt] = useState(0);
+  const retry = () => { setPrepared(undefined); setAttempt(value => value + 1); };
   useEffect(() => {
     const controller = new AbortController(), urls: string[] = [];
     void prepareMedia(input.props, navigation?.filePath ?? null, canReadPath, controller.signal, urls).then(props => {
       if (!controller.signal.aborted) setPrepared({ source, props: props as Record<string, unknown> });
     }).catch(error => { if (!controller.signal.aborted) setPrepared({ source, error: error instanceof Error ? error.message : '图片读取失败' }); });
     return () => { controller.abort(); urls.forEach(url => URL.revokeObjectURL(url)); };
-  }, [source, navigation?.filePath, canReadPath]);
+  }, [source, navigation?.filePath, canReadPath, attempt]);
   if (prepared?.source !== source) return <p role="status" className="text-xs text-muted-foreground">正在读取图片…</p>;
-  if (prepared.error) return <p role="alert" className="text-xs text-destructive">{prepared.error}</p>;
-  return <Component {...input} props={prepared.props!} />;
+  if (prepared.error) return <div role="alert" className="flex items-center gap-2 text-xs text-destructive"><span>{prepared.error}</span><button type="button" className="min-h-11 rounded-lg px-3 text-foreground hover:bg-surface-2" onClick={retry}>重试读取图片</button></div>;
+  return <ChatUIMediaRetryContext.Provider value={retry}><Component {...input} props={prepared.props!} /></ChatUIMediaRetryContext.Provider>;
 }
 function FullModal({ props, renderNode }: ComponentRenderProps) {
   const field = useStateField('open', props.open), panel = useRef<HTMLDivElement>(null);
@@ -71,15 +79,16 @@ function FullModal({ props, renderNode }: ComponentRenderProps) {
   return createPortal(<div className="fixed inset-0 z-modal-backdrop flex items-center justify-center bg-[var(--app-backdrop)] preview-safe-area [--preview-safe-area-gap:0.5rem] sm:[--preview-safe-area-gap:1.5rem]" data-sidebar-gesture-ignore onMouseDown={event => { if (event.target === event.currentTarget) close(); }}>
     <section ref={panel} tabIndex={-1} role="dialog" aria-modal="true" aria-label={String(props.title)} className="z-modal-panel flex max-h-full min-h-0 w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-border bg-surface text-foreground">
       <header className="flex min-h-14 shrink-0 items-center gap-3 border-b border-border px-4"><h3 className="min-w-0 flex-1 truncate text-base font-medium">{String(props.title)}</h3><button type="button" aria-label="关闭" className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg hover:bg-surface-2" onClick={close}><X size={18} /></button></header>
-      <div className="termdock-rich-ui min-h-0 overflow-auto p-4">{renderNode(props.children) as ReactNode}</div>
+      <div className="veymux-rich-ui min-h-0 overflow-auto p-4">{renderNode(props.children) as ReactNode}</div>
     </section>
   </div>, document.body);
 }
 const editComponents = new Set(['Button', 'IconButton', 'Input', 'TextArea', 'Select', 'DatePicker', 'Slider', 'CheckBoxGroup', 'RadioGroup', 'SwitchGroup', 'Chips', 'OptionCards', 'EditableTable']);
 function ComponentBoundary({ component: Component, name, ...input }: ComponentRenderProps & { component: ComponentType<ComponentRenderProps>; name: string }) {
   const { canWrite } = useContext(FullUIContext);
-  const content = hasImages(input.props) ? <MediaComponent component={Component} {...input} /> : <Component {...input} />;
-  return <div className="min-w-0 max-w-full" {...(!canWrite && editComponents.has(name) ? { inert: '' } : {})}>{content}</div>;
+  const View = IMAGE_COMPONENTS.has(name) ? ChatUIImages : Component;
+  const content = hasImages(input.props) ? <MediaComponent component={View} {...input} /> : <View {...input} />;
+  return <div className="min-w-0 max-w-full" {...(!canWrite && editComponents.has(name) ? { inert: '' } : {})}>{name === 'OptionCards' ? <ChatUIImageChoiceContext.Provider value>{content}</ChatUIImageChoiceContext.Provider> : content}</div>;
 }
 const Resource = defineComponent({ name: 'Resource', props: chatUISchemas.Resource, description: 'User-opened file preview or external web link.', component: ({ props }) => {
   const { openFile } = useContext(FullUIContext);
@@ -88,7 +97,7 @@ const Resource = defineComponent({ name: 'Resource', props: chatUISchemas.Resour
   if (props.kind === 'link') return /^https?:\/\//i.test(target) ? <a className={className} href={target} target="_blank" rel="noopener noreferrer">{label}</a> : <span>{label}</span>;
   return <button type="button" className={className} onClick={() => openFile(target)}>{label}</button>;
 } });
-export const chatFullUILibrary = createLibrary({ id: 'termdock-chat@2', root: 'Stack', components: [
+export const chatFullUILibrary = createLibrary({ id: 'veymux-chat@2', root: 'Stack', components: [
   ...Object.values(openuiLibrary.components).map(definition => ({ ...definition,
     component: definition.name === 'DatePicker' ? ChatUIDatePicker : definition.name === 'CodeBlock' ? ({ props }: ComponentRenderProps) => <CodeBlock language={String(props.language)} codeString={String(props.codeString)} /> : definition.name === 'Modal' ? FullModal : definition.name === 'MarkDownRenderer' ? ({ props }: ComponentRenderProps) => <ChatMarkdown content={String(props.textMarkdown ?? '')} />
       : (props: ComponentRenderProps) => <ComponentBoundary {...props} name={definition.name} component={definition.component as ComponentType<ComponentRenderProps>} />,
@@ -101,6 +110,6 @@ export function FullUITheme({ children }: { children: ReactNode }) {
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
     return () => observer.disconnect();
   }, []);
-  const value = useMemo(() => ({ theme: { ...(mode === 'dark' ? defaultDarkTheme : defaultLightTheme), defaultChartPalette: ['var(--primary)', 'var(--accent)', 'var(--warning)', 'var(--tmux)', 'var(--destructive)', 'var(--foreground)'] }, mode, portalThemeClassName: 'termdock-rich-ui' }), [mode]);
+  const value = useMemo(() => ({ theme: { ...(mode === 'dark' ? defaultDarkTheme : defaultLightTheme), defaultChartPalette: ['var(--primary)', 'var(--accent)', 'var(--warning)', 'var(--tmux)', 'var(--destructive)', 'var(--foreground)'] }, mode, portalThemeClassName: 'veymux-rich-ui' }), [mode]);
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }

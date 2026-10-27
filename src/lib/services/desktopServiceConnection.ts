@@ -1,7 +1,7 @@
 import { createInviteLink, parseInviteLink } from '../federation/inviteLink';
 import type { ConnectionIntent } from '../federation/browserIntegration';
 import { normalizeServiceAddress, type ServiceConnection } from './serviceDirectory';
-import type { TermdockDesktopBridge } from '../desktop/nativeBridge';
+import type { VeymuxDesktopBridge } from '../desktop/nativeBridge';
 
 export interface ServiceConnectionReview { connection: ServiceConnection; invitation?: string }
 
@@ -28,7 +28,7 @@ export function desktopConnectionIntent(intent: ConnectionIntent): ServiceConnec
 
 /** Keep invitation credentials in the original link, never in saved metadata. */
 export function serviceConnectionInput(input: string): ServiceConnectionReview {
-  if (input.includes('#termdock-invite=')) {
+  if (input.includes('#veymux-invite=')) {
     const parsed = parseInviteLink(input);
     const { url, targetPeerId, serviceOrigin, entryServiceId } = parsed;
     return { connection: { id: targetPeerId, url, targetPeerId, serviceOrigin, entryServiceId,
@@ -40,7 +40,7 @@ export function serviceConnectionInput(input: string): ServiceConnectionReview {
 
 /** New desktop connections always continue in the bundled center, which owns
  * discovery and certificate approval. Older shells keep their native open path. */
-export async function addDesktopService(bridge: TermdockDesktopBridge, input: string): Promise<void> {
+export async function addDesktopService(bridge: VeymuxDesktopBridge, input: string): Promise<void> {
   const { connection, invitation } = serviceConnectionInput(input);
   if (bridge.reviewServiceConnection) {
     await bridge.reviewServiceConnection(connection, invitation);
@@ -49,7 +49,7 @@ export async function addDesktopService(bridge: TermdockDesktopBridge, input: st
   await openDesktopService(bridge, connection, invitation);
 }
 
-export async function openDesktopService(bridge: TermdockDesktopBridge, connection: ServiceConnection, invitation?: string): Promise<void> {
+export async function openDesktopService(bridge: VeymuxDesktopBridge, connection: ServiceConnection, invitation?: string): Promise<void> {
   try {
     const result = await bridge.openServiceConnection!(connection, invitation);
     if (!result.ok) throw new Error(result.error || '暂时无法打开服务，请检查地址和网络。');
@@ -64,7 +64,7 @@ export async function openDesktopService(bridge: TermdockDesktopBridge, connecti
   }
 }
 
-export function desktopCertificateTrust(bridge: TermdockDesktopBridge | undefined) {
+export function desktopCertificateTrust(bridge: VeymuxDesktopBridge | undefined) {
   if (!bridge?.certificatePins || !bridge.inspectCertificate || !bridge.trustCertificate || !bridge.discardCertificateInspection || !bridge.revokeCertificate) return;
   return {
     listPins: () => bridge.certificatePins!(),

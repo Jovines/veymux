@@ -37,7 +37,7 @@ describe('tmux display size ownership', () => {
 
 it('keeps a real tmux window stable across idle client replies and transfers on interaction', async () => {
   const exec = promisify(execFile);
-  const socket = `termdock-size-test-${randomUUID()}`;
+  const socket = `veymux-size-test-${randomUUID()}`;
   const run = async (args: string[]) => (await exec('tmux', ['-L', socket, ...args])).stdout;
   const pty = createRequire(import.meta.url)('node-pty') as typeof import('node-pty');
   const displays: import('node-pty').IPty[] = [];

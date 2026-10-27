@@ -1,7 +1,7 @@
 /** The prepared process becomes the supervisor once the old service has exited. */
 import fs from 'node:fs';
 import { runSupervisor, type SupervisorConfig } from './supervisor.js';
-import { isProcessRunning } from './utils/termdockState.js';
+import { isProcessRunning } from './utils/veymuxState.js';
 
 const { parentPid, config } = JSON.parse(process.argv[2]) as { parentPid: number; config: SupervisorConfig };
 if (!Number.isSafeInteger(parentPid) || parentPid <= 1 || !process.connected) process.exit(1);

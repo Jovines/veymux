@@ -8,7 +8,7 @@ import { readRecentCommitHistory } from './recentCommitHistory.js';
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true })));
 function repo() {
-  const dir = mkdtempSync(join(tmpdir(), 'td-history-')); dirs.push(dir);
+  const dir = mkdtempSync(join(tmpdir(), 'veymux-history-')); dirs.push(dir);
   const git = (...args: string[]) => execFileSync('git', args, { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
   git('init', '-b', 'main'); git('config', 'user.name', 'Test'); git('config', 'user.email', 'test@example.com');
   const read = (query = '', skip = 0, limit = 30) => readRecentCommitHistory(async (args) => {

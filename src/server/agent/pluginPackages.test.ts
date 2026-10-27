@@ -14,7 +14,7 @@ const SLUG = 'package-agent-test';
 const temporaryRoots: string[] = [];
 
 async function fixture(overrides: Record<string, unknown> = {}): Promise<string> {
-  const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'termdock-plugin-fixture-'));
+  const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'veymux-plugin-fixture-'));
   temporaryRoots.push(root);
   await fs.promises.writeFile(path.join(root, 'manifest.json'), JSON.stringify({
     version: 2,

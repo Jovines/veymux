@@ -1,6 +1,6 @@
 # scrcpy live bitrate extension
 
-Termdock loads this small Android DEX overlay before the bundled, verified scrcpy 3.3.4 server
+Veymux loads this small Android DEX overlay before the bundled, verified scrcpy 3.3.4 server
 for preview sessions only. The host scrcpy version no longer gates automatic quality. Recording uses the unmodified scrcpy executable/server.
 
 CaptureReset.java preserves scrcpy 3.3.4's existing ABI and reset behavior,
@@ -23,7 +23,7 @@ The official 89 KB server is included, pinned to the checksum above, so host
 scrcpy versions (including 4.x) do not affect preview compatibility. Reproduce it
 with fetch-server.sh (downloads the official GitHub v3.3.4 release, verifies the
 checksum before writing). Its source is https://github.com/Genymobile/scrcpy/tree/v3.3.4/server .
-An explicit TERMDOCK_SCRCPY_SERVER override is honored. Missing/invalid bundled
+An explicit VEYMUX_SCRCPY_SERVER override is honored. Missing/invalid bundled
 assets fall back to the host server; unverified host builds then retain current
 quality with a diagnostic. Rejections and channel failures also preserve video.
 

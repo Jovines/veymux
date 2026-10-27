@@ -14,7 +14,7 @@ import {
   INCIDENT_DISMISSED_PATH,
   readJsonFile,
   writeJsonStateAtomic,
-} from './termdockState.js';
+} from './veymuxState.js';
 import { readCrashLogTail } from './crashForensics.js';
 import { getSupervisorStatus } from './supervisorClient.js';
 import { canEnableSupervision } from './enableSupervision.js';
@@ -191,7 +191,7 @@ export function buildServerHealthState(options: ServerHealthOptions = {}): Serve
 
   const dismissedAt = readDismissal(dismissedPath);
   return {
-    supervised: process.env.TERMDOCK_SUPERVISED === '1' && process.connected === true,
+    supervised: process.env.VEYMUX_SUPERVISED === '1' && process.connected === true,
     canEnableSupervision: canEnableSupervision(),
     supervisor,
     incident,

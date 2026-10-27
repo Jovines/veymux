@@ -4,16 +4,16 @@ Status: deferred pending a macOS update or an Apple fix.
 
 ## Symptom
 
-On macOS 27 beta, a signed Termdock desktop build cannot open another Termdock
+On macOS 27 beta, a signed Veymux desktop build cannot open another Veymux
 service through its private-network IP address:
 
 - the service is reachable from Terminal with `curl`;
 - the signed app receives `net::ERR_ADDRESS_UNREACHABLE`;
 - macOS does not show its native Local Network permission prompt;
-- Termdock does not appear under **System Settings → Privacy & Security → Local
+- Veymux does not appear under **System Settings → Privacy & Security → Local
   Network**.
 
-This is distinct from a Termdock TLS, routing, or service availability failure.
+This is distinct from a Veymux TLS, routing, or service availability failure.
 Do not treat a successful Terminal, SSH, ping, or curl check as proof that the
 signed GUI app has local-network access.
 
@@ -22,8 +22,8 @@ signed GUI app has local-network access.
 - macOS 27 beta, build `26A5368g`
 - Apple Silicon
 - Electron 43
-- Developer ID signed Termdock 1.4.34
-- direct HTTPS connection to a private IPv4 Termdock service
+- Developer ID signed Veymux 1.4.34
+- direct HTTPS connection to a private IPv4 Veymux service
 
 Machine names, user names, private IP addresses, credentials, API tokens, and
 certificate material are intentionally omitted from this document.
@@ -40,7 +40,7 @@ The application-side requirements have been checked:
 - `codesign --verify --deep --strict` succeeds;
 - the application is not using App Sandbox;
 - the connection attempt comes from the installed, signed
-  `/Applications/Termdock.app`;
+  `/Applications/Veymux.app`;
 - rebooting macOS does not restore the missing prompt;
 - replacing the old ad-hoc build with a Developer ID build and restarting does
   not create a Local Network settings entry.
@@ -72,7 +72,7 @@ it weakens system security and depends on undocumented implementation details.
 ## Resume plan
 
 1. Update the test Mac to a newer macOS 27 beta or stable build.
-2. Reinstall the latest notarized Termdock release.
+2. Reinstall the latest notarized Veymux release.
 3. Test the signed app against `https://<LAN-IP>:9834`; do not launch a substitute
    Electron binary.
 4. If the prompt is still absent, repeat once in a new local macOS user account.
@@ -85,8 +85,8 @@ it weakens system security and depends on undocumented implementation details.
 
 The issue is resolved only when:
 
-- macOS shows the native permission prompt or lists Termdock in Local Network
+- macOS shows the native permission prompt or lists Veymux in Local Network
   settings;
-- the signed application loads the remote Termdock UI by private IP;
+- the signed application loads the remote Veymux UI by private IP;
 - its HTTP and WebSocket traffic remain connected after relaunch and reboot;
-- the local CLI service and shared `~/.termdock` state are unaffected.
+- the local CLI service and shared `~/.veymux` state are unaffected.

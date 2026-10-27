@@ -144,7 +144,7 @@ pub(crate) fn page_document_started(window: &WebviewWindow) {
 pub(crate) fn publish_document_epoch(window: &WebviewWindow) {
     let Some(epoch) = current_document_epoch(window) else { return; };
     let script = format!(
-        "window.dispatchEvent(new CustomEvent('termdock:window-document-epoch',{{detail:{{epoch:{}}}}}));",
+        "window.dispatchEvent(new CustomEvent('veymux:window-document-epoch',{{detail:{{epoch:{}}}}}));",
         json!(epoch)
     );
     let _ = window.eval(&script);
@@ -230,7 +230,7 @@ pub(crate) fn announce<R: tauri::Runtime>(app: &AppHandle<R>, event: &str, value
 pub(crate) fn store(app: &AppHandle) -> Result<(), String> {
     let shell = state(app);
     shell.config.lock().unwrap().persist(&shell.file)?;
-    announce(app, "termdock:preview-connections", Value::Null);
+    announce(app, "veymux:preview-connections", Value::Null);
     desktop_ui::install_menu(app)?;
     Ok(())
 }
@@ -351,7 +351,7 @@ pub(crate) async fn open_connection(
         }
         // Wake only the verified window. The mailbox survives document loading
         // and is cleared only after the page proves target authorization.
-        window.eval("window.dispatchEvent(new Event('termdock:preview-invitation'));").map_err(|e|e.to_string())?;
+        window.eval("window.dispatchEvent(new Event('veymux:preview-invitation'));").map_err(|e|e.to_string())?;
         window.show().map_err(|e|e.to_string())?;
         window.set_focus().map_err(|e|e.to_string())?;
         return Ok(json!({"ok":true,"url":connection.url}));
@@ -408,7 +408,7 @@ pub(crate) async fn open_connection(
     let boot = json!({"origin":proxy.origin,"origins":origins,"defaultRoute":default_route,"connection":connection,"invitation":invitation,
         "chromeCss":include_str!("../../renderer/chrome.css"),"version":app.package_info().version.to_string(),"bundledWorkspace":proxy.bundled_workspace,"serviceWorkspace":!proxy.bundled_workspace,"ownedWindowChrome":crate::window_diagnostics::chrome_enabled(),"platform":if cfg!(target_os="macos") { "darwin" } else { std::env::consts::OS }});
     let script = format!(
-        "window.__TD_PREVIEW_BOOT__={boot};\n{}",
+        "window.__VEYMUX_PREVIEW_BOOT__={boot};\n{}",
         include_str!("../../renderer/bridge.js")
     );
     // Exact origin + exact webview label; no wildcard remote IPC capability and
@@ -455,7 +455,7 @@ pub(crate) async fn open_connection(
         .initialization_script(&script)
         .on_page_load(move |w, payload| {
             let route=match payload.url().path(){"/health"|"/api/auth/status"=>"bootstrap","/"=>"root",_=>"other"};
-            eprintln!("Termdock workspace navigation: {:?} {}",payload.event(),route);
+            eprintln!("Veymux workspace navigation: {:?} {}",payload.event(),route);
             if payload.event() == tauri::webview::PageLoadEvent::Started {
                 state(w.app_handle())
                     .file_epochs
@@ -554,7 +554,7 @@ pub(crate) async fn open_connection(
     present_window(&window)?;
     desktop_ui::publish(app);
     desktop_ui::install_menu(app)?;
-    announce(app, "termdock:preview-connections", Value::Null);
+    announce(app, "veymux:preview-connections", Value::Null);
     Ok(json!({"ok":true,"url":connection.url}))
 }
 // Return only metadata; callers invoke diagnostics after both mutex guards drop.
@@ -604,7 +604,7 @@ async fn preview_dispatch(
         let category=args["category"].as_str().ok_or("Missing startup category")?;
         if !["login-visible","native-mounted","identity-open","identity-success","identity-error","identity-blocked","react-error","document-hidden","document-visible","status-loading","status-engine","status-other","root-mounted","root-empty","engine-ready","engine-failed","script-load-error","script-error","unhandled-rejection","document-loaded","terminal-mounted","terminal-absent","retry-identity","retry-authorization","retry-timeout","retry-socket","retry-bootstrap","retry-network","retry-route","retry-crypto","retry-other"].contains(&category){return Err("Invalid startup category".into());}
         if center{return Err("Startup observation requires a workspace".into());}
-        eprintln!("Termdock workspace startup: {}",category);
+        eprintln!("Veymux workspace startup: {}",category);
         return Ok(Value::Null);
     }
     if op == "windowChromeObservation" { return crate::window_chrome::observe(&window,args); }
@@ -618,8 +618,8 @@ async fn preview_dispatch(
         // Keep WK's public backing-page color on its actual AppKit thread too.
         #[cfg(target_os="macos")]
         window.with_webview(move |webview| unsafe {
-            extern "C" {fn td_preview_window_background(wk_view:*mut std::ffi::c_void,red:u8,green:u8,blue:u8);}
-            td_preview_window_background(webview.inner().cast(),channels[0],channels[1],channels[2]);
+            extern "C" {fn veymux_preview_window_background(wk_view:*mut std::ffi::c_void,red:u8,green:u8,blue:u8);}
+            veymux_preview_window_background(webview.inner().cast(),channels[0],channels[1],channels[2]);
         }).map_err(|e|e.to_string())?;
         return Ok(Value::Null);
     }
@@ -698,13 +698,13 @@ async fn preview_dispatch(
             let _operation = shell.setup_operation.lock().await;
             let pins = shell.config.lock().unwrap().certificate_pins.clone();
             let result = local_service::prepare(&pins, args["install"] == true, |v| {
-                announce(&app, "termdock:preview-setup", v)
+                announce(&app, "veymux:preview-setup", v)
             })
             .await;
             if let Err(error) = result {
                 announce(
                     &app,
-                    "termdock:preview-setup",
+                    "veymux:preview-setup",
                     json!({"phase":"error","message":"本机服务准备失败，请查看详情后重试。","details":error}),
                 );
                 return Err(error);
@@ -950,7 +950,7 @@ async fn preview_dispatch(
             // Only the bundled center receives the notification. The request
             // remains in memory until consumed, even while its page is loading.
             if let Some(target) = app.get_webview_window("center") {
-                let _ = target.eval("window.dispatchEvent(new Event('termdock:preview-connection-review'));");
+                let _ = target.eval("window.dispatchEvent(new Event('veymux:preview-connection-review'));");
             }
             Ok(Value::Null)
         }
@@ -1047,7 +1047,7 @@ async fn preview_dispatch(
         }
         "showCenter" => { show_center(&app)?; Ok(Value::Null) }
         "revealConfig" => {
-            open::that(local_service::home()?.join(".termdock")).map_err(|e| e.to_string())?;
+            open::that(local_service::home()?.join(".veymux")).map_err(|e| e.to_string())?;
             Ok(Value::Null)
         }
         "openExternal" => {
@@ -1425,7 +1425,7 @@ async fn clipboard_files(
         if image {
             error
         } else {
-            format!("TERMDOCK_CLIPBOARD_VIDEO_ERROR:{error}")
+            format!("VEYMUX_CLIPBOARD_VIDEO_ERROR:{error}")
         }
     })?;
     if let Some(error) = contents.value["error"].as_str() {
@@ -1471,7 +1471,7 @@ async fn clipboard_files(
     }
     let result = prepare_files(app, owner, inputs, local, Some(contents.directory)).await;
     if contents.value["hasMovie"] == true {
-        result.map_err(|error| format!("TERMDOCK_CLIPBOARD_VIDEO_ERROR:{error}"))
+        result.map_err(|error| format!("VEYMUX_CLIPBOARD_VIDEO_ERROR:{error}"))
     } else {
         result
     }
@@ -1524,6 +1524,11 @@ async fn titlebar_double_click(window: &WebviewWindow, args: Value, restore_epoc
 #[cfg(not(test))]
 pub fn run() {
     crate::window_diagnostics::initialize().expect("Invalid window diagnostic arguments");
+    // Run before Tauri creates the new application support directory.
+    let home = local_service::home().expect("Missing home directory");
+    let native_root = if cfg!(target_os = "macos") { home.join("Library/Application Support") }
+        else { std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).unwrap_or_else(|| home.join(".config")) };
+    crate::brand_migration::migrate(&home, &native_root).expect("Could not migrate Veymux configuration safely");
     let mut context = tauri::generate_context!();
     if let Some(diagnostic) = crate::updater::prepare_startup(context.config_mut()) {
         eprintln!("Preview updater configuration: {diagnostic}");
@@ -1534,8 +1539,8 @@ pub fn run() {
         .setup(|app| {
             let (file,config)=if let Some(isolated)=crate::window_diagnostics::configuration(){isolated}else{
                 let file=app.path().app_config_dir()?.join("connections.json");
-                let stable=PathBuf::from(std::env::var_os("HOME").ok_or("Missing home directory")?).join(".termdock/desktop.json");
-                let config=if crate::product::is_preview(){Config::load(&file,&stable)?}else{crate::migration::load_configuration(&file,&stable,&file.parent().ok_or("Missing configuration directory")?.parent().ok_or("Missing application support directory")?.join("com.jovines.termdock.preview/connections.json"))?};(file,config)
+                let stable=PathBuf::from(std::env::var_os("HOME").ok_or("Missing home directory")?).join(".veymux/desktop.json");
+                let config=if crate::product::is_preview(){Config::load(&file,&stable)?}else{crate::migration::load_configuration(&file,&stable,&file.parent().ok_or("Missing configuration directory")?.parent().ok_or("Missing application support directory")?.join("com.jovines.veymux.preview/connections.json"))?};(file,config)
             };
             config.persist(&file)?;
             let restore_connections=config.open_connections.iter()
@@ -1633,7 +1638,7 @@ pub fn run() {
                 for connection in restore_connections {
                     match open_connection(&app, connection, crate::window_diagnostics::invitation()).await {
                         Ok(_)=>restored+=1,
-                        Err(error)=>announce(&app, "termdock:preview-error", json!(error)),
+                        Err(error)=>announce(&app, "veymux:preview-error", json!(error)),
                     }
                 }
                 state(&app).restoring.store(false,Ordering::SeqCst);
@@ -1642,7 +1647,7 @@ pub fn run() {
                 }
                 // Owned window inventory only; no addresses, bookmark identities
                 // or page contents. Also verifies the actual startup policy.
-                eprintln!("Termdock startup presentation: restored={} center={}",restored,app.get_webview_window("center").is_some());
+                eprintln!("Veymux startup presentation: restored={} center={}",restored,app.get_webview_window("center").is_some());
                 if crate::window_diagnostics::active(){return;}
                 tokio::time::sleep(Duration::from_secs(15)).await;
                 loop {
@@ -1653,7 +1658,7 @@ pub fn run() {
             Ok(())
         })
         .build(context)
-        .expect("Termdock Preview shell failed")
+        .expect("Veymux Preview shell failed")
         .run(|app, event| match event {
             tauri::RunEvent::ExitRequested { code, api, .. } => {
                 #[cfg(target_os = "macos")]
@@ -1668,7 +1673,7 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             tauri::RunEvent::Opened { urls } => {
                 for url in urls {
-                    let expected=if crate::product::is_preview(){"termdock-preview"}else{"termdock"};
+                    let expected=if crate::product::is_preview(){"veymux-preview"}else{"veymux"};
                     if url.scheme()!=expected { continue; }
                     match crate::invitation_link::parse_deep_invitation(url.as_str(),crate::product::is_preview()) {
                         Ok(review)=>{
@@ -1676,14 +1681,14 @@ pub fn run() {
                             let mut pending=shell.connection_review.lock().unwrap();
                             let value=serde_json::to_value(review).expect("Invitation review is serializable");
                             if pending.as_ref().is_some_and(|current|current!=&value) {
-                                drop(pending);let _=show_center(app);announce(app,"termdock:preview-error",json!("连接中心已有待处理的邀请，请先完成后重试。"));continue;
+                                drop(pending);let _=show_center(app);announce(app,"veymux:preview-error",json!("连接中心已有待处理的邀请，请先完成后重试。"));continue;
                             }
                             *pending=Some(value);drop(pending);
                             let _=show_center(app);
-                            if let Some(center)=app.get_webview_window("center") {let _=center.eval("window.dispatchEvent(new Event('termdock:preview-connection-review'));");}
-                            eprintln!("Termdock invitation handoff: queued for connection review");
+                            if let Some(center)=app.get_webview_window("center") {let _=center.eval("window.dispatchEvent(new Event('veymux:preview-connection-review'));");}
+                            eprintln!("Veymux invitation handoff: queued for connection review");
                         }
-                        Err(_)=>{let _=show_center(app);announce(app,"termdock:preview-error",json!("邀请链接无效，请重新获取完整的分享链接。"));}
+                        Err(_)=>{let _=show_center(app);announce(app,"veymux:preview-error",json!("邀请链接无效，请重新获取完整的分享链接。"));}
                     }
                 }
             }
@@ -1701,7 +1706,7 @@ pub fn run() {
 
 pub(crate) fn local_bridge() -> &'static str {
     static SCRIPT: std::sync::OnceLock<String> = std::sync::OnceLock::new();
-    SCRIPT.get_or_init(||format!("window.__TD_PREVIEW_BOOT__={{local:true,origin:location.origin,connection:{{}},version:{},platform:{},ownedWindowChrome:{}}};\n{}",json!(env!("CARGO_PKG_VERSION")),json!(if cfg!(target_os="macos"){"darwin"}else{std::env::consts::OS}),json!(crate::window_diagnostics::chrome_enabled()),include_str!("../../renderer/bridge.js")))
+    SCRIPT.get_or_init(||format!("window.__VEYMUX_PREVIEW_BOOT__={{local:true,origin:location.origin,connection:{{}},version:{},platform:{},ownedWindowChrome:{}}};\n{}",json!(env!("CARGO_PKG_VERSION")),json!(if cfg!(target_os="macos"){"darwin"}else{std::env::consts::OS}),json!(crate::window_diagnostics::chrome_enabled()),include_str!("../../renderer/bridge.js")))
 }
 async fn snapshot(app: &AppHandle) -> Result<Value, String> {
     let shell = state(app);
@@ -1758,8 +1763,8 @@ pub(crate) fn align_titlebar(window: &WebviewWindow, zoom: f64) {
     if !zoom.is_finite() || !(0.5..=3.).contains(&zoom) { return; }
     // Existing 46-CSS-pixel workspace chrome; no shared CSS/user setting change.
     let _ = window.with_webview(move |webview| unsafe {
-        extern "C" { fn td_preview_align_titlebar(wk_view: *mut std::ffi::c_void, center: f64); }
-        td_preview_align_titlebar(webview.inner().cast(), 23. * zoom);
+        extern "C" { fn veymux_preview_align_titlebar(wk_view: *mut std::ffi::c_void, center: f64); }
+        veymux_preview_align_titlebar(webview.inner().cast(), 23. * zoom);
     });
 }
 // A new window stays hidden until alignment is installed on its actual
@@ -1769,8 +1774,8 @@ fn present_window(window:&WebviewWindow)->Result<(),String>{
     {
         let ready=window.clone();
         window.with_webview(move|webview|unsafe{
-            extern "C" {fn td_preview_align_titlebar(wk_view:*mut std::ffi::c_void,center:f64);}
-            td_preview_align_titlebar(webview.inner().cast(),23.);
+            extern "C" {fn veymux_preview_align_titlebar(wk_view:*mut std::ffi::c_void,center:f64);}
+            veymux_preview_align_titlebar(webview.inner().cast(),23.);
             let _=ready.show();let _=ready.set_focus();
         }).map_err(|error|error.to_string())?;
     }
@@ -1833,7 +1838,7 @@ fn observe_window(app: &AppHandle, window: &WebviewWindow, connection_id: Option
                         );
                         let _ = config.persist(&shell.file);
                     }
-                    desktop_ui::emit(&w, "termdock:preview-layout", Value::Null);
+                    desktop_ui::emit(&w, "veymux:preview-layout", Value::Null);
                 }
             }
             tauri::WindowEvent::CloseRequested { api, .. } => {
@@ -1892,13 +1897,13 @@ fn handle_file_drag(app: &AppHandle, label: &str, event: &tauri::DragDropEvent) 
         tauri::DragDropEvent::Enter { paths, position } => {
             let (x,y) = preview_drop_css_point(position.x as f64, position.y as f64, zoom);
             let local = local_service::home().ok().is_some_and(|home| local_files::verified_local(&home, connection.target_peer_id.as_deref(), connection.target_peer_id.as_deref()));
-            desktop_ui::emit(&window,"termdock:preview-drag",json!({"phase":"enter","x":x,"y":y,"local":local,"count":paths.len()}));
+            desktop_ui::emit(&window,"veymux:preview-drag",json!({"phase":"enter","x":x,"y":y,"local":local,"count":paths.len()}));
         }
         tauri::DragDropEvent::Over { position } => {
             let (x,y) = preview_drop_css_point(position.x as f64, position.y as f64, zoom);
-            desktop_ui::emit(&window,"termdock:preview-drag",json!({"phase":"over","x":x,"y":y}));
+            desktop_ui::emit(&window,"veymux:preview-drag",json!({"phase":"over","x":x,"y":y}));
         }
-        tauri::DragDropEvent::Leave => desktop_ui::emit(&window,"termdock:preview-drag",json!({"phase":"leave"})),
+        tauri::DragDropEvent::Leave => desktop_ui::emit(&window,"veymux:preview-drag",json!({"phase":"leave"})),
         tauri::DragDropEvent::Drop { paths, position } => {
             let shell = state(app);
             if !shell.windows.lock().unwrap().contains_key(label) {
@@ -1928,7 +1933,7 @@ fn handle_file_drag(app: &AppHandle, label: &str, event: &tauri::DragDropEvent) 
                 let (x, y) = preview_drop_css_point(position.x as f64, position.y as f64, zoom);
                 desktop_ui::emit(
                     &w,
-                    "termdock:preview-files",
+                    "veymux:preview-files",
                     json!({"token":token,"x":x,"y":y}),
                 );
             }
@@ -1990,7 +1995,7 @@ async fn show_notification(
     }
     announce(
         app,
-        "termdock:preview-notification-receipt",
+        "veymux:preview-notification-receipt",
         receipt.clone(),
     );
     if receipt["delivered"] == true {
@@ -2010,7 +2015,7 @@ async fn show_notification(
 fn deliver_pending_focus(app: &AppHandle, window: &WebviewWindow) {
     let value=state(app).windows.lock().unwrap().get(window.label()).and_then(|s|s.pending_focus.as_ref().map(|(request,session)|json!({"requestId":request,"sessionId":session,"targetPeerId":s.connection.target_peer_id})));
     if let Some(v) = value {
-        desktop_ui::emit(window, "termdock:preview-focus-request", v);
+        desktop_ui::emit(window, "veymux:preview-focus-request", v);
     }
 }
 #[cfg(target_os = "macos")]

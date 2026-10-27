@@ -6,7 +6,7 @@ export function chatUIAdapter(): Plugin {
   const vendor = fileURLToPath(new URL('../node_modules/@openuidev/react-ui/dist/', import.meta.url));
   const markdown = fileURLToPath(new URL('../src/lib/components/chat/ChatMarkdownBridge.tsx', import.meta.url));
   return {
-    name: 'termdock-chat-ui-adapter', enforce: 'pre',
+    name: 'veymux-chat-ui-adapter', enforce: 'pre',
     config: () => ({
       resolve: { alias: [
         { find: /^@openuidev\/react-ui\/genui-lib$/, replacement: `${vendor}genui-lib/index.js` },

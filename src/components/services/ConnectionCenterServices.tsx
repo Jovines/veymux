@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ServiceManager } from './ServiceManager';
-import type { TermdockDesktopBridge } from '../../lib/desktop/nativeBridge';
+import type { VeymuxDesktopBridge } from '../../lib/desktop/nativeBridge';
 import { addDesktopService, desktopCertificateTrust, openDesktopService, type ServiceConnectionReview } from '../../lib/services/desktopServiceConnection';
 import type { ServiceConnection } from '../../lib/services/serviceDirectory';
 
 /** The bundled center owns certificate approval for every desktop entry point. */
-export function ConnectionCenterServices({ bridge, onReview }: { bridge: TermdockDesktopBridge; onReview?: () => void }) {
+export function ConnectionCenterServices({ bridge, onReview }: { bridge: VeymuxDesktopBridge; onReview?: () => void }) {
   const certificateTrust = useMemo(() => desktopCertificateTrust(bridge), [bridge]);
   const [review, setReview] = useState<ServiceConnectionReview | null>(null);
   const [busy, setBusy] = useState(false);

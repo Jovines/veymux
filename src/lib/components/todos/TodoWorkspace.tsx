@@ -90,7 +90,7 @@ export default function TodoWorkspace({ onOpenSidebar, leftSidebarVisible, activ
   const act = async (action: () => Promise<void>) => {
     if (pending.current) return;
     pending.current = true; setBusy(true); setError(''); setNotice(''); setUndo(null);
-    try { await action(); if (current()) { await refresh(true); window.dispatchEvent(new Event('termdock:todos-changed')); } }
+    try { await action(); if (current()) { await refresh(true); window.dispatchEvent(new Event('veymux:todos-changed')); } }
     catch (cause) { if (current()) setError(cause instanceof Error ? cause.message : '操作失败，请重试'); }
     finally { pending.current = false; if (mounted.current) setBusy(false); }
   };
@@ -203,7 +203,7 @@ export default function TodoWorkspace({ onOpenSidebar, leftSidebarVisible, activ
     return run && isOpenCollection(run);
   }).length ?? 0;
   return <section ref={root} aria-label="待办工作区" className="absolute inset-0 flex min-h-0 min-w-0 flex-col bg-[var(--chrome-bg)] text-foreground">
-    <header data-termdock-window-header="true" className="relative z-20 flex min-h-16 shrink-0 items-center gap-1 border-b border-border/30 px-3 sm:gap-2 sm:px-5">
+    <header data-veymux-window-header="true" className="relative z-20 flex min-h-16 shrink-0 items-center gap-1 border-b border-border/30 px-3 sm:gap-2 sm:px-5">
       {view.tab === 'collectors' ? <>
         <button type="button" className={ghost} aria-label="返回清单" onClick={backToList}><ArrowLeft size={18} /></button>
         <h1 className="min-w-0 flex-1 text-base font-semibold">收集方向</h1>

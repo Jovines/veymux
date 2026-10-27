@@ -12,7 +12,7 @@ import { markEncryptedRequest } from '../federation/requestContext';
 const clean: (() => void)[] = [];
 afterEach(() => clean.splice(0).reverse().forEach(fn => fn()));
 async function fixture(existingFile?: string) {
-  const dir = mkdtempSync(join(tmpdir(), 'td-chat-')); clean.push(() => rmSync(dir, { recursive: true, force: true }));
+  const dir = mkdtempSync(join(tmpdir(), 'veymux-chat-')); clean.push(() => rmSync(dir, { recursive: true, force: true }));
   const filePath = existingFile || join(dir, 'collab.json');
   const store = new CollaborationStore(filePath), deliver = vi.fn(), recover = vi.fn(async (_id: string) => {});
   const app = express(); app.use(express.json());
@@ -24,7 +24,7 @@ async function fixture(existingFile?: string) {
   const server = app.listen(0, '127.0.0.1'); await once(server, 'listening'); clean.push(() => { server.closeAllConnections(); server.close(); });
   const address = server.address(); if (!address || typeof address === 'string') throw new Error(); const base = `http://127.0.0.1:${address.port}`;
   const post = (content: string, requestId = 'request-00000000001', subject = 'alice') => fetch(`${base}/agent/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'test-subject': subject }, body: JSON.stringify({ content, requestId }) });
-  const read = (subject = 'alice', scoped = false) => fetch(`${base}/agent/chat`, { headers: { 'test-subject': subject, ...(scoped ? { 'test-access': 'scoped', 'x-termdock-full-service': '1' } : {}) } }).then(r => r.json());
+  const read = (subject = 'alice', scoped = false) => fetch(`${base}/agent/chat`, { headers: { 'test-subject': subject, ...(scoped ? { 'test-access': 'scoped', 'x-veymux-full-service': '1' } : {}) } }).then(r => r.json());
   return { store, deliver, recover, base, post, read, filePath };
 }
 it('accepts only ordinary restricted-chat messages, rejects control bytes and slash commands, and binds queued delivery to the real subject', async () => {

@@ -3,7 +3,7 @@ import os from 'os';
 import path from 'path';
 import { createHash } from 'crypto';
 
-const STATE_DIR = path.join(os.homedir(), '.termdock');
+const STATE_DIR = path.join(os.homedir(), '.veymux');
 const STORE_PATH = path.join(STATE_DIR, 'change-audit.json');
 const MAX_RECORDS = 5_000;
 const CACHE_REFRESH_INTERVAL_MS = 2_000;

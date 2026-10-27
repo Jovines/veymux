@@ -8,8 +8,8 @@ import { parseFlowchart } from './flowchart.js';
 import { diffMermaid } from './mermaidDiff.js';
 import { diffArchitecture } from './documentDiff.js';
 
-export const ARCHITECTURE_HELP = `Termdock architecture — recursive code architecture documents
-Usage: td architecture <command> [--project <directory>] [--file <map.json>] [--format native|omm]
+export const ARCHITECTURE_HELP = `Veymux architecture — recursive code architecture documents
+Usage: veymux architecture <command> [--project <directory>] [--file <map.json>] [--format native|omm]
   prompt [--language en|zh]         Print the recursive analysis instructions
   setup [claude|codex|cursor|openclaw|antigravity] [--teardown]
   init | list | status             Initialize or inspect project maps
@@ -25,11 +25,11 @@ Usage: td architecture <command> [--project <directory>] [--file <map.json>] [--
   config language [en|zh|...]       Read/write the .omm content language
   export [--format omm]            Export native JSON or a portable .omm file bundle
   import <json|->                  Import a native map or a .omm file bundle
-  view                            Print the native Termdock viewer link
+  view                            Print the native Veymux viewer link
 Fields: description, diagram, context, constraint, concern, todo, note.
-Examples: td architecture prompt --project .
-          td architecture write --format omm overall-architecture/auth description -
-          td architecture save --file .termdock/architecture.json -`;
+Examples: veymux architecture prompt --project .
+          veymux architecture write --format omm overall-architecture/auth description -
+          veymux architecture save --file .veymux/architecture.json -`;
 
 export interface ArchitectureCliIo { write: (value: string) => void; stdin: () => Promise<string> }
 function elementPath(view: ArchitecturePerspective, node?: ArchitectureNode): string {
@@ -86,25 +86,25 @@ export async function runArchitectureCli(args: string[], io: ArchitectureCliIo =
       if (options.list) { json(Object.keys(platforms)); return 0; }
       const selected = element ? [element] : Object.keys(platforms);
       if (selected.some(platform => !platforms[platform])) throw new Error('Unknown AI platform');
-      const marker = '<!-- Termdock architecture skill -->';
+      const marker = '<!-- Veymux architecture skill -->';
       for (const platform of selected) {
-        const relative = `${platforms[platform]}/termdock-architecture/SKILL.md`, destination = await store.bounded(relative, true);
+        const relative = `${platforms[platform]}/veymux-architecture/SKILL.md`, destination = await store.bounded(relative, true);
         let existing = ''; try { existing = await fs.readFile(destination, 'utf8'); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
         if (existing && !existing.includes(marker)) throw new Error(`Refusing to overwrite an unrelated skill: ${relative}`);
         if (options.teardown) { if (existing.includes(marker)) await fs.unlink(destination); io.write(`Removed ${relative}`); continue; }
         const prompt = await instructions();
-        await fs.writeFile(destination, `---\nname: termdock-architecture\ndescription: Recursively analyze or update this project's Termdock code architecture.\n---\n${marker}\n\n${prompt}\n`, { mode: 0o600 });
+        await fs.writeFile(destination, `---\nname: veymux-architecture\ndescription: Recursively analyze or update this project's Veymux code architecture.\n---\n${marker}\n\n${prompt}\n`, { mode: 0o600 });
         io.write(`Installed ${relative}`);
       }
       return 0;
     }
     if (command === 'config') { if (element !== 'language') throw new Error('Use config language [code]'); json(await store.config(field)); return 0; }
-    if (command === 'init') { await store.config(); if (omm) await store.config(options.language ?? 'en'); io.write('Ready. Use td architecture prompt, or Generate in the Architecture panel.'); return 0; }
+    if (command === 'init') { await store.config(); if (omm) await store.config(options.language ?? 'en'); io.write('Ready. Use veymux architecture prompt, or Generate in the Architecture panel.'); return 0; }
     if (command === 'list') { json(await store.list()); return 0; }
     if (command === 'save' || command === 'import') {
       const raw = await input(positional.slice(1)); if (!raw) throw new Error('Supply JSON or - for stdin');
       const value = JSON.parse(raw);
-      if (value?.format === 'termdock-omm-bundle') { await store.importOmmBundle(value); json(await store.read('.omm')); }
+      if (value?.format === 'veymux-omm-bundle') { await store.importOmmBundle(value); json(await store.read('.omm')); }
       else { const document = parseArchitecture(raw); json(await store.save(options.file ?? (document.analysis ? analysisFile(document.analysis) : ARCHITECTURE_FILE), document)); }
       return 0;
     }
@@ -144,7 +144,7 @@ export async function runArchitectureCli(args: string[], io: ArchitectureCliIo =
       json({ valid: !issues.length, issues }); return issues.length ? 1 : 0;
     }
     if (command === 'diff' && !element) { json(await store.history(file)); return 0; }
-    if (command === 'view') { io.write(`Open Termdock → this project → Architecture, or https://localhost:9834/?architecture=${encodeURIComponent(JSON.stringify({ root, file }))}`); return 0; }
+    if (command === 'view') { io.write(`Open Veymux → this project → Architecture, or https://localhost:9834/?architecture=${encodeURIComponent(JSON.stringify({ root, file }))}`); return 0; }
     if (!element) throw new Error('Element path is required');
     const selected = target(document, element);
     if (command === 'delete') {

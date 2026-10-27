@@ -9,7 +9,7 @@ describe('AutomationStore', () => {
   let filePath: string;
 
   beforeEach(() => {
-    directory = fs.mkdtempSync(path.join(os.tmpdir(), 'termdock-automations-'));
+    directory = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-automations-'));
     filePath = path.join(directory, 'automations.json');
   });
   afterEach(() => {

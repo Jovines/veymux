@@ -40,14 +40,14 @@ it('switches either way directly in the navigation and blurs the previous input 
 });
 it('opens the common session menu from content without stealing native text selection', () => {
   vi.stubGlobal('matchMedia', (query: string) => ({ matches: query.includes('fine') }));
-  const menu = vi.fn(); window.addEventListener('termdock:session-context-menu', menu);
+  const menu = vi.fn(); window.addEventListener('veymux:session-context-menu', menu);
   const view = render(<SessionWorkspace sessionId="context" name="Task" active terminalReady>{() => <textarea defaultValue="existing input" />}</SessionWorkspace>);
   const input = screen.getByRole('textbox') as HTMLTextAreaElement; input.setSelectionRange(4, 4);
   fireEvent.contextMenu(input, { clientX: 100, clientY: 80 }); expect(menu).toHaveBeenCalledOnce();
   expect((menu.mock.calls[0][0] as CustomEvent).detail).toEqual({ sessionId: 'context', x: 100, y: 80 });
   expect(view.container.querySelector('[data-session-input-ready="true"]')).toBeTruthy();
   input.setSelectionRange(0, 3); fireEvent.contextMenu(input); expect(menu).toHaveBeenCalledOnce();
-  window.removeEventListener('termdock:session-context-menu', menu);
+  window.removeEventListener('veymux:session-context-menu', menu);
 });
 it('keeps the todo prompt action as one menu item instead of adding a composer form', () => {
   const insert = vi.fn(); render(<SessionViewActions sessionId="action" onDone={vi.fn()} onInsertTodoPrompt={insert} />);

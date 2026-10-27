@@ -147,12 +147,12 @@ it('inherits only Agent launches, and reads the inherited mode on the first work
 });
 
 it('shares the visible split from the primary navigation without broadening its Session scope', () => {
-  const receive = vi.fn(); window.addEventListener('termdock:open-services', receive);
+  const receive = vi.fn(); window.addEventListener('veymux:open-services', receive);
   try {
     render(<SessionModeSwitch sessionId="first" shareSessionIds={['first', 'second']} />);
     fireEvent.click(screen.getByRole('button', { name: '分享此分屏' }));
     expect((receive.mock.calls[0][0] as CustomEvent).detail).toEqual({ inviteSessionIds: ['first', 'second'], viewMode: 'terminal', viewLayout: 'split' });
-  } finally { window.removeEventListener('termdock:open-services', receive); }
+  } finally { window.removeEventListener('veymux:open-services', receive); }
 });
 it('does not expose the primary share shortcut to an explicitly shared Session', () => {
   render(<ShareAccessContext.Provider value={{}}><SessionModeSwitch sessionId="guest-share" /></ShareAccessContext.Provider>);

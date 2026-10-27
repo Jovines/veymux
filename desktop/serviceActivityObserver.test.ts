@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { installServiceActivityObserver } from './serviceActivityObserver.js';
 
-const marker = '__termdockDesktopActivityObserverV1';
+const marker = '__veymuxDesktopActivityObserverV1';
 const originalWebSocket = window.WebSocket;
 
 class FakeWebSocket extends EventTarget {
@@ -32,7 +32,7 @@ describe('service activity compatibility observer', () => {
     window.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
     const updates: Array<{ runningCount: number; reviewCount: number }> = [];
     window.addEventListener('message', (event) => {
-      if (event.data?.source === 'termdock-desktop-activity-v1') updates.push(event.data.activity);
+      if (event.data?.source === 'veymux-desktop-activity-v1') updates.push(event.data.activity);
     });
 
     installServiceActivityObserver();

@@ -12,8 +12,8 @@ function worker(frameType = 'top-level') {
   runInNewContext(script, {
     Response, Request, URL, Uint8Array, ArrayBuffer, MessageChannel, ReadableStream, setTimeout, clearTimeout,
     self: {
-      location: { origin: 'https://termdock.test' },
-      clients: { get: async (id: string) => ({ id, type: 'window', frameType: id.startsWith('child') ? 'nested' : frameType, url: 'https://termdock.test/',
+      location: { origin: 'https://veymux.test' },
+      clients: { get: async (id: string) => ({ id, type: 'window', frameType: id.startsWith('child') ? 'nested' : frameType, url: 'https://veymux.test/',
         postMessage: (message: { expectedTargetPeerId?: string }, ports: import('node:worker_threads').MessagePort[]) => {
           requests.push(message);
           port = ports[0]; let sent = false;
@@ -34,7 +34,7 @@ function worker(frameType = 'top-level') {
     frames, requests,
     fetch(path: string, clientId = 'tab-1', resultingClientId?: string, method = 'GET') {
       let response: Promise<Response> | undefined;
-      const request = new Request('https://termdock.test' + path, { method });
+      const request = new Request('https://veymux.test' + path, { method });
       if (resultingClientId) Object.defineProperty(request, 'mode', { value: 'navigate' });
       handler({ request, clientId, resultingClientId, respondWith: value => { response = value; } });
       return response;

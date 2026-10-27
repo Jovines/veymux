@@ -4,7 +4,7 @@ import path from 'node:path';
 import { CollaborationError } from '../agent/collaborationProtocol.js';
 
 export interface SessionAccessLease { id: string; userId: string; deviceId: string; expiresAt: number }
-export interface SessionAccessClaims { aud: 'termdock-session-access'; sessionId: string; principalId: string; leaseId: string; deviceId: string; fence: number; exp: number; jti: string; readOnly?: boolean }
+export interface SessionAccessClaims { aud: 'veymux-session-access'; sessionId: string; principalId: string; leaseId: string; deviceId: string; fence: number; exp: number; jti: string; readOnly?: boolean }
 interface AccessState { principalId: string; fence: number; lease: SessionAccessLease | null; exclusive?: boolean; readers?: { fence: number; leases: SessionAccessLease[]; generations: Record<string,number> } }
 const readActions = ['session.view','session.chat-view','session.terminal-view','session.metadata'];
 const writeActions = [...readActions,'session.chat-send','session.input','session.resize'];
@@ -98,7 +98,7 @@ export class SessionAccessStore {
     const lease=readerId ? state?.readers?.leases.find(x=>x.id===readerId) : state?.lease;
     if (!lease || state.principalId !== principalId || lease.deviceId !== deviceId || !deviceId || lease.expiresAt <= this.now()
       || !this.authorized(sessionId, principalId)) throw new CollaborationError('SESSION_ACCESS_DENIED', 'SESSION_ACCESS_DENIED', 409);
-    const claims: SessionAccessClaims = { aud: 'termdock-session-access', sessionId, principalId, deviceId, leaseId: lease.id,
+    const claims: SessionAccessClaims = { aud: 'veymux-session-access', sessionId, principalId, deviceId, leaseId: lease.id,
       fence: readerId ? state.readers!.generations[readerId]! : state.fence, ...(readerId?{readOnly:true}:{}), exp: Math.min(lease.expiresAt, this.now() + 30000), jti: randomUUID() };
     const body = Buffer.from(JSON.stringify(claims)).toString('base64url');
     return `session.${body}.${createHmac('sha256', this.key).update(body).digest('base64url')}`;
@@ -111,7 +111,7 @@ export class SessionAccessStore {
     if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) throw new CollaborationError('SESSION_ACCESS_INVALID_TICKET', 'SESSION_ACCESS_INVALID_TICKET', 409);
     const claims = JSON.parse(Buffer.from(body, 'base64url').toString()) as SessionAccessClaims;
     const used = new Map([...this.used].filter(([, expiry]) => expiry > this.now()));
-    if (claims.aud !== 'termdock-session-access' || !Number.isSafeInteger(claims.exp) || claims.exp <= this.now() || claims.exp > this.now() + 35000
+    if (claims.aud !== 'veymux-session-access' || !Number.isSafeInteger(claims.exp) || claims.exp <= this.now() || claims.exp > this.now() + 35000
       || typeof claims.jti !== 'string' || !claims.jti || used.has(claims.jti) || used.size > 4096 || !this.valid(claims, subjectId)) throw new CollaborationError('SESSION_ACCESS_DENIED', 'SESSION_ACCESS_DENIED', 409);
     used.set(claims.jti, claims.exp);
     // Admission is successful only after the single-use decision is durable.

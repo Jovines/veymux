@@ -4,7 +4,7 @@ import { zh } from './zh';
 import { DEFAULT_LOCALE, SUPPORTED_LOCALES, type Locale, type TranslationDictionary } from './types';
 import { getSettings, updateSettings } from '../terminal/api';
 
-const STORAGE_KEY = 'termdock:locale';
+const STORAGE_KEY = 'veymux:locale';
 
 const dictionaries: Record<Locale, TranslationDictionary> = {
   en,

@@ -1,3 +1,4 @@
+import { waitForBrandMigration } from '../utils/brandMigration';
 import type { ServiceRoute } from '../services/serviceDirectory';
 export interface BackgroundTarget {
   targetPeerId: string;
@@ -6,7 +7,8 @@ export interface BackgroundTarget {
   publicKey: string;
   preferences: { aiEnabled: boolean; exitEnabled: boolean; alertStyle: string; locale: string };
 }
-export async function backgroundStore<T>(action: (store: IDBObjectStore) => IDBRequest<T>, write = false, databaseName = 'termdock-encrypted-background'): Promise<T> {
+export async function backgroundStore<T>(action: (store: IDBObjectStore) => IDBRequest<T>, write = false, databaseName = 'veymux-encrypted-background'): Promise<T> {
+  await waitForBrandMigration();
   const db = await new Promise<IDBDatabase>((resolve, reject) => {
     const request = indexedDB.open(databaseName, 1);
     request.onupgradeneeded = () => request.result.createObjectStore('state');

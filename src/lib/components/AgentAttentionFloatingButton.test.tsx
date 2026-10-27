@@ -387,7 +387,7 @@ describe('AgentFloatingSessionButtons', () => {
 
 it('keeps unread chat navigation above the composer with the keyboard open and preserves terminal keyboard hiding', () => {
   keyboard.open = true;
-  localStorage.setItem('termdock:mobile-attention-position:v1', JSON.stringify({ side: 'right', yRatio: 1 }));
+  localStorage.setItem('veymux:mobile-attention-position:v1', JSON.stringify({ side: 'right', yRatio: 1 }));
   vi.stubGlobal('CSS', { escape: (value: string) => value });
   useTerminalStore.getState().setTerminalSession('chat-active', { sessionId: 'backend-chat', cols: 80, rows: 24 });
   useTerminalStore.getState().setSessionChatMode('chat-active', true);

@@ -34,7 +34,7 @@ def verify_app(app, metadata, public_key):
     require(run('lipo', '-archs', str(binary)).strip() == 'arm64', 'Expected arm64 App')
     require(re.findall(r'\bminos\s+(\S+)', run('xcrun', 'vtool', '-show-build', str(binary))) == ['14.0'], 'Wrong Mach-O minimum OS')
     raw = binary.read_bytes()
-    require(public_key.encode() in raw and b'https://github.com/Jovines/termdock/releases/download/stable-channel/latest.json' in raw, 'Updater trust is not pinned')
+    require(public_key.encode() in raw and b'https://github.com/Jovines/veymux/releases/download/stable-channel/latest.json' in raw, 'Updater trust is not pinned')
     require(not (app/'Contents/Resources/native-terminal').exists() and b'ghostty_surface_new' not in raw, 'Unexpected native terminal resource')
     resources = app/'Contents/Resources/workspace'
     manifest = json.loads((resources/'workspace-manifest.json').read_text())
@@ -56,11 +56,11 @@ def main():
     out, app, log = map(Path, sys.argv[1:])
     metadata = json.loads((out/'release.json').read_text())
     require(metadata['revision'] == os.environ['GITHUB_SHA'], 'Build source mismatch')
-    public = os.environ['TERMDOCK_PREVIEW_UPDATE_PUBLIC_KEY'].strip()
+    public = os.environ['VEYMUX_PREVIEW_UPDATE_PUBLIC_KEY'].strip()
     result = verify_app(app, metadata, public)
     receipts = re.findall(r'Accepted for id ([a-f0-9-]{36})', log.read_text())
     require(len(receipts) == 1, 'Expected one accepted Tauri App notarization receipt')
-    prefix = ('Termdock-Preview' if metadata['prerelease'] else 'Termdock')+f'_{metadata["version"]}_aarch64'
+    prefix = ('Veymux-Preview' if metadata['prerelease'] else 'Veymux')+f'_{metadata["version"]}_aarch64'
     product = metadata['config']['productName']+'.app'
     dmg = out/(prefix+'.dmg')
     receipt = json.loads(run('xcrun', 'notarytool', 'submit', str(dmg), '--key', os.environ['APPLE_API_KEY_PATH'],
@@ -82,23 +82,23 @@ def main():
         run('tar', '-xzf', str(archive), '-C', str(extracted))
         verify_app(extracted/product, metadata, public)
         if not metadata['prerelease']:
-            rust_zip = out/f'Termdock-Rust-darwin-arm64-{metadata["version"]}.zip'
+            rust_zip = out/f'Veymux-Rust-darwin-arm64-{metadata["version"]}.zip'
             zipped = Path(temporary)/'rust-zip'; zipped.mkdir()
             run('ditto', '-x', '-k', str(rust_zip), str(zipped))
             result['rustZipApp'] = verify_app(zipped/product, metadata, public)
-            bridge_zip = out/f'Termdock-darwin-arm64-{metadata["version"]}.zip'
+            bridge_zip = out/f'Veymux-darwin-arm64-{metadata["version"]}.zip'
             bridge_root = Path(temporary)/'bridge'; bridge_root.mkdir()
             run('ditto', '-x', '-k', str(bridge_zip), str(bridge_root))
-            bridge = bridge_root/'Termdock.app'
+            bridge = bridge_root/'Veymux.app'
             run('codesign', '--verify', '--deep', '--strict', str(bridge))
             bridge_signature = run('codesign', '-dv', '--verbose=4', str(bridge))
             require('Authority='+os.environ['APPLE_SIGNING_IDENTITY'] in bridge_signature and 'Timestamp=' in bridge_signature and 'runtime' in bridge_signature, 'Bridge signing identity mismatch')
             bridge_info = plistlib.loads((bridge/'Contents/Info.plist').read_bytes())
-            require(bridge_info['CFBundleIdentifier']=='com.jovines.termdock' and bridge_info['CFBundleShortVersionString']=='1.4.357' and bridge_info['LSMinimumSystemVersion']=='12.0', 'Wrong compatibility bridge')
+            require(bridge_info['CFBundleIdentifier']=='com.jovines.veymux' and bridge_info['CFBundleShortVersionString']=='1.4.357' and bridge_info['LSMinimumSystemVersion']=='12.0', 'Wrong compatibility bridge')
             for binary in [bridge/'Contents/MacOS'/bridge_info['CFBundleExecutable'], bridge/'Contents/Frameworks/Electron Framework.framework/Versions/A/Electron Framework']:
                 require(re.findall(r'\bminos\s+(\S+)', run('xcrun','vtool','-show-build',str(binary)))==['12.0'], 'Bridge does not support macOS 12')
             asar = (bridge/'Contents/Resources/app.asar').read_bytes()
-            require(b'Termdock-Rust-' in asar and b'minimumSystemVersion' in asar and b'14' in asar, 'Bridge migration logic missing')
+            require(b'Veymux-Rust-' in asar and b'minimumSystemVersion' in asar and b'14' in asar, 'Bridge migration logic missing')
             run('xcrun','stapler','validate',str(bridge))
             require('accepted' in run('spctl','-a','-vv','-t','exec',str(bridge)), 'Bridge Gatekeeper rejection')
             result['legacyBridge'] = dict(version='1.4.357', minimumMacOS='12.0', gatekeeperAccepted=True, notaryTicketValidated=True)

@@ -6,7 +6,7 @@ import { defaultComputerPreferences } from '../shared/computerPreferences.js';
 import { ComputerCredentialStore } from './computerCredentials.js';
 const directories: string[] = [];
 afterEach(() => { for (const path of directories.splice(0)) rmSync(path, { recursive: true, force: true }); });
-function fixture() { const directory = mkdtempSync(join(tmpdir(), 'termdock-login-')); directories.push(directory); return new ComputerCredentialStore(directory); }
+function fixture() { const directory = mkdtempSync(join(tmpdir(), 'veymux-login-')); directories.push(directory); return new ComputerCredentialStore(directory); }
 it('restores encrypted credentials after a new process and binds them to computer, protocol, port and account', () => {
   const store = fixture(), profile = { ...defaultComputerPreferences().local, username: 'private-account' }, secret = 'unique-password-登录';
   store.save(profile, secret);

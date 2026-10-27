@@ -1,6 +1,6 @@
 /**
  * Agent plugin system: user-defined agents loaded from
- * `~/.termdock/agent-plugins/<slug>/manifest.json`.
+ * `~/.veymux/agent-plugins/<slug>/manifest.json`.
  *
  * Each plugin can define:
  * 1. Agent identity (display name, aliases, accent color, icon)
@@ -23,10 +23,10 @@ import type {
   AgentStatusTone,
 } from './session.js';
 
-export const PLUGINS_DIR = path.join(os.homedir(), '.termdock', 'agent-plugins');
+export const PLUGINS_DIR = path.join(os.homedir(), '.veymux', 'agent-plugins');
 export const MANIFEST_FILE = 'manifest.json';
 export const ICON_FILE = 'icon.svg';
-export const SOURCE_METADATA_FILE = '.termdock-source.json';
+export const SOURCE_METADATA_FILE = '.veymux-source.json';
 
 // ---------------------------------------------------------------------------
 // Manifest schema
@@ -245,9 +245,9 @@ export interface PluginValidationError {
   };
 }
 
-export const V1_MIGRATION_GUIDE_COMMAND = 'td agent-plugin --json';
+export const V1_MIGRATION_GUIDE_COMMAND = 'veymux agent-plugin --json';
 export const V1_MIGRATION_AI_PROMPT = [
-  'Please migrate the attached Termdock Agent plugin manifest from v1 to v2.',
+  'Please migrate the attached Veymux Agent plugin manifest from v1 to v2.',
   'Preserve slug, displayName, aliases, accentColor, iconMode, hooks.target, and resume.',
   'Add statuses[] entries with id, phase (idle|working|waiting|done), label, indicator, and tone.',
   'Add a status reference to each relevant hooks.events[] mapping while keeping its core event value.',
@@ -559,7 +559,7 @@ export interface PluginLoadResult {
 }
 
 /**
- * Scan ~/.termdock/agent-plugins/ for plugin directories, validate each
+ * Scan ~/.veymux/agent-plugins/ for plugin directories, validate each
  * manifest, and return the loaded plugins + any validation errors.
  */
 export function loadPlugins(): PluginLoadResult {

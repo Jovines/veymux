@@ -123,7 +123,7 @@ export function assessCollaborationRouteIdentity(binding: CollaborationBinding, 
   const diagnostics: CollaborationRouteIdentity = { expected: binding.pane ? { ...binding.pane } : null,
     observed: panes.slice(0, 20).map(pane => ({ ...metadata(pane), nativeIdentitySource: pane.nativeIdentitySource ?? null, nativeIdentityFailure: pane.nativeIdentityFailure ?? null, nativeIdentityVerified: pane.nativeIdentityVerified === true })),
     truncated: panes.length > 20, recovery: 'unchanged', reason: null,
-    rebind_command: `td collab --session ${binding.sessionId} rebind${panes.length === 1 ? ` --pane ${panes[0].paneId}` : ''}` };
+    rebind_command: `veymux collab --session ${binding.sessionId} rebind${panes.length === 1 ? ` --pane ${panes[0].paneId}` : ''}` };
   if (selected.state !== 'identity-mismatch') return { ...selected, diagnostics };
   const nativeId = binding.pane?.nativeSessionId ?? binding.nativeSessionId;
   const slug = binding.pane?.agentSlug || binding.agentSlug;

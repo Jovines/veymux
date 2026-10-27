@@ -1,5 +1,5 @@
 /**
- * Framed wire protocol between the termdock server and the pty-host daemon
+ * Framed wire protocol between the veymux server and the pty-host daemon
  * over a Unix-domain socket. （架构移植自 tty7 daemon/protocol.rs，Apache-2.0）
  *
  * Frame layout: `[1B type][4B BE length][payload]`.

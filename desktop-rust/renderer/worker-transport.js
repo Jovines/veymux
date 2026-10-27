@@ -1,7 +1,7 @@
 // Runs before the existing encrypted background bundle. Workers do not inherit
 // the page's WebSocket wrapper; route only saved origins and encrypted sockets.
 (() => {
-  const boot = self.__TD_PREVIEW_TRANSPORT__;
+  const boot = self.__VEYMUX_PREVIEW_TRANSPORT__;
   const OriginalSocket = self.WebSocket;
   self.WebSocket = class extends OriginalSocket {
     constructor(raw, protocols) {
@@ -10,8 +10,8 @@
       const index = origin === self.location.origin ? boot.defaultRoute : boot.origins.indexOf(origin);
       if (index < 0 || url.username || url.password || !['/api/federation/secure','/api/federation/relay'].includes(url.pathname)) throw new TypeError('Unapproved background encrypted route');
       const local = self.location.origin.replace('http:', 'ws:');
-      super(`${local}/__td_route/${index}${url.pathname}${url.search}`, protocols);
+      super(`${local}/__veymux_route/${index}${url.pathname}${url.search}`, protocols);
     }
   };
-  delete self.__TD_PREVIEW_TRANSPORT__;
+  delete self.__VEYMUX_PREVIEW_TRANSPORT__;
 })();

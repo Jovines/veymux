@@ -44,14 +44,14 @@ export function useComputerPreferences(serviceId: string) {
       // One-time migration of pre-server preferences. Server settings win later.
       const hasLocalEdits = revision.current > 0;
       if (!result.configured && !hasLocalEdits) try {
-        const host = localStorage.getItem(`termdock:computer-host:${serviceId}`);
+        const host = localStorage.getItem(`veymux:computer-host:${serviceId}`);
         if (host) {
           const local = /^(127\.0\.0\.1|localhost|::1|\[::1\])$/i.test(host);
           const target = local ? 'local' : 'remote';
           value = computerPreferences({ ...value, target, [target]: { ...value[target], host,
-            platform: localStorage.getItem(`termdock:computer-platform:${serviceId}`) || value[target].platform,
-            protocol: localStorage.getItem(`termdock:computer-protocol:${serviceId}`) || 'vnc',
-            port: localStorage.getItem(`termdock:computer-rdp-port:${serviceId}`) || '3389' } });
+            platform: localStorage.getItem(`veymux:computer-platform:${serviceId}`) || value[target].platform,
+            protocol: localStorage.getItem(`veymux:computer-protocol:${serviceId}`) || 'vnc',
+            port: localStorage.getItem(`veymux:computer-rdp-port:${serviceId}`) || '3389' } });
           revision.current++;
         }
       } catch { /* storage unavailable */ }

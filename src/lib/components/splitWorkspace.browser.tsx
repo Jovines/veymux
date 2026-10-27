@@ -27,15 +27,15 @@ afterEach(() => { root?.unmount(); root = undefined; document.body.replaceChildr
 
 it('loads both visible chats without focusing the second, puts shared sidebar toggles in each compact title, and defers the hidden chat', async () => {
   await page.viewport(1440, 900);
-  localStorage.clear(); sessionStorage.clear(); localStorage.setItem('termdock:locale', 'zh');
+  localStorage.clear(); sessionStorage.clear(); localStorage.setItem('veymux:locale', 'zh');
   const ids = ['split-visible-a', 'split-visible-b', 'split-hidden-c'];
   const sessions = ids.map((sessionId, i) => ({ frontendSessionId: sessionId, sessionId, name: sessionId, customName: true,
     backendSessionId: `backend-${sessionId}`, mode: 'shell', tmuxSessionName: null, createdAt: i + 1, lastActivity: i + 1, connected: false, live: false, restorable: true }));
   api.getSessionInventory.mockResolvedValue({ clientSessions: sessions, tmuxSessions: [], tmuxStatus: { available: false, version: null, reason: null }, updatedAt: 1 });
-  localStorage.setItem('termdock-sessions-cache', JSON.stringify(sessions));
-  localStorage.setItem('termdock-active-session', ids[0]);
-  localStorage.setItem('termdock:split-workspaces:v2', JSON.stringify([{ id: 'visible-split', sessionIds: ids.slice(0, 2), layout: 'horizontal' }]));
-  for (const id of ids) localStorage.setItem(`termdock:session-view:${location.origin}:${id}`, 'chat');
+  localStorage.setItem('veymux-sessions-cache', JSON.stringify(sessions));
+  localStorage.setItem('veymux-active-session', ids[0]);
+  localStorage.setItem('veymux:split-workspaces:v2', JSON.stringify([{ id: 'visible-split', sessionIds: ids.slice(0, 2), layout: 'horizontal' }]));
+  for (const id of ids) localStorage.setItem(`veymux:session-view:${location.origin}:${id}`, 'chat');
   const reads = new Map<string, number>(); let revision = 1;
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);

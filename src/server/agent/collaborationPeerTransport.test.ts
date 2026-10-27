@@ -11,7 +11,7 @@ import type { Packet } from '../federation/packets.js';
 const cleanup: Array<() => void> = [];
 afterEach(() => { for (const close of cleanup.splice(0).reverse()) close(); vi.restoreAllMocks(); });
 async function setup() {
-  const dir = mkdtempSync(join(tmpdir(), 'td-peer-')); cleanup.push(() => rmSync(dir, { recursive: true, force: true }));
+  const dir = mkdtempSync(join(tmpdir(), 'veymux-peer-')); cleanup.push(() => rmSync(dir, { recursive: true, force: true }));
   const ids = await Promise.all([createIdentity(), createIdentity(), createIdentity()]);
   const nodes: CollaborationNode[] = ids.map((identity, index) => ({ serviceId: identity.peerId, origin: `https://node${index}.test` }));
   const stores = nodes.map((_, index) => new CollaborationStore(join(dir, `${index}.json`)));

@@ -9,7 +9,7 @@ import { todoRoutes, TodoRunner, type TodoRuntime } from './routes.js';
 let directory: string, store: TodoStore, server: Server, base: string;
 const config = { agentSlug: 'fixture', command: 'fixture', cwd: '/tmp', prompt: '收集需要跟进的事项' };
 beforeEach(async () => {
-  directory = fs.mkdtempSync(path.join(os.tmpdir(), 'td-todo-routes-')); store = new TodoStore(path.join(directory, 'todos.json'));
+  directory = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-todo-routes-')); store = new TodoStore(path.join(directory, 'todos.json'));
   const runtime: TodoRuntime = { validate: async c => { if (!c.agentSlug) throw new Error('请选择 Agent'); return c; }, launch: vi.fn(async (_r, _p, session) => { session('actual-terminal'); }) };
   const app = express(); app.use(express.json()); app.use('/todos', todoRoutes(store, new TodoRunner(store, runtime), runtime));
   server = app.listen(0, '127.0.0.1'); await new Promise<void>(resolve => server.on('listening', resolve)); base = `http://127.0.0.1:${(server.address() as { port: number }).port}/todos`;

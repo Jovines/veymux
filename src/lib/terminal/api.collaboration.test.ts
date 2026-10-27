@@ -10,7 +10,7 @@ const session = (sessionId: string, name = 'CustomAgent') => ({ sessionId, name,
 const local = { groups: [{ id: 'existing', name: 'Original', sessionIds: ['one', 'two'], createdAt: 1, updatedAt: 2 }],
   sessions: [session('one'), session('two')] };
 function setup(bridge?: Record<string, unknown>) {
-  vi.stubGlobal('window', { location: { origin: 'https://current.test' }, termdockDesktop: bridge });
+  vi.stubGlobal('window', { location: { origin: 'https://current.test' }, veymuxDesktop: bridge });
   const fetch = vi.fn(async (path: string, init?: RequestInit) => new Response(JSON.stringify(
     path === '/api/csrf-token' ? { csrfToken: 'test' }
       : path.endsWith('/collaboration-directory') ? { protocolVersion: 2, origin: 'https://current.test', sessions: [] }

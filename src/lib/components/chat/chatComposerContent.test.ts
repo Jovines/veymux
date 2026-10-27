@@ -11,5 +11,5 @@ it.each(['', '请看看这些文件', `${mentionToken(member)} 帮忙看看`])('
   expect(parseChatDraft(composeChatContent(composeChatDraft(text, [attachment], [member]), null))).toEqual(parsed);
 });
 it('preserves ordinary code and malformed context as text', () => {
-  for (const text of ['```json\n{}\n```', '```termdock-context\n{broken}\n```', '```termdock-context\n{"attachments":[null],"mentions":[]}\n```']) expect(parseChatDraft(text)).toEqual({ text, attachments: [], mentions: [] });
+  for (const text of ['```json\n{}\n```', '```veymux-context\n{broken}\n```', '```veymux-context\n{"attachments":[null],"mentions":[]}\n```']) expect(parseChatDraft(text)).toEqual({ text, attachments: [], mentions: [] });
 });

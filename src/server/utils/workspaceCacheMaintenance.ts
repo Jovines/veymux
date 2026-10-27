@@ -103,7 +103,7 @@ try {
 process.stdout.write(JSON.stringify(result));
 `;
 
-/** Only registered Termdock task worktrees and Cargo's disposable internals. */
+/** Only registered Veymux task worktrees and Cargo's disposable internals. */
 export async function pruneWorkspaceCaches(options: {
   stateDirectory: string; dryRun?: boolean; now?: number; idleMs?: number;
 }): Promise<CacheCleanupEntry[]> {
@@ -117,7 +117,7 @@ export async function pruneWorkspaceCaches(options: {
         if (!/^[a-f0-9]{32}-[a-f0-9]{8}$/.test(task.name)) {
           result.push({ path: path.join(root, goal.name, task.name), action: 'retained', reason: 'unrecognized-workspace-name', bytes: 0 }); continue;
         }
-        const workspace = path.join(root, goal.name, task.name), branch = `termdock/task/${task.name}`;
+        const workspace = path.join(root, goal.name, task.name), branch = `veymux/task/${task.name}`;
         try {
           if (await fs.realpath(workspace) !== workspace || !(await fs.lstat(path.join(workspace, '.git'))).isFile()
             || await git(workspace, ['rev-parse', '--show-toplevel']) !== workspace || await git(workspace, ['branch', '--show-current']) !== branch) continue;

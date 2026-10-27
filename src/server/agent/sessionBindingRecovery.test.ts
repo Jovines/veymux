@@ -7,7 +7,7 @@ const record = {
   agentResume: { slug: 'customagent', sessionId: 'native' },
 };
 const backend = {
-  mode: 'tmux', tmuxSessionName: 'td-peer', agent: { slug: 'customagent' },
+  mode: 'tmux', tmuxSessionName: 'veymux-peer', agent: { slug: 'customagent' },
   agentSession: { sessionId: 'native' },
 };
 const binding: CollaborationBinding = {
@@ -25,7 +25,7 @@ describe('recoverSessionBinding', () => {
   });
 
   it('recovers an exact tmux binding without native identity', () => {
-    const peer = { ...record, tmuxSessionName: 'td-peer' };
+    const peer = { ...record, tmuxSessionName: 'veymux-peer' };
     expect(recoverSessionBinding(peer, [peer], new Map([['backend', backend]]), null))
       .toEqual(['backend', backend]);
   });
@@ -54,7 +54,7 @@ describe('recoverSessionBinding', () => {
   it('does not steal another peer backend or select an ambiguous tmux backend', () => {
     expect(recoverSessionBinding(record, [record, { ...record, sessionId: 'other', backendSessionId: 'backend' }],
       new Map([['backend', backend]]), binding)).toBeNull();
-    const peer = { ...record, tmuxSessionName: 'td-peer' };
+    const peer = { ...record, tmuxSessionName: 'veymux-peer' };
     expect(recoverSessionBinding(peer, [peer], new Map([['backend', backend], ['duplicate', backend]]), binding)).toBeNull();
   });
 });

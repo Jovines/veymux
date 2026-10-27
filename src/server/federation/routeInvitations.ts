@@ -45,7 +45,7 @@ export class RouteInvitationStore {
     try { chmodSync(options.filePath, 0o600); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
   }
   private hash(code: string): string {
-    return createHash('sha256').update(`termdock-route-invitation-v1:${this.options.serviceId}:`).update(code).digest('hex');
+    return createHash('sha256').update(`veymux-route-invitation-v1:${this.options.serviceId}:`).update(code).digest('hex');
   }
   private available(issuerId: string, targetServiceId: string): boolean {
     try { return this.options.issuerAllowed(issuerId) && this.options.targetAvailable(targetServiceId); } catch { return false; }

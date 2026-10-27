@@ -16,7 +16,7 @@ export function assemblyRoots(root: Object3D): Object3D[] {
     if (children.length !== 1) return children;
     // GLTFLoader marks multi-primitive meshes with associations; their child
     // meshes are materials of ONE part, not an assembly.
-    if (children[0].userData?.termdockSinglePart) return [children[0]];
+    if (children[0].userData?.veymuxSinglePart) return [children[0]];
     node = children[0];
   }
   return [node];
@@ -111,7 +111,7 @@ export function createModelExplosion(root: Object3D) {
   }
   const lookup = (node: Object3D | string | undefined) => {
     if (typeof node === 'string') {
-      const exact = parts.filter((p) => p.node.uuid === node || p.node.name === node || p.node.userData.termdockPartName === node);
+      const exact = parts.filter((p) => p.node.uuid === node || p.node.name === node || p.node.userData.veymuxPartName === node);
       return exact.length === 1 ? exact[0] : undefined;
     }
     for (let current = node; current; current = current.parent ?? undefined) {

@@ -23,7 +23,7 @@ async function waitForClient(socket: string, sessionName: string): Promise<void>
 
 describe.skipIf(!supported)('tmux lifecycle stress', () => {
   it('keeps unrelated sessions alive across repeated focus and teardown cycles', async () => {
-    const socket = `termdock-stress-${process.pid}-${Date.now()}`;
+    const socket = `veymux-stress-${process.pid}-${Date.now()}`;
     try {
       await tmux(socket, ['new-session', '-d', '-s', 'survivor-a']);
       await tmux(socket, ['new-session', '-d', '-s', 'survivor-b']);

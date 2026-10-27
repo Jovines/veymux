@@ -18,7 +18,7 @@ it('prepares only direct prompt-free launches and preserves quoted configuration
 });
 
 function fakeCodex(mode: 'normal' | 'wrong-id' | 'no-response') {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'td-codex-prepare-')); directories.push(directory);
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-codex-prepare-')); directories.push(directory);
   const executable = path.join(directory, 'codex'), rollout = path.join(directory, 'rollout.jsonl');
   const native = 'original-native-thread';
   fs.writeFileSync(executable, `#!${process.execPath}\nconst fs=require('node:fs'),rl=require('node:readline').createInterface({input:process.stdin});\nlet allocated=false; rl.on('line',line=>{const m=JSON.parse(line); if(!m.id)return; if(m.method==='initialize')console.log(JSON.stringify({id:m.id,result:{}})); else if(m.method==='config/read')console.log(JSON.stringify({id:m.id,result:{config:{model_reasoning_effort:'high'}}})); else if(m.method==='thread/start' && ${JSON.stringify(mode)}!=='no-response'){allocated=true;console.log(JSON.stringify({id:m.id,result:{thread:{id:${JSON.stringify(native)},path:${JSON.stringify(rollout)},ephemeral:false}}}));}});\nprocess.on('SIGTERM',()=>{if(allocated)fs.writeFileSync(${JSON.stringify(rollout)},JSON.stringify({type:'session_meta',payload:{id:${JSON.stringify(mode === 'wrong-id' ? 'different-thread' : native)}}})+'\\n');process.exit(0)});\n`, { mode: 0o755 });

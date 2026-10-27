@@ -1,4 +1,4 @@
-// Termdock: every descriptor is owned until explicitly transferred to JS.
+// Veymux: every descriptor is owned until explicitly transferred to JS.
 static void
 pty_posix_spawn(char** argv, char** env,
                 const struct termios *termp,

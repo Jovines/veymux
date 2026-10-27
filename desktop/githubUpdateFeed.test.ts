@@ -5,12 +5,12 @@ const digest = `sha256:${'a'.repeat(64)}`;
 
 describe('GitHub desktop update feed', () => {
   it('bridges supported Macs to Rust while retaining the client on macOS 12/13', async () => {
-    const rustName = 'Termdock-Rust-darwin-arm64-1.4.358.zip';
-    const dmgName = 'Termdock_1.4.358_aarch64.dmg';
-    const legacyName = 'Termdock-darwin-arm64-1.4.358.zip';
+    const rustName = 'Veymux-Rust-darwin-arm64-1.4.358.zip';
+    const dmgName = 'Veymux_1.4.358_aarch64.dmg';
+    const legacyName = 'Veymux-darwin-arm64-1.4.358.zip';
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
       tag_name: 'v1.4.358', assets: [rustName, dmgName, legacyName].map(name => ({
-        name, browser_download_url: `https://github.com/Jovines/termdock/releases/download/v1.4.358/${name}`, digest, size: 123456,
+        name, browser_download_url: `https://github.com/Jovines/veymux/releases/download/v1.4.358/${name}`, digest, size: 123456,
       })),
     }))) as typeof fetch;
     for (const darwin of ['21.6.0','22.6.0']) {
@@ -29,12 +29,12 @@ describe('GitHub desktop update feed', () => {
   it('returns a verified Squirrel feed for a newer GitHub release', async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
       tag_name: 'v1.4.91',
-      name: 'Termdock v1.4.91',
+      name: 'Veymux v1.4.91',
       body: 'Release notes',
       published_at: '2026-08-22T12:00:00Z',
       assets: [{
-        name: 'Termdock-darwin-arm64-1.4.91.zip',
-        browser_download_url: 'https://github.com/Jovines/termdock/releases/download/v1.4.91/Termdock-darwin-arm64-1.4.91.zip',
+        name: 'Veymux-darwin-arm64-1.4.91.zip',
+        browser_download_url: 'https://github.com/Jovines/veymux/releases/download/v1.4.91/Veymux-darwin-arm64-1.4.91.zip',
         digest,
         size: 123456,
       }],
@@ -43,7 +43,7 @@ describe('GitHub desktop update feed', () => {
     const feed = await buildGitHubUpdateFeed('1.4.90', 'darwin', 'arm64', fetchImpl);
     expect(feed.status).toBe(200);
     expect(JSON.parse(feed.body ?? '{}')).toMatchObject({
-      name: 'Termdock v1.4.91',
+      name: 'Veymux v1.4.91',
       sha256: 'a'.repeat(64),
       size: 123456,
     });
@@ -60,8 +60,8 @@ describe('GitHub desktop update feed', () => {
     const unsafeFetch = vi.fn(async () => new Response(JSON.stringify({
       tag_name: 'v1.4.91',
       assets: [{
-        name: 'Termdock-darwin-arm64-1.4.91.zip',
-        browser_download_url: 'https://github.com/Jovines/termdock/releases/download/v1.4.91/Termdock-darwin-arm64-1.4.91.zip',
+        name: 'Veymux-darwin-arm64-1.4.91.zip',
+        browser_download_url: 'https://github.com/Jovines/veymux/releases/download/v1.4.91/Veymux-darwin-arm64-1.4.91.zip',
         size: 123456,
       }],
     }), { status: 200 })) as typeof fetch;

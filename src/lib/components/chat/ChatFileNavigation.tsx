@@ -30,7 +30,7 @@ export function ChatFileNavigation({ sessionId, canWrite = true, active = true, 
     ? liveDirectory || sessions.find(session => session.sessionId === sessionId)?.cwd
     : access.directories?.[0]?.path;
   // Markdown resolves relative links beside a source file. Chat prose lives at cwd.
-  const filePath = directory ? `${directory.replace(/\/$/, '')}/.termdock-chat.md` : null;
+  const filePath = directory ? `${directory.replace(/\/$/, '')}/.veymux-chat.md` : null;
   const [target, setTarget] = useState<MarkdownLocalLinkTarget | null>(null);
   const [reference, setReference] = useState<ChatAttachment | null>(null);
   const openReference = useCallback((file: ChatAttachment) => {

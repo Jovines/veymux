@@ -3,7 +3,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
-const logPath = path.join(os.homedir(), '.termdock', 'fs-io.log');
+const logPath = path.join(os.homedir(), '.veymux', 'fs-io.log');
 const args = process.argv.slice(2);
 const query = args.find((arg) => !arg.startsWith('--')) ?? '';
 const sinceMinutesArg = args.find((arg) => arg.startsWith('--since-min='));

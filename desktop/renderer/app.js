@@ -1,4 +1,4 @@
-const api = window.termdockDesktop;
+const api = window.veymuxDesktop;
 
 const elements = {
   notice: document.querySelector('#notice'),
@@ -93,7 +93,7 @@ function clearNotice() {
 
 function render(snapshot) {
   currentSnapshot = snapshot;
-  elements.version.textContent = `Termdock Desktop ${snapshot.appVersion}`;
+  elements.version.textContent = `Veymux Desktop ${snapshot.appVersion}`;
   elements.connectionCount.textContent = String(snapshot.connections.length);
   elements.connectionCount.hidden = snapshot.connections.length === 0;
 
@@ -154,7 +154,7 @@ function render(snapshot) {
       : '从 npm 下载到当前用户目录，无需 sudo；首次安装可能需要系统依赖。';
   const diagnostics = [
     setup.nodeVersion && `Node.js ${setup.nodeVersion}`,
-    setup.cliPath && `Termdock CLI: ${setup.cliPath}`,
+    setup.cliPath && `Veymux CLI: ${setup.cliPath}`,
     local.state && `服务 PID: ${local.state.pid}`,
     setup.details,
   ].filter(Boolean).join('\n');

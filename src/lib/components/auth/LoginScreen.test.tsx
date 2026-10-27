@@ -20,7 +20,7 @@ describe('login feedback and focus ownership', () => {
   });
 
   it.each(['en', 'zh'])('uses %s feedback and does not expose server diagnostics', async locale => {
-    localStorage.setItem('termdock:locale', locale);
+    localStorage.setItem('veymux:locale', locale);
     mocks.login.mockResolvedValue({ ok: false, error: 'server identity /private/key.pem secret details' });
     render(<I18nProvider><LoginScreen onLoginSuccess={() => {}} /></I18nProvider>);
     const input = screen.getByLabelText(locale === 'en' ? 'Enter password' : '请输入密码');

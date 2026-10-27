@@ -4,7 +4,7 @@ import { updateSettings, type CollaborationPanelState } from '../terminal/api';
 let fallbackClientId: string | undefined;
 export function collaborationPanelClientId(): string {
   try {
-    const key = 'termdock-collaboration-panel-client';
+    const key = 'veymux-collaboration-panel-client';
     const saved = localStorage.getItem(key);
     if (saved) return saved;
     const id = crypto.randomUUID();
@@ -49,5 +49,5 @@ export async function openCollaborationMessagesPanel(groupId: string, sessionId:
   const dock = { sessionId, side: window.innerWidth < 640 ? 'bottom' as const : 'right' as const };
   await saveCollaborationPanel({ floatingGroupId: groupId, mode: 'docked', dock }, groupId);
   if (useCollaborationNavigation.getState().groupId !== requestedFrom) throw new Error('布局已保存；页面已切换，请重新打开成员消息');
-  window.dispatchEvent(new CustomEvent('termdock:open-collaboration-messages', { detail: { groupId, dock } }));
+  window.dispatchEvent(new CustomEvent('veymux:open-collaboration-messages', { detail: { groupId, dock } }));
 }

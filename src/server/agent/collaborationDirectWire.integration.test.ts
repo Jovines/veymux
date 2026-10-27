@@ -22,7 +22,7 @@ const cleanup: Array<() => void> = [];
 afterEach(() => { cleanup.splice(0).reverse().forEach(close => close()); vi.restoreAllMocks(); });
 it.each(['direct', 'relay-only', 'saved-address'] as const)('sends and replies without groups over verified WSS + Noise (%s), without a page or plaintext business HTTP', async mode => {
   vi.spyOn(authProtection, 'getPasswordVerifier').mockReturnValue(`scrypt$${'0'.repeat(32)}$${'1'.repeat(128)}`);
-  const dir = mkdtempSync(join(tmpdir(), 'td-direct-wire-')); cleanup.push(() => rmSync(dir, { force: true, recursive: true }));
+  const dir = mkdtempSync(join(tmpdir(), 'veymux-direct-wire-')); cleanup.push(() => rmSync(dir, { force: true, recursive: true }));
   execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1', '-keyout', join(dir, 'key.pem'), '-out', join(dir, 'ca.pem'), '-subj', '/CN=localhost', '-addext', 'subjectAltName=IP:127.0.0.1,DNS:localhost'], { stdio: 'ignore' });
   const ca = readFileSync(join(dir, 'ca.pem')), key = readFileSync(join(dir, 'key.pem'));
   const sourceIdentity = await createIdentity();

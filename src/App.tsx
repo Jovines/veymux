@@ -71,13 +71,13 @@ import { SessionCloseConfirmationKeyboard } from './lib/components/SessionCloseC
 import { getSessionFontSize, setSessionFontSize } from './lib/terminal/sessionFontSize';
 import { getCwdLeafName, getSessionDisplayLines, buildFolderGroups, deriveGroupedOrder, reorderGroupedSessionIds } from './lib/terminal/display';
 import type { TerminalRendererMode } from './lib/terminal/renderer';
-import { getTmuxStatus, killTmuxSession, listTmuxSessions, getToolbarPresetsDoc, replaceToolbarPresetsDoc, logout, getSettings, updateSettings, replaceProgramRules, resetProgramRules, getProgramDetection, replaceProgramDetection, resetProgramDetection, resumeAgentSession, checkTermdockUpdate, confirmTermdockUpdateRestart, getServerHealth, dismissServerHealthIncident } from './lib/terminal/api';
-import { useTermdockUpdateState } from './lib/terminal/useTermdockUpdateState';
+import { getTmuxStatus, killTmuxSession, listTmuxSessions, getToolbarPresetsDoc, replaceToolbarPresetsDoc, logout, getSettings, updateSettings, replaceProgramRules, resetProgramRules, getProgramDetection, replaceProgramDetection, resetProgramDetection, resumeAgentSession, checkVeymuxUpdate, confirmVeymuxUpdateRestart, getServerHealth, dismissServerHealthIncident } from './lib/terminal/api';
+import { useVeymuxUpdateState } from './lib/terminal/useVeymuxUpdateState';
 import { useServiceUpdatePlan, updateConnectedServices } from './lib/terminal/useServiceUpdatePlan';
 import { captureServiceUpdatePlan, type ServiceUpdatePlan } from './lib/terminal/serviceUpdatePlan';
 import { inspectServiceUpdates } from './lib/terminal/inspectServiceUpdates';
 import { summarizeServiceUpdates } from './lib/terminal/serviceUpdateOverview';
-import type { ProgramLabelRule, ProgramDetectionConfig, LocalAccessState, TermdockUpdateState, ServerHealthState } from './lib/terminal/api';
+import type { ProgramLabelRule, ProgramDetectionConfig, LocalAccessState, VeymuxUpdateState, ServerHealthState } from './lib/terminal/api';
 import { readCache, writeCache, shallowJsonEqual } from './lib/utils/localStorageCache';
 import { syncThemeColorMeta } from './lib/utils/themeColorMeta';
 import {
@@ -125,7 +125,7 @@ import { type ToolbarSaveState } from './lib/components/settings/ToolbarPresetSe
 import { ToolbarSettingsDialog } from './lib/components/settings/ToolbarSettingsDialog';
 import { createToolbarPresetWriter } from './lib/terminal/toolbarPresetWriter';
 import AgentHooksSettings from './lib/components/settings/AgentHooksSettings';
-import { TermdockUpdateSettings } from './lib/components/settings/TermdockUpdateSettings';
+import { VeymuxUpdateSettings } from './lib/components/settings/VeymuxUpdateSettings';
 import { ConnectionQualitySettings } from './lib/components/settings/ConnectionQualitySettings';
 import { ServerHealthSettings } from './lib/components/settings/ServerHealthSettings';
 import { NewSessionShortcut } from './lib/components/NewSessionShortcut';
@@ -133,8 +133,8 @@ import { WorkspaceRetentionSettings } from './lib/components/settings/WorkspaceR
 import { SettingsSections } from './lib/components/settings/SettingsSections';
 import { useServiceWorkspaceActivity } from './lib/components/ServiceSwitcher';
 import { BUILTIN_TOOLBAR_PRESETS_VERSION, createDefaultToolbarPresets, materializeToolbarPresets, sanitizeToolbarPresets, type ToolbarConfigurationTarget, type ToolbarPresetDefinition } from './lib/components/terminal/mobileKeyboardPresets';
-import type { TermdockColorTheme } from './lib/terminal/theme';
-import { getTermdockDesktopBridge, type DesktopAppUpdateState, type DesktopNativeSnapshot } from './lib/desktop/nativeBridge';
+import type { VeymuxColorTheme } from './lib/terminal/theme';
+import { getVeymuxDesktopBridge, type DesktopAppUpdateState, type DesktopNativeSnapshot } from './lib/desktop/nativeBridge';
 import { StartupScreen } from './lib/components/StartupScreen';
 import { useInitialRestoreGate } from './lib/hooks/useInitialRestoreGate';
 import { setSessionShellNames, useSessionDirectory } from './lib/stores/useSessionDirectory';
@@ -143,13 +143,13 @@ import { MOBILE_SESSION_DESTROY_DROPPABLE_ID, isMobileSessionDestroyDrop } from 
 
 // Cache keys for app-level lazy data fetched from the server. 缓存只是"上次看到"的
 // 快照，每次启动还是会发 HTTP 校准；命中时让 UI 不再闪烁默认值 → 自定义值。
-const PROGRAM_RULES_CACHE_KEY = 'termdock-program-rules-cache';
-const TOOLBAR_PRESETS_CACHE_KEY = 'termdock-toolbar-presets-cache';
-const SETTINGS_CACHE_KEY = 'termdock-settings-cache';
-const COLOR_THEME_CACHE_KEY = 'termdock-color-theme';
-const RIGHT_SIDEBAR_FILE_PREVIEW_OPEN_BY_SESSION_CACHE_KEY = 'termdock:right-sidebar:file-preview-open-by-session:v2';
-const RUNNING_SESSION_BUTTON_ENABLED_CACHE_KEY = 'termdock:running-session-button-enabled:v1';
-const ATTENTION_BUTTON_ENABLED_CACHE_KEY = 'termdock:attention-button-enabled:v1';
+const PROGRAM_RULES_CACHE_KEY = 'veymux-program-rules-cache';
+const TOOLBAR_PRESETS_CACHE_KEY = 'veymux-toolbar-presets-cache';
+const SETTINGS_CACHE_KEY = 'veymux-settings-cache';
+const COLOR_THEME_CACHE_KEY = 'veymux-color-theme';
+const RIGHT_SIDEBAR_FILE_PREVIEW_OPEN_BY_SESSION_CACHE_KEY = 'veymux:right-sidebar:file-preview-open-by-session:v2';
+const RUNNING_SESSION_BUTTON_ENABLED_CACHE_KEY = 'veymux:running-session-button-enabled:v1';
+const ATTENTION_BUTTON_ENABLED_CACHE_KEY = 'veymux:attention-button-enabled:v1';
 const MAX_RIGHT_SIDEBAR_FILE_PREVIEW_OPEN_ROOTS = 60;
 const DESKTOP_TAB_MENU_WIDTH = 280;
 const DESKTOP_TAB_MENU_MAX_HEIGHT = 420;
@@ -177,7 +177,7 @@ function getDesktopTabMenuPosition(anchor: { x: number; y: number } | null, heig
   };
 }
 
-function isTermdockColorTheme(v: unknown): v is TermdockColorTheme {
+function isVeymuxColorTheme(v: unknown): v is VeymuxColorTheme {
   return v === 'dark' || v === 'light';
 }
 
@@ -248,13 +248,13 @@ const DEFAULT_LOCAL_ACCESS: LocalAccessState = {
   lanAddresses: [],
   interfaces: [],
 };
-const HISTORY_OVERLAY_STATE_KEY = '__termdockOverlay';
-const HISTORY_BASE_ANCHOR_STATE_KEY = '__termdockBaseAnchor';
-const HISTORY_BASE_GUARD_STATE_KEY = '__termdockBaseGuard';
+const HISTORY_OVERLAY_STATE_KEY = '__veymuxOverlay';
+const HISTORY_BASE_ANCHOR_STATE_KEY = '__veymuxBaseAnchor';
+const HISTORY_BASE_GUARD_STATE_KEY = '__veymuxBaseGuard';
 const BASE_HISTORY_GUARD_BUFFER_SIZE = 3;
 const BASE_HISTORY_GUARD_REARM_DELAY_MS = 250;
-const NOTIFICATION_TARGET_CACHE = 'termdock-notification-target-v1';
-const NOTIFICATION_TARGET_KEY = '/__termdock-notification-target';
+const NOTIFICATION_TARGET_CACHE = 'veymux-notification-target-v1';
+const NOTIFICATION_TARGET_KEY = '/__veymux-notification-target';
 const NOTIFICATION_TARGET_MAX_AGE_MS = 30_000;
 const HISTORY_GUARD_DEBUG_ENABLED = false;
 type HistoryOverlay =
@@ -536,8 +536,8 @@ const TodoWorkspace = React.lazy(() => import('./lib/components/todos/TodoWorksp
 /** One confirmation belongs to one live service/page, including the CSRF await. */
 export async function runServiceUpdateConfirmation(lock: { busy: boolean }, action: {
   confirm: () => boolean | Promise<boolean>; current: () => boolean;
-  submit: (current: () => boolean) => Promise<TermdockUpdateState>;
-  apply: (state: TermdockUpdateState) => void; pending: (value: boolean) => void;
+  submit: (current: () => boolean) => Promise<VeymuxUpdateState>;
+  apply: (state: VeymuxUpdateState) => void; pending: (value: boolean) => void;
   failure: (message: string) => void; expiredMessage: string;
 }) {
   return runConfirmedPageAction(lock,action);
@@ -557,8 +557,8 @@ function App() {
   }, []);
 
   const [showDebug, setShowDebug] = React.useState(false);
-  const [colorTheme, setColorTheme] = React.useState<TermdockColorTheme>(() =>
-    readCache(COLOR_THEME_CACHE_KEY, isTermdockColorTheme) ?? 'dark',
+  const [colorTheme, setColorTheme] = React.useState<VeymuxColorTheme>(() =>
+    readCache(COLOR_THEME_CACHE_KEY, isVeymuxColorTheme) ?? 'dark',
   );
   // Hydrate settings from cache so the toggles show user's real choice on cold
   // start instead of flashing the defaults until the HTTP fetch resolves.
@@ -575,16 +575,16 @@ function App() {
   const [localAccessSaving, setLocalAccessSaving] = React.useState(false);
   const [localAccessError, setLocalAccessError] = React.useState<string | null>(null);
   const [localAccessCopied, setLocalAccessCopied] = React.useState<string | null>(null);
-  const { state: termdockUpdateState, apply: setTermdockUpdateState, refresh: refreshTermdockUpdateState } = useTermdockUpdateState();
+  const { state: veymuxUpdateState, apply: setVeymuxUpdateState, refresh: refreshVeymuxUpdateState } = useVeymuxUpdateState();
   const [updateActionPending, setUpdateActionPending] = React.useState(false);
   const [updateActionError, setUpdateActionError] = useState<string | null>(null);
-  const serviceUpdateContext = useServiceUpdatePlan(locale === 'zh', termdockUpdateState, Boolean(updateActionError));
+  const serviceUpdateContext = useServiceUpdatePlan(locale === 'zh', veymuxUpdateState, Boolean(updateActionError));
   const [serviceUpdateProgress, setServiceUpdateProgress] = useState<string | null>(null);
   const updateActionLock = useRef({ busy: false });
   const updatePageEpoch = useRef(0);
   const updateLifetimeEpoch = useRef(0);
-  const updateLatestVersion = useRef(termdockUpdateState?.latestVersion);
-  updateLatestVersion.current = termdockUpdateState?.latestVersion;
+  const updateLatestVersion = useRef(veymuxUpdateState?.latestVersion);
+  updateLatestVersion.current = veymuxUpdateState?.latestVersion;
   useAppFeedback(updateActionError ? { message: updateActionError } : null);
   useEffect(() => {
     const invalidate = (event?: Event) => { updatePageEpoch.current++; if (event?.type !== SECURE_STATE_EVENT) updateLifetimeEpoch.current++; };
@@ -592,7 +592,7 @@ function App() {
     return () => { invalidate(); for (const event of ['pagehide', 'auth:unauthorized', SECURE_STATE_EVENT]) window.removeEventListener(event, invalidate); };
   }, []);
   const [serverHealthState, setServerHealthState] = React.useState<ServerHealthState | null>(null);
-  const desktopBridge = React.useMemo(() => getTermdockDesktopBridge(), []);
+  const desktopBridge = React.useMemo(() => getVeymuxDesktopBridge(), []);
   const desktopUpdateSupported = Boolean(
     desktopBridge?.desktopUpdateState &&
     desktopBridge.checkDesktopUpdate &&
@@ -792,7 +792,7 @@ function App() {
   }, []);
 
   const handleConfirmUpdateRestart = useCallback(async () => {
-    const pendingVersion = termdockUpdateState?.latestVersion;
+    const pendingVersion = veymuxUpdateState?.latestVersion;
     // A previous attempt may already have updated the target, while its relay
     // still needs updating. Keep the same action available for that recovery.
     const latestVersion = serviceUpdateContext?.available
@@ -817,8 +817,8 @@ function App() {
           executingTogether = true;
           return updateConnectedServices(plan, latestVersion, current, setServiceUpdateProgress, locale === 'zh');
         }
-        return confirmTermdockUpdateRestart(guard, latestVersion);
-      }, apply: setTermdockUpdateState, pending: setUpdateActionPending,
+        return confirmVeymuxUpdateRestart(guard, latestVersion);
+      }, apply: setVeymuxUpdateState, pending: setUpdateActionPending,
       expiredMessage: locale === 'zh' ? '连接已变化，请重新确认。' : 'Connection changed. Please confirm again.',
       confirm: async () => {
         plan = await captureServiceUpdatePlan();
@@ -838,8 +838,8 @@ function App() {
       },
       failure: message => { setServiceUpdateProgress(null); setUpdateActionError(message); if (!pageConfirmation) window.alert(message); },
     });
-    if (current()) void refreshTermdockUpdateState();
-  }, [termdockUpdateState?.latestVersion, termdockUpdateState?.currentVersion, serviceUpdateContext, t, updateActionPending, updateActionError, desktopBridge, locale, setTermdockUpdateState, refreshTermdockUpdateState]);
+    if (current()) void refreshVeymuxUpdateState();
+  }, [veymuxUpdateState?.latestVersion, veymuxUpdateState?.currentVersion, serviceUpdateContext, t, updateActionPending, updateActionError, desktopBridge, locale, setVeymuxUpdateState, refreshVeymuxUpdateState]);
 
   const handleRetryUpdate = useCallback(async () => {
     if (updateActionPending) return;
@@ -849,15 +849,15 @@ function App() {
     try {
       if (serviceUpdateContext) {
         const next = await serviceUpdateContext.check();
-        if (next && current()) setTermdockUpdateState(next);
-      } else await checkTermdockUpdate();
-      if (current()) void refreshTermdockUpdateState();
+        if (next && current()) setVeymuxUpdateState(next);
+      } else await checkVeymuxUpdate();
+      if (current()) void refreshVeymuxUpdateState();
     } catch (error) {
       if (current()) showPageFeedback(error instanceof Error ? error.message : String(error));
     } finally {
       setUpdateActionPending(false);
     }
-  }, [updateActionPending, serviceUpdateContext, setTermdockUpdateState, refreshTermdockUpdateState]);
+  }, [updateActionPending, serviceUpdateContext, setVeymuxUpdateState, refreshVeymuxUpdateState]);
 
   const handleCheckDesktopUpdate = useCallback(async () => {
     if (!desktopBridge?.checkDesktopUpdate || desktopUpdatePending) return;
@@ -1168,11 +1168,11 @@ function App() {
           return;
         }
       }
-      setArchitectureLinkError(locale === 'zh' ? `此架构属于 ${target.serviceName ?? target.peerId}。请先连接该 Termdock 服务，再打开链接。` : `This architecture belongs to ${target.serviceName ?? target.peerId}. Connect to that Termdock service, then open this link.`);
+      setArchitectureLinkError(locale === 'zh' ? `此架构属于 ${target.serviceName ?? target.peerId}。请先连接该 Veymux 服务，再打开链接。` : `This architecture belongs to ${target.serviceName ?? target.peerId}. Connect to that Veymux service, then open this link.`);
       return;
     }
     setArchitectureLinkError('');
-    try { sessionStorage.setItem(`termdock.architecture.selection:${target.root}`, target.file); } catch { /* Browsing works without persistent storage. */ }
+    try { sessionStorage.setItem(`veymux.architecture.selection:${target.root}`, target.file); } catch { /* Browsing works without persistent storage. */ }
     const sidebar = useSidebarStore.getState();
     sidebar.setRootPath(target.root, sidebarSessionId, activeSplitWorkspaceId);
     sidebar.setRightTab('architecture'); sidebar.openRight();
@@ -1522,8 +1522,8 @@ function App() {
   useEffect(() => {
     if (!desktopBridge) return;
     const openSettings = () => handleOpenSettings();
-    window.addEventListener('termdock:open-settings', openSettings);
-    return () => window.removeEventListener('termdock:open-settings', openSettings);
+    window.addEventListener('veymux:open-settings', openSettings);
+    return () => window.removeEventListener('veymux:open-settings', openSettings);
   }, [desktopBridge, handleOpenSettings]);
 
   const showMainBackGuardHint = useCallback(() => {
@@ -1886,7 +1886,7 @@ function App() {
   const [isLocalAccessOpen, setIsLocalAccessOpen] = React.useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = React.useState(false);
   const [notificationTestStatus, setNotificationTestStatus] = React.useState<'idle' | 'checking' | 'delivered' | 'failed'>('idle');
-  // Toolbar presets are owned by the server (~/.termdock/toolbar-presets.json)
+  // Toolbar presets are owned by the server (~/.veymux/toolbar-presets.json)
   // and shared across every browser pointing at this server. We start with the
   // built-in defaults so the UI is usable on first paint, then load + reconcile
   // with the server state on mount.
@@ -1927,7 +1927,7 @@ function App() {
     toolbarWriter.enqueue(presets);
   }, [toolbarWriter]);
 
-  // Agent detection rules — owned by server (~/.termdock/agent-rules.json)
+  // Agent detection rules — owned by server (~/.veymux/agent-rules.json)
   // 同样缓存到 localStorage，让 agent 检测在冷启动后立即生效。
   const [isAgentRulesOpen, setIsAgentRulesOpen] = React.useState(false);
   const [isQuotaOpen, setIsQuotaOpen] = React.useState(false);
@@ -2190,11 +2190,11 @@ function App() {
 
   const handleTestNotification = useCallback(async () => {
     setNotificationTestStatus('checking');
-    await getTermdockDesktopBridge()?.prepareNotificationTest?.();
+    await getVeymuxDesktopBridge()?.prepareNotificationTest?.();
     const delivered = await showPwaNotification({
-      title: 'Termdock',
+      title: 'Veymux',
       body: t('settings.notificationsTestBody'),
-      tag: 'termdock-notification-test',
+      tag: 'veymux-notification-test',
       requireHidden: false,
       data: { url: '/' },
     });
@@ -2365,8 +2365,8 @@ function App() {
       const detail = (event as CustomEvent<{ sessionId: string; x: number; y: number }>).detail;
       if (detail && sessions.some(session => session.id === detail.sessionId)) openTabMenu(detail.sessionId, { x: detail.x, y: detail.y });
     };
-    window.addEventListener('termdock:session-context-menu', open);
-    return () => window.removeEventListener('termdock:session-context-menu', open);
+    window.addEventListener('veymux:session-context-menu', open);
+    return () => window.removeEventListener('veymux:session-context-menu', open);
   }, [openTabMenu, sessions]);
   const bindTabLongPress = useSuperLongPress();
 
@@ -2512,18 +2512,18 @@ function App() {
     window.history.replaceState(window.history.state, '', nextUrl);
 
     if (window.parent !== window && getWorkspaceHost()) return;
-    const channel = new BroadcastChannel('termdock:notif');
+    const channel = new BroadcastChannel('veymux:notif');
     let closed = false;
 
     const pongHandler = (e: MessageEvent) => {
-      if (e.data?.type === 'termdock:notif-pong' && !closed) {
+      if (e.data?.type === 'veymux:notif-pong' && !closed) {
         closed = true;
         channel.close();
         window.close();
       }
     };
     channel.addEventListener('message', pongHandler);
-    channel.postMessage({ type: 'termdock:notif-ping', sessionId, targetPeerId: params.get('service') });
+    channel.postMessage({ type: 'veymux:notif-ping', sessionId, targetPeerId: params.get('service') });
 
     // 500ms 内无应答则视为唯一实例，正常处理（后续 ?session= effect 会接管）。
     const timeout = setTimeout(() => {
@@ -2540,11 +2540,11 @@ function App() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (window.parent !== window && getWorkspaceHost()) return;
-    const channel = new BroadcastChannel('termdock:notif');
+    const channel = new BroadcastChannel('veymux:notif');
 
     const pingHandler = (e: MessageEvent) => {
-      if (e.data?.type === 'termdock:notif-ping') {
-        channel.postMessage({ type: 'termdock:notif-pong' });
+      if (e.data?.type === 'veymux:notif-ping') {
+        channel.postMessage({ type: 'veymux:notif-pong' });
         if (typeof e.data.sessionId === 'string') {
           if (typeof e.data.targetPeerId === 'string' && e.data.targetPeerId !== savedConnection()?.targetPeerId) getWorkspaceHost()?.focusSession(e.data.targetPeerId, e.data.sessionId);
           else requestFocusSession(e.data.sessionId);
@@ -2562,16 +2562,16 @@ function App() {
     if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
     const handler = (event: MessageEvent) => {
       const data = event.data;
-      if (data && data.type === 'termdock:focus-session' && typeof data.sessionId === 'string') {
+      if (data && data.type === 'veymux:focus-session' && typeof data.sessionId === 'string') {
         if (typeof data.targetPeerId === 'string' && data.targetPeerId !== savedConnection()?.targetPeerId) {
-          if (getWorkspaceHost()?.focusSession(data.targetPeerId, data.sessionId)) event.ports[0]?.postMessage({ type: 'termdock:focus-session-ack' });
+          if (getWorkspaceHost()?.focusSession(data.targetPeerId, data.sessionId)) event.ports[0]?.postMessage({ type: 'veymux:focus-session-ack' });
           return;
         }
-        event.ports[0]?.postMessage({ type: 'termdock:focus-session-ack' });
+        event.ports[0]?.postMessage({ type: 'veymux:focus-session-ack' });
         requestFocusSession(data.sessionId);
-      } else if (data?.type === 'termdock:push-subscription-changed') {
+      } else if (data?.type === 'veymux:push-subscription-changed') {
         void syncPwaPushSubscription(true);
-      } else if (data?.type === 'termdock:push-received') {
+      } else if (data?.type === 'veymux:push-received') {
         // The SW now always shows the notification itself (iOS requires a
         // visible notification for every push or it revokes permission), so
         // there is nothing to re-show here. The message is kept so the app
@@ -2587,8 +2587,8 @@ function App() {
       const sessionId = (event as CustomEvent<string>).detail;
       if (typeof sessionId === 'string') requestFocusSession(sessionId);
     };
-    window.addEventListener('termdock:focus-session', handler);
-    return () => window.removeEventListener('termdock:focus-session', handler);
+    window.addEventListener('veymux:focus-session', handler);
+    return () => window.removeEventListener('veymux:focus-session', handler);
   }, [requestFocusSession]);
 
   useEffect(() => {
@@ -2597,8 +2597,8 @@ function App() {
       if (sessionId) requestFocusSession(sessionId);
     };
     consume();
-    window.addEventListener('termdock:workspace-session', consume);
-    return () => window.removeEventListener('termdock:workspace-session', consume);
+    window.addEventListener('veymux:workspace-session', consume);
+    return () => window.removeEventListener('veymux:workspace-session', consume);
   }, [requestFocusSession]);
 
   // 会话列表变化时，补发尚未兑现的聚焦请求（目标 session 刚恢复出来）。
@@ -2716,7 +2716,7 @@ function App() {
   const handleInitialViewportReady = useCallback(() => {
     setHasRestoredSessionChrome(true);
     window.requestAnimationFrame(() => {
-      window.dispatchEvent(new Event('termdock:initial-viewport-presented'));
+      window.dispatchEvent(new Event('veymux:initial-viewport-presented'));
     });
   }, []);
 
@@ -2896,8 +2896,8 @@ function App() {
         handleJumpToNextAttention();
       }
     };
-    window.addEventListener('termdock:native-command', handleNativeCommand);
-    return () => window.removeEventListener('termdock:native-command', handleNativeCommand);
+    window.addEventListener('veymux:native-command', handleNativeCommand);
+    return () => window.removeEventListener('veymux:native-command', handleNativeCommand);
   }, [
     activeSessionId,
     sidebarCloseChoiceSessionId,
@@ -3248,7 +3248,7 @@ function App() {
       <main className="relative min-h-0 flex-1 overflow-visible px-0 pb-0 pt-0">
         <CollaborationWorkspaceFrame rightInset={pinnedRightSidebarInset} workspace={todoWorkspaceOpen ? <React.Suspense fallback={<div className="absolute inset-0 flex items-center justify-center bg-[var(--chrome-bg)] text-sm text-muted-foreground">正在打开待办…</div>}><TodoWorkspace activeSessionId={activeSessionId} onOpenSidebar={handleToggleLeftSidebar} leftSidebarVisible={sidebarLeftOpen || showPinnedLeft} /></React.Suspense> : mainCollaborationGroup && <React.Suspense fallback={<div className="absolute inset-0 flex items-center justify-center bg-[var(--chrome-bg)] text-sm text-muted-foreground">正在打开协作工作区…</div>}><CollaborationMainWorkspace key={mainCollaborationGroup} groupId={mainCollaborationGroup} activeSessionId={activeSessionId} defaultSessionMode={newSessionMode} onOpenSidebar={handleToggleLeftSidebar} leftSidebarVisible={sidebarLeftOpen || showPinnedLeft} onToggleRightSidebar={handleToggleRightSidebar} rightSidebarOpen={sidebarRightOpen || showPinnedRight} /></React.Suspense>}>
           <div
-            data-termdock-window-header="true"
+            data-veymux-window-header="true"
             className={`${isDesktopViewport ? 'absolute inset-x-0 top-0 z-20' : 'relative'} shrink-0 items-center gap-1 app-chrome-bg px-1 sm:px-1.5 transition-colors duration-500 ${
               showPinnedLeft
                 ? 'flex justify-end'
@@ -3663,7 +3663,7 @@ function App() {
                     </button>
                     <span className="w-8 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground">{fontSize}px</span>
                     </div>
-                    <div aria-hidden="true" className="overflow-hidden rounded-lg bg-[var(--chrome-bg)] px-4 py-3 font-mono leading-relaxed" style={{ fontSize }}><span className="text-primary">➜</span> <span className="text-foreground">termdock</span><span className="ml-2 inline-block h-[1em] w-[0.5em] translate-y-0.5 bg-primary align-baseline" /></div>
+                    <div aria-hidden="true" className="overflow-hidden rounded-lg bg-[var(--chrome-bg)] px-4 py-3 font-mono leading-relaxed" style={{ fontSize }}><span className="text-primary">➜</span> <span className="text-foreground">veymux</span><span className="ml-2 inline-block h-[1em] w-[0.5em] translate-y-0.5 bg-primary align-baseline" /></div>
                   </div>
 
                   {/* Preferences stay saved, but only the selected browser/fallback exposes them. */}
@@ -3935,8 +3935,8 @@ function App() {
 
               <section aria-labelledby="settings-service-title" className="space-y-2">
                 <h3 id="settings-service-title" className="px-1 text-[12px] font-semibold text-muted-foreground">{t('settings.serviceSection')}</h3>
-                <TermdockUpdateSettings
-                  state={termdockUpdateState}
+                <VeymuxUpdateSettings
+                  state={veymuxUpdateState}
                   pending={updateActionPending}
                   updateContext={serviceUpdateContext}
                   updateProgress={serviceUpdateProgress || updateActionError}
@@ -4044,7 +4044,7 @@ function App() {
                             const labelTitle = tmux.label && tmux.label !== tmux.name ? tmux.label : null;
                             const title = friendlyTitle || labelTitle || tmux.name;
                             const subtitle = friendlyTitle || labelTitle ? `tmux:${tmux.name}` : null;
-                            const termdockClientLabel = tmux.clientCount && tmux.clientCount > 0
+                            const veymuxClientLabel = tmux.clientCount && tmux.clientCount > 0
                               ? (locale === 'zh' ? `网页连接 ${tmux.clientCount}` : `Web clients ${tmux.clientCount}`)
                               : null;
                             const nativeTmuxClientLabel = tmux.attached > 0
@@ -4053,7 +4053,7 @@ function App() {
                             const subtitleParts = [
                               subtitle,
                               connected ? (tmux.restorable ? t('settings.restorable') : t('settings.attached')) : null,
-                              termdockClientLabel,
+                              veymuxClientLabel,
                               nativeTmuxClientLabel,
                             ].filter((part): part is string => Boolean(part));
                             const metaParts = [
@@ -4732,7 +4732,7 @@ function App() {
                     placeholder="jovn"
                     spellCheck={false}
                   />
-                  <span className="shrink-0 border-l border-border/10 px-2.5 py-2 text-[11px] text-muted-foreground">.termdock.local</span>
+                  <span className="shrink-0 border-l border-border/10 px-2.5 py-2 text-[11px] text-muted-foreground">.veymux.local</span>
                 </div>
                 <div className="mt-2 flex flex-wrap gap-2">
                   <button
@@ -4855,7 +4855,7 @@ function App() {
                 </div>
                 <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px]">
                   <span className={`rounded-full px-2 py-0.5 ${pwaNotificationPermission === 'granted' ? 'bg-primary/15 text-primary' : 'bg-surface text-muted-foreground'}`}>
-                    {t('settings.notificationsPermission')}: {getTermdockDesktopBridge() ? t('settings.notificationsPermissionSystem') : pwaNotificationPermission}
+                    {t('settings.notificationsPermission')}: {getVeymuxDesktopBridge() ? t('settings.notificationsPermissionSystem') : pwaNotificationPermission}
                   </span>
                   <button
                     type="button"
@@ -4865,10 +4865,10 @@ function App() {
                   >
                     {notificationTestStatus === 'checking' ? t('settings.notificationsTestChecking') : t('settings.notificationsTest')}
                   </button>
-                  {getTermdockDesktopBridge()?.openNotificationSettings && (
+                  {getVeymuxDesktopBridge()?.openNotificationSettings && (
                     <button
                       type="button"
-                      onClick={() => void getTermdockDesktopBridge()?.openNotificationSettings?.()}
+                      onClick={() => void getVeymuxDesktopBridge()?.openNotificationSettings?.()}
                       className="rounded-full bg-surface px-3 py-1.5 font-medium text-muted-foreground transition hover:bg-surface-elevated hover:text-foreground"
                     >
                       {t('settings.notificationsOpenSystemSettings')}
@@ -5285,7 +5285,7 @@ function App() {
         onOpenSettings={handleOpenSettings}
         onJumpToNextAttention={attentionSessionIds.length > 0 ? handleJumpToNextAttention : undefined}
         onOpenQuota={() => setIsQuotaOpen(true)}
-        updateState={termdockUpdateState}
+        updateState={veymuxUpdateState}
         updateActionPending={updateActionPending}
         updateContext={serviceUpdateContext}
         updateProgress={serviceUpdateProgress || updateActionError}
@@ -5324,7 +5324,7 @@ function App() {
           type="button"
           onClick={handleContinueAfterBackGuard}
           className="fixed inset-0 z-toast flex cursor-default items-center justify-center bg-[var(--app-backdrop-soft)] px-6 text-left backdrop-blur-[1px]"
-          aria-label={locale === 'zh' ? '继续使用 Termdock' : 'Continue using Termdock'}
+          aria-label={locale === 'zh' ? '继续使用 Veymux' : 'Continue using Veymux'}
         >
           <div className="max-w-[18rem] rounded-2xl border border-border/15 bg-surface/95 px-5 py-4 text-center shadow-[0_18px_50px_var(--app-shadow-strong)] backdrop-blur animate-fade-in">
             <div className="text-[14px] font-semibold text-foreground">
@@ -5406,7 +5406,7 @@ function App() {
             onOpenSettings={handleOpenSettings}
             onJumpToNextAttention={attentionSessionIds.length > 0 ? handleJumpToNextAttention : undefined}
             onOpenQuota={() => setIsQuotaOpen(true)}
-            updateState={termdockUpdateState}
+            updateState={veymuxUpdateState}
             updateActionPending={updateActionPending}
             updateContext={serviceUpdateContext}
             updateProgress={serviceUpdateProgress || updateActionError}

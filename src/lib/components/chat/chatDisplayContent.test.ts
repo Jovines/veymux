@@ -2,11 +2,11 @@ import { expect, it } from 'vitest';
 import { composeChatDraft } from './chatComposerContent';
 import { parseChatDisplayDraft } from './chatDisplayContent';
 it('renders a historical recording path inline without rewriting the original text', () => {
-  const content = '/Users/user/.termdock/recordings/recording-123.mp4 还有这个问题';
+  const content = '/Users/user/.veymux/recordings/recording-123.mp4 还有这个问题';
   const parsed = parseChatDisplayDraft(content);
   expect(parsed.text).toBe('【视频1】 还有这个问题');
-  expect(parsed.attachments).toEqual([{ path: '/Users/user/.termdock/recordings/recording-123.mp4', name: 'recording-123.mp4', reference: '视频1' }]);
-  expect(content).toBe('/Users/user/.termdock/recordings/recording-123.mp4 还有这个问题');
+  expect(parsed.attachments).toEqual([{ path: '/Users/user/.veymux/recordings/recording-123.mp4', name: 'recording-123.mp4', reference: '视频1' }]);
+  expect(content).toBe('/Users/user/.veymux/recordings/recording-123.mp4 还有这个问题');
 });
 it('keeps numbering, deduplicates repeated paths and handles quoted or shell-escaped spaces', () => {
   const content = composeChatDraft('【图片1】 "/tmp/screen record.mov" 与 /tmp/second\\ clip.webm，再看 "/tmp/screen record.mov"', [{ path: '/tmp/image.png', name: 'image.png', reference: '图片1' }], []);

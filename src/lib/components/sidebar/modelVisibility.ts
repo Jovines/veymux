@@ -41,7 +41,7 @@ export function createModelVisibility(root: Object3D) {
   const byNode = new Map(parts.map((part) => [part.node, part]));
   return {
     parts: parts.map(({ id, node, visible }): ModelPartInfo => ({
-      id, name: node.userData.termdockPartName || node.name, initiallyVisible: visible,
+      id, name: node.userData.veymuxPartName || node.name, initiallyVisible: visible,
     })),
     node: (id: string) => parts.find((part) => part.id === id)?.node,
     id(node: Object3D): string | undefined {
@@ -58,7 +58,7 @@ export function createModelVisibility(root: Object3D) {
     isPartVisible(key?: string): boolean {
       if (!key) return true;
       const matches = parts.filter(({ node }) => node.uuid === key || node.name === key
-        || node.userData.termdockPartName === key);
+        || node.userData.veymuxPartName === key);
       return matches.length === 0 || matches.some(({ node }) => isObjectVisible(node));
     },
   };

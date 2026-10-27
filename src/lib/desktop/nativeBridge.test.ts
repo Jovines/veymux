@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   supportsDesktopServiceActivity,
-  type TermdockDesktopBridge,
+  type VeymuxDesktopBridge,
 } from './nativeBridge';
 
 describe('desktop bridge capability compatibility', () => {
@@ -13,7 +13,7 @@ describe('desktop bridge capability compatibility', () => {
       revealDataDirectory: async () => undefined,
       showNotification: async () => true,
       onNativeFileDrop: () => undefined,
-    } as unknown as TermdockDesktopBridge;
+    } as unknown as VeymuxDesktopBridge;
 
     expect(supportsDesktopServiceActivity(legacyBridge)).toBe(false);
   });
@@ -23,7 +23,7 @@ describe('desktop bridge capability compatibility', () => {
       reportServiceActivity: () => undefined,
       focusService: async () => true,
       onServiceActivity: () => () => undefined,
-    } as unknown as TermdockDesktopBridge;
+    } as unknown as VeymuxDesktopBridge;
 
     expect(supportsDesktopServiceActivity(currentBridge)).toBe(true);
     expect(supportsDesktopServiceActivity({

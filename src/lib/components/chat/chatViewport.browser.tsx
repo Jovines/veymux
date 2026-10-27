@@ -64,7 +64,7 @@ it.each([0, 34])('uses the terminal layout to keep navigation and the conversati
     expect(readChatEditor(document.querySelector('[role="textbox"]') as HTMLElement).text).toBe('草稿\n第二行');
   }
   expect(scrollTo).not.toHaveBeenCalled();
-  expect(document.documentElement.dataset.termdockNativeChatLayout).toBeUndefined();
+  expect(document.documentElement.dataset.veymuxNativeChatLayout).toBeUndefined();
   // Numeric diagnostics may be sent; editor content never belongs in them.
   for (const [url, init] of vi.mocked(fetch).mock.calls) {
     if (url === '/api/client-log') expect(String(init?.body)).not.toContain('草稿');

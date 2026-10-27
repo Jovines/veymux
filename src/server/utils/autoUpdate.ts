@@ -2,8 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {
   compareVersions,
-  verifyRunningTermdockInstallation,
-  updateTermdockFromOfficialRegistry,
+  verifyRunningVeymuxInstallation,
+  updateVeymuxFromOfficialRegistry,
   type NpmUpdateFallbackStage,
   type NpmUpdateResult,
 } from './npmUpdate.js';
@@ -11,7 +11,7 @@ import {
 export const AUTO_UPDATE_INITIAL_DELAY_MS = 15_000;
 export const AUTO_UPDATE_INTERVAL_MS = 6 * 60 * 60 * 1_000;
 
-export type TermdockUpdateStatus =
+export type VeymuxUpdateStatus =
   | 'idle'
   | 'checking'
   | 'current'
@@ -20,8 +20,8 @@ export type TermdockUpdateStatus =
   | 'restarting'
   | 'error';
 
-export interface TermdockUpdateState {
-  status: TermdockUpdateStatus;
+export interface VeymuxUpdateState {
+  status: VeymuxUpdateStatus;
   currentVersion: string;
   latestVersion: string | null;
   source: NpmUpdateResult['source'] | null;
@@ -29,14 +29,14 @@ export interface TermdockUpdateState {
   error: string | null;
 }
 
-type UpdateRunner = typeof updateTermdockFromOfficialRegistry;
+type UpdateRunner = typeof updateVeymuxFromOfficialRegistry;
 
-export class TermdockUpdateStateChangedError extends Error {}
+export class VeymuxUpdateStateChangedError extends Error {}
 
 interface AutoUpdateDependencies {
   currentVersion: string;
   stateFilePath?: string | null;
-  broadcast: (state: TermdockUpdateState) => void;
+  broadcast: (state: VeymuxUpdateState) => void;
   requestRestart: () => void;
   updateRunner?: UpdateRunner;
   verifyInstalled?: (version: string) => void;
@@ -44,7 +44,7 @@ interface AutoUpdateDependencies {
   log?: (message: string) => void;
 }
 
-function initialState(currentVersion: string): TermdockUpdateState {
+function initialState(currentVersion: string): VeymuxUpdateState {
   return {
     status: 'idle',
     currentVersion,
@@ -55,7 +55,7 @@ function initialState(currentVersion: string): TermdockUpdateState {
   };
 }
 
-export function hasPendingTermdockUpdate(state: TermdockUpdateState): boolean {
+export function hasPendingVeymuxUpdate(state: VeymuxUpdateState): boolean {
   if (!state.latestVersion) return false;
   try {
     return compareVersions(state.latestVersion, state.currentVersion) > 0
@@ -65,19 +65,19 @@ export function hasPendingTermdockUpdate(state: TermdockUpdateState): boolean {
   }
 }
 
-export class TermdockAutoUpdateManager {
-  private state: TermdockUpdateState;
-  private checkPromise: Promise<TermdockUpdateState> | null = null;
+export class VeymuxAutoUpdateManager {
+  private state: VeymuxUpdateState;
+  private checkPromise: Promise<VeymuxUpdateState> | null = null;
   private initialTimer: ReturnType<typeof setTimeout> | null = null;
   private intervalTimer: ReturnType<typeof setInterval> | null = null;
   private readonly updateRunner: UpdateRunner;
 
   constructor(private readonly dependencies: AutoUpdateDependencies) {
     this.state = this.loadState();
-    this.updateRunner = dependencies.updateRunner ?? updateTermdockFromOfficialRegistry;
+    this.updateRunner = dependencies.updateRunner ?? updateVeymuxFromOfficialRegistry;
   }
 
-  getState(): TermdockUpdateState {
+  getState(): VeymuxUpdateState {
     return { ...this.state };
   }
 
@@ -102,13 +102,13 @@ export class TermdockAutoUpdateManager {
     this.intervalTimer = null;
   }
 
-  checkNow(explicit = true): Promise<TermdockUpdateState> {
+  checkNow(explicit = true): Promise<VeymuxUpdateState> {
     // Failed installation validation requires a user-requested check, not a timer retry.
-    if (!explicit && this.state.status === 'error' && hasPendingTermdockUpdate(this.state)) return Promise.resolve(this.getState());
+    if (!explicit && this.state.status === 'error' && hasPendingVeymuxUpdate(this.state)) return Promise.resolve(this.getState());
     // Once an installed update is waiting for explicit confirmation, periodic
     // checks must never turn any external state change into implicit consent.
     // Keep the reminder until the user confirms or restarts manually.
-    if (this.state.status === 'ready' && hasPendingTermdockUpdate(this.state)) {
+    if (this.state.status === 'ready' && hasPendingVeymuxUpdate(this.state)) {
       try { this.verifyInstalled(this.state.latestVersion!); return Promise.resolve(this.getState()); }
       catch (error) { this.installationError(error); if (!explicit) return Promise.resolve(this.getState()); }
       // Only the explicit check repairs an invalid pending installation; never restart here.
@@ -121,23 +121,23 @@ export class TermdockAutoUpdateManager {
   }
 
   /** Validate every participant before a coordinated restart interrupts any of them. */
-  prepareRestart(expectedVersion?: string): TermdockUpdateState {
-    if (this.state.status !== 'ready' || !hasPendingTermdockUpdate(this.state)) {
-      throw new TermdockUpdateStateChangedError('No installed Termdock update is waiting for restart.');
+  prepareRestart(expectedVersion?: string): VeymuxUpdateState {
+    if (this.state.status !== 'ready' || !hasPendingVeymuxUpdate(this.state)) {
+      throw new VeymuxUpdateStateChangedError('No installed Veymux update is waiting for restart.');
     }
     if (expectedVersion !== undefined && expectedVersion !== this.state.latestVersion) {
-      throw new TermdockUpdateStateChangedError('The pending Termdock update has changed. Please confirm the new version.');
+      throw new VeymuxUpdateStateChangedError('The pending Veymux update has changed. Please confirm the new version.');
     }
     try {
       this.verifyInstalled(this.state.latestVersion!);
-      if (process.env.TERMDOCK_SUPERVISED !== '1' || !process.connected) throw new Error('Automatic restart requires the verified supervised Termdock entry; restart manually.');
+      if (process.env.VEYMUX_SUPERVISED !== '1' || !process.connected) throw new Error('Automatic restart requires the verified supervised Veymux entry; restart manually.');
       this.dependencies.verifyRestartEntry?.();
     }
     catch (error) { this.installationError(error); throw error; }
     return this.getState();
   }
 
-  confirmRestart(expectedVersion?: string): TermdockUpdateState {
+  confirmRestart(expectedVersion?: string): VeymuxUpdateState {
     this.prepareRestart(expectedVersion);
     this.setState({ ...this.state, status: 'restarting', error: null });
     try { this.dependencies.requestRestart(); }
@@ -146,7 +146,7 @@ export class TermdockAutoUpdateManager {
   }
 
   private verifyInstalled(version: string): void {
-    (this.dependencies.verifyInstalled ?? verifyRunningTermdockInstallation)(version);
+    (this.dependencies.verifyInstalled ?? verifyRunningVeymuxInstallation)(version);
   }
 
   private installationError(error: unknown): void {
@@ -154,7 +154,7 @@ export class TermdockAutoUpdateManager {
     this.setState({ ...this.state, status: 'error', error: detail });
   }
 
-  private async runCheck(): Promise<TermdockUpdateState> {
+  private async runCheck(): Promise<VeymuxUpdateState> {
     this.setState({ ...this.state, status: 'checking', checkedAt: Date.now(), error: null });
     try {
       const result = await this.updateRunner(
@@ -206,18 +206,18 @@ export class TermdockAutoUpdateManager {
     }
   }
 
-  private setState(state: TermdockUpdateState): void {
+  private setState(state: VeymuxUpdateState): void {
     this.state = state;
     this.persistState();
     this.dependencies.broadcast(this.getState());
   }
 
-  private loadState(): TermdockUpdateState {
+  private loadState(): VeymuxUpdateState {
     const fallback = initialState(this.dependencies.currentVersion);
     const stateFilePath = this.dependencies.stateFilePath;
     if (!stateFilePath) return fallback;
     try {
-      const value = JSON.parse(fs.readFileSync(stateFilePath, 'utf8')) as Partial<TermdockUpdateState>;
+      const value = JSON.parse(fs.readFileSync(stateFilePath, 'utf8')) as Partial<VeymuxUpdateState>;
       if (typeof value.latestVersion !== 'string') return fallback;
       if (compareVersions(this.dependencies.currentVersion, value.latestVersion) >= 0) return fallback;
       if (value.status !== 'ready' && value.status !== 'restarting' && value.status !== 'error') return fallback;

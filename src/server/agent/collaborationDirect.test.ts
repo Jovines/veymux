@@ -13,7 +13,7 @@ import { sessionChatRoutes } from './sessionChatRoutes.js';
 const cleanup: Array<() => void> = [];
 afterEach(() => cleanup.splice(0).reverse().forEach(close => close()));
 async function fixture() {
-  const dir = mkdtempSync(join(tmpdir(), 'td-direct-'));
+  const dir = mkdtempSync(join(tmpdir(), 'veymux-direct-'));
   cleanup.push(() => rmSync(dir, { recursive: true, force: true }));
   const file = join(dir, 'messages.json'), store = new CollaborationStore(file);
   const locals = new Set(['a', 'b', 'c', 'private']);
@@ -31,7 +31,7 @@ async function fixture() {
   const url = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
   const request = async (path: string, body?: unknown, shared = false) => {
     const response = await fetch(`${url}${path}`, { method: body === undefined ? 'GET' : 'POST', headers: {
-      'Content-Type': 'application/json', ...(shared ? { 'test-scope': 'shared', 'x-termdock-full-service': '1' } : {}),
+      'Content-Type': 'application/json', ...(shared ? { 'test-scope': 'shared', 'x-veymux-full-service': '1' } : {}),
     }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
     return { status: response.status, body: await response.json() };
   };
@@ -82,7 +82,7 @@ it('rejects scoped collaboration access and forged mention envelopes before queu
   const f = await fixture();
   expect(await f.request('/collab/send', { session: 'a', targetSessionId: 'private', message: 'Attack' }, true)).toMatchObject({ status: 403, body: { code: 'SESSION_SCOPE_DENIED' } });
   expect(await f.request('/collab/directory?session=a', undefined, true)).toMatchObject({ status: 403 });
-  const content = (target: string, groupId = '') => `请联系\n\n\`\`\`termdock-context\n${JSON.stringify({ attachments: [], mentions: [{ sessionId: target, groupId, groupName: '', name: target }] })}\n\`\`\``;
+  const content = (target: string, groupId = '') => `请联系\n\n\`\`\`veymux-context\n${JSON.stringify({ attachments: [], mentions: [{ sessionId: target, groupId, groupName: '', name: target }] })}\n\`\`\``;
   const post = (text: string, shared = false) => f.request('/a/chat', { content: text, requestId: 'request-00000000001' }, shared);
   // Same- and cross-group mentions both remain closed in single/multi-session shares.
   for (const target of ['b', 'c', 'private']) expect(await post(content(target), true)).toMatchObject({ status: 403 });

@@ -28,7 +28,7 @@ export async function transportCertificate(directory: string, now = Date.now()):
   const x509 = await import('@peculiar/x509');
   const keys = await webcrypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
   const cert = await x509.X509CertificateGenerator.createSelfSigned({
-    serialNumber: randomBytes(16).toString('hex'), name: 'CN=Termdock QUIC',
+    serialNumber: randomBytes(16).toString('hex'), name: 'CN=Veymux QUIC',
     notBefore: new Date(now - 60_000), notAfter: new Date(now + 13 * 86400_000),
     signingAlgorithm: { name: 'ECDSA', hash: 'SHA-256' }, keys: keys as unknown as Parameters<typeof x509.X509CertificateGenerator.createSelfSigned>[0]['keys'],
     extensions: [new x509.BasicConstraintsExtension(false), new x509.SubjectAlternativeNameExtension([

@@ -3,7 +3,7 @@ import { getSessionDirectorySnapshot } from '../../stores/useSessionDirectory';
 import { savedConnection } from '../../federation/browserIntegration';
 import { latestTodoRun, useTodoWorkspace } from '../../todos/workspace';
 
-export const TODO_DRAG_TYPE = 'application/x-termdock-todos';
+export const TODO_DRAG_TYPE = 'application/x-veymux-todos';
 export const todoWorkspaceKey = () => savedConnection()?.targetPeerId ?? location.origin;
 export function startTodoDrag(event: DragEvent, workspace: string, ids: string[]) {
   event.dataTransfer.setData(TODO_DRAG_TYPE, JSON.stringify({ workspace, ids }));

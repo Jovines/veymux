@@ -10,7 +10,7 @@ const { patchSource } = require('../../../scripts/ensure-node-pty.cjs');
 
 it('patches exactly the pinned upstream source, including kqueue and errno', () => {
   const root = path.dirname(require.resolve('node-pty/package.json'));
-  const original = path.join(root, 'src/unix/pty.cc.termdock-original');
+  const original = path.join(root, 'src/unix/pty.cc.veymux-original');
   const source = fs.readFileSync(fs.existsSync(original) ? original : path.join(root, 'src/unix/pty.cc'), 'utf8');
   const patched = patchSource(source);
   expect(patched).toContain('if (kq >= 0) close(kq);');
@@ -20,10 +20,10 @@ it('patches exactly the pinned upstream source, including kqueue and errno', () 
 });
 
 it('rebuilds replaced binaries, survives skipped install scripts, and fails closed on build failure', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'termdock-pty-install-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-pty-install-'));
   try {
     const root = path.dirname(require.resolve('node-pty/package.json'));
-    const original = path.join(root, 'src/unix/pty.cc.termdock-original');
+    const original = path.join(root, 'src/unix/pty.cc.veymux-original');
     fs.mkdirSync(path.join(dir, 'src/unix'), { recursive: true });
     fs.copyFileSync(fs.existsSync(original) ? original : path.join(root, 'src/unix/pty.cc'), path.join(dir, 'src/unix/pty.cc'));
     const code = `
@@ -65,7 +65,7 @@ it('rebuilds replaced binaries, survives skipped install scripts, and fails clos
       fs.writeFileSync(binary,'old prebuild');
       fail=true;
       assert.throws(start, /Patched node-pty rebuild failed.*exit status=1/);
-      assert.equal(fs.existsSync(path.join(root,'.termdock-fd-fix.json')),false);
+      assert.equal(fs.existsSync(path.join(root,'.veymux-fd-fix.json')),false);
       console.log('install gate passed');
     `;
     expect(execFileSync(process.execPath, ['-e', code], { encoding: 'utf8' })).toContain('install gate passed');
@@ -73,7 +73,7 @@ it('rebuilds replaced binaries, survives skipped install scripts, and fails clos
 });
 
 it.skipIf(process.platform === 'win32')('releases all FDs and initialized actions on every injected failure and closed-stdio combination', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'termdock-pty-cleanup-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-pty-cleanup-'));
   try {
     const fixture = path.resolve('src/server/utils/__fixtures__/ptySpawnCleanup.cc');
     execFileSync('c++', ['-std=c++17', '-Wall', '-Wextra', '-Werror', '-I', path.resolve('scripts'), fixture, '-o', path.join(dir, 'test')]);

@@ -3,7 +3,7 @@
 export function viewportWindow(): Window & typeof globalThis {
   try {
     if (window.parent !== window && location.pathname === '/workspace.html'
-      && window.parent.location.origin === location.origin && window.parent.__termdockWorkspaceHost) {
+      && window.parent.location.origin === location.origin && window.parent.__veymuxWorkspaceHost) {
       return window.parent as Window & typeof globalThis;
     }
   } catch { /* Sandboxed previews never inherit workspace capabilities. */ }

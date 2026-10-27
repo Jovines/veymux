@@ -5,7 +5,7 @@ import type { AddressInfo } from 'net';
 import { createOnboardingRouter } from './routes/onboarding.js';
 import { getLanIPv4Addresses } from './utils/localAccess.js';
 import path from 'node:path';
-import { TERMDOCK_DIR, readJsonFile, writeJsonStateAtomic } from './utils/termdockState.js';
+import { VEYMUX_DIR, readJsonFile, writeJsonStateAtomic } from './utils/veymuxState.js';
 import { onboardingFingerprint, sendOnboardingPage } from './onboardingPage.js';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { isAllowedHost } from './utils/requestSecurity.js';
@@ -54,7 +54,7 @@ export function startOnboardingServer(options: OnboardingServerOptions): Onboard
       return;
     }
     res.setHeader('Content-Type', 'application/x-x509-ca-cert');
-    res.setHeader('Content-Disposition', 'attachment; filename="termdock-ca.crt"');
+    res.setHeader('Content-Disposition', 'attachment; filename="veymux-ca.crt"');
     res.send(fs.readFileSync(options.caCertPath));
   });
   // This listener serves public application code, not plaintext business APIs.
@@ -87,7 +87,7 @@ export function startOnboardingServer(options: OnboardingServerOptions): Onboard
     });
     server.on('close', () => { for (const ws of wss.clients) ws.terminate(); wss.close(); });
   }
-  const portFile = path.join(TERMDOCK_DIR, `onboarding-${options.httpsPort}.json`);
+  const portFile = path.join(VEYMUX_DIR, `onboarding-${options.httpsPort}.json`);
   const savedPort = readJsonFile<{ port: number }>(portFile)?.port;
   const preferredPort = Number.isInteger(savedPort) && savedPort! > 1024 && savedPort! <= 65535 ? savedPort! : 0;
   let retriedPort = false;

@@ -34,7 +34,7 @@ function storage(overrides: Partial<RuntimeStorageSnapshot> = {}): RuntimeStorag
 
 describe('RuntimeMonitor', () => {
   it('aggregates requests and reports bounded state-directory storage', async () => {
-    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'termdock-runtime-monitor-'));
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-runtime-monitor-'));
     directories.push(directory);
     fs.mkdirSync(path.join(directory, 'session-search'));
     fs.writeFileSync(path.join(directory, 'session-search', 'one.log'), '12345');
@@ -49,7 +49,7 @@ describe('RuntimeMonitor', () => {
     expect(diagnostics.current.requestErrorRatio).toBe(0.5);
     expect(diagnostics.storage.totalBytes).toBe(5);
     expect(diagnostics.storage.topLevel[0]).toEqual({ name: 'session-search', bytes: 5 });
-    expect(diagnostics.scopes.networkIo).toBe('termdock-http-sockets');
+    expect(diagnostics.scopes.networkIo).toBe('veymux-http-sockets');
   });
 
   it('classifies resource pressure without hiding the measured value', () => {

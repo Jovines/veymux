@@ -22,7 +22,7 @@ const report = (): CollaborationTask => ({ id: id(), title: '动线审查', stat
   artifacts: [{ id: 'report', kind: 'result', content: '已评审的发现与修改建议' }],
   workflow: { workType: 'read-only', isolated: false } } as CollaborationTask);
 beforeEach(async () => {
-  dir = await fs.mkdtemp(path.join(os.tmpdir(), 'td-dependencies-')); state.home = dir;
+  dir = await fs.mkdtemp(path.join(os.tmpdir(), 'veymux-dependencies-')); state.home = dir;
   vi.resetModules(); ({ prepareTaskWorkspace: prepare } = await import('./collaborationTaskWorkspace.js'));
   repo = path.join(dir, 'repo'); await fs.mkdir(repo);
   await git(repo, ['init', '-b', 'main']); await git(repo, ['config', 'user.email', 'test@example.local']); await git(repo, ['config', 'user.name', 'Test']);
@@ -53,7 +53,7 @@ it.each(['pending', 'missing-result', 'missing-code-commit'])('rejects %s before
   if (reason === 'missing-result') dependency.artifacts = [];
   if (reason === 'missing-code-commit') dependency.workflow!.workType = 'code';
   await expect(prepare(task(), repo, [dependency])).rejects.toThrow(reason === 'missing-code-commit' ? '代码交付' : '尚未交付并验收');
-  await expect(fs.stat(path.join(dir, '.termdock', 'task-workspaces'))).rejects.toMatchObject({ code: 'ENOENT' });
+  await expect(fs.stat(path.join(dir, '.veymux', 'task-workspaces'))).rejects.toMatchObject({ code: 'ENOENT' });
 });
 it('supports legacy report-only dependencies but does not relax legacy isolated code validation', async () => {
   const legacy = report(); delete legacy.workflow;

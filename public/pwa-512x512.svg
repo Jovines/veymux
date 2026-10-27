@@ -1,5 +1,3 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <rect width="512" height="512" fill="#1C1B1A"/>
-  <text x="256" y="280" font-family="monospace" font-size="120" fill="#66800B" text-anchor="middle">&gt;_</text>
-  <text x="256" y="340" font-family="monospace" font-size="36" fill="#CECDC3" text-anchor="middle">Termdock</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Veymux"><rect width="512" height="512" rx="112" fill="#1C1B1A"/><g transform="translate(256 256) scale(1) translate(-256 -256)">
+  <path fill="#3AA99F" d="M180 208 C173 211 168 204 173 196 C218 137 286 112 337 120 C414 132 454 200 452 277 C450 344 415 388 369 388 C322 388 279 353 230 344 C178 334 123 340 86 363 C69 374 54 360 46 339 C33 306 35 283 55 259 C74 236 104 230 134 232 C179 235 213 260 250 287 C280 309 308 330 337 330 C360 330 368 310 366 287 C362 248 333 220 298 209 C261 197 222 191 180 208 Z"/></g>
 </svg>

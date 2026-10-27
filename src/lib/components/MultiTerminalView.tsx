@@ -27,7 +27,7 @@ import 'swiper/css';
 import { TerminalView } from './views/TerminalView';
 import { SplitPaneTitle } from './SplitPaneTitle';
 import { SidebarVisibilityButton } from './sidebar/SidebarVisibilityButton';
-import { getTermdockDesktopBridge } from '../desktop/nativeBridge';
+import { getVeymuxDesktopBridge } from '../desktop/nativeBridge';
 import { useSessionPersistence, type PersistedSession } from '../hooks/useSessionPersistence';
 import { VIEWPORT_LAYOUT_CHANGE_EVENT } from '../hooks/useViewportHeight';
 import {
@@ -42,7 +42,7 @@ import {
 } from '../terminal/api';
 import type { TerminalMode } from '../terminal';
 import { getDefaultTerminalSettings, type TerminalSettings } from '../terminal/settings';
-import type { TermdockColorTheme } from '../terminal/theme';
+import type { VeymuxColorTheme } from '../terminal/theme';
 import {
   BACKGROUND_RESUME_INITIAL_DELAY_MS,
   BACKGROUND_RESUME_MAX_HOLD_MS,
@@ -144,8 +144,8 @@ type WorkspaceSlide = {
   workspace?: SplitWorkspace;
 };
 
-const SPLIT_WORKSPACES_STORAGE_KEY = 'termdock:split-workspaces:v2';
-const LEGACY_SPLIT_WORKSPACE_STORAGE_KEY = 'termdock:split-workspace:v1';
+const SPLIT_WORKSPACES_STORAGE_KEY = 'veymux:split-workspaces:v2';
+const LEGACY_SPLIT_WORKSPACE_STORAGE_KEY = 'veymux:split-workspace:v1';
 const MIN_SPLIT_RATIO = 0.1;
 const MAX_SPLIT_RATIO = 0.9;
 
@@ -380,7 +380,7 @@ function getSwipeEventPointerType(event: unknown): string {
 
 interface MultiTerminalViewProps {
   terminalSettings?: TerminalSettings;
-  colorTheme?: TermdockColorTheme;
+  colorTheme?: VeymuxColorTheme;
   toolbarPresets?: ToolbarPresetDefinition[];
   onConfigureToolbar?: (target: ToolbarConfigurationTarget) => void;
   showDebug?: boolean;
@@ -462,8 +462,8 @@ export const MultiTerminalView: React.FC<MultiTerminalViewProps> = ({
   onInitialRecoveryRequired,
 }) => {
   const { t } = useI18n();
-  const splitHeaderHasWindowControls = getTermdockDesktopBridge()?.platform === 'darwin'
-    && document.documentElement.dataset.termdockPreview === 'true';
+  const splitHeaderHasWindowControls = getVeymuxDesktopBridge()?.platform === 'darwin'
+    && document.documentElement.dataset.veymuxPreview === 'true';
   const showSplitWindowHeader = desktopFloatingTitle && !desktopLeftSidebarPinned && splitHeaderHasWindowControls;
   const debugSession = useMemo(() => createDebugLogger('session'), []);
   const debugTerminal = useMemo(() => createDebugLogger('terminal'), []);
@@ -1143,8 +1143,8 @@ export const MultiTerminalView: React.FC<MultiTerminalViewProps> = ({
       }
       logSwiperState('[swiper:gesture-lock]', { locked: ce.detail.locked });
     };
-    document.addEventListener('termdock:gesture-lock', handler);
-    return () => document.removeEventListener('termdock:gesture-lock', handler);
+    document.addEventListener('veymux:gesture-lock', handler);
+    return () => document.removeEventListener('veymux:gesture-lock', handler);
   }, [logSwiperState]);
 
   useEffect(() => {
@@ -1504,7 +1504,7 @@ export const MultiTerminalView: React.FC<MultiTerminalViewProps> = ({
         }
       });
       // 预填展示名提示（程序 / 目录 / 终端标题）：来自 inventory / localStorage 缓存。
-      // 这样 tab 首帧就能显示「customcli termdock」，不必等 WS 连上后轮询 tmux 才跳变。
+      // 这样 tab 首帧就能显示「customcli veymux」，不必等 WS 连上后轮询 tmux 才跳变。
       // WS connected / active-program 事件到达后会用实时值覆盖这里的提示值。
       persistedSessions.forEach((session) => {
         if (session.agent !== undefined) {
@@ -2478,7 +2478,7 @@ export const MultiTerminalView: React.FC<MultiTerminalViewProps> = ({
                       }
                     >
                     {showSplitWindowHeader && !isMobileLayout && <header
-                      data-termdock-window-header="true"
+                      data-veymux-window-header="true"
                       data-split-window-header="true"
                       className={`flex h-[46px] min-h-[46px] shrink-0 items-center gap-2 app-chrome-bg pr-3 text-[12px] text-muted-foreground ${splitHeaderHasWindowControls && !desktopLeftSidebarPinned ? 'pl-[88px]' : 'pl-2'}`}
                     >

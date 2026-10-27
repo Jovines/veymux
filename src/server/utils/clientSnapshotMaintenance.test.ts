@@ -10,9 +10,9 @@ import { startGeneratedStorageMaintenance } from './storageMaintenance.js';
 let home: string, sequence = 0;
 const DAY = 24 * 60 * 60_000;
 const releases: Array<() => void> = [];
-beforeEach(async () => { home = await fs.mkdtemp(path.join(os.tmpdir(), 'td-cache-retention-')); });
+beforeEach(async () => { home = await fs.mkdtemp(path.join(os.tmpdir(), 'veymux-cache-retention-')); });
 afterEach(async () => { for (const release of releases.splice(0)) release(); await fs.rm(home, { recursive: true, force: true }); });
-const state = () => path.join(home, '.termdock');
+const state = () => path.join(home, '.veymux');
 async function fixture(ageDays: number) {
   const id = ++sequence, packageRoot = path.join(home, `package-${id}`), client = path.join(packageRoot, 'dist', 'client');
   await fs.mkdir(path.join(client, 'assets'), { recursive: true });

@@ -23,7 +23,7 @@ before(async () => {
     extensions: [new x509.BasicConstraintsExtension(true, 0, true), new x509.KeyUsagesExtension(x509.KeyUsageFlags.keyCertSign, true)] }, webcrypto);
   const cert = await x509.X509CertificateGenerator.create({ subject: 'CN=localhost', issuer: ca.subject, publicKey: keys.publicKey, signingKey: keys.privateKey, signingAlgorithm, ...validity,
     extensions: [new x509.BasicConstraintsExtension(false), new x509.ExtendedKeyUsageExtension(['1.3.6.1.5.5.7.3.1']), new x509.SubjectAlternativeNameExtension([
-      { type: 'dns', value: 'localhost' }, { type: 'dns', value: '*.termdock.local' }, { type: 'dns', value: 'test.termdock.local' }, { type: 'ip', value: '127.0.0.1' }, { type: 'ip', value: '::1' },
+      { type: 'dns', value: 'localhost' }, { type: 'dns', value: '*.veymux.local' }, { type: 'dns', value: 'test.veymux.local' }, { type: 'ip', value: '127.0.0.1' }, { type: 'ip', value: '::1' },
       ...Object.values(os.networkInterfaces()).flat().filter(item => item && item.family === 'IPv4' && !item.internal).map(item => ({ type: 'ip', value: item.address })),
     ])] }, webcrypto);
   const bytes = Buffer.from(await webcrypto.subtle.exportKey('pkcs8', keys.privateKey));
@@ -31,7 +31,7 @@ before(async () => {
 });
 
 function fixture(t, fail = '') {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'termdock init CLI '));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux init CLI '));
   const children = [];
   t.after(async () => {
     for (const { child, done, timeout } of children) {
@@ -42,8 +42,8 @@ function fixture(t, fail = '') {
   });
   const bin = path.join(root, 'bin'), caroot = path.join(root, 'private CA');
   fs.mkdirSync(bin); fs.mkdirSync(caroot);
-  fs.mkdirSync(path.join(root, '.termdock'));
-  fs.writeFileSync(path.join(root, '.termdock/settings.json'), JSON.stringify({ localAccess: { name: 'test', source: 'manual' } }));
+  fs.mkdirSync(path.join(root, '.veymux'));
+  fs.writeFileSync(path.join(root, '.veymux/settings.json'), JSON.stringify({ localAccess: { name: 'test', source: 'manual' } }));
   for (const [key, value] of Object.entries(material)) fs.writeFileSync(path.join(root, key + '.pem'), value);
   fs.writeFileSync(path.join(caroot, 'rootCA.pem'), material.ca);
   const tool = (name, code) => fs.writeFileSync(path.join(bin, name), `#!${process.execPath}\n${code}`, { mode: 0o700 });
@@ -67,8 +67,8 @@ function fixture(t, fail = '') {
   tool('npx', "console.error('UNEXPECTED_REBUILD'); process.exit(29);");
   const env = { PATH: bin + path.delimiter + process.env.PATH, HOME: root, CAROOT: caroot, INIT_FIXTURE: root, INIT_FAIL: fail,
     XDG_CONFIG_HOME: path.join(root, '.config'), XDG_DATA_HOME: path.join(root, '.local/share'), SHELL: '/invalid/login-shell',
-    TERM: 'xterm-256color', TERMDOCK_SUPERVISOR: '0' };
-  const files = path.join(root, '.termdock/certs');
+    TERM: 'xterm-256color', VEYMUX_SUPERVISOR: '0' };
+  const files = path.join(root, '.veymux/certs');
   const launch = args => {
     const child = spawn(process.execPath, ['--import', tsx, cli, ...args], { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] });
     let output = ''; child.stdout.on('data', data => { output += data; }); child.stderr.on('data', data => { output += data; });
@@ -92,20 +92,20 @@ test('real CLI generates certificates under an isolated HOME without installing 
 });
 test('real CLI preserves existing certificates after a generation failure', async t => {
   const f = fixture(t, 'generation'); fs.mkdirSync(f.files, { recursive: true });
-  fs.writeFileSync(path.join(f.files, 'termdock-local.pem'), material.cert);
-  fs.writeFileSync(path.join(f.files, 'termdock-local-key.pem'), material.key);
+  fs.writeFileSync(path.join(f.files, 'veymux-local.pem'), material.cert);
+  fs.writeFileSync(path.join(f.files, 'veymux-local-key.pem'), material.key);
   fs.writeFileSync(path.join(f.files, 'rootCA.pem'), material.ca);
   const result = await f.launch(standard).done;
   assert.equal(result.code, 1); assert.match(result.output, /GENERATION_FAILED/);
-  assert.equal(fs.readFileSync(path.join(f.files, 'termdock-local-key.pem'), 'utf8'), material.key);
-  assert.deepEqual(fs.readdirSync(f.files).sort(), ['rootCA.pem', 'termdock-local-key.pem', 'termdock-local.pem']);
+  assert.equal(fs.readFileSync(path.join(f.files, 'veymux-local-key.pem'), 'utf8'), material.key);
+  assert.deepEqual(fs.readdirSync(f.files).sort(), ['rootCA.pem', 'veymux-local-key.pem', 'veymux-local.pem']);
 });
 test('existing broken HTTPS fails closed when renewal fails', async t => {
   const f = fixture(t, 'generation'); fs.mkdirSync(f.files, { recursive: true });
-  fs.writeFileSync(path.join(f.files, 'termdock-local.pem'), 'damaged');
+  fs.writeFileSync(path.join(f.files, 'veymux-local.pem'), 'damaged');
   const result = await f.launch(['--foreground', '--host', '127.0.0.1', '--port', '19876']).done;
   assert.equal(result.code, 1); assert.match(result.output, /refusing to fall back to HTTP/);
-  assert.equal(fs.existsSync(path.join(f.root, '.termdock/server.json')), false);
+  assert.equal(fs.existsSync(path.join(f.root, '.veymux/server.json')), false);
 });
 test('a broken installed mkcert is reported before any certificate is changed', async t => {
   const f = fixture(t, 'version'), result = await f.launch(standard).done;
@@ -147,7 +147,7 @@ test('a headless first start uses HTTP without unexpected certificate downloads 
 });
 test('explicit custom TLS starts successfully even with a damaged unused default certificate', async t => {
   const f = fixture(t, 'generation'), port = await freePort(); fs.mkdirSync(f.files, { recursive: true });
-  fs.writeFileSync(path.join(f.files, 'termdock-local.pem'), 'damaged default');
+  fs.writeFileSync(path.join(f.files, 'veymux-local.pem'), 'damaged default');
   const process_ = f.launch(['--foreground', '--host', '127.0.0.1', '--port', String(port),
     '--https-cert', path.join(f.root, 'cert.pem'), '--https-key', path.join(f.root, 'key.pem'), '--https-ca', path.join(f.root, 'ca.pem')]);
   await waitHealth(port, true, process_);

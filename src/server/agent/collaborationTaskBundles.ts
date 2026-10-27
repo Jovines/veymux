@@ -9,7 +9,7 @@ import type { CollaborationTask } from './collaborationTaskTypes.js';
 import type { CollaborationService } from './collaborationService.js';
 
 const exec = promisify(execFile), chunkSize = 256 * 1024, maxBytes = 128 * 1024 * 1024;
-const directory = path.join(os.homedir(), '.termdock', 'task-bundles');
+const directory = path.join(os.homedir(), '.veymux', 'task-bundles');
 const preparing = new Map<string, Promise<BundleMetadata>>();
 interface BundleMetadata { bytes: number; digest: string; commit: string; base: string; ref: string }
 const git = async (cwd: string, args: string[]) => (await exec('git', ['-C', cwd, ...args], { timeout: 60_000, maxBuffer: 1024 * 1024,
@@ -35,7 +35,7 @@ async function prepareBundle(task: CollaborationTask): Promise<BundleMetadata> {
       if (metadata.commit === commit && metadata.base === base && metadata.bytes === (await stat(file)).size) return metadata;
     } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
     // Export the reviewed commit, even if the task branch has since moved.
-    const ref = `refs/termdock/exports/${artifact.id}`;
+    const ref = `refs/veymux/exports/${artifact.id}`;
     await git(workspace.repository, ['update-ref', ref, commit]);
     const temporary = `${file}.${process.pid}.tmp`;
     if (commit === base) throw new Error('依赖未产生代码提交，无需传输；请检查项目基线是否一致');
@@ -79,7 +79,7 @@ export async function importTaskDependency(current: CollaborationTask, dependenc
       const chunk = response.chunk as BundleMetadata & { offset: number; data: string };
       if (!chunk || chunk.offset !== offset || chunk.commit !== expected.commit || chunk.base !== expected.base
         || !Number.isSafeInteger(chunk.bytes) || chunk.bytes < 1 || chunk.bytes > maxBytes || typeof chunk.digest !== 'string' || !/^[a-f0-9]{64}$/.test(chunk.digest)
-        || chunk.ref !== `refs/termdock/exports/${expected.artifact.id}` || typeof chunk.data !== 'string' || chunk.data.length > 350_000
+        || chunk.ref !== `refs/veymux/exports/${expected.artifact.id}` || typeof chunk.data !== 'string' || chunk.data.length > 350_000
         || digest && digest !== chunk.digest || offset && total !== chunk.bytes) throw new Error('依赖提交包校验信息无效');
       digest = chunk.digest; total = chunk.bytes; ref = chunk.ref;
       const bytes = Buffer.from(chunk.data, 'base64');

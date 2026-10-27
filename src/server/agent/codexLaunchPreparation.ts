@@ -47,7 +47,7 @@ export async function prepareCodexThread(argv: string[], cwd: string, timeoutMs 
   });
   let thread: { id?: string; path?: string; ephemeral?: boolean } | undefined;
   try {
-    await send('initialize', { clientInfo: { name: 'termdock', title: 'Termdock recovery', version: '1' } });
+    await send('initialize', { clientInfo: { name: 'veymux', title: 'Veymux recovery', version: '1' } });
     child.stdin.write(JSON.stringify({ method: 'initialized', params: {} }) + '\n');
     const effective = await send('config/read', { cwd, includeLayers: false });
     const effort = effective?.config?.model_reasoning_effort;

@@ -40,7 +40,7 @@ async function mount(initial = snapshot(), hash = '') {
     downloadNode: vi.fn(async () => {}), connect: vi.fn(async () => ({ ok: true, error: '' })),
     updateDesktopPreferences: vi.fn(async () => structuredClone(initial)),
   };
-  Object.assign(dom.window, { termdockDesktop: api, setInterval: () => 0 });
+  Object.assign(dom.window, { veymuxDesktop: api, setInterval: () => 0 });
   dom.window.eval(script);
   const doc = dom.window.document;
   const element = <T extends Element = HTMLElement>(selector: string) => doc.querySelector<T>(selector)!;

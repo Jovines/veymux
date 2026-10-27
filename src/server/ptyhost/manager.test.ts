@@ -28,7 +28,7 @@ interface FakeHost {
 }
 
 function socketDir(): string {
-  return path.join(os.homedir(), '.termdock', 'pty-hosts');
+  return path.join(os.homedir(), '.veymux', 'pty-hosts');
 }
 
 async function startFakeHost(behavior: FakeHostBehavior): Promise<FakeHost> {
@@ -75,7 +75,7 @@ let manager: PtyHostManager | null = null;
 let fakeHost: FakeHost | null = null;
 
 beforeEach(() => {
-  process.env.TERMDOCK_PTY_HOST_KEY = `vitest-manager-${process.pid}-${Date.now()}`;
+  process.env.VEYMUX_PTY_HOST_KEY = `vitest-manager-${process.pid}-${Date.now()}`;
   manager = new PtyHostManager();
   // 测试里绝不真的 spawn daemon。
   (manager as unknown as { spawnHostDaemon: () => void }).spawnHostDaemon = () => undefined;
@@ -92,7 +92,7 @@ afterEach(async () => {
     await fakeHost.close();
     fakeHost = null;
   }
-  delete process.env.TERMDOCK_PTY_HOST_KEY;
+  delete process.env.VEYMUX_PTY_HOST_KEY;
 });
 
 describe('PtyHostManager hang guards', () => {

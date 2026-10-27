@@ -60,7 +60,7 @@ describe.each(['pinned', 'push'] as const)('pending creation during %s navigatio
     const { request } = await setup(mode);
     if (entry === 'group') fireEvent.click(screen.getByRole('button', { name: '打开协作工作区：Team' }));
     else if (entry === 'member') fireEvent.click(screen.getByRole('button', { name: 'Old shell' }));
-    else act(() => window.dispatchEvent(new CustomEvent('termdock:open-collaboration-messages', { detail: { groupId: 'team', dock: { sessionId: 'old', side: 'right' } } })));
+    else act(() => window.dispatchEvent(new CustomEvent('veymux:open-collaboration-messages', { detail: { groupId: 'team', dock: { sessionId: 'old', side: 'right' } } })));
     expect(request.shouldActivate()).toBe(false);
     act(() => request.onResult({ ok: true, sessionId: 'late-real-shell' }));
     if (entry === 'group') expect(useCollaborationNavigation.getState().groupId).toBe('team');

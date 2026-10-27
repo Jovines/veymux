@@ -69,7 +69,7 @@ describe('desktop native file drops', () => {
     const fetchRequest = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(new Response(JSON.stringify({ csrfToken: 'token-1' }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({
-        files: [{ path: '/tmp/termdock-clipboard-2026-09-02T04-05-06-000Z.png' }],
+        files: [{ path: '/tmp/veymux-clipboard-2026-09-02T04-05-06-000Z.png' }],
       }), { status: 200 }));
     const uploadedAt = new Date('2026-09-02T04:05:06.000Z');
 
@@ -77,7 +77,7 @@ describe('desktop native file drops', () => {
       new Uint8Array([137, 80, 78, 71]).buffer,
       fetchRequest,
       uploadedAt,
-    )).resolves.toBe('/tmp/termdock-clipboard-2026-09-02T04-05-06-000Z.png');
+    )).resolves.toBe('/tmp/veymux-clipboard-2026-09-02T04-05-06-000Z.png');
 
     const request = fetchRequest.mock.calls[1]?.[1];
     const file = (request?.body as FormData).get('files') as File;

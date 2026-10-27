@@ -14,7 +14,7 @@ async function loadStore() {
 
 describe('changeAuditStore section records', () => {
   beforeEach(() => {
-    tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'termdock-audit-store-'));
+    tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-audit-store-'));
     process.env.HOME = tempHome;
   });
 

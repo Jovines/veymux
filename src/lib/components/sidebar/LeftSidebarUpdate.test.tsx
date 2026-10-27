@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { I18nProvider } from '../../i18n';
 import { LeftSidebar } from './LeftSidebar';
-import type { TermdockUpdateState } from '../../terminal/api';
+import type { VeymuxUpdateState } from '../../terminal/api';
 
 vi.mock('../../terminal/api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../terminal/api')>()),
@@ -17,7 +17,7 @@ afterEach(() => {
 });
 
 describe('LeftSidebar update reminder', () => {
-  function renderSidebar(updateState: TermdockUpdateState, onConfirmUpdateRestart = vi.fn(), onRetryUpdate = vi.fn(), onNewSession = vi.fn()) {
+  function renderSidebar(updateState: VeymuxUpdateState, onConfirmUpdateRestart = vi.fn(), onRetryUpdate = vi.fn(), onNewSession = vi.fn()) {
     vi.stubGlobal('fetch', vi.fn(async () => ({
       ok: true,
       json: async () => ({ locale: 'en' }),
@@ -57,7 +57,7 @@ describe('LeftSidebar update reminder', () => {
     const onConfirmUpdateRestart = vi.fn();
     renderSidebar({ status: 'ready', currentVersion: '1.4.69', latestVersion: '1.4.70', source: 'official', checkedAt: Date.now(), error: null }, onConfirmUpdateRestart);
 
-    const moreButton = screen.getByRole('button', { name: /More actions: Termdock 1\.4\.70 is available/ });
+    const moreButton = screen.getByRole('button', { name: /More actions: Veymux 1\.4\.70 is available/ });
     expect(moreButton.querySelector('span[aria-hidden="true"]')).not.toBeNull();
     fireEvent.click(moreButton);
     expect(screen.getByText('The update is installed and ready for a confirmed restart.')).toBeTruthy();
@@ -68,10 +68,10 @@ describe('LeftSidebar update reminder', () => {
   it('does not present a same-version stale error as an available update', () => {
     renderSidebar({ status: 'error', currentVersion: '1.4.322', latestVersion: '1.4.322', source: 'official', checkedAt: Date.now(), error: 'stale install failure' });
     expect(screen.getByRole('button', { name: 'More actions' })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /Termdock 1\.4\.322 is available/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Veymux 1\.4\.322 is available/ })).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
-    expect(screen.queryByText('Termdock 1.4.322 is available')).toBeNull();
+    expect(screen.queryByText('Veymux 1.4.322 is available')).toBeNull();
     expect(screen.queryByText('Automatic installation failed. This reminder will remain.')).toBeNull();
   });
 
@@ -89,7 +89,7 @@ describe('LeftSidebar update reminder', () => {
     });
     renderSidebar({ status: 'error', currentVersion: '1.4.321', latestVersion: '1.4.322', source: 'official', checkedAt: Date.now(), error: 'controlled npm install failure' }, vi.fn(), vi.fn(), onNewSession);
 
-    expect(screen.getByRole('button', { name: /Termdock 1\.4\.322 is available/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Veymux 1\.4\.322 is available/ })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'New terminal' }));
     expect(onNewSession).toHaveBeenCalledOnce();
   });
@@ -98,7 +98,7 @@ describe('LeftSidebar update reminder', () => {
     const onRetryUpdate = vi.fn();
     const view = renderSidebar({ status: 'error', currentVersion: '1.4.321', latestVersion: '1.4.322', source: 'official', checkedAt: Date.now(), error: 'controlled npm install failure' }, vi.fn(), onRetryUpdate);
     fireEvent.click(screen.getByRole('button', { name: /More actions/ }));
-    expect(screen.getByText('Termdock 1.4.322 is available')).toBeTruthy();
+    expect(screen.getByText('Veymux 1.4.322 is available')).toBeTruthy();
     expect(screen.getByText('controlled npm install failure')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     expect(onRetryUpdate).toHaveBeenCalledOnce();

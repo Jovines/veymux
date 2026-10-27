@@ -201,7 +201,7 @@ it('retains a failed message across remounts and restores it for editing', async
   await screen.findByRole('button', { name: '重试发送' });
   expect(composerText()).toBe('');
   expect(screen.getByText('请解释结果')).toBeTruthy();
-  expect(JSON.parse(sessionStorage.getItem(`termdock:chat:${location.origin}:one:pending`) || 'null')?.content).toBe('请解释结果');
+  expect(JSON.parse(sessionStorage.getItem(`veymux:chat:${location.origin}:one:pending`) || 'null')?.content).toBe('请解释结果');
   unmount();
   render(<SessionChatView sessionId="one" onTerminal={() => {}} />);
   await screen.findByRole('button', { name: '重试发送' });
@@ -264,10 +264,10 @@ it('clears the composer and quote immediately while preserving an identical next
 it('routes references into the active chat draft and acknowledges without sending terminal input', async () => {
   vi.stubGlobal('fetch', vi.fn(async () => Response.json({ agentAvailable: true, messages: [] })));
   render(<SessionChatView sessionId="one" onTerminal={() => {}} />); await screen.findByText('想一起完成什么？');
-  const ack = vi.fn(), terminal = vi.fn(); window.addEventListener('termdock-insert-reference-ack', ack); window.addEventListener('termdock-insert-reference', terminal);
-  fireEvent(window, new CustomEvent('termdock-insert-reference', { detail: { text: '/tmp/shared/spec.md', sessionId: 'one', nonce: 'ref' } }));
+  const ack = vi.fn(), terminal = vi.fn(); window.addEventListener('veymux-insert-reference-ack', ack); window.addEventListener('veymux-insert-reference', terminal);
+  fireEvent(window, new CustomEvent('veymux-insert-reference', { detail: { text: '/tmp/shared/spec.md', sessionId: 'one', nonce: 'ref' } }));
   expect(composerText()).toBe('/tmp/shared/spec.md'); expect(ack.mock.calls[0][0].detail).toEqual({ nonce: 'ref', ok: true }); expect(terminal).not.toHaveBeenCalled();
-  window.removeEventListener('termdock-insert-reference-ack', ack); window.removeEventListener('termdock-insert-reference', terminal);
+  window.removeEventListener('veymux-insert-reference-ack', ack); window.removeEventListener('veymux-insert-reference', terminal);
 });
 it('keeps read-only recipients from sending or accepting references', async () => {
   const fetch = vi.fn(async () => Response.json({ agentAvailable: true, messages: [] })); vi.stubGlobal('fetch', fetch);
@@ -326,7 +326,7 @@ it('replaces the current draft selection when inserting an existing file referen
   vi.stubGlobal('fetch', vi.fn(async () => Response.json({ agentAvailable: true, messages: [] })));
   render(<SessionChatView sessionId="caret" onTerminal={() => {}} />); await screen.findByText('想一起完成什么？');
   setComposer('前文替换后文'); selectComposer(2, 4);
-  fireEvent(window, new CustomEvent('termdock-insert-reference', { detail: { text: '/tmp/spec.md ', sessionId: 'caret', nonce: 'ref', focus: false } }));
+  fireEvent(window, new CustomEvent('veymux-insert-reference', { detail: { text: '/tmp/spec.md ', sessionId: 'caret', nonce: 'ref', focus: false } }));
   expect(composerText()).toBe('前文/tmp/spec.md 后文');
 });
 
@@ -461,7 +461,7 @@ it('backs off failed polling and stops all background requests when inactive', a
 
 it('acknowledges an earlier pending request and retains reply feedback when only later progress fits in the page', async () => {
   const requestId = 'pending-outside-current-page';
-  sessionStorage.setItem(`termdock:chat:${location.origin}:paged-pending:pending`, JSON.stringify({ content: '已经送达的原请求', requestId, createdAt: 1 }));
+  sessionStorage.setItem(`veymux:chat:${location.origin}:paged-pending:pending`, JSON.stringify({ content: '已经送达的原请求', requestId, createdAt: 1 }));
   const messages = Array.from({ length: 30 }, (_, index) => ({ id: `progress-${index}`, role: 'assistant', content: `正在处理第 ${index} 步`, createdAt: index + 2, status: 'stored', responseKind: 'progress' }));
   vi.stubGlobal('fetch', vi.fn(async () => Response.json({ agentAvailable: true, messages, confirmedRequestId: requestId, replyPending: true, page: { mode: 'latest', hasOlder: true, hasNewer: false } })));
   render(<SessionChatView sessionId="paged-pending" onTerminal={() => {}} />);
@@ -489,7 +489,7 @@ it('immediately appends an Agent reply placeholder after sending and merges it i
   expect(reply.querySelector('[style*=mask]')).toBeTruthy();
   expect(reply.previousElementSibling?.getAttribute('data-chat-turn')).toBe('user');
   expect(reply.querySelector('[data-chat-agent-awaiting]')).toBeTruthy();
-  expect(reply.querySelector('.td-loading-spinner')).toBeNull();
+  expect(reply.querySelector('.veymux-loading-spinner')).toBeNull();
   expect(feedback.textContent).toContain('处理中…');
   messages = [{ id: 'sent', role: 'user', content: '检查结果', createdAt: 1, status: 'delivered' }];
   await act(async () => acknowledge(Response.json({ id: 'sent', status: 'delivered' })));
@@ -569,7 +569,7 @@ it.each(['output', 'working', 'native', 'idle'])('keeps empty chat details throu
   });
   const details = view.container.querySelector('[data-chat-terminal-access]')!;
   expect(details.textContent).toBe('详情');
-  expect(details.querySelector('.td-loading-spinner')).toBeNull();
+  expect(details.querySelector('.veymux-loading-spinner')).toBeNull();
   setComposer('第一条消息');
   expect(details.textContent).toBe('详情');
   expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).endsWith('/input-check'))).toBe(false);
@@ -644,7 +644,7 @@ it('keeps processing from the native terminal status when Codex animations produ
     useTerminalStore.getState().setSessionTuiProgress('native-silent', { source: 'osc7501', state: 'indeterminate', progress: null, message: 'Working', app: 'codex' });
   });
   expect(screen.getByRole('status', { name: 'Codex处理中' })).toBeTruthy();
-  expect(screen.getByRole('status', { name: 'Codex处理中' }).querySelector('.td-loading-spinner')).toBeTruthy();
+  expect(screen.getByRole('status', { name: 'Codex处理中' }).querySelector('.veymux-loading-spinner')).toBeTruthy();
   act(() => useTerminalStore.getState().setSessionTuiProgress('native-silent', null));
   expect(view.container.querySelector('[data-chat-reply-status]')).toBeNull();
   expect(view.container.querySelector('[data-chat-terminal-access]')?.textContent).toBe('详情');
@@ -688,7 +688,7 @@ it.each(['claude', 'codex', 'custom-plugin'])('gives an explicit %s input reques
   act(() => useTerminalStore.getState().setSessionAgentStatus(sessionId, { agentStatus: 'waiting' }));
   const status = screen.getByRole('status', { name: 'Agent等你处理' });
   expect(status.textContent).toBe('等你处理');
-  expect(status.querySelector('.td-loading-spinner')).toBeNull();
+  expect(status.querySelector('.veymux-loading-spinner')).toBeNull();
   expect(status.getAttribute('title')).toBe('查看终端中的详细输出');
   expect(view.container.querySelector('[data-chat-reply-feedback]')).toBeNull();
   act(() => useTerminalStore.getState().setSessionAgentStatus(sessionId, { agentStatus: 'working' }));
@@ -705,7 +705,7 @@ it.each([['question', '待回答'], ['permission', '待确认'], ['auth', '需�
       useTerminalStore.getState().setSessionTuiProgress('typed-input', { source: 'osc7501', state: 'blocked', progress: null, kind });
     });
     const status = screen.getByRole('status', { name: `Agent${label}` });
-    expect(status.querySelector('.td-loading-spinner')).toBeNull();
+    expect(status.querySelector('.veymux-loading-spinner')).toBeNull();
     act(() => useTerminalStore.getState().setSessionTuiProgress('typed-input', null));
     expect(screen.queryByRole('status', { name: `Agent${label}` })).toBeNull();
   });

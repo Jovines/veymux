@@ -1,6 +1,6 @@
 /** Client-local guidance, deliberately excluded from server/client-state sync. */
-export const TERMINAL_MODE_HINT_KEY = 'termdock:onboarding:terminal-chat-hint';
-export const TERMINAL_MODE_HINT_EVENT = 'termdock:terminal-mode-hint';
+export const TERMINAL_MODE_HINT_KEY = 'veymux:onboarding:terminal-chat-hint';
+export const TERMINAL_MODE_HINT_EVENT = 'veymux:terminal-mode-hint';
 interface HintRecord { version: 1; shownAt?: number; understoodAt?: number; dismissedAt?: number; resolution?: 'dismissed' | 'interrupted' | 'acknowledged' }
 let memory: HintRecord | null = null;
 let memoryOnly = false;

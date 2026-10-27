@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { SupervisorConfig } from '../supervisor.js';
 import { getSupervisorStatus } from './supervisorClient.js';
-import { SERVER_LOG_PATH } from './termdockState.js';
+import { SERVER_LOG_PATH } from './veymuxState.js';
 
 let config: SupervisorConfig | null = null;
 let pending = false;
@@ -15,7 +15,7 @@ export function configureSupervisionEnable(value: SupervisorConfig): void {
 }
 
 export function canEnableSupervision(): boolean {
-  return config !== null && !(process.env.TERMDOCK_SUPERVISED === '1' && process.connected)
+  return config !== null && !(process.env.VEYMUX_SUPERVISED === '1' && process.connected)
     && !process.env.INVOCATION_ID && !process.env.NOTIFY_SOCKET && !process.env.PM2_HOME
     && !getSupervisorStatus()?.alive;
 }

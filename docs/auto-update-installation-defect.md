@@ -4,7 +4,7 @@
 
 ## 证据与影响
 
-2026-10-23 DevBox 运行服务 1.4.355 时，自动更新对同一个安装 prefix 执行全局 npm 安装 1.4.356。安装期间，磁盘 `package.json` 已为 356、CLI 文件存在，但 prefix 下的 `bin/td` 与 `bin/termdock` 均不存在，原 355 服务仍健康。一个后台调用另行观测到启动 `td` 的 `FileNotFoundError`；同期需求调研 scan 失败的原始 service stderr 尚未取得，不能将该诊断异常直接当作 scan 的完整因果证据。
+2026-10-23 DevBox 运行服务 1.4.355 时，自动更新对同一个安装 prefix 执行全局 npm 安装 1.4.356。安装期间，磁盘 `package.json` 已为 356、CLI 文件存在，但 prefix 下的 `bin/veymux` 与 `bin/veymux` 均不存在，原 355 服务仍健康。一个后台调用另行观测到启动 `veymux` 的 `FileNotFoundError`；同期需求调研 scan 失败的原始 service stderr 尚未取得，不能将该诊断异常直接当作 scan 的完整因果证据。
 
 现场 npm 10.9.2 的 Arborist `reify.js` 将 `[node.path, ...node.binPaths]` 加入 retired 映射，并在 `retireShallow` 阶段移动旧路径。现场核验该文件 SHA256 为 `410ef86de06e15ed8e5778350a5ce3c138f31b0cda551ea1d7a525f7be631834`。这是同机机制证据，不是实际 unlink 系统调用捕获；原安装仍有少量 I/O 进展，不能宣称完全死锁或确定八分钟等待的唯一原因。TD 本身没有显式 unlink 两个命令的逻辑。
 
@@ -14,9 +14,9 @@
 
 ## 已确认的实现缺口
 
-- `installTermdockVersion` 直接在运行中的全局安装 prefix 执行 `npm install --global`，没有独立暂存并验证后再切换的事务。npm 的退役窗口会影响依赖该 CLI 的后台程序，即使服务健康接口仍返回 200。
+- `installVeymuxVersion` 直接在运行中的全局安装 prefix 执行 `npm install --global`，没有独立暂存并验证后再切换的事务。npm 的退役窗口会影响依赖该 CLI 的后台程序，即使服务健康接口仍返回 200。
 - `spawn` 安装没有整体 deadline；npm view 的 30 秒超时以及部分 postinstall 子步骤的超时不构成完整安装上限。
-- `TermdockAutoUpdateManager.checkPromise` 仅合并同一服务进程内的更新检查，没有跨进程、跨服务或与手动安装协调的 prefix 锁。
+- `VeymuxAutoUpdateManager.checkPromise` 仅合并同一服务进程内的更新检查，没有跨进程、跨服务或与手动安装协调的 prefix 锁。
 - 官方源安装失败后，configured registry fallback 是再次安装同一版本，不是恢复旧版本。TD 没有自己的旧包备份与失败回滚验收；npm 的 best-effort rollback 不能替代该保证。
 - 持久状态 `installing` 没有作为可恢复事务加载，也没有锁识别服务重启后仍存活的安装进程。
 - 安装及重启前的校验侧重路径与 package name/version，没有完整验证两个 bin、制品文件完整性及原生 PTY。不能仅凭新版本号、服务在线或 npm 创建了部分文件就显示完成。
@@ -31,7 +31,7 @@
 
 ## 后续修复验收要求
 
-1. 正常更新从下载、解包、依赖安装到验证期间，原 `td` 与 `termdock` 始终可调用。新制品只在独立暂存区处理；完成版本、来源/integrity、必需文件、两个 bin 目标和 native PTY 验收后，通过统一版本指针/稳定入口一次切换，避免分别替换两个 bin 的窗口。具体机制与受支持安装布局须在实现时明确。
+1. 正常更新从下载、解包、依赖安装到验证期间，原 `veymux` 与 `veymux` 始终可调用。新制品只在独立暂存区处理；完成版本、来源/integrity、必需文件、两个 bin 目标和 native PTY 验收后，通过统一版本指针/稳定入口一次切换，避免分别替换两个 bin 的窗口。具体机制与受支持安装布局须在实现时明确。
 2. 按 canonical prefix 提供持久的跨进程安装互斥和事务对账。TD 自动与显式更新共用协议；任意外部 npm 不会自动遵守 TD 锁，因此必须明确兼容边界、发现外部替换并停止切换，不能宣传可阻止所有外部写入。
 3. 整体安装有可配置上限，下载/安装/验证阶段可诊断。超时须核验本事务进程实例及子进程退出后才允许后续写入；不能让取消触发一个未受控的 fallback 安装。
 4. 校验失败、磁盘不足、超时、信号中断、服务重启及切换中断后，旧的完整 CLI/安装继续可用，或能沿持久事务明确恢复；不留下半包入口、丢失 bin 或将结果不明标为成功。保留旧版本与回滚所需证据，清理只针对已确认不再使用的暂存制品。

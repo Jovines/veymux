@@ -65,7 +65,7 @@ describe('canNativeScrollX', () => {
 describe('managed Markdown scroller gestures', () => {
   it('drives Markdown code scrollLeft directly from finger movement', () => {
     const code = makeScroller({ scrollWidth: 300, clientWidth: 100, scrollLeft: 40 });
-    code.className = 'termdock-file-preview-horizontal-scroll';
+    code.className = 'veymux-file-preview-horizontal-scroll';
     const pre = document.createElement('pre');
     Object.defineProperties(pre, {
       scrollLeft: { value: code.scrollLeft, configurable: true, writable: true },
@@ -93,7 +93,7 @@ describe('managed Markdown scroller gestures', () => {
 
   it('leaves other native horizontal scrollers on the browser path', () => {
     const tableScroller = makeScroller({ scrollWidth: 300, clientWidth: 100 });
-    tableScroller.className = 'termdock-file-preview-horizontal-scroll termdock-md-table-scroll';
+    tableScroller.className = 'veymux-file-preview-horizontal-scroll veymux-md-table-scroll';
     expect(beginManagedScrollerGesture(tableScroller)).toBeNull();
   });
 });

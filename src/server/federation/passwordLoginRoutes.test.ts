@@ -6,18 +6,18 @@ import { startPasswordBootstrap, finishPasswordBootstrap } from './passwordBoots
 import { recordLoginSuccess } from '../utils/authProtection.js';
 import type { FederationRuntime } from './runtime.js';
 import * as authProtection from '../utils/authProtection.js';
-const originalPassword = process.env.TERMDOCK_PASSWORD;
-const originalOrigin = process.env.TERMDOCK_PUBLIC_ORIGIN;
+const originalPassword = process.env.VEYMUX_PASSWORD;
+const originalOrigin = process.env.VEYMUX_PUBLIC_ORIGIN;
 let listener: Server | undefined;
 afterEach(async () => {
-  if (originalPassword === undefined) delete process.env.TERMDOCK_PASSWORD; else process.env.TERMDOCK_PASSWORD = originalPassword;
-  if (originalOrigin === undefined) delete process.env.TERMDOCK_PUBLIC_ORIGIN; else process.env.TERMDOCK_PUBLIC_ORIGIN = originalOrigin;
+  if (originalPassword === undefined) delete process.env.VEYMUX_PASSWORD; else process.env.VEYMUX_PASSWORD = originalPassword;
+  if (originalOrigin === undefined) delete process.env.VEYMUX_PUBLIC_ORIGIN; else process.env.VEYMUX_PUBLIC_ORIGIN = originalOrigin;
   recordLoginSuccess('127.0.0.1');
   if (listener) await new Promise<void>(resolve => listener!.close(() => resolve()));
   vi.restoreAllMocks();
 });
 async function fixture(ready = true) {
-  process.env.TERMDOCK_PASSWORD = 'existing-password'; delete process.env.TERMDOCK_PUBLIC_ORIGIN;
+  process.env.VEYMUX_PASSWORD = 'existing-password'; delete process.env.VEYMUX_PUBLIC_ORIGIN;
   const grants: string[] = [];
   const runtime = { serviceId: 'server-key', store: { grantPassword: (subject: string) => { grants.push(subject); } } } as unknown as FederationRuntime;
   const app = express(); app.use('/api/auth/password', createPasswordLoginRouter(() => ready ? runtime : undefined));

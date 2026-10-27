@@ -4,9 +4,9 @@ import { fileURLToPath } from 'node:url';
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 
-export const TERMDOCK_PROTOCOL_VERSION = 1;
+export const VEYMUX_PROTOCOL_VERSION = 1;
 
-export const TERMDOCK_CAPABILITIES = [
+export const VEYMUX_CAPABILITIES = [
   'auth-cookie',
   'client-state-ws',
   'desktop-service-discovery',
@@ -18,8 +18,8 @@ export const TERMDOCK_CAPABILITIES = [
   'tmux',
 ] as const;
 
-export function getTermdockVersion(): string {
-  const override = process.env.TERMDOCK_VERSION?.trim();
+export function getVeymuxVersion(): string {
+  const override = process.env.VEYMUX_VERSION?.trim();
   if (override) return override;
   try {
     const require_ = createRequire(import.meta.url);
@@ -30,7 +30,7 @@ export function getTermdockVersion(): string {
     }
   } catch {
     // Packagers may omit the root package file. The desktop launcher sets
-    // TERMDOCK_VERSION explicitly, so this is only a backwards-compatible
+    // VEYMUX_VERSION explicitly, so this is only a backwards-compatible
     // fallback for unusual distributions.
   }
   return '0.0.0';

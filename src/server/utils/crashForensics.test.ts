@@ -3,11 +3,11 @@ import os from 'os';
 import path from 'path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-// writeJsonLogSync 直接写 ~/.termdock，这里把 homedir 重定向到临时目录，
+// writeJsonLogSync 直接写 ~/.veymux，这里把 homedir 重定向到临时目录，
 // 让"真的落盘了"这条能对着真实文件断言，而不是对着 mock 断言。
 // 路径在 vi.hoisted 里手拼：工厂跑在 import 之前，此时 fs/path 都还在 TDZ。
 const { fakeHome } = vi.hoisted(() => ({
-  fakeHome: `${process.env.TMPDIR || '/tmp'}/termdock-forensics-${process.pid}`,
+  fakeHome: `${process.env.TMPDIR || '/tmp'}/veymux-forensics-${process.pid}`,
 }));
 
 vi.mock('os', async (importOriginal) => {
@@ -28,7 +28,7 @@ const { writeJsonLogSync } = await import('./serverLogger.js');
 const temporaryDirectories: string[] = [fakeHome];
 
 function makeTemporaryDirectory(): string {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'termdock-forensics-case-'));
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-forensics-case-'));
   temporaryDirectories.push(directory);
   return directory;
 }
@@ -47,7 +47,7 @@ describe('writeJsonLogSync', () => {
   it('同步落盘：函数返回时字节已经在磁盘上', () => {
     writeJsonLogSync('crash.log', { role: 'server', event: 'unit-test' });
 
-    const logPath = path.join(fakeHome, '.termdock', 'crash.log');
+    const logPath = path.join(fakeHome, '.veymux', 'crash.log');
     const [line] = fs.readFileSync(logPath, 'utf8').trim().split('\n');
     const entry = JSON.parse(line);
     expect(entry).toMatchObject({ role: 'server', event: 'unit-test', pid: process.pid });
@@ -58,7 +58,7 @@ describe('writeJsonLogSync', () => {
     writeJsonLogSync('crash.log', { event: 'first' });
     writeJsonLogSync('crash.log', { event: 'second' });
 
-    const logPath = path.join(fakeHome, '.termdock', 'crash.log');
+    const logPath = path.join(fakeHome, '.veymux', 'crash.log');
     const events = fs.readFileSync(logPath, 'utf8').trim().split('\n').map((line) => JSON.parse(line).event);
     expect(events).toEqual(['first', 'second']);
     expect(fs.statSync(logPath).mode & 0o777).toBe(0o600);

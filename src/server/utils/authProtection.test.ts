@@ -7,11 +7,11 @@ import path from 'path';
 let directory: string;
 let auth: typeof import('./authProtection.js');
 beforeEach(async () => {
-  directory = fs.mkdtempSync(path.join(os.tmpdir(), 'termdock-auth-test-'));
+  directory = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-auth-test-'));
   vi.resetModules();
   vi.spyOn(os, 'homedir').mockReturnValue(directory);
-  vi.stubEnv('TERMDOCK_PASSWORD', '');
-  vi.stubEnv('TERMDOCK_PUBLIC_ORIGIN', '');
+  vi.stubEnv('VEYMUX_PASSWORD', '');
+  vi.stubEnv('VEYMUX_PUBLIC_ORIGIN', '');
   auth = await import('./authProtection.js');
   auth.writeAuthFile(auth.hashPassword('a strong test password'));
 });
@@ -24,14 +24,14 @@ afterEach(() => {
 describe('authentication attack regressions', () => {
   it('rejects malformed upgrade cookies without throwing or accepting duplicate cookies', () => {
     const session = auth.createSession();
-    expect(auth.isUpgradeRequestAuthenticated(`termdock-auth=${session.token}`)).toBe(true);
-    expect(auth.isUpgradeRequestAuthenticated('termdock-auth=%E0%A4%A')).toBe(false);
-    expect(auth.isUpgradeRequestAuthenticated(`termdock-auth=invalid; termdock-auth=${session.token}`)).toBe(false);
+    expect(auth.isUpgradeRequestAuthenticated(`veymux-auth=${session.token}`)).toBe(true);
+    expect(auth.isUpgradeRequestAuthenticated('veymux-auth=%E0%A4%A')).toBe(false);
+    expect(auth.isUpgradeRequestAuthenticated(`veymux-auth=invalid; veymux-auth=${session.token}`)).toBe(false);
   });
 
   it('persists only token hashes and survives a restart with file-based credentials', async () => {
     const session = auth.createSession();
-    const file = path.join(directory, '.termdock/auth-sessions.json');
+    const file = path.join(directory, '.veymux/auth-sessions.json');
     expect(fs.readFileSync(file, 'utf8')).not.toContain(session.token);
     expect(fs.statSync(file).mode & 0o777).toBe(0o600);
     vi.resetModules();
@@ -44,7 +44,7 @@ describe('authentication attack regressions', () => {
   it('rejects old sessions when a separate CLI process changes the password', () => {
     const session = auth.createSession();
     const newHash = auth.hashPassword('a different strong password');
-    fs.writeFileSync(path.join(directory, '.termdock/auth.json'), JSON.stringify({ version: 1, passwordHash: newHash }));
+    fs.writeFileSync(path.join(directory, '.veymux/auth.json'), JSON.stringify({ version: 1, passwordHash: newHash }));
     expect(auth.isSessionValid(session.token)).toBe(false);
   });
 
@@ -105,7 +105,7 @@ describe('30-day sliding login', () => {
   });
 
   it('renews repeated visits beyond the initial expiration, including public mode', () => {
-    vi.stubEnv('TERMDOCK_PUBLIC_ORIGIN', 'https://term.example.com');
+    vi.stubEnv('VEYMUX_PUBLIC_ORIGIN', 'https://term.example.com');
     const session = auth.createSession();
     const now = vi.spyOn(Date, 'now');
     for (const day of [29, 58, 87]) {
@@ -145,7 +145,7 @@ describe('30-day sliding login', () => {
     expect(cookie).toHaveBeenCalledWith(auth.AUTH_COOKIE, session.token, expect.objectContaining({
       httpOnly: true, maxAge: 30 * DAY, path: '/',
     }));
-    const persisted = JSON.parse(fs.readFileSync(path.join(directory, '.termdock/auth-sessions.json'), 'utf8'));
+    const persisted = JSON.parse(fs.readFileSync(path.join(directory, '.veymux/auth-sessions.json'), 'utf8'));
     expect(persisted.sessions[0].expiresAt).toBe(visitedAt + 30 * DAY);
     expect(next).toHaveBeenCalledOnce();
   });
@@ -164,7 +164,7 @@ describe('30-day sliding login', () => {
 
   it('upgrades a still-valid 12-hour session on its next visit', async () => {
     const session = auth.createSession();
-    const file = path.join(directory, '.termdock/auth-sessions.json');
+    const file = path.join(directory, '.veymux/auth-sessions.json');
     const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
     saved.sessions[0].expiresAt = session.createdAt + 12 * 60 * 60_000;
     fs.writeFileSync(file, JSON.stringify(saved));

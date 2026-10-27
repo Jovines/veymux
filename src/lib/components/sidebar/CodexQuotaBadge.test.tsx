@@ -16,7 +16,7 @@ const codex = (usagePercent: number): QuotaResult => ({
 });
 const status = (provider: QuotaResult): QuotaStatus => ({ providers: [provider], updatedAt: Date.now() });
 const broadcast = (providers: QuotaResult[]) => act(() => {
-  window.dispatchEvent(new CustomEvent('termdock:quota-update', { detail: providers }));
+  window.dispatchEvent(new CustomEvent('veymux:quota-update', { detail: providers }));
 });
 
 beforeEach(() => { vi.mocked(fetchQuota).mockReset(); });

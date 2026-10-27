@@ -2,7 +2,7 @@
  * QuotaManager — periodic polling, caching, and broadcasting of subscription quotas.
  *
  * On start, discovers available providers (tokens found in agent configs),
- * fetches initial quota data, caches to ~/.termdock/quota-cache.json,
+ * fetches initial quota data, caches to ~/.veymux/quota-cache.json,
  * then polls every 10 minutes. Diffs results and broadcasts changes via
  * the global session WS channel.
  */
@@ -18,7 +18,7 @@ import { fetchCopilotQuota, isCopilotAvailable } from './providers/copilot.js';
 import { fetchGrokQuota, isGrokAvailable } from './providers/grok.js';
 import { fetchGeminiQuota, isGeminiAvailable } from './providers/gemini.js';
 
-const CACHE_PATH = path.join(homedir(), '.termdock', 'quota-cache.json');
+const CACHE_PATH = path.join(homedir(), '.veymux', 'quota-cache.json');
 const POLL_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
 const INITIAL_FETCH_DELAY_MS = 5_000; // 5s after server start
 

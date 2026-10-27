@@ -43,7 +43,7 @@ export function pairingInviteUrl(serviceId: string, code: string, value: string)
   if (url.protocol === 'http:' && !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) throw new Error('远程配对地址必须使用 HTTPS。');
   if (!/^[A-Za-z0-9_-]{43}$/.test(code) || !/^[A-Za-z0-9_.:-]{1,160}$/.test(serviceId)) throw new Error('Invalid pairing information');
   const origin = url.origin;
-  url.hash = 'termdock-invite=' + Buffer.from(JSON.stringify({ v: 1, serviceId, code, entryUrl: origin, serviceUrl: origin })).toString('base64url');
+  url.hash = 'veymux-invite=' + Buffer.from(JSON.stringify({ v: 1, serviceId, code, entryUrl: origin, serviceUrl: origin })).toString('base64url');
   return url.href;
 }
 
@@ -54,9 +54,9 @@ export async function runFederationCli(args: string[]): Promise<number> {
       for (let i = 1; i < args.length; i++) {
         if (args[i] === '--json' && !json) json = true;
         else if (args[i] === '--url' && explicitUrl === undefined && args[i + 1]) explicitUrl = args[++i];
-        else throw new Error('Usage: termdock --federation-pairing [--url https://service:port] [--json]');
+        else throw new Error('Usage: veymux --federation-pairing [--url https://service:port] [--json]');
       }
-      const file = resolve(homedir(), '.termdock/federation/pairing.json');
+      const file = resolve(homedir(), '.veymux/federation/pairing.json');
       if (process.platform !== 'win32' && (statSync(file).mode & 0o077) !== 0) throw new Error('配对文件权限异常，请先 chmod 600 配对文件。');
       const data = JSON.parse(readFileSync(file, 'utf8'));
       if (!data || typeof data.serviceId !== 'string' || typeof data.pairingCode !== 'string') throw new Error('Invalid pairing file; start the service to initialize pairing');
@@ -67,7 +67,7 @@ export async function runFederationCli(args: string[]): Promise<number> {
       let serviceUrl = explicitUrl ?? (typeof data.url === 'string' ? data.url : undefined);
       if (!serviceUrl) {
         try {
-          const state = JSON.parse(readFileSync(resolve(homedir(), '.termdock/server.json'), 'utf8'));
+          const state = JSON.parse(readFileSync(resolve(homedir(), '.veymux/server.json'), 'utf8'));
           serviceUrl = typeof state.lanUrl === 'string' ? state.lanUrl : typeof state.localUrl === 'string' ? state.localUrl : undefined;
         } catch { /* Require an explicit usable service URL below. */ }
       }
@@ -77,7 +77,7 @@ export async function runFederationCli(args: string[]): Promise<number> {
       process.stdout.write(await QRCode.toString(invitation, { type: 'terminal', small: true }));
       return 0;
     }
-    if (args[0] !== '--federation-relay' || args.length !== 2) throw new Error('Usage: termdock --federation-pairing [--url https://service:port] [--json] | termdock --federation-relay <config.json>');
+    if (args[0] !== '--federation-relay' || args.length !== 2) throw new Error('Usage: veymux --federation-pairing [--url https://service:port] [--json] | veymux --federation-relay <config.json>');
     const configPath = resolve(args[1]);
     if (process.platform !== 'win32' && (statSync(configPath).mode & 0o077) !== 0) throw new Error('Relay config contains a token: chmod 600 the config file first');
     const config = parseRelayConfig(JSON.parse(readFileSync(configPath, 'utf8')));

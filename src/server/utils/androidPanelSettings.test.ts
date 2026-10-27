@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 
-const { fakeHome } = vi.hoisted(() => ({ fakeHome: `/tmp/termdock-android-settings-${process.pid}-${Date.now()}` }));
+const { fakeHome } = vi.hoisted(() => ({ fakeHome: `/tmp/veymux-android-settings-${process.pid}-${Date.now()}` }));
 vi.mock('os', async importOriginal => {
   const actual = await importOriginal<typeof import('os')>();
   return { ...actual, default: { ...actual, homedir: () => fakeHome } };
@@ -19,7 +19,7 @@ describe('per-session Android choices', () => {
     setAndroidPanelSetting({ sessionDevices: { s1: first } });
     setAndroidPanelSetting({ sessionDevices: { s2: second } });
     setAndroidPanelSetting({ enabled: true });
-    expect(loadSettingsFile(path.join(fakeHome, '.termdock', 'settings.json')).androidPanel.sessionDevices)
+    expect(loadSettingsFile(path.join(fakeHome, '.veymux', 'settings.json')).androidPanel.sessionDevices)
       .toEqual({ s1: first, s2: second });
     setAndroidPanelSetting({ sessionDevices: { s1: { ...first, deviceSerial: '10.0.0.2:5555' } } });
     expect(getAndroidPanelSetting().sessionDevices).toEqual({

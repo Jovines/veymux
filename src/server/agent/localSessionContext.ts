@@ -14,7 +14,7 @@ function validSession(value: string): boolean {
 export async function detectLocalSessionContext(
   env: NodeJS.ProcessEnv = process.env, run: Run = runCommand,
 ) {
-  const backendSessionId = env.TERMDOCK_BACKEND_SESSION_ID?.trim() || null;
+  const backendSessionId = env.VEYMUX_BACKEND_SESSION_ID?.trim() || null;
   const tmux = env.TMUX_BIN || 'tmux';
   const paneId = env.TMUX_PANE?.trim();
   let tmuxSessionName: string | null = null;
@@ -34,7 +34,7 @@ export async function resolveLocalCollaborationContext(
   env: NodeJS.ProcessEnv = process.env,
   detect = () => detectLocalSessionContext(env),
 ): Promise<Record<string, string>> {
-  const sessionId = (session ?? env.TERMDOCK_COLLAB_SESSION_ID)?.trim();
+  const sessionId = (session ?? env.VEYMUX_COLLAB_SESSION_ID)?.trim();
   if (sessionId) return { sessionId };
   const context = await detect();
   return Object.fromEntries(Object.entries(context).filter((entry): entry is [string, string] => typeof entry[1] === 'string'));

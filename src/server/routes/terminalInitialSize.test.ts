@@ -41,7 +41,7 @@ class Socket extends EventEmitter {
 
 it('retains the window throughout refresh and presents the measured grid without a second redraw', async () => {
   const exec = promisify(execFile);
-  const socketName = `termdock-initial-size-${randomUUID()}`;
+  const socketName = `veymux-initial-size-${randomUUID()}`;
   const runTmux = async (args: string[]) => (await exec('tmux', ['-L', socketName, ...args])).stdout;
   const pty = createRequire(import.meta.url)('node-pty') as typeof import('node-pty');
   const processes: import('node-pty').IPty[] = [];

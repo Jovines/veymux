@@ -41,9 +41,9 @@ export function useChatInputTransfer(options: Options) {
     const cancelStale = () => { if (work.current && !work.current.current()) { work.current.controller.abort(); work.current = null; setTransfer(null); } };
     cancelStale();
     const revoke = () => { work.current?.controller.abort(); work.current = null; setTransfer(null); setMediaResult(null); };
-    window.addEventListener('termdock:secure-state', cancelStale); window.addEventListener('auth:unauthorized', revoke);
+    window.addEventListener('veymux:secure-state', cancelStale); window.addEventListener('auth:unauthorized', revoke);
     document.addEventListener('focusin', cancelStale);
-    return () => { window.removeEventListener('termdock:secure-state', cancelStale); window.removeEventListener('auth:unauthorized', revoke); document.removeEventListener('focusin', cancelStale); };
+    return () => { window.removeEventListener('veymux:secure-state', cancelStale); window.removeEventListener('auth:unauthorized', revoke); document.removeEventListener('focusin', cancelStale); };
   }, [options.active, options.canWrite, options.sessionId]);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; work.current?.controller.abort(); }; }, []);
   const performUpload = useCallback(async (operation: NonNullable<typeof work.current>, files: File[], paths: string[] = [], previous?: Prepared) => {

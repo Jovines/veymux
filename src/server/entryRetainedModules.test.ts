@@ -24,8 +24,8 @@ visit(ast);
 
 it('serves retained JavaScript below a hidden state directory and never returns HTML for missing modules', async () => {
   expect(handler).toBeDefined();
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'td-retained-http-'));
-  const assets = path.join(home, '.termdock', 'client-snapshots', 'a'.repeat(24), 'dist', 'client', 'assets');
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-retained-http-'));
+  const assets = path.join(home, '.veymux', 'client-snapshots', 'a'.repeat(24), 'dist', 'client', 'assets');
   fs.mkdirSync(assets, { recursive: true });
   const file = path.join(assets, 'lazy-12345678.js'); fs.writeFileSync(file, 'export default "retained";');
   fs.writeFileSync(path.join(assets, '..', 'private-notes.txt'), 'must never be exposed');

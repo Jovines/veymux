@@ -17,7 +17,7 @@ export function VirtualDiffHunk({ enabled, estimatedHeight, activeRef, pinned = 
   useLayoutEffect(() => {
     const element = rootRef.current;
     if (!element || !enabled) return;
-    const scroller = element.closest('.termdock-diff-stream-scroller');
+    const scroller = element.closest('.veymux-diff-stream-scroller');
     if (!scroller || typeof IntersectionObserver === 'undefined') {
       setVisible(true);
       return;

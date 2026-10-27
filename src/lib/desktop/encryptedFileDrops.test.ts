@@ -15,7 +15,7 @@ it('only preserves original paths for the same local service, never a relay targ
   expect(canUseLocalDroppedPaths(target.url, null)).toBe(false);
 });
 it('uploads a remote drop in the renderer before the legacy preload can transmit it', async () => {
-  const zone = document.createElement('div'); zone.dataset.termdockTerminalDropzone = 'session-C'; document.body.append(zone);
+  const zone = document.createElement('div'); zone.dataset.veymuxTerminalDropzone = 'session-C'; document.body.append(zone);
   const delivered = vi.fn(), legacy = vi.fn();
   document.addEventListener('drop', legacy, true);
   const dispose = installEncryptedFileDrops(delivered);
@@ -31,9 +31,9 @@ it('uploads a remote drop in the renderer before the legacy preload can transmit
 
 it('ignores an older drop failure and its timer after a newer operation takes ownership', async () => {
   vi.useFakeTimers();
-  const zone = document.createElement('div'); zone.dataset.termdockTerminalDropzone = 'session-C'; document.body.append(zone);
+  const zone = document.createElement('div'); zone.dataset.veymuxTerminalDropzone = 'session-C'; document.body.append(zone);
   const delivered = vi.fn(), dispose = installEncryptedFileDrops(delivered), errors: string[] = [];
-  zone.addEventListener('termdock:file-drop-error', event => errors.push(String((event as CustomEvent).detail)));
+  zone.addEventListener('veymux:file-drop-error', event => errors.push(String((event as CustomEvent).detail)));
   const pending: Array<{ reject: (error: Error) => void; resolve: (value: any) => void }> = [];
   upload.mockImplementation(() => new Promise((resolve, reject) => pending.push({ resolve, reject })));
   const drop = () => {
@@ -57,7 +57,7 @@ it('ignores an older drop failure and its timer after a newer operation takes ow
 });
 
 it('does not deliver a successful upload after its selected target changes', async () => {
-  const zone = document.createElement('div'); zone.dataset.termdockTerminalDropzone = 'session-C'; document.body.append(zone);
+  const zone = document.createElement('div'); zone.dataset.veymuxTerminalDropzone = 'session-C'; document.body.append(zone);
   const delivered = vi.fn(), dispose = installEncryptedFileDrops(delivered);
   let resolve!: (value: any) => void;
   upload.mockImplementation(() => new Promise(value => { resolve = value; }));
@@ -73,7 +73,7 @@ it('does not deliver a successful upload after its selected target changes', asy
 });
 
 it('does not let an older successful drop clear a newer drop or deliver its paths', async () => {
-  const zone = document.createElement('div'); zone.dataset.termdockTerminalDropzone = 'session-C'; document.body.append(zone);
+  const zone = document.createElement('div'); zone.dataset.veymuxTerminalDropzone = 'session-C'; document.body.append(zone);
   const delivered = vi.fn(), dispose = installEncryptedFileDrops(delivered);
   const pending: Array<(value: any) => void> = [];
   upload.mockImplementation(() => new Promise(resolve => pending.push(resolve)));
@@ -96,28 +96,28 @@ it('does not let an older successful drop clear a newer drop or deliver its path
 });
 
 it('a backend rebound within the same terminal element cannot receive an old upload',async()=>{
- const zone=document.createElement('div');zone.dataset.termdockTerminalDropzone='session-C';zone.dataset.termdockTerminalOwner='backend-old:1';document.body.append(zone);
+ const zone=document.createElement('div');zone.dataset.veymuxTerminalDropzone='session-C';zone.dataset.veymuxTerminalOwner='backend-old:1';document.body.append(zone);
  const delivered=vi.fn(),dispose=installEncryptedFileDrops(delivered);let resolve!:(v:any)=>void;upload.mockImplementation(()=>new Promise(r=>{resolve=r;}));
  const event=new Event('drop',{bubbles:true,cancelable:true});Object.defineProperty(event,'dataTransfer',{value:{files:[new File(['x'],'owned.txt')]}});zone.dispatchEvent(event);
- await vi.waitFor(()=>expect(resolve).toBeTypeOf('function'));zone.dataset.termdockTerminalOwner='backend-new:2';resolve({files:[{path:'/tmp/old'}]});await Promise.resolve();await Promise.resolve();expect(delivered).not.toHaveBeenCalled();dispose();
+ await vi.waitFor(()=>expect(resolve).toBeTypeOf('function'));zone.dataset.veymuxTerminalOwner='backend-new:2';resolve({files:[{path:'/tmp/old'}]});await Promise.resolve();await Promise.resolve();expect(delivered).not.toHaveBeenCalled();dispose();
 });
 
 it('target change before dynamic import completes never invokes upload',async()=>{
- const zone=document.createElement('div');zone.dataset.termdockTerminalDropzone='old';document.body.append(zone);const dispose=installEncryptedFileDrops(vi.fn());
+ const zone=document.createElement('div');zone.dataset.veymuxTerminalDropzone='old';document.body.append(zone);const dispose=installEncryptedFileDrops(vi.fn());
  const event=new Event('drop',{bubbles:true,cancelable:true});Object.defineProperty(event,'dataTransfer',{value:{files:[new File(['private'],'owned.txt')]}});zone.dispatchEvent(event);
- state.target={url:'https://changed.test',targetPeerId:'new'};window.dispatchEvent(new Event('termdock:secure-state'));await Promise.resolve();await Promise.resolve();expect(upload).not.toHaveBeenCalled();dispose();
+ state.target={url:'https://changed.test',targetPeerId:'new'};window.dispatchEvent(new Event('veymux:secure-state'));await Promise.resolve();await Promise.resolve();expect(upload).not.toHaveBeenCalled();dispose();
 });
 it('a real secure target change aborts an already-started encrypted drop upload',async()=>{
- const zone=document.createElement('div');zone.dataset.termdockTerminalDropzone='old';document.body.append(zone);const dispose=installEncryptedFileDrops(vi.fn());let signal:AbortSignal|undefined;upload.mockImplementation((_dir,_files,value)=>{signal=value;return new Promise((_resolve,reject)=>signal!.addEventListener('abort',()=>reject(new DOMException('aborted','AbortError'))));});
+ const zone=document.createElement('div');zone.dataset.veymuxTerminalDropzone='old';document.body.append(zone);const dispose=installEncryptedFileDrops(vi.fn());let signal:AbortSignal|undefined;upload.mockImplementation((_dir,_files,value)=>{signal=value;return new Promise((_resolve,reject)=>signal!.addEventListener('abort',()=>reject(new DOMException('aborted','AbortError'))));});
  const event=new Event('drop',{bubbles:true,cancelable:true});Object.defineProperty(event,'dataTransfer',{value:{files:[new File(['private'],'owned.txt')]}});zone.dispatchEvent(event);await vi.waitFor(()=>expect(signal).toBeDefined());
- state.target={url:'https://changed.test',targetPeerId:'new'};window.dispatchEvent(new Event('termdock:secure-state'));expect(signal!.aborted).toBe(true);await Promise.resolve();dispose();
+ state.target={url:'https://changed.test',targetPeerId:'new'};window.dispatchEvent(new Event('veymux:secure-state'));expect(signal!.aborted).toBe(true);await Promise.resolve();dispose();
 });
 it('reports encrypted upload progress and cancels without inserting paths',async()=>{
- const zone=document.createElement('div');zone.dataset.termdockTerminalDropzone='view';document.body.append(zone);
+ const zone=document.createElement('div');zone.dataset.veymuxTerminalDropzone='view';document.body.append(zone);
  let signal:AbortSignal|undefined;upload.mockImplementation((_dir,_files,value,progress)=>{signal=value;progress(37);return new Promise((_resolve,reject)=>value.addEventListener('abort',()=>reject(new DOMException('cancelled','AbortError'))));});
  const deliver=vi.fn(),dispose=installEncryptedFileDrops(deliver);
  const event=new Event('drop',{bubbles:true,cancelable:true});Object.defineProperty(event,'dataTransfer',{value:{files:[new File(['test'],'test.txt')]}});zone.dispatchEvent(event);
  await vi.waitFor(()=>expect(zone.dataset.nativeFileDropProgress).toBe('37'));
- zone.dispatchEvent(new CustomEvent('termdock:file-drop-cancel',{bubbles:true}));
+ zone.dispatchEvent(new CustomEvent('veymux:file-drop-cancel',{bubbles:true}));
  await vi.waitFor(()=>expect(signal?.aborted).toBe(true));expect(deliver).not.toHaveBeenCalled();expect(zone.dataset.nativeFileDropState).toBe('cancelled');dispose();
 });

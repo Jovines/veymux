@@ -7,17 +7,17 @@ import path from 'path';
 import type { Request, Response, NextFunction } from 'express';
 import { getCookieSecurityOptions } from './cookieSecurity.js';
 
-// Auth state lives under ~/.termdock/. We keep two separate files:
+// Auth state lives under ~/.veymux/. We keep two separate files:
 //   - auth.json:          password hash (mode 0600). Presence enables auth.
 //   - auth-sessions.json: active session token hashes (mode 0600). Persisted so
 //                         clients survive a server restart without re-login.
-const AUTH_DIR = path.join(os.homedir(), '.termdock');
+const AUTH_DIR = path.join(os.homedir(), '.veymux');
 const AUTH_FILE = path.join(AUTH_DIR, 'auth.json');
 const SESSIONS_FILE = path.join(AUTH_DIR, 'auth-sessions.json');
 
 // Cookie holding the opaque session token. httpOnly + sameSite=lax. The token
 // itself is 32 random bytes hex; never derived from the password.
-export const AUTH_COOKIE = 'termdock-auth';
+export const AUTH_COOKIE = 'veymux-auth';
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 // scrypt parameters. N=2^15 keeps interactive login latency acceptable on
@@ -128,11 +128,11 @@ function verifyPasswordAgainstHash(password: string, stored: string): boolean {
 }
 
 // ── Env-provided password ──
-// TERMDOCK_PASSWORD enables auth without touching ~/.termdock/auth.json and
+// VEYMUX_PASSWORD enables auth without touching ~/.veymux/auth.json and
 // takes precedence over the stored hash. The plaintext is hashed once (lazily)
 // so verification goes through the same scrypt + timingSafeEqual path as the
 // file-based password.
-const ENV_PASSWORD_VAR = 'TERMDOCK_PASSWORD';
+const ENV_PASSWORD_VAR = 'VEYMUX_PASSWORD';
 
 function getEnvPassword(): string | null {
   const value = process.env[ENV_PASSWORD_VAR];

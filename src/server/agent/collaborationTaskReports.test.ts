@@ -14,7 +14,7 @@ let directory: string, store: CollaborationTaskStore;
 const owner = `12D3KooW${'a'.repeat(40)}`;
 const member = { serviceId: owner, sessionId: 'fixture-member' };
 const reportedAt = Date.parse('2026-10-09T14:30:00Z');
-beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(reportedAt); directory = mkdtempSync(join(tmpdir(), 'td-report-fixture-')); store = new CollaborationTaskStore(join(directory, 'tasks.json')); });
+beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(reportedAt); directory = mkdtempSync(join(tmpdir(), 'veymux-report-fixture-')); store = new CollaborationTaskStore(join(directory, 'tasks.json')); });
 afterEach(() => { vi.useRealTimers(); rmSync(directory, { recursive: true, force: true }); });
 function blocked(content = '# 原报告\n\n缺少授权条件。\n\n详细记录。', groupId = 'fixture') {
   const task = store.create(owner, { idempotencyKey: randomUUID(), groupId, title: '纯数据任务', spec: '无终端/投递器', managed: true, isolated: false, coordinator: member, reviewers: [{ ...member, sessionId: 'fixture-reviewer' }] }, null);

@@ -9,7 +9,7 @@ import type { MessageFragment, TransportDiagnostic } from './collaborationProtoc
 const directories: string[] = [];
 afterEach(() => { vi.restoreAllMocks(); for (const directory of directories.splice(0)) fs.rmSync(directory, { recursive: true, force: true }); });
 function setup() {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'td-collab-bridge-')); directories.push(directory);
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-collab-bridge-')); directories.push(directory);
   const nodes = ['https://one.test', 'https://two.test', 'https://unrelated.test'].map((origin, index) => ({ origin, file: path.join(directory, `${index}.json`),
     store: new CollaborationStore(path.join(directory, `${index}.json`)), connected: true, version: 2, fragments: 0, failAt: -1 }));
   const services: FederationService[] = nodes.map((node) => ({ origin: node.origin, label: node.origin,

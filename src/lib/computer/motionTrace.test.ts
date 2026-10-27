@@ -9,7 +9,7 @@ it('does no recording by default and enables diagnostics only for an opted-in br
   expect(createComputerMotionTraceIfEnabled()).toBeUndefined();
   expect(vi.getTimerCount()).toBe(0);
   expect(clientLog).not.toHaveBeenCalled();
-  sessionStorage.setItem('termdock:computer-motion-trace', '1');
+  sessionStorage.setItem('veymux:computer-motion-trace', '1');
   const trace = createComputerMotionTraceIfEnabled()!;
   trace.record('down'); trace.dispose();
   expect(clientLog).toHaveBeenCalledTimes(1);

@@ -3,7 +3,7 @@ export interface ChatAttachment { path: string; name: string; type?: string; siz
 export interface ChatInsertionPoint { value: string; start: number; end: number }
 export interface ChatMention { sessionId: string; groupId: string; groupName: string; name: string; subtitle?: string }
 export interface ChatComposerContent { text: string; attachments: ChatAttachment[]; mentions: ChatMention[] }
-const marker = '```termdock-context\n';
+const marker = '```veymux-context\n';
 export const mentionToken = (member: ChatMention) => `@「${member.name}${member.groupName ? ` · ${member.groupName}` : ''}」`;
 export const attachmentToken = (file: ChatAttachment) => file.reference ? `【${file.reference}${file.context?.id ? `@${file.context.id}` : ''}】` : '';
 export function activeChatMentions(text: string, mentions: ChatMention[]): ChatMention[] {

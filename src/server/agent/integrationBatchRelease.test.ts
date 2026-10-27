@@ -8,7 +8,7 @@ import { CollaborationTaskStore } from './collaborationTaskStore.js';
 
 const directories: string[] = [];
 async function makeRuntime() {
-  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'td-release-batch-'));
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'veymux-release-batch-'));
   directories.push(directory);
   const groupsFile = path.join(directory, 'groups.json');
   await fs.writeFile(groupsFile, JSON.stringify({ version: 2, groups: [{ id: 'g1', name: 'test', sessionIds: [], createdAt: 1, updatedAt: 1 }], messages: [], terminalHistoryComplete: true, localGroupRequestsComplete: true }));

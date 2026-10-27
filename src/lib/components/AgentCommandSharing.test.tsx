@@ -10,7 +10,7 @@ import { useTodoWorkspace } from '../todos/workspace';
 const codex = { slug: 'codex', displayName: 'Codex', command: 'codex', accentColor: 'var(--primary)', icon: null };
 const claude = { ...codex, slug: 'claude', displayName: 'Claude Code', command: 'claude' };
 beforeEach(() => {
-  localStorage.clear(); localStorage.setItem('termdock:locale', 'en');
+  localStorage.clear(); localStorage.setItem('veymux:locale', 'en');
   useTodoWorkspace.setState({ views: {}, snapshots: {}, options: {} });
   vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ locale: 'en' }) })));
 });

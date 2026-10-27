@@ -1,9 +1,9 @@
 import { parseSavedService, readBrowserServices, type ServiceConnection } from './serviceDirectory';
 import { WORKSPACE_LIMIT_KEY, isWorkspaceLimit, readWorkspaceLimit, selectRetainedWorkspaces } from './workspaceRetention';
 
-export const WORKSPACE_QUERY = 'termdock-workspace';
-export const WORKSPACE_VISIBILITY_EVENT = 'termdock:workspace-visibility';
-export const WORKSPACE_ACTIVATE_EVENT = 'termdock:workspace-activate';
+export const WORKSPACE_QUERY = 'veymux-workspace';
+export const WORKSPACE_VISIBILITY_EVENT = 'veymux:workspace-visibility';
+export const WORKSPACE_ACTIVATE_EVENT = 'veymux:workspace-activate';
 export type WorkspacePhase = 'connecting' | 'ready' | 'reconnecting' | 'offline' | 'login';
 export interface WorkspaceAttentionSession { id: string; label: string; waiting: boolean }
 export interface ServiceWorkspace {
@@ -29,7 +29,7 @@ export interface WorkspaceHost {
   attach(key: string, view: Window | null): void;
   focusSession(serviceId: string, sessionId: string): boolean;
 }
-declare global { interface Window { __termdockWorkspaceHost?: WorkspaceHost } }
+declare global { interface Window { __veymuxWorkspaceHost?: WorkspaceHost } }
 
 export function workspaceKey(): string {
   return window.parent !== window && location.pathname === '/workspace.html'
@@ -38,8 +38,8 @@ export function workspaceKey(): string {
 let parentHost: WorkspaceHost | undefined, parentProxy: WorkspaceHost | undefined;
 export function getWorkspaceHost(): WorkspaceHost | undefined {
   try {
-    if (window.parent === window) return window.__termdockWorkspaceHost;
-    const host = window.parent.__termdockWorkspaceHost;
+    if (window.parent === window) return window.__veymuxWorkspaceHost;
+    const host = window.parent.__veymuxWorkspaceHost;
     if (host && host !== parentHost) {
       parentHost = host;
       parentProxy = { ...host, subscribe(listener) {
@@ -63,8 +63,8 @@ export function activateServiceWorkspace(service: ServiceConnection, keepSidebar
 export function reportWorkspace(data: Parameters<WorkspaceHost['report']>[1]): void {
   getWorkspaceHost()?.report(workspaceKey(), data);
 }
-const PENDING_SESSION = 'termdock-secure-workspace-session:';
-const LAST_WORKSPACE = 'termdock-secure-last-workspace';
+const PENDING_SESSION = 'veymux-secure-workspace-session:';
+const LAST_WORKSPACE = 'veymux-secure-last-workspace';
 function readLastWorkspace(): string | null {
   // Preserve each open tab's selection; a cold PWA launch uses the durable copy.
   for (const name of ['sessionStorage', 'localStorage'] as const) {
@@ -93,8 +93,8 @@ export function consumeWorkspaceSession(serviceId: string | undefined): string |
  * only our same-origin application shell, each with its own JS/storage scope.
  * No remote page, native credential or private key is passed to this host. */
 export function installWorkspaceHost(initial?: ServiceConnection): WorkspaceHost | undefined {
-  if (window.parent !== window || window.termdockDesktop) return undefined;
-  if (window.__termdockWorkspaceHost) return window.__termdockWorkspaceHost;
+  if (window.parent !== window || window.veymuxDesktop) return undefined;
+  if (window.__veymuxWorkspaceHost) return window.__veymuxWorkspaceHost;
   let state: WorkspaceSnapshot = { activeKey: 'root', items: [{ key: 'root', service: initial, phase: 'connecting', runningCount: 0, reviewCount: 0, touchedAt: Date.now() }] };
   try {
     const lastId = readLastWorkspace();
@@ -176,11 +176,11 @@ export function installWorkspaceHost(initial?: ServiceConnection): WorkspaceHost
       host.activate(service, false);
       const view = views.get(state.activeKey);
       if (view) {
-        const event = view.document.createEvent('CustomEvent'); event.initCustomEvent('termdock:workspace-session', false, false, null); view.dispatchEvent(event);
+        const event = view.document.createEvent('CustomEvent'); event.initCustomEvent('veymux:workspace-session', false, false, null); view.dispatchEvent(event);
       }
       return true;
     },
   };
-  window.__termdockWorkspaceHost = host;
+  window.__veymuxWorkspaceHost = host;
   return host;
 }

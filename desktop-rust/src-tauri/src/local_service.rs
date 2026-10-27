@@ -14,7 +14,7 @@ pub fn home() -> Result<PathBuf, String> {
 }
 pub fn metadata() -> Option<Value> {
     let raw: Value =
-        serde_json::from_slice(&fs::read(home().ok()?.join(".termdock/server.json")).ok()?).ok()?;
+        serde_json::from_slice(&fs::read(home().ok()?.join(".veymux/server.json")).ok()?).ok()?;
     let port = raw
         .get("port")?
         .as_u64()
@@ -34,7 +34,7 @@ pub fn local_pin(address: &str) -> Option<String> {
     if origin(address).ok()? != state["localUrl"].as_str()? || state["scheme"] != "https" {
         return None;
     }
-    let pem = fs::read_to_string(home().ok()?.join(".termdock/certs/termdock-local.pem")).ok()?;
+    let pem = fs::read_to_string(home().ok()?.join(".veymux/certs/veymux-local.pem")).ok()?;
     let raw = pem
         .split("-----BEGIN CERTIFICATE-----")
         .nth(1)?
@@ -47,7 +47,7 @@ pub fn local_pin(address: &str) -> Option<String> {
 }
 pub async fn probe(address: &str, pins: &BTreeMap<String, String>) -> Value {
     let Ok(address) = origin(address) else {
-        return json!({"ok":false,"url":address,"error":"请输入 Termdock 服务首页地址"});
+        return json!({"ok":false,"url":address,"error":"请输入 Veymux 服务首页地址"});
     };
     let local = local_pin(&address);
     let result:Result<Value,String> = async {
@@ -71,13 +71,13 @@ async fn paths() -> Vec<PathBuf> {
     async {
         let mut dirs = Vec::new();
         let home = home().unwrap_or_default();
-        dirs.push(home.join(".termdock/cli/bin"));
+        dirs.push(home.join(".veymux/cli/bin"));
         // Finder's PATH omits nvm/fnm. Read only the login shell PATH, bounded.
         let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
         if let Ok(Ok(out)) = tokio::time::timeout(
             Duration::from_secs(5),
             Command::new(shell)
-                .args(["-ilc", "printf '\\nTERMDOCK_SETUP_PATH=%s\\n' \"$PATH\""])
+                .args(["-ilc", "printf '\\nVEYMUX_SETUP_PATH=%s\\n' \"$PATH\""])
                 .kill_on_drop(true)
                 .output(),
         )
@@ -85,7 +85,7 @@ async fn paths() -> Vec<PathBuf> {
         {
             if let Some(line) = String::from_utf8_lossy(&out.stdout)
                 .lines()
-                .find_map(|l| l.strip_prefix("TERMDOCK_SETUP_PATH="))
+                .find_map(|l| l.strip_prefix("VEYMUX_SETUP_PATH="))
             {
                 dirs.extend(std::env::split_paths(line));
             }
@@ -137,7 +137,7 @@ async fn paths() -> Vec<PathBuf> {
 }
 fn cli(dirs: &[PathBuf]) -> Option<PathBuf> {
     for dir in dirs {
-        let Ok(path) = fs::canonicalize(dir.join("termdock")) else {
+        let Ok(path) = fs::canonicalize(dir.join("veymux")) else {
             continue;
         };
         if path.to_string_lossy().contains(".app/Contents/") {
@@ -156,8 +156,8 @@ fn cli(dirs: &[PathBuf]) -> Option<PathBuf> {
         let Ok(meta) = serde_json::from_slice::<Value>(&bytes) else {
             continue;
         };
-        if meta["name"] == "termdock"
-            && meta["bin"]["termdock"]
+        if meta["name"] == "veymux"
+            && meta["bin"]["veymux"]
                 .as_str()
                 .is_some_and(|p| fs::canonicalize(root.join(p)).ok().as_ref() == Some(&path))
         {
@@ -239,7 +239,7 @@ async fn execute(mut command: Command, seconds: u64) -> Result<(), String> {
         command.kill_on_drop(true).output(),
     )
     .await
-    .map_err(|_| "命令执行超时，请检查 ~/.termdock/server.log")?
+    .map_err(|_| "命令执行超时，请检查 ~/.veymux/server.log")?
     .map_err(|e| e.to_string())?;
     if out.status.success() {
         Ok(())
@@ -289,24 +289,24 @@ pub async fn prepare(
             .filter_map(|d| fs::canonicalize(d.join("npm")).ok())
             .find(|p| p.file_name().is_some_and(|n| n == "npm-cli.js"))
             .ok_or("未找到 npm，请安装包含 npm 的 Node.js")?;
-        let prefix = home.join(".termdock/cli");
+        let prefix = home.join(".veymux/cli");
         fs::create_dir_all(&prefix).map_err(|e| e.to_string())?;
         publish(
-            json!({"phase":"installing","message":"正在下载并安装 Termdock，首次安装可能需要几分钟…","nodeVersion":version}),
+            json!({"phase":"installing","message":"正在下载并安装 Veymux，首次安装可能需要几分钟…","nodeVersion":version}),
         );
         let mut command = Command::new(&node);
         command
             .arg(npm)
             .args(["install", "--global", "--prefix"])
             .arg(&prefix)
-            .args(["termdock", "--no-audit", "--no-fund"])
+            .args(["veymux", "--no-audit", "--no-fund"])
             .current_dir(&home)
             .env("PATH", &env_path)
             .env("NO_COLOR", "1");
         execute(command, 600).await?;
         entry = cli(&[prefix.join("bin")]);
     }
-    let entry = entry.ok_or("安装后未找到 Termdock CLI")?;
+    let entry = entry.ok_or("安装后未找到 Veymux CLI")?;
     // Another client may have started the daemon during npm installation.
     let latest = status(pins).await;
     if latest["running"] == true {
@@ -334,5 +334,5 @@ pub async fn prepare(
     }
     Err(launch
         .err()
-        .unwrap_or_else(|| "尚未确认服务启动成功，请检查 ~/.termdock/server.log".into()))
+        .unwrap_or_else(|| "尚未确认服务启动成功，请检查 ~/.veymux/server.log".into()))
 }

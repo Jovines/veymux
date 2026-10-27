@@ -71,7 +71,7 @@ export function CollaborationTaskWorkbench({ group, sessions: sessionFacts, acti
   group: CollaborationGroup; sessions: OrchestrationSession[]; active: boolean; onOpenSession: (session: OrchestrationSession) => Promise<void>;
 }) {
   const sessions = useSessionPresentations(sessionFacts);
-  const storage = `termdock:tasks:${location.origin}:${group.id}`;
+  const storage = `veymux:tasks:${location.origin}:${group.id}`;
   const [tasks, setTasks] = useState<CollaborationTaskView[]>([]);
   const tasksRef = useRef(tasks);
   tasksRef.current = tasks;
@@ -428,7 +428,7 @@ function TaskDetail({ reader = false, active, paneKey, task, tasks, members, nam
   const childrenPending = task.workflow?.kind === 'goal' && children.some(t => !['accepted', 'closed'].includes(t.status));
   const context = `任务：${task.title}\n任务 ID：${task.id}\n${task.spec}\n约束：${task.constraints || '未补充'}\n验收标准：${task.acceptance || '由用户决定'}\n${current ? `当前尝试：${current.id}\n负责人：${name(current.assignee)}\n` : ''}${task.artifacts.filter(a => a.attemptId === task.activeAttemptId).map(a => `${a.kind} · 版本 ${a.id} · ${stamp(a.createdAt)}\n${a.summary ? `结果摘要：${a.summary}\n` : ''}${a.content}`).join('\n\n')}\n${questions.map(q => `待回答：${q.question}`).join('\n')}`;
   const exportTask = useCallback((signal: AbortSignal) => saveDownloadBlob(
-    new Blob([JSON.stringify(task, null, 2)], { type: 'application/json' }), `termdock-task-${task.id}.json`, signal,
+    new Blob([JSON.stringify(task, null, 2)], { type: 'application/json' }), `veymux-task-${task.id}.json`, signal,
   ), [task]);
   const exported = useDownloadTask(exportTask, task.id, active);
 

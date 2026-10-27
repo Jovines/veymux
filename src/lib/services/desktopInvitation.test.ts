@@ -22,11 +22,11 @@ it('carries an accepted invite across one scope reload, then removes its code be
   expect(reusableInvitationGrant(intent,[{}])).toBe(false);
 });
 it('removes retired scoped handoff records without touching drafts or consuming unrelated invitations',()=>{
-  const key='termdock-service:unpaired:termdock-desktop-invitation-handoff-v1';
+  const key='veymux-service:unpaired:veymux-desktop-invitation-handoff-v1';
   sessionStorage[key]=JSON.stringify({at:Date.now(),invitation:'old secret'});
-  sessionStorage['termdock-service:other:chat-draft']='keep';
+  sessionStorage['veymux-service:other:chat-draft']='keep';
   expect(takeDesktopInvitation()).toBeUndefined();expect(sessionStorage[key]).toBeUndefined();
-  expect(sessionStorage['termdock-service:other:chat-draft']).toBe('keep');
+  expect(sessionStorage['veymux-service:other:chat-draft']).toBe('keep');
 });
 it('clears a failed or cancelled handoff and refuses expired or malformed storage',()=>{
   vi.stubGlobal('navigator',{platform:'MacIntel',maxTouchPoints:0});
@@ -39,21 +39,21 @@ it('hands HTTP landing pages to native HTTPS, keeping the target, route and spli
   const original=createInviteLink({v:1,serviceId,code,entryUrl:'https://192.168.1.20:9834',entryServiceId:entryId,routeCode:'r'.repeat(43),serviceUrl:'https://target.internal',viewMode:'chat',viewLayout:'split'});
   const landing=createOnboardingInviteLink(original,'http://192.168.1.20:21000/connect');
   const native=new URL(desktopInvitationUrl(parseInviteLink(landing,{httpTransport:true})));
-  expect(native.protocol).toBe('termdock:');expect(native.hostname).toBe('invite');expect(native.search).toBe('');
-  const descriptor=JSON.parse(atob(native.hash.slice('#termdock-invite='.length).replace(/-/g,'+').replace(/_/g,'/')));
+  expect(native.protocol).toBe('veymux:');expect(native.hostname).toBe('invite');expect(native.search).toBe('');
+  const descriptor=JSON.parse(atob(native.hash.slice('#veymux-invite='.length).replace(/-/g,'+').replace(/_/g,'/')));
   expect(descriptor).toMatchObject({entryUrl:'https://192.168.1.20:9834',serviceUrl:'https://target.internal',serviceId,entryServiceId:entryId,code,routeCode:'r'.repeat(43),viewLayout:'split',viewMode:'chat'});
   expect(native.href).not.toContain('21000');
 });
 it('keeps direct HTTP shares on the verified native destination and never fabricates a new invitation',()=>{
   const original=createInviteLink({v:1,serviceId,code,entryUrl:'https://192.168.1.20:9834'});
   const intent=parseInviteLink(createOnboardingInviteLink(original,'http://192.168.1.20:21000/connect'),{httpTransport:true});
-  const descriptor=JSON.parse(atob(new URL(desktopInvitationUrl(intent)).hash.slice('#termdock-invite='.length).replace(/-/g,'+').replace(/_/g,'/')));
+  const descriptor=JSON.parse(atob(new URL(desktopInvitationUrl(intent)).hash.slice('#veymux-invite='.length).replace(/-/g,'+').replace(/_/g,'/')));
   expect(descriptor.entryUrl).toBe('https://192.168.1.20:9834');expect(descriptor.serviceUrl).toBe(descriptor.entryUrl);
   expect(()=>desktopInvitationUrl({...intent,pairingCode:undefined})).toThrow();
 });
 it('offers post-acceptance handoff only for the exact reusable invitation grant',()=>{
   const intent=parseInviteLink(createInviteLink({v:1,serviceId,code,entryUrl:'https://entry.example'}));
-  const id=bytesToHex(sha256(new TextEncoder().encode(`termdock-invitation-v1:${serviceId}:${code}`)));
+  const id=bytesToHex(sha256(new TextEncoder().encode(`veymux-invitation-v1:${serviceId}:${code}`)));
   expect(reusableInvitationGrant(intent,[{invitationId:id}])).toBe(true);
   expect(reusableInvitationGrant(intent,[{invitationId:'other'}])).toBe(false);
   expect(reusableInvitationGrant(intent,[{}])).toBe(false);

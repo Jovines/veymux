@@ -90,7 +90,7 @@ export function ReviewReferenceDialog({ reference, draftEnabled, onInsert, onCan
     controllerRef.current = controller;
     try {
       if (includeImage && snapshot && !uploadedPathRef.current) {
-        const file = new File([snapshot], `termdock-review-${crypto.randomUUID()}.png`, { type: 'image/png' });
+        const file = new File([snapshot], `veymux-review-${crypto.randomUUID()}.png`, { type: 'image/png' });
         const result = await uploadFiles('/tmp', [file], controller.signal);
         if (controller.signal.aborted) return;
         if (!result.files[0]?.path) throw new Error(t('rightSidebar.reviewUploadFailed'));

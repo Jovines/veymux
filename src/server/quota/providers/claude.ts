@@ -37,7 +37,7 @@ async function fetchWithAuth(token: string): Promise<ClaudeUsageResponse> {
     Authorization: `Bearer ${token}`,
     Accept: 'application/json',
     'Content-Type': 'application/json',
-    'User-Agent': 'termdock/1.0',
+    'User-Agent': 'veymux/1.0',
     'anthropic-beta': 'oauth-2025-04-20',
   };
 

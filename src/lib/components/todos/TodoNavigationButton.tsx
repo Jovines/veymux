@@ -21,7 +21,7 @@ export function TodoNavigationButton({ onOpen, placement = 'sidebar' }: { onOpen
         pending = true;
         void Promise.resolve().then(async () => { const target = savedConnection()?.targetPeerId; const result = await todoCount(); if (alive && savedConnection()?.targetPeerId === target) setCount(result.count); })
           .catch(() => {}).finally(() => { pending = false; });
-      }, 15000, [SECURE_READY_EVENT, 'termdock:todos-changed']);
+      }, 15000, [SECURE_READY_EVENT, 'veymux:todos-changed']);
       return () => { alive = false; stop(); window.removeEventListener(SECURE_STATE_EVENT, changed); };
     })();
   }, []);

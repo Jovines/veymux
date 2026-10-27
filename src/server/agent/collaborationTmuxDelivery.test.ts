@@ -45,7 +45,7 @@ describe('approval dialog screen detection', () => {
   it('ignores plain screens, transcripts and input boxes', () => {
     expect(detectApprovalDialog('$ ls\nDocuments  Projects')).toBe(false);
     expect(detectApprovalDialog('[Pasted text #1 +13 lines]')).toBe(false);
-    expect(detectApprovalDialog('❯ td collab status')).toBe(false);
+    expect(detectApprovalDialog('❯ veymux collab status')).toBe(false);
   });
 });
 
@@ -146,7 +146,7 @@ describe('buffer-channel delivery', () => {
     // The joined invocation, split into the commands tmux will run in order.
     const commands = [...splitCommands(calls[1]!), ...splitCommands(calls[3]!)];
     const name = commands[0]![2]!;
-    expect(name).toMatch(/^termdock-collab-\d+-\d+$/);
+    expect(name).toMatch(/^veymux-collab-\d+-\d+$/);
     expect(commands).toEqual([
       ['load-buffer', '-b', name, '-'],
       // -p lets tmux add the bracket pair only for apps that asked for it.

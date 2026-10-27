@@ -7,7 +7,7 @@ import { CollaborationStore } from './collaborationStore.js';
 import { IntegrationStore } from './integrationStore.js';
 
 let directory: string;
-beforeEach(() => { directory = fs.mkdtempSync(path.join(os.tmpdir(), 'td-noop-')); });
+beforeEach(() => { directory = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-noop-')); });
 afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); fs.rmSync(directory, { recursive: true, force: true }); });
 const group = () => ({ id: 'cross-noop', name: 'Team', sessionIds: ['one', 'two'], createdAt: 1, updatedAt: 1,
   federated: true, remoteSessions: [], roles: { one: 'Owner' }, roleVersions: { one: { version: 'v1', updatedAt: 1 } } });

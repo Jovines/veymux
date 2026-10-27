@@ -52,5 +52,5 @@ it.each([320, 390, 1280])('edits and regroups a todo while preserving status tab
   await page.getByRole('button', { name: '清除筛选', exact: true }).click();
   await expect.element(page.getByRole('button', { name: '旧待办', exact: true })).toBeInTheDocument();
   expect(document.documentElement.scrollWidth).toBe(width);
-  await page.screenshot({ path: `/tmp/termdock-todo-category-${width}.png` });
+  await page.screenshot({ path: `/tmp/veymux-todo-category-${width}.png` });
 });

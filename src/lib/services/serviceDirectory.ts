@@ -19,9 +19,9 @@ export interface ServiceConnection {
   entryServiceId?: string;
   routes?: ServiceRoute[];
 }
-export const SERVICE_DIRECTORY_KEY = 'termdock.federation.connections.v1';
-export const SERVICE_DIRECTORY_EVENT = 'termdock:services-changed';
-const REMOVED_SERVICES_KEY = 'termdock-secure-removed-services';
+export const SERVICE_DIRECTORY_KEY = 'veymux.federation.connections.v1';
+export const SERVICE_DIRECTORY_EVENT = 'veymux:services-changed';
+const REMOVED_SERVICES_KEY = 'veymux-secure-removed-services';
 const connectionKeys = (item: ServiceConnection): string[] => [item.id, item.targetPeerId, item.serviceOrigin || item.url].filter((key): key is string => !!key);
 function removedServiceKeys(): string[] {
   try {
@@ -69,7 +69,7 @@ export function mergeServiceConnections(items: ServiceConnection[]): ServiceConn
   return result;
 }
 function nativeBridge(): ServiceDirectoryBridge | undefined {
-  return typeof window === 'undefined' ? undefined : window.termdockDesktop;
+  return typeof window === 'undefined' ? undefined : window.veymuxDesktop;
 }
 export function readBrowserServices(): ServiceConnection[] {
   try {

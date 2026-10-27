@@ -21,15 +21,15 @@ def main():
     version=metadata['version'];preview=metadata['prerelease'];tag=('preview-v' if preview else 'v')+version
     if not re.fullmatch(r'\d+\.\d+\.\d+',version) or metadata['tag']!=tag:
         raise ValueError('Invalid release version/tag')
-    repo='Jovines/termdock'
+    repo='Jovines/veymux'
     # Ref creation refuses an existing tag. A failed upload can be resumed only
     # after reviewing that draft; this entry never overwrites a released version.
     run('git','push','origin',f'{revision}:refs/tags/{tag}')
-    notes=('Final Preview bridge: migrate to Termdock Rust stable with application/configuration backups.' if preview else
-           'Termdock Rust 正式版，要求 macOS 14+（Apple Silicon）。\n\n旧 Electron 客户端通过兼容 ZIP 过渡；macOS 12/13 保留现有客户端并提示升级系统。Preview 用户经最后一个 Preview 迁移到同一正式版。服务与终端会话继续运行。')
+    notes=('Final Preview bridge: migrate to Veymux Rust stable with application/configuration backups.' if preview else
+           'Veymux Rust 正式版，要求 macOS 14+（Apple Silicon）。\n\n旧 Electron 客户端通过兼容 ZIP 过渡；macOS 12/13 保留现有客户端并提示升级系统。Preview 用户经最后一个 Preview 迁移到同一正式版。服务与终端会话继续运行。')
     with tempfile.NamedTemporaryFile(mode='w',suffix='.md') as temporary:
         temporary.write(notes);temporary.flush()
-        args=['gh','release','create',tag,'--repo',repo,'--verify-tag','--draft','--latest=false','--title',('Termdock Preview ' if preview else 'Termdock v')+version,'--notes-file',temporary.name]
+        args=['gh','release','create',tag,'--repo',repo,'--verify-tag','--draft','--latest=false','--title',('Veymux Preview ' if preview else 'Veymux v')+version,'--notes-file',temporary.name]
         if preview:args.append('--prerelease')
         run(*args)
     names=[a['name'] for a in metadata['artifacts']]+['release.json']

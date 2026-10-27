@@ -1,6 +1,6 @@
 import { savedConnection } from '../../federation/browserIntegration';
 import { isContextReference, type ContextReference } from '../../terminal/contextReference';
-export const FILE_REFERENCE_MIME = 'application/x-termdock-file-reference';
+export const FILE_REFERENCE_MIME = 'application/x-veymux-file-reference';
 const service = () => savedConnection()?.targetPeerId || location.origin;
 export function writeFileReferenceDrag(data: Pick<DataTransfer, 'setData'>, text: string, reference?: ContextReference): void {
   data.setData('text/plain', text);

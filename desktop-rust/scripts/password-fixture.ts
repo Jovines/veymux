@@ -11,18 +11,18 @@ import express from 'express';
 import {WebSocket as NodeSocket,WebSocketServer} from 'ws';
 import {IDBFactory} from 'fake-indexeddb';
 import {createFederationRuntime} from '../../src/server/federation/runtime.ts';
-import {TERMDOCK_PROTOCOL_VERSION,TERMDOCK_CAPABILITIES,getTermdockVersion} from '../../src/server/utils/version.ts';
+import {VEYMUX_PROTOCOL_VERSION,VEYMUX_CAPABILITIES,getVeymuxVersion} from '../../src/server/utils/version.ts';
 import {createPasswordLoginRouter} from '../../src/server/federation/passwordLoginRoutes.ts';
 import {startPasswordBootstrap,finishPasswordBootstrap} from '../../src/server/federation/passwordBootstrap.ts';
 import {getIdentity} from '../../src/lib/federation/deviceIdentity.ts';
-process.env.TERMDOCK_PASSWORD='existing-preview-fixture-password';
-delete process.env.TERMDOCK_PUBLIC_ORIGIN;
-const directory=mkdtempSync(join(tmpdir(),'td-preview-password-'));
+process.env.VEYMUX_PASSWORD='existing-preview-fixture-password';
+delete process.env.VEYMUX_PUBLIC_ORIGIN;
+const directory=mkdtempSync(join(tmpdir(),'veymux-preview-password-'));
 const app=express();let publicPort=0,ordinary=0;const origins:string[]=[],wire:Buffer[]=[];
 app.get('/',(_req,res)=>res.type('html').send('<html>old service page</html>'));
 app.get('/api/auth/open/parameters',(_req,res)=>res.status(403).json({error:'Password required'}));
 app.get('/api/auth/status',(_req,res)=>res.json({enabled:true,authenticated:false}));
-app.get('/api/meta',(_req,res)=>res.json({product:'termdock',version:getTermdockVersion(),protocolVersion:TERMDOCK_PROTOCOL_VERSION,capabilities:TERMDOCK_CAPABILITIES}));
+app.get('/api/meta',(_req,res)=>res.json({product:'veymux',version:getVeymuxVersion(),protocolVersion:VEYMUX_PROTOCOL_VERSION,capabilities:VEYMUX_CAPABILITIES}));
 app.use((req,_res,next)=>{if(req.path.startsWith('/api/auth/password')){origins.push(String(req.headers.origin||''));assert.equal(req.headers.cookie,undefined);assert.equal(req.headers.authorization,undefined);}if(req.path.startsWith('/api/terminal')&&req.socket.localPort===publicPort)ordinary++;next();});
 app.get('/api/terminal/:session/health',(req,res)=>res.json({session:req.params.session,output:'encrypted-after-password'}));
 const runtime=await createFederationRuntime(app,directory,{terminal(){},control(){}});
@@ -46,7 +46,7 @@ try {
  const events=new EventTarget(),saved:any[]=[];
  const rawFetch=globalThis.fetch;
  class LocalSocket extends NodeSocket { constructor(url:string,protocols?:any){super(url,protocols,{headers:{Origin:boot.origin,Cookie:boot.cookie}});} }
- const window:any={__TD_PREVIEW_BOOT__:{...boot,connection:{id:target,url:target,label:'Old password service'},version:'0.1.0',platform:'linux'},top:null,parent:null,WebSocket:LocalSocket,localStorage,sessionStorage,crypto:globalThis.crypto,location,fetch:async(input:any,init:any={})=>{const url=new URL(typeof input==='string'?input:input.url,boot.origin);return rawFetch(url,{...init,headers:{...init.headers,Cookie:boot.cookie}});},addEventListener:events.addEventListener.bind(events),removeEventListener:events.removeEventListener.bind(events),dispatchEvent:events.dispatchEvent.bind(events),__TAURI_INTERNALS__:{invoke:async(_command:any,{op,args}:any)=>{if(op==='connections')return saved;if(op==='saveConnection'||op==='importConnection'){saved.splice(0,saved.length,args.connection);return saved;}throw Error('Unexpected native request '+op);}}};
+ const window:any={__VEYMUX_PREVIEW_BOOT__:{...boot,connection:{id:target,url:target,label:'Old password service'},version:'0.1.0',platform:'linux'},top:null,parent:null,WebSocket:LocalSocket,localStorage,sessionStorage,crypto:globalThis.crypto,location,fetch:async(input:any,init:any={})=>{const url=new URL(typeof input==='string'?input:input.url,boot.origin);return rawFetch(url,{...init,headers:{...init.headers,Cookie:boot.cookie}});},addEventListener:events.addEventListener.bind(events),removeEventListener:events.removeEventListener.bind(events),dispatchEvent:events.dispatchEvent.bind(events),__TAURI_INTERNALS__:{invoke:async(_command:any,{op,args}:any)=>{if(op==='connections')return saved;if(op==='saveConnection'||op==='importConnection'){saved.splice(0,saved.length,args.connection);return saved;}throw Error('Unexpected native request '+op);}}};
  window.top=window;window.parent=window;
  const navigator={onLine:true,serviceWorker:Object.assign(new EventTarget(),{controller:null})};
  vm.runInNewContext(readFileSync(new URL('../renderer/bridge.js',import.meta.url),'utf8'),{window,location,navigator,sessionStorage,Request,Response,URL,TypeError,Error,Uint8Array,Promise,Object,Set,String,JSON});
@@ -76,7 +76,7 @@ try {
  assert(origins.filter(Boolean).every(value=>value===target));
  assert(wire.every(bytes=>!bytes.includes(Buffer.from('existing-preview-fixture-password'))&&!bytes.includes(Buffer.from('encrypted-after-password'))));
  // Start/finish remain bound by the unchanged old router. A proof replay must fail.
- const route=`${boot.origin}/__td_route/0/api/auth/password`;
+ const route=`${boot.origin}/__veymux_route/0/api/auth/password`;
  const headers={Cookie:boot.cookie,'Content-Type':'application/json'};
  const params=await(await rawFetch(route+'/parameters',{headers})).json();
  const state=await startPasswordBootstrap('existing-preview-fixture-password',params.saltHex);

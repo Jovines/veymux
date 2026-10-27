@@ -22,7 +22,7 @@ afterEach(async () => {
 });
 
 async function repository() {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'td-private-plugin-')); roots.push(root);
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-private-plugin-')); roots.push(root);
   const work = path.join(root, 'work'), home = path.join(root, 'home');
   fs.mkdirSync(work); fs.mkdirSync(home);
   const env: NodeJS.ProcessEnv = { ...process.env, GIT_CONFIG_GLOBAL: os.devNull, GIT_CONFIG_NOSYSTEM: '1' };
@@ -72,13 +72,13 @@ async function runPlugin(home: string, source: string, mode: 'install' | 'update
       const output = await new Promise((resolve, reject) => {
         const child = spawn('/bin/sh', ['-c', ${JSON.stringify("printf '%s' '{\"session_id\":\"private-native\"}' | ")} + command], {
           name: 'xterm-256color', cols: 80, rows: 24, cwd: ${JSON.stringify(process.cwd())},
-          env: { ...process.env, TERMDOCK: '1', TMUX: '', TMUX_PANE: '', NODE_OPTIONS: '--import tsx' }
+          env: { ...process.env, VEYMUX: '1', TMUX: '', TMUX_PANE: '', NODE_OPTIONS: '--import tsx' }
         });
         let text = ''; child.onData(data => { text += data; });
         const timer = setTimeout(() => { child.kill(); reject(new Error('hook timeout')); }, 5000);
         child.onExit(() => { clearTimeout(timer); resolve(text); });
       });
-      const match = output.match(/\\x1b\\](777;notify;termdock:\\/\\/cli-agent;[^\\x07]+)\\x07/);
+      const match = output.match(/\\x1b\\](777;notify;veymux:\\/\\/cli-agent;[^\\x07]+)\\x07/);
       const event = match && parseAgentEvent(match[1]);
       if (!event || event.agent?.slug !== slug) throw new Error('Plugin hook did not activate the registered Agent');
       applyAgentEvent(state, event); phases.push({ status: state.status, label: state.presentation?.label, native: state.sessionId });
@@ -90,7 +90,7 @@ async function runPlugin(home: string, source: string, mode: 'install' | 'update
   const result = await execute(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', script], {
     cwd: process.cwd(), timeout: 20_000,
     env: { ...process.env, HOME: home, XDG_CONFIG_HOME: path.join(home, '.config'),
-      GIT_CONFIG_GLOBAL: path.join(home, '.gitconfig'), GIT_CONFIG_NOSYSTEM: '1', TERMDOCK_PLUGIN_GIT_HOSTS: '', ...env },
+      GIT_CONFIG_GLOBAL: path.join(home, '.gitconfig'), GIT_CONFIG_NOSYSTEM: '1', VEYMUX_PLUGIN_GIT_HOSTS: '', ...env },
   });
   return JSON.parse(result.stdout.trim().split('\n').at(-1)!);
 }

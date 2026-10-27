@@ -41,9 +41,9 @@ TLS 支持系统/进程默认信任、显式 CA 文件、固定 CA 指纹和 Pre
 
 授权恢复页显示实际目标名称与中转入口，按地址显式登录入口时只匹配该地址的独立目标记录。无法登录时区分目标未授权、未配置密码、连接失败和版本不支持核验。直连无密码目标缺少设备授权时提示邀请；经中转访问无密码目标时提示先配置密码，不把邀请当作解除中转限制的办法。
 
-这条限制约束 Termdock 提供的中转路径；无密码直连依然按开放模式工作，不能识别任意外部代理伪装的直连连接。需要身份保护的服务应配置密码。自动化覆盖真实 WSS/Noise 的直连验证、反向隧道、移除密码后的撤回、首次无 Service Worker 和旧桥接；本次改动仍需在签名 macOS App 与 iOS Safari/PWA 上完成实机验收，浏览器及 Node 测试不代替实机结果。
+这条限制约束 Veymux 提供的中转路径；无密码直连依然按开放模式工作，不能识别任意外部代理伪装的直连连接。需要身份保护的服务应配置密码。自动化覆盖真实 WSS/Noise 的直连验证、反向隧道、移除密码后的撤回、首次无 Service Worker 和旧桥接；本次改动仍需在签名 macOS App 与 iOS Safari/PWA 上完成实机验收，浏览器及 Node 测试不代替实机结果。
 
-分享访问使用“服务与设备 → 邀请设备”，选择只读、可操作或整服务权限，生成十分钟有效、只能使用一次的链接和二维码。接收端打开链接后接受邀请，无需抄写服务 ID 或 JSON。服务端 CLI 的 `termdock --federation-pairing [--url https://service:9834]` 同样输出邀请链接和二维码，只有兼容旧工具时才使用 `--json`。CLI 配对码从本机 `~/.termdock/federation/pairing.json` 读取，通过可信方式分享。
+分享访问使用“服务与设备 → 邀请设备”，选择只读、可操作或整服务权限，生成十分钟有效、只能使用一次的链接和二维码。接收端打开链接后接受邀请，无需抄写服务 ID 或 JSON。服务端 CLI 的 `veymux --federation-pairing [--url https://service:9834]` 同样输出邀请链接和二维码，只有兼容旧工具时才使用 `--json`。CLI 配对码从本机 `~/.veymux/federation/pairing.json` 读取，通过可信方式分享。
 
 下列配置是管理员启用跨服务路由的步骤，普通手机密码登录不需要配置它们。入口 B 配好 C 的路径后，在 B 的“添加服务”粘贴 C 的邀请链接；浏览器通过 B 请求通道，由 C 独立授权。
 
@@ -51,7 +51,7 @@ A 能访问 B、C，而 B、C 无法互通时，在 A 上运行：
 
 ```sh
 chmod 600 relay.json
-termdock --federation-relay relay.json
+veymux --federation-relay relay.json
 ```
 
 `relay.json` 示例（替换所有示例值）：
@@ -67,7 +67,7 @@ termdock --federation-relay relay.json
 }
 ```
 
-B 的 `~/.termdock/federation/routes.json` 配置对应 `{ "relays": [{ "id": "A", "token": "同一个随机令牌", "targets": ["C-verified-service-identity"] }] }`。配置文件含凭据，使用 `0600` 权限。中继令牌只允许登记和转发已列出的目标，不授予任何目标终端权限。
+B 的 `~/.veymux/federation/routes.json` 配置对应 `{ "relays": [{ "id": "A", "token": "同一个随机令牌", "targets": ["C-verified-service-identity"] }] }`。配置文件含凭据，使用 `0600` 权限。中继令牌只允许登记和转发已列出的目标，不授予任何目标终端权限。
 
 URL 仅接受 HTTPS/WSS，证书和主机名必须验证，不允许跳转。`caPath` 可省略以使用系统信任；设置时使用指定 CA，路径相对于配置文件，目标可单独覆盖 CA。禁止通过关闭证书校验绕过错误。
 
@@ -93,7 +93,7 @@ HTTPS 服务现在同时启动原生 UDP/HTTP3 WebTransport 监听器（默认�
 
 已经建立的 TCP 终端在输入静默两秒且队列清空后通过输出游标重新挂接 QUIC，不重放输入；QUIC 建立后业务控制也有独立流，原 TCP 断开不影响已迁移终端。UDP 被阻断、浏览器不支持证书指纹模式或可选原生模块不可用时保留加密 WSS。只有尚未发送业务记录的新流握手失败可以回退；已发送的上传和输入失败直接上报，不能自动重发。只能通过入口中转的目标继续走既有端到端加密 WSS，中转本身尚未迁移到 QUIC。
 
-部署时放行对应 **UDP** 端口，HTTP 反向代理仅转发 TCP 不会自动代理 QUIC。`TERMDOCK_QUIC=0` 可关闭；`TERMDOCK_QUIC_PORT` 可设置监听端口（同时作为客户端连接端口，NAT 必须保持此端口映射）。浏览器连接地址继承已认证 WSS 的主机，证书指纹不接受任意目标地址。QUIC 证书自动生成并以 `0600` 保存到 federation 目录，十三天有效，提前轮换；HTTPS CA 和客户端固定的 Noise 身份保持原有配置。已有会话的证书不因轮换而变化，下一次权限响应发布新的指纹。
+部署时放行对应 **UDP** 端口，HTTP 反向代理仅转发 TCP 不会自动代理 QUIC。`VEYMUX_QUIC=0` 可关闭；`VEYMUX_QUIC_PORT` 可设置监听端口（同时作为客户端连接端口，NAT 必须保持此端口映射）。浏览器连接地址继承已认证 WSS 的主机，证书指纹不接受任意目标地址。QUIC 证书自动生成并以 `0600` 保存到 federation 目录，十三天有效，提前轮换；HTTPS CA 和客户端固定的 Noise 身份保持原有配置。已有会话的证书不因轮换而变化，下一次权限响应发布新的指纹。
 
 `webTransport.integration.test.ts` 使用真实 QUIC 原生模块、WSS 和 Noise，覆盖终端独立于暂停下载、并发上传下载 SHA-256 校验、HTTP 流复用、失去 TCP 后继续输入、UDP 失败回退，以及已发送写入失败不重发。真实 macOS/iOS 的弱网、换网、原生桥接与后台通知仍须实机验收；桌面 Chrome 的移动视口不代替这些结果。
 
@@ -103,13 +103,13 @@ HTML 预览先经加密通道读取资源，再在独立 opaque 沙箱显示；�
 
 ## macOS 自动中继
 
-需要 Mac 在应用运行期间承担中继时，将上述 CLI 配置显式保存为 `~/.termdock/federation/relay.json`，设置 `chmod 600` 后重新打开 Termdock。Mac 主进程使用同一 Runtime CLI 启动中继，日志保存在同目录 `relay.log`；关闭单个窗口不影响它，退出应用会发送 SIGTERM 停止中继。网络重连由 CLI 负责。
+需要 Mac 在应用运行期间承担中继时，将上述 CLI 配置显式保存为 `~/.veymux/federation/relay.json`，设置 `chmod 600` 后重新打开 Veymux。Mac 主进程使用同一 Runtime CLI 启动中继，日志保存在同目录 `relay.log`；关闭单个窗口不影响它，退出应用会发送 SIGTERM 停止中继。网络重连由 CLI 负责。
 
 此文件不存在时不会启动中继，也不会从已保存的 Mac 服务连接自动复制凭据或共享权限。修改配置后重启应用；移除配置后重启即可禁用。Mac 和 Runtime 都需升级到包含该 CLI 能力的版本。
 
 ## 入口服务直接访问目标
 
-B 能直接访问 C 时，可在 B 的 `~/.termdock/federation/routes.json` 增加固定的 `directTargets`，无需运行 A：
+B 能直接访问 C 时，可在 B 的 `~/.veymux/federation/routes.json` 增加固定的 `directTargets`，无需运行 A：
 
 ```json
 {
@@ -128,7 +128,7 @@ B 能直接访问 C 时，可在 B 的 `~/.termdock/federation/routes.json` 增�
 
 ## 保留多个服务工作区
 
-PWA 左侧栏提供服务切换器；macOS 原生客户端不显示这套切换栏，继续使用独立服务窗口和原生窗口切换。已固定身份的同一服务使用备用地址时优先复用现有窗口，不迁移或清除原存储分区。PWA 保留入口文档，并通过同源 `/workspace.html?termdock-workspace=<peerId>` 创建其他工作区，每个工作区拥有独立的 JavaScript 上下文、加密客户端和按服务身份划分的状态。常规切换不再整页刷新；首次授权时仍可能需要一次刷新来建立初始存储归属。
+PWA 左侧栏提供服务切换器；macOS 原生客户端不显示这套切换栏，继续使用独立服务窗口和原生窗口切换。已固定身份的同一服务使用备用地址时优先复用现有窗口，不迁移或清除原存储分区。PWA 保留入口文档，并通过同源 `/workspace.html?veymux-workspace=<peerId>` 创建其他工作区，每个工作区拥有独立的 JavaScript 上下文、加密客户端和按服务身份划分的状态。常规切换不再整页刷新；首次授权时仍可能需要一次刷新来建立初始存储归属。
 
 工作区地址只包含已保存的服务身份，目标地址和路线从本机服务目录读取；不加载目标服务的远程 HTML，不传递原生凭据，也不共享各服务的业务请求客户端。Service Worker 仅将这个固定应用入口识别为额外的业务请求所有者，预览文档仍受原有目标身份和预览路径约束。下载、通知跳转和手机键盘尺寸也按工作区处理。后台工作区暂停终端画面订阅，远端终端继续运行；系统回收整个 PWA 后，仍需恢复连接和缓存内容。
 
@@ -151,7 +151,7 @@ PWA 左侧栏提供服务切换器；macOS 原生客户端不显示这套切换�
 
 A 配有 B 的固定直连目标时（包括桌面服务目录与管理员 routes.json），A 的后台服务会向 B 证明自身身份并登记仅通往 A 的反向通道。通道由 A 主动拨出，不要求 B 能主动连接 A 的公网地址；浏览器或桌面窗口关闭后，服务仍可维持它。两端都必须保持服务运行，A 到 B 的网络和 TLS 信任也必须有效。
 
-后台以同一系统用户的正式 Rust 客户端连接目录为准（macOS 为 `~/Library/Application Support/com.jovines.termdock/connections.json`）。该文件存在时，不再合并旧 Electron／Preview 的地址或证书，也不会因正式配置损坏而恢复旧连接。尚未迁移到正式 Rust 客户端时，继续兼容 `~/.termdock/desktop.json` 和 `~/Library/Application Support/com.jovines.termdock.preview/connections.json`。须先在客户端中连接并固定本机 A 和远端 B 的服务身份。目录变化约两秒内生效；移除 B、移除本机身份或更改证书信任会撤回或重建对应反向通道。每个服务的不同地址分别保留，管理员固定路由仍优先。
+后台以同一系统用户的正式 Rust 客户端连接目录为准（macOS 为 `~/Library/Application Support/com.jovines.veymux/connections.json`）。该文件存在时，不再合并旧 Electron／Preview 的地址或证书，也不会因正式配置损坏而恢复旧连接。尚未迁移到正式 Rust 客户端时，继续兼容 `~/.veymux/desktop.json` 和 `~/Library/Application Support/com.jovines.veymux.preview/connections.json`。须先在客户端中连接并固定本机 A 和远端 B 的服务身份。目录变化约两秒内生效；移除 B、移除本机身份或更改证书信任会撤回或重建对应反向通道。每个服务的不同地址分别保留，管理员固定路由仍优先。
 
 协作登记复用同一原生配置中的公开服务描述。各服务窗口只登记自身已固定的公开身份、协作 origin 和 CA 指纹；其它窗口只读取这些元数据，再通过各自页面的已授权加密连接登记本服务。不会跨窗口复制设备身份、密码或授权，也不扩大窗口的网络访问范围。即使仅打开本地服务，也先记录自身描述；之后添加远端服务会触发双方页面重新登记。已删除书签的历史描述不再参与登记。
 

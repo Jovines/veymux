@@ -108,7 +108,7 @@ describe('LeftSidebar 服务健康红点', () => {
     );
 
     const moreButton = document.querySelector<HTMLButtonElement>('button[aria-controls="sidebar-launch-options"]')!;
-    expect(moreButton.getAttribute('aria-label')).toBe('More actions: Termdock 1.4.70 is available');
+    expect(moreButton.getAttribute('aria-label')).toBe('More actions: Veymux 1.4.70 is available');
     const dots = moreButton.querySelectorAll('span[aria-hidden="true"]');
     expect(dots).toHaveLength(1);
     expect([...dots].map((dot) => dot.className)).toEqual([

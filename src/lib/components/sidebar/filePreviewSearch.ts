@@ -1,5 +1,5 @@
-export const FILE_PREVIEW_SEARCH_HIGHLIGHT = 'termdock-file-search-match';
-export const FILE_PREVIEW_SEARCH_CURRENT_HIGHLIGHT = 'termdock-file-search-current';
+export const FILE_PREVIEW_SEARCH_HIGHLIGHT = 'veymux-file-search-match';
+export const FILE_PREVIEW_SEARCH_CURRENT_HIGHLIGHT = 'veymux-file-search-current';
 
 export type FilePreviewSearchShortcut = 'open' | 'next' | 'previous' | 'close';
 

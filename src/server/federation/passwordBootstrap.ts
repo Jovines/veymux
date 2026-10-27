@@ -5,7 +5,7 @@ import { bytesToHex, hexToBytes } from '@noble/hashes/utils.js';
 // Existing credentials are password-equivalent here. Never send the stored hash
 // over the wire. OPAQUE authenticates both Noise identities before any grant.
 const keyStretching = 'memory-constrained' as const;
-const userIdentifier = 'termdock-password-bootstrap-v1';
+const userIdentifier = 'veymux-password-bootstrap-v1';
 const TTL = 60_000;
 function identifiers(clientIdentity: string, serverIdentity: string, origin: string) {
   if (!clientIdentity || clientIdentity.length > 256 || !serverIdentity || serverIdentity.length > 256 ||

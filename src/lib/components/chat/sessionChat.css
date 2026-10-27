@@ -6,7 +6,7 @@
 .session-chat-input, .session-chat-input-sizer { min-height: 44px; max-height: 176px; }
 .session-chat-input { overscroll-behavior-y: contain; touch-action: pan-y; }
 .session-chat-composer { overscroll-behavior-y: none; }
-html[data-termdock-touch-viewport='true'] .session-chat-keyboard-hint { display: none; }
+html[data-veymux-touch-viewport='true'] .session-chat-keyboard-hint { display: none; }
 
 .session-chat-input { transition: none; }
 .session-chat-input[data-rich-draft='true']::placeholder { color: transparent; }

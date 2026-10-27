@@ -27,7 +27,7 @@ function ev(kind: AgentEventKind, opts: Partial<AgentEvent> = {}): AgentEvent {
 describe('parseAgentEvent', () => {
   it('parses well-formed sentinel events', () => {
     const parsed = parseAgentEvent(
-      '777;notify;termdock://cli-agent;{"v":1,"agent":"claude","event":"permission-request","session_id":"abc-123","message":"Claude needs your permission to use Bash"}',
+      '777;notify;veymux://cli-agent;{"v":1,"agent":"claude","event":"permission-request","session_id":"abc-123","message":"Claude needs your permission to use Bash"}',
     );
     expect(parsed?.agent?.slug).toBe('claude');
     expect(parsed?.agentSlug).toBe('claude');
@@ -39,8 +39,8 @@ describe('parseAgentEvent', () => {
 
   it('rejects non-sentinel payloads, unknown events, and malformed JSON', () => {
     expect(parseAgentEvent('777;notify;Build;done')).toBeNull();
-    expect(parseAgentEvent('777;notify;termdock://cli-agent;{"event":"quantum-leap"}')).toBeNull();
-    expect(parseAgentEvent('777;notify;termdock://cli-agent;{oops')).toBeNull();
+    expect(parseAgentEvent('777;notify;veymux://cli-agent;{"event":"quantum-leap"}')).toBeNull();
+    expect(parseAgentEvent('777;notify;veymux://cli-agent;{oops')).toBeNull();
     expect(parseAgentEvent('9;4;3;0')).toBeNull();
   });
 });

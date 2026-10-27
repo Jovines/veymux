@@ -29,18 +29,18 @@ export async function verifyPublication(pack, {
   fetchImpl = fetch, sleep = pause, now = Date.now, timeoutMs = 10 * 60_000,
   retryMs = 15_000, log = console.log,
 } = {}) {
-  if (pack.name !== 'termdock' || !/^\d+\.\d+\.\d+$/.test(pack.version) || !pack.integrity?.startsWith('sha512-')) {
+  if (pack.name !== 'veymux' || !/^\d+\.\d+\.\d+$/.test(pack.version) || !pack.integrity?.startsWith('sha512-')) {
     throw new Error('Invalid expected release identity');
   }
   const deadline = now() + timeoutMs;
   let reason;
   do {
     try {
-      const metadata = await readRegistry(`https://registry.npmjs.org/termdock/${pack.version}`, fetchImpl);
+      const metadata = await readRegistry(`https://registry.npmjs.org/veymux/${pack.version}`, fetchImpl);
       if (metadata.name !== pack.name || metadata.version !== pack.version || metadata.dist?.integrity !== pack.integrity) {
         throw new Error('Published package identity or integrity mismatch');
       }
-      const tags = await readRegistry('https://registry.npmjs.org/-/package/termdock/dist-tags', fetchImpl);
+      const tags = await readRegistry('https://registry.npmjs.org/-/package/veymux/dist-tags', fetchImpl);
       if (tags.latest !== pack.version) throw new RegistryPending(`latest is ${tags.latest ?? 'not available'}`);
       const tarball = new URL(metadata.dist.tarball);
       if (tarball.protocol !== 'https:' || tarball.hostname !== 'registry.npmjs.org') throw new Error('Unexpected registry tarball URL');

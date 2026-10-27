@@ -41,8 +41,8 @@ it('reports the mounted revision once after the authenticated viewport is presen
   ipad(true);
   render(<PwaStatusBarSurface />);
   expect(clientLog).not.toHaveBeenCalled();
-  fireEvent(window, new Event('termdock:initial-viewport-presented'));
-  fireEvent(window, new Event('termdock:initial-viewport-presented'));
+  fireEvent(window, new Event('veymux:initial-viewport-presented'));
+  fireEvent(window, new Event('veymux:initial-viewport-presented'));
   expect(clientLog).toHaveBeenCalledTimes(1);
   expect(clientLog).toHaveBeenCalledWith('info', 'PWA_STATUS_BAR_SURFACE', expect.objectContaining({
     revision: 'ipad-default-status-bar', parent: 'BODY',

@@ -2,12 +2,12 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { enforceTermdockLogBudget } from './serverLogger.js';
+import { enforceVeymuxLogBudget } from './serverLogger.js';
 
 const temporaryDirectories: string[] = [];
 
 function makeTemporaryDirectory(): string {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'termdock-log-budget-'));
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-log-budget-'));
   temporaryDirectories.push(directory);
   return directory;
 }
@@ -18,13 +18,13 @@ afterEach(() => {
   }
 });
 
-describe('enforceTermdockLogBudget', () => {
+describe('enforceVeymuxLogBudget', () => {
   it('retains only the recent tail of oversized active logs', () => {
     const directory = makeTemporaryDirectory();
     const logPath = path.join(directory, 'access.log');
     fs.writeFileSync(logPath, 'old-entry\nnew-entry\n');
 
-    enforceTermdockLogBudget({
+    enforceVeymuxLogBudget({
       directory,
       structuredLogMaxBytes: 11,
       serverLogMaxBytes: 11,
@@ -46,7 +46,7 @@ describe('enforceTermdockLogBudget', () => {
     fs.utimesSync(oldRotation, new Date(1_000), new Date(1_000));
     fs.utimesSync(newRotation, new Date(2_000), new Date(2_000));
 
-    enforceTermdockLogBudget({
+    enforceVeymuxLogBudget({
       directory,
       structuredLogMaxBytes: 100,
       serverLogMaxBytes: 100,
@@ -63,7 +63,7 @@ describe('enforceTermdockLogBudget', () => {
     fs.writeFileSync(logPath, 'first-line\nsecond-line\n');
     const inodeBefore = fs.statSync(logPath).ino;
 
-    enforceTermdockLogBudget({
+    enforceVeymuxLogBudget({
       directory,
       structuredLogMaxBytes: 100,
       serverLogMaxBytes: 12,

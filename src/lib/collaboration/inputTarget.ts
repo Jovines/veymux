@@ -34,14 +34,14 @@ export function registerCollaborationInput(next: InputReceiver, key = 'default',
     if (!text || activeReceiver() !== next) return;
     next(text);
     event.stopImmediatePropagation();
-    if (nonce) window.dispatchEvent(new CustomEvent('termdock-insert-reference-ack', { detail: { nonce, ok: true } }));
+    if (nonce) window.dispatchEvent(new CustomEvent('veymux-insert-reference-ack', { detail: { nonce, ok: true } }));
   };
-  window.addEventListener('termdock-insert-reference', insert, true);
+  window.addEventListener('veymux-insert-reference', insert, true);
   return () => {
     if (receivers.get(key)?.receive === next) {
       receivers.delete(key);
       if (activeKey === key) activeKey = [...receivers.keys()].at(-1);
     }
-    window.removeEventListener('termdock-insert-reference', insert, true);
+    window.removeEventListener('veymux-insert-reference', insert, true);
   };
 }

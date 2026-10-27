@@ -5,7 +5,7 @@ import type { ChatStartupAgent } from '../../../server/shared/chatProgramPolicy'
 /** Presentation of our explicit launch request, never a second session directory. */
 export interface SessionChatStartup { agent: ChatStartupAgent; startedAt: number; error?: string }
 const state = create<{ launches: Record<string, SessionChatStartup | undefined> }>(() => ({ launches: {} }));
-const key = (id: string) => `termdock:chat-startup:${savedConnection()?.targetPeerId || location.origin}:${id}`;
+const key = (id: string) => `veymux:chat-startup:${savedConnection()?.targetPeerId || location.origin}:${id}`;
 function cached(id: string): SessionChatStartup | undefined {
   try {
     const value = JSON.parse(sessionStorage.getItem(key(id)) || 'null');

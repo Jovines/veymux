@@ -4,7 +4,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 
 const html = readFileSync('index.html', 'utf8');
 const startup = new DOMParser().parseFromString(html, 'text/html')
-  .getElementById('termdock-ipad-status-bar')!;
+  .getElementById('veymux-ipad-status-bar')!;
 const script = readFileSync(`public${startup.getAttribute('src')}`, 'utf8');
 
 it('loads the configuration synchronously under the app CSP and precaches it for offline launches', () => {
@@ -18,7 +18,7 @@ it('loads the configuration synchronously under the app CSP and precaches it for
 afterEach(() => {
   vi.unstubAllGlobals();
   document.head.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]')?.remove();
-  delete document.documentElement.dataset.termdockPwaStatusBar;
+  delete document.documentElement.dataset.veymuxPwaStatusBar;
   document.documentElement.style.removeProperty('--safe-top-inset');
 });
 
@@ -37,7 +37,7 @@ it.each([
   document.head.append(meta);
   new Function(script)();
   expect(meta.content).toBe(expected);
-  expect(document.documentElement.dataset.termdockPwaStatusBar).toBe(expected === 'default' ? 'default' : undefined);
+  expect(document.documentElement.dataset.veymuxPwaStatusBar).toBe(expected === 'default' ? 'default' : undefined);
   expect(document.documentElement.style.getPropertyValue('--safe-top-inset')).toBe(
     expected === 'default' ? 'env(safe-area-inset-top, 0px)' : '',
   );

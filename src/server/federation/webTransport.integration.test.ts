@@ -19,7 +19,7 @@ const cleanup: Array<() => void> = [];
 afterEach(() => { for (const close of cleanup.splice(0).reverse()) close(); vi.unstubAllGlobals(); });
 async function fixture() {
   vi.stubGlobal('CloseEvent', class extends Event { code: number; reason: string; constructor(type: string, init: { code: number; reason: string }) { super(type); this.code = init.code; this.reason = init.reason; } });
-  const directory = mkdtempSync(join(tmpdir(), 'td-quic-test-')); cleanup.push(() => rmSync(directory, { recursive: true, force: true }));
+  const directory = mkdtempSync(join(tmpdir(), 'veymux-quic-test-')); cleanup.push(() => rmSync(directory, { recursive: true, force: true }));
   const certificate = await transportCertificate(directory);
   const app = express(); const payload = randomBytes(2 * 1024 * 1024);
   const digest = createHash('sha256').update(payload).digest('hex');

@@ -15,7 +15,7 @@ const pty = createRequire(import.meta.url)('node-pty') as typeof import('node-pt
 const supported = process.platform !== 'win32';
 
 it.skipIf(!supported)('bounds real display clients through churn, shutdown and a replacement service while preserving the running pane', async () => {
-  const socket = `td-client-life-${process.pid}-${Date.now()}`;
+  const socket = `veymux-client-life-${process.pid}-${Date.now()}`;
   const run = async (...args: string[]) => (await exec('tmux', ['-L', socket, ...args], { timeout: 5000, killSignal: 'SIGKILL' })).stdout.trim();
   const reaper = new TmuxClientReaper({ graceMs: 100 });
   const replacement = new TmuxClientReaper({ graceMs: 100 });
@@ -58,12 +58,12 @@ it.skipIf(!supported)('bounds real display clients through churn, shutdown and a
 }, 20_000);
 
 it.skipIf(!supported || !process.getuid)('an upgrade automatically reclaims an old unmarked orphan, leaving live clients, other sessions and their Agents running', async () => {
-  const socket = `td-client-upgrade-${process.pid}-${Date.now()}`;
+  const socket = `veymux-client-upgrade-${process.pid}-${Date.now()}`;
   const run = async (...args: string[]) => (await exec('tmux', ['-L', socket, ...args], { timeout: 5000, killSignal: 'SIGKILL' })).stdout.trim();
   const reaper = new TmuxClientReaper({ graceMs: 100 });
   const launchers: ChildProcess[] = [];
   const clientPids: number[] = [];
-  const directory = mkdtempSync(path.join(os.tmpdir(), 'td-client-upgrade-'));
+  const directory = mkdtempSync(path.join(os.tmpdir(), 'veymux-client-upgrade-'));
   const fifo = path.join(directory, 'stdin');
   await exec('mkfifo', [fifo]);
   const inputFd = openSync(fifo, 'r+');
@@ -119,7 +119,7 @@ it.skipIf(!supported || !process.getuid)('an upgrade automatically reclaims an o
 }, 20_000);
 
 it.skipIf(!supported)('real service processes reclaim their registered clients on graceful and immediate JS exit', async () => {
-  const socket = `td-client-exit-${process.pid}-${Date.now()}`;
+  const socket = `veymux-client-exit-${process.pid}-${Date.now()}`;
   const run = async (...args: string[]) => (await exec('tmux', ['-L', socket, ...args], { timeout: 5000, killSignal: 'SIGKILL' })).stdout.trim();
   const services: ChildProcess[] = [];
   const source = `

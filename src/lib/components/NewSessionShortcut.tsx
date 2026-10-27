@@ -88,7 +88,7 @@ export function NewSessionShortcut({ onCreate, disabled, configureOpen, onConfig
     busy.current = true; setSaving(true); setError(null);
     try {
       await updateSettings({ newSessionShortcutAction: action, ...(action === 'agent' ? { newSessionAgentSlug: agent!.slug } : {}) });
-      window.dispatchEvent(new Event('termdock:new-session-preference-changed'));
+      window.dispatchEvent(new Event('veymux:new-session-preference-changed'));
       if (dialog === 'launch') onCreate(action === 'agent' ? { command: getAgentLaunchCommand(agent!.slug, agent!.command) } : {});
       setDialog(null); onConfigureClose();
     } catch { setError(zh ? '设置未保存，请检查连接后重试' : 'Preferences were not saved. Check your connection and retry.'); }

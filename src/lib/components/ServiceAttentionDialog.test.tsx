@@ -17,10 +17,10 @@ const remoteSessions = [
 beforeEach(() => {
   vi.spyOn(document, 'hasFocus').mockReturnValue(true);
   localStorage.clear(); sessionStorage.clear();
-  delete window.__termdockWorkspaceHost;
+  delete window.__veymuxWorkspaceHost;
   useSidebarStore.setState({ leftOpen: false, rightOpen: false });
 });
-afterEach(() => { cleanup(); delete window.__termdockWorkspaceHost; vi.restoreAllMocks(); });
+afterEach(() => { cleanup(); delete window.__veymuxWorkspaceHost; vi.restoreAllMocks(); });
 
 function setup(localCount = 1) {
   writeBrowserServices([entry, remote]);
@@ -67,14 +67,14 @@ describe('cross-service attention', () => {
 
   it('focuses a local session without switching or acknowledging the remote service', () => {
     const { host } = setup();
-    const focus = vi.fn(); window.addEventListener('termdock:focus-session', focus);
+    const focus = vi.fn(); window.addEventListener('veymux:focus-session', focus);
     try {
       fireEvent.click(screen.getByRole('button', { name: /Local pending task/ }));
       expect(focus).toHaveBeenCalledOnce();
       expect((focus.mock.calls[0][0] as CustomEvent).detail).toBe('same-id');
       expect(host.snapshot().activeKey).toBe('root');
       expect(host.snapshot().items[1].reviewCount).toBe(2);
-    } finally { window.removeEventListener('termdock:focus-session', focus); }
+    } finally { window.removeEventListener('veymux:focus-session', focus); }
   });
 
   it('traps keyboard focus and closes only the dialog, preserving counts and launcher focus', () => {

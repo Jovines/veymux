@@ -26,8 +26,8 @@ with open(os.path.join(root,'ready'),'w') as out: out.write(str(os.getpid()))
 while True: time.sleep(1)
 `;
 async function fixture(ids = ['original-native']) {
-  const root = fs.mkdtempSync(path.join(os.homedir(), '.td-native-identity-test-'));
-  const file = path.join(root, 'fixture.py'), socket = `td-identity-${process.pid}-${randomUUID().slice(0, 8)}`;
+  const root = fs.mkdtempSync(path.join(os.homedir(), '.veymux-native-identity-test-'));
+  const file = path.join(root, 'fixture.py'), socket = `veymux-identity-${process.pid}-${randomUUID().slice(0, 8)}`;
   fs.writeFileSync(file, script); const exec = promisify(execFile);
   const tmux = async (args: string[]) => (await exec('tmux', ['-L', socket, ...args], { timeout: 5000 })).stdout;
   resources.push(async () => { await tmux(['kill-server']).catch(() => {}); fs.rmSync(root, { recursive: true, force: true }); });
@@ -54,7 +54,7 @@ it('resolves only explicitly declared per-profile directories and safe cwd-relat
   expect(resolveProfileNativeIdentity({ kind: 'linux-flock-owner', directory: '{cwd}/locks', command: 'probe' }, cwd)).toBeNull();
 });
 it.skipIf(process.platform !== 'linux')('accepts a canonical cwd under a symlinked home without accepting siblings or weakening live lock proof', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'td-home-alias-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-home-alias-'));
   const real = path.join(root, 'real-home'), alias = path.join(root, 'home');
   fs.mkdirSync(real, { mode: 0o700 }); fs.symlinkSync(real, alias);
   const home = vi.spyOn(os, 'homedir').mockReturnValue(alias);

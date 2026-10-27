@@ -9,7 +9,7 @@ const execFileAsync = promisify(execFile);
 const require = createRequire(import.meta.url);
 
 export const OFFICIAL_NPM_REGISTRY = 'https://registry.npmjs.org';
-const TERMDOCK_PACKAGE = 'termdock';
+const VEYMUX_PACKAGE = 'veymux';
 const NPM_QUERY_TIMEOUT_MS = 30_000;
 
 export interface NpmUpdateResult {
@@ -50,7 +50,7 @@ export function compareVersions(left: string, right: string): number {
 export function buildNpmViewArgs(registry: string | null = OFFICIAL_NPM_REGISTRY): string[] {
   const args = [
     'view',
-    `${TERMDOCK_PACKAGE}@latest`,
+    `${VEYMUX_PACKAGE}@latest`,
     'version',
     '--json',
   ];
@@ -63,11 +63,11 @@ export function buildNpmInstallArgs(
   registry: string | null = OFFICIAL_NPM_REGISTRY,
   prefix?: string,
 ): string[] {
-  if (!parseVersion(version)) throw new Error(`Invalid Termdock version from npm: ${version}`);
+  if (!parseVersion(version)) throw new Error(`Invalid Veymux version from npm: ${version}`);
   const args = [
     'install',
     '--global',
-    `${TERMDOCK_PACKAGE}@${version}`,
+    `${VEYMUX_PACKAGE}@${version}`,
   ];
   if (prefix) args.push('--prefix', prefix);
   if (registry) args.push('--registry', registry);
@@ -76,48 +76,48 @@ export function buildNpmInstallArgs(
 }
 
 
-export interface TermdockInstallation { packageRoot: string; prefix: string }
+export interface VeymuxInstallation { packageRoot: string; prefix: string }
 
-function installedVersion(installation: TermdockInstallation): string {
+function installedVersion(installation: VeymuxInstallation): string {
   // Fresh filesystem reads: npm replaces this package while this process keeps
-  // running old JS. Neither require/import caches nor TERMDOCK_VERSION attest it.
+  // running old JS. Neither require/import caches nor VEYMUX_VERSION attest it.
   if (fs.realpathSync(installation.packageRoot) !== installation.packageRoot) {
-    throw new Error('Running Termdock installation changed location; check for updates again.');
+    throw new Error('Running Veymux installation changed location; check for updates again.');
   }
   const value: unknown = JSON.parse(fs.readFileSync(path.join(installation.packageRoot, 'package.json'), 'utf8'));
-  if (!value || typeof value !== 'object' || !('name' in value) || value.name !== TERMDOCK_PACKAGE
+  if (!value || typeof value !== 'object' || !('name' in value) || value.name !== VEYMUX_PACKAGE
     || !('version' in value) || typeof value.version !== 'string' || !parseVersion(value.version)) {
-    throw new Error('Running Termdock installation has invalid package metadata.');
+    throw new Error('Running Veymux installation has invalid package metadata.');
   }
   return value.version;
 }
 
 /** Resolve the module which is actually running, never PATH's unrelated npm root. */
-export function resolveRunningTermdockInstallation(moduleUrl = import.meta.url, runningEntry = process.argv[1]): TermdockInstallation {
+export function resolveRunningVeymuxInstallation(moduleUrl = import.meta.url, runningEntry = process.argv[1]): VeymuxInstallation {
   const moduleFile = fs.realpathSync(fileURLToPath(moduleUrl));
   const packageRoot = path.resolve(path.dirname(moduleFile), '../../..');
   const nodeModules = path.dirname(packageRoot);
-  if (path.basename(packageRoot) !== TERMDOCK_PACKAGE || path.basename(nodeModules) !== 'node_modules') {
-    throw new Error('Automatic updates require a supported global Termdock installation.');
+  if (path.basename(packageRoot) !== VEYMUX_PACKAGE || path.basename(nodeModules) !== 'node_modules') {
+    throw new Error('Automatic updates require a supported global Veymux installation.');
   }
   const parent = path.dirname(nodeModules);
   let prefix: string;
   if (process.platform === 'win32') prefix = parent;
   else if (path.basename(parent) === 'lib') prefix = path.dirname(parent);
-  else throw new Error('Automatic updates require a supported global Termdock installation.');
+  else throw new Error('Automatic updates require a supported global Veymux installation.');
   const installation = { packageRoot, prefix };
   // supervisor resolves and reuses this child's argv entry. A module loaded
   // from another installation must never approve that different restart root.
   if (!runningEntry || fs.realpathSync(runningEntry) !== path.join(packageRoot, 'dist/server/cli.js')) {
-    throw new Error('Running Termdock entry does not match its update installation.');
+    throw new Error('Running Veymux entry does not match its update installation.');
   }
   installedVersion(installation);
   return installation;
 }
 
-export function verifyRunningTermdockInstallation(version: string, installation = resolveRunningTermdockInstallation()): void {
+export function verifyRunningVeymuxInstallation(version: string, installation = resolveRunningVeymuxInstallation()): void {
   if (compareVersions(installedVersion(installation), version) < 0) {
-    throw new Error('Running Termdock installation has not completed this update; check for updates again.');
+    throw new Error('Running Veymux installation has not completed this update; check for updates again.');
   }
 }
 
@@ -129,7 +129,7 @@ export function parseNpmVersionOutput(output: string): string {
     throw new Error('The official npm registry returned invalid version metadata.');
   }
   if (typeof value !== 'string' || !parseVersion(value)) {
-    throw new Error('The official npm registry returned an invalid Termdock version.');
+    throw new Error('The official npm registry returned an invalid Veymux version.');
   }
   return value;
 }
@@ -167,9 +167,9 @@ async function fetchLatestVersion(registry: string | null): Promise<string> {
   return parseNpmVersionOutput(stdout);
 }
 
-export async function installTermdockVersion(version: string, registry: string | null, installation: TermdockInstallation, executable = npmExecutable()): Promise<void> {
+export async function installVeymuxVersion(version: string, registry: string | null, installation: VeymuxInstallation, executable = npmExecutable()): Promise<void> {
   if (compareVersions(installedVersion(installation), version) > 0) {
-    throw new Error('Running Termdock location already contains a newer version; restart that installation manually.');
+    throw new Error('Running Veymux location already contains a newer version; restart that installation manually.');
   }
   const env = await installEnvironment();
   await new Promise<void>((resolve, reject) => {
@@ -184,20 +184,20 @@ export async function installTermdockVersion(version: string, registry: string |
         return;
       }
       const reason = signal ? `signal ${signal}` : `exit code ${code ?? 'unknown'}`;
-      reject(new Error(`npm failed to install Termdock (${reason}).`));
+      reject(new Error(`npm failed to install Veymux (${reason}).`));
     });
   });
   if (installedVersion(installation) !== version) {
-    throw new Error('npm did not install the requested version at the running Termdock location.');
+    throw new Error('npm did not install the requested version at the running Veymux location.');
   }
 }
 
-export async function updateTermdockFromOfficialRegistry(
+export async function updateVeymuxFromOfficialRegistry(
   currentVersion: string,
   onFallback?: (stage: NpmUpdateFallbackStage, error: Error) => void,
   onLatest?: NpmUpdateLatestCallback,
 ): Promise<NpmUpdateResult> {
-  if (!parseVersion(currentVersion)) throw new Error(`Invalid installed Termdock version: ${currentVersion}`);
+  if (!parseVersion(currentVersion)) throw new Error(`Invalid installed Veymux version: ${currentVersion}`);
   let source: NpmUpdateResult['source'] = 'official';
   let latestVersion: string;
   try {
@@ -213,15 +213,15 @@ export async function updateTermdockFromOfficialRegistry(
   if (comparison === 0) return { status: 'current', currentVersion, latestVersion, source };
   if (comparison > 0) return { status: 'newer-than-registry', currentVersion, latestVersion, source };
 
-  const installation = resolveRunningTermdockInstallation();
+  const installation = resolveRunningVeymuxInstallation();
   try {
-    await installTermdockVersion(latestVersion, source === 'official' ? OFFICIAL_NPM_REGISTRY : null, installation);
+    await installVeymuxVersion(latestVersion, source === 'official' ? OFFICIAL_NPM_REGISTRY : null, installation);
   } catch (error) {
     if (source === 'configured') throw error;
     const cause = error instanceof Error ? error : new Error(String(error));
     onFallback?.('install', cause);
     source = 'configured';
-    await installTermdockVersion(latestVersion, null, installation);
+    await installVeymuxVersion(latestVersion, null, installation);
   }
   return { status: 'updated', currentVersion, latestVersion, source };
 }

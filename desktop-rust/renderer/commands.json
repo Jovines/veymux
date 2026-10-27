@@ -1,5 +1,5 @@
 [
- {"menu":"应用","id":"settings","label":"设置…","accelerator":"CmdOrCtrl+,","event":"termdock:open-settings"},
+ {"menu":"应用","id":"settings","label":"设置…","accelerator":"CmdOrCtrl+,","event":"veymux:open-settings"},
  {"menu":"应用","id":"new-connection","label":"新建连接或切换服务…","accelerator":"CmdOrCtrl+N"},
  {"menu":"文件","id":"new-session","label":"新建会话","accelerator":"CmdOrCtrl+T"},
  {"menu":"文件","id":"close-session","label":"关闭当前会话","accelerator":"CmdOrCtrl+W"},

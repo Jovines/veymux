@@ -27,8 +27,8 @@ function stdinFor(socket: string) {
 
 describe.skipIf(process.platform === 'win32')('collaboration tmux transport', () => {
   it.each(['agent-exit', 'revoke-queued', 'revoke-before-submit'])('fences shared chat in the real tmux input queue: %s', async change => {
-    const directory = await mkdtemp(join(tmpdir(), 'td-shared-guard-')), out = join(directory, 'submitted');
-    const socket = `td-shared-${process.pid}-${Date.now()}`;
+    const directory = await mkdtemp(join(tmpdir(), 'veymux-shared-guard-')), out = join(directory, 'submitted');
+    const socket = `veymux-shared-${process.pid}-${Date.now()}`;
     const run = async (args: string[]) => (await execFileAsync('tmux', ['-L', socket, ...args], { timeout: 5000 })).stdout;
     let release!: () => void, allowed = true;
     try {
@@ -55,9 +55,9 @@ describe.skipIf(process.platform === 'win32')('collaboration tmux transport', ()
     } finally { release?.(); await run(['kill-server']).catch(() => undefined); await rm(directory, { recursive: true, force: true }); }
   }, 15000);
   it.each([true, false])('checks real application echo (%s), preserving one submit and stopping before body on failure', async echo => {
-    const directory = await mkdtemp(join(tmpdir(), 'td-input-echo-'));
+    const directory = await mkdtemp(join(tmpdir(), 'veymux-input-echo-'));
     const out = join(directory, 'input');
-    const socket = `td-echo-${process.pid}-${Date.now()}`;
+    const socket = `veymux-echo-${process.pid}-${Date.now()}`;
     const run = async (args: string[]) => (await execFileAsync('tmux', ['-L', socket, ...args], { timeout: 5000 })).stdout;
     try {
       const editor = join(directory, 'editor.py');
@@ -96,12 +96,12 @@ while True:
       await new Promise(resolve => setTimeout(resolve, 100));
       const bytes = await readFile(out, 'utf8');
       expect(bytes).toMatch(echo ? /^[~^|%&@#]{2}\x7f{2}BODY\r$/ : /^[~^|%&@#]{2}\x7f{2}$/);
-      expect(await run(['list-buffers'])).not.toContain(`termdock-collab-${process.pid}`);
+      expect(await run(['list-buffers'])).not.toContain(`veymux-collab-${process.pid}`);
     } finally { await run(['kill-server']).catch(() => undefined); await rm(directory, { recursive: true, force: true }); }
   }, 15000);
 
   it('delivers to the pinned pane without a browser/client, even when another pane is active', async () => {
-    const socket = `td-collab-${process.pid}-${Date.now()}`;
+    const socket = `veymux-collab-${process.pid}-${Date.now()}`;
     const run = async (args: string[]) => (await execFileAsync('tmux', ['-L', socket, ...args], { timeout: 5_000 })).stdout;
     try {
       await run(['new-session', '-d', '-s', 'peer', 'cat']);
@@ -128,10 +128,10 @@ while True:
   }, 15_000);
 
   it('reaches the app through an unscrolled copy-mode pane without disturbing the user view', async () => {
-    const socket = `td-collab-cm-${process.pid}-${Date.now()}`;
+    const socket = `veymux-collab-cm-${process.pid}-${Date.now()}`;
     const run = async (args: string[]) => (await execFileAsync('tmux', ['-L', socket, ...args], { timeout: 5_000 })).stdout;
     try {
-      await run(['new-session', '-d', '-s', 'peer', 'sh -c "seq 1 300; stty raw -echo; cat > /tmp/td-collab-cm.out"']);
+      await run(['new-session', '-d', '-s', 'peer', 'sh -c "seq 1 300; stty raw -echo; cat > /tmp/veymux-collab-cm.out"']);
       const identity = (await run(['display-message', '-p', '-t', 'peer', '#{pid}:#{session_id}:#{pane_id}:#{pane_pid}'])).trim().split(':');
       const pane = { serverPid: Number(identity[0]), sessionId: identity[1]!, paneId: identity[2]!, panePid: Number(identity[3]),
         agentSlug: 'test-consumer', nativeSessionId: null };
@@ -149,8 +149,8 @@ while True:
 
       expect((await run(['display-message', '-p', '-t', pane.paneId, '#{pane_in_mode}'])).trim()).toBe('1');
       expect((await run(['display-message', '-p', '-t', pane.paneId, '#{scroll_position}'])).trim()).toBe(before);
-      expect(await run(['list-buffers'])).not.toContain(`termdock-collab-${process.pid}`);
-      const delivered = await (async () => { try { return (await execFileAsync('sh', ['-c', 'sleep 0.4; cat /tmp/td-collab-cm.out'])).stdout; } catch { return ''; } })();
+      expect(await run(['list-buffers'])).not.toContain(`veymux-collab-${process.pid}`);
+      const delivered = await (async () => { try { return (await execFileAsync('sh', ['-c', 'sleep 0.4; cat /tmp/veymux-collab-cm.out'])).stdout; } catch { return ''; } })();
       expect(delivered).toContain('COPYMODE-REACHES-APP');
       // cat never asked for bracketed paste, so no marker may appear in the
       // byte stream — neither as control bytes nor as vis(3)-escaped text.
@@ -163,9 +163,9 @@ while True:
   }, 15_000);
 
   it('lets tmux wrap the paste exactly once for an app that asked for bracketed paste', async () => {
-    const socket = `td-collab-bp-${process.pid}-${Date.now()}`;
+    const socket = `veymux-collab-bp-${process.pid}-${Date.now()}`;
     const run = async (args: string[]) => (await execFileAsync('tmux', ['-L', socket, ...args], { timeout: 5_000 })).stdout;
-    const out = `/tmp/td-collab-bp-${process.pid}.out`;
+    const out = `/tmp/veymux-collab-bp-${process.pid}.out`;
     try {
       // cat cannot speak DECSET, so the bracketed-paste flag comes from this
       // launcher — the same MODE_BRACKETPASTE bit an agent TUI sets.
@@ -178,7 +178,7 @@ while True:
         await new Promise((done) => setTimeout(done, 20));
       }
       await writeCollaborationTmuxPane(run, pane, 'LINE1\nLINE2\nLINE3', stdinFor(socket));
-      expect(await run(['list-buffers'])).not.toContain(`termdock-collab-${process.pid}`);
+      expect(await run(['list-buffers'])).not.toContain(`veymux-collab-${process.pid}`);
       let delivered = '';
       for (let attempt = 0; attempt < 50; attempt++) {
         delivered = await (async () => { try { return (await execFileAsync('sh', ['-c', `cat ${out}`])).stdout; } catch { return ''; } })();
@@ -211,7 +211,7 @@ while True:
   }, 15_000);
 
   it('executes a driven line on a plain shell pane (no agent) and reads the screen back', async () => {
-    const socket = `td-drive-shell-${process.pid}-${Date.now()}`;
+    const socket = `veymux-drive-shell-${process.pid}-${Date.now()}`;
     const run = async (args: string[]) => (await execFileAsync('tmux', ['-L', socket, ...args], { timeout: 5_000 })).stdout;
     try {
       await run(['new-session', '-d', '-s', 'peer', 'zsh -f -i']);

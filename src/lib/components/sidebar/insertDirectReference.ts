@@ -18,7 +18,7 @@ export async function insertDirectReference(text: string, key: string, evidence:
       (async () => {
         const blob = await evidence.snapshot;
         if (!blob || controller.signal.aborted || !options.isCurrent()) return undefined;
-        return options.upload(new File([blob], `termdock-review-${crypto.randomUUID()}.png`, { type: 'image/png' }), controller.signal);
+        return options.upload(new File([blob], `veymux-review-${crypto.randomUUID()}.png`, { type: 'image/png' }), controller.signal);
       })(),
       new Promise<undefined>((resolve) => { timer = setTimeout(() => { controller.abort(); resolve(undefined); }, 3000); }),
     ]);

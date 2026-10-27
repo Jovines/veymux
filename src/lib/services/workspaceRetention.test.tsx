@@ -15,13 +15,13 @@ const touchPoints = vi.fn(() => 5);
 
 beforeEach(() => {
   localStorage.clear(); sessionStorage.clear();
-  delete window.__termdockWorkspaceHost;
+  delete window.__veymuxWorkspaceHost;
   touchPoints.mockReturnValue(5);
   Object.defineProperty(navigator, 'maxTouchPoints', { configurable: true, get: touchPoints });
   writeBrowserServices([entry, ...services]);
 });
 afterEach(() => {
-  cleanup(); delete window.__termdockWorkspaceHost; vi.restoreAllMocks();
+  cleanup(); delete window.__veymuxWorkspaceHost; vi.restoreAllMocks();
   if (originalTouchPoints) Object.defineProperty(navigator, 'maxTouchPoints', originalTouchPoints);
   else Reflect.deleteProperty(navigator, 'maxTouchPoints');
 });
@@ -69,7 +69,7 @@ describe('bounded service documents', () => {
     open(host, 0); open(host, 1); open(host, 0);
     const discarded = screen.getByTitle<HTMLIFrameElement>('Remote 1');
     const flush = vi.fn(() => localStorage.setItem('test-workspace-draft', 'unsent text'));
-    discarded.contentWindow!.addEventListener('termdock:before-update', flush);
+    discarded.contentWindow!.addEventListener('veymux:before-update', flush);
     const backgroundListener = vi.fn();
     host.subscribe(backgroundListener, 'remote1');
     open(host, 2);

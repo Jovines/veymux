@@ -6,7 +6,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { IntegrationStore, type IntegrationPolicy, type IntegrationStorageOptions } from './integrationStore.js';
 
 let directory: string;
-beforeEach(() => { directory = fs.mkdtempSync(path.join(os.tmpdir(), 'td-persistence-')); });
+beforeEach(() => { directory = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-persistence-')); });
 afterEach(() => { vi.restoreAllMocks(); fs.rmSync(directory, { recursive: true, force: true }); });
 function setup(retention = 10000, options: IntegrationStorageOptions = {}) {
   const file = path.join(directory, 'events.json'), store = new IntegrationStore(file, retention, options);

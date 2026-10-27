@@ -1,4 +1,4 @@
-Termdock diff comparison includes code adapted from IntelliJ IDEA.
+Veymux diff comparison includes code adapted from IntelliJ IDEA.
 Copyright (C) JetBrains s.r.o.
 https://www.jetbrains.com/idea/
 
@@ -7,7 +7,7 @@ Copyright 2000-2021 JetBrains s.r.o. and contributors.
 Source: https://github.com/JetBrains/intellij-community
 Reference revision: 3e1b6c548e1d267865221e3bd70053242f8afb06
 
-Termdock modifications: TypeScript adaptation, bounded LCS/patience matching,
+Veymux modifications: TypeScript adaptation, bounded LCS/patience matching,
 Git hunk offset projection and React split-view integration.
 These adapted portions are provided under the Apache License, Version 2.0.
 

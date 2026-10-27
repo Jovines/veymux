@@ -9,7 +9,7 @@ import { TodoRunner, todoRoutes, type TodoRuntime } from './routes.js';
 let directory: string, store: TodoStore, runner: TodoRunner, runtime: TodoRuntime, server: Server, base: string;
 const config = { agentSlug: 'codex', command: 'codex', cwd: '/repo', prompt: '' };
 beforeEach(async () => {
-  directory = fs.mkdtempSync(path.join(os.tmpdir(), 'td-handoff-')); store = new TodoStore(path.join(directory, 'todos.json'));
+  directory = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-handoff-')); store = new TodoStore(path.join(directory, 'todos.json'));
   runtime = { validate: vi.fn(async value => value), target: vi.fn(async id => { if (id !== 'existing') throw new Error('目标会话不可用'); return { config, name: '已有项目会话' }; }),
     deliver: vi.fn(async () => {}), launch: vi.fn(async (_run, _prompt, callback) => callback('new-session')) };
   runner = new TodoRunner(store, runtime);
@@ -27,7 +27,7 @@ it('sends a batch and optional instruction once to an existing session without a
   expect(runtime.launch).not.toHaveBeenCalled(); expect(runtime.deliver).toHaveBeenCalledOnce();
   const prompt = vi.mocked(runtime.deliver!).mock.calls[0][1];
   for (const text of ['检查输入法', '检查上传', '先分析，不要改代码', 'https://source.invalid/reference']) expect(prompt).toContain(text);
-  expect(prompt).not.toContain('td todo report'); expect(todos.every(todo => store.get(todo.id).status === 'open')).toBe(true);
+  expect(prompt).not.toContain('veymux todo report'); expect(todos.every(todo => store.get(todo.id).status === 'open')).toBe(true);
   expect((await post({ ...input, note: '不同要求' })).status).toBe(409);
   vi.mocked(runtime.target!).mockRejectedValue(new Error('会话已关闭'));
   expect((await post(input)).body.run.id).toBe(one.body.run.id);

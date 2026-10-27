@@ -10,7 +10,7 @@ const git = async (cwd: string, args: string[]) => (await exec('git', ['-C', cwd
   timeout: 30_000, maxBuffer: 2 * 1024 * 1024,
   env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_MERGE_AUTOEDIT: 'no' },
 })).stdout.trim();
-const home = path.join(os.homedir(), '.termdock', 'task-workspaces');
+const home = path.join(os.homedir(), '.veymux', 'task-workspaces');
 
 /** Only committed code enters task worktrees; the user's checkout is never reset, cleaned or merged. */
 export async function prepareTaskWorkspace(task: CollaborationTask, sourceCwd: string, dependencies: CollaborationTask[], importCommit?: (dependency: CollaborationTask, repository: string) => Promise<void>): Promise<TaskWorkspace> {
@@ -49,7 +49,7 @@ export async function prepareTaskWorkspace(task: CollaborationTask, sourceCwd: s
   }
   if (!/^[a-f0-9]{40,64}$/.test(base)) throw new Error('目标基线无效');
   const cwd = path.join(goalDir, `${task.id}-${generation.slice(0, 8)}`);
-  const branch = `termdock/task/${task.id}-${generation.slice(0, 8)}`;
+  const branch = `veymux/task/${task.id}-${generation.slice(0, 8)}`;
   try { await readFile(path.join(cwd, '.git'), 'utf8'); }
   catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
@@ -69,7 +69,7 @@ export async function prepareTaskWorkspace(task: CollaborationTask, sourceCwd: s
         await importCommit(dependency, cwd);
         await git(cwd, ['cat-file', '-e', `${commit}^{commit}`]);
       }
-      await git(cwd, ['-c', 'user.name=Termdock', '-c', 'user.email=tasks@termdock.local', 'merge', '--no-edit', commit]);
+      await git(cwd, ['-c', 'user.name=Veymux', '-c', 'user.email=tasks@veymux.local', 'merge', '--no-edit', commit]);
     }
     const temp = `${readyFile}.${process.pid}.tmp`;
     await writeFile(temp, generation, { mode: 0o600 }); await rename(temp, readyFile);
@@ -87,7 +87,7 @@ export async function captureTaskCommit(workspace: TaskWorkspace): Promise<{ com
 async function assertManagedWorkspace(workspace: TaskWorkspace): Promise<void> {
   const relative = path.relative(home, workspace.cwd);
   if (!relative || relative.startsWith('..') || path.isAbsolute(relative)
-    || !/^termdock\/task\/[a-f0-9]{32}-[a-f0-9]{8}$/.test(workspace.branch)) throw new Error('目录不是 Termdock 独立执行工作区');
+    || !/^veymux\/task\/[a-f0-9]{32}-[a-f0-9]{8}$/.test(workspace.branch)) throw new Error('目录不是 Veymux 独立执行工作区');
   const actual = await realpath(workspace.cwd);
   if (actual !== path.resolve(workspace.cwd) || !actual.startsWith(`${await realpath(home)}${path.sep}`)
     || await git(actual, ['rev-parse', '--show-toplevel']) !== actual
@@ -121,7 +121,7 @@ export async function restoreTaskWorkspace(workspace: TaskWorkspace, cleanup: { 
   }
   const relative = path.relative(home, workspace.cwd);
   if (!relative || relative.startsWith('..') || path.isAbsolute(relative)
-    || !/^termdock\/task\/[a-f0-9]{32}-[a-f0-9]{8}$/.test(workspace.branch) || !cleanup.commit) throw new Error('工作区恢复记录无效');
+    || !/^veymux\/task\/[a-f0-9]{32}-[a-f0-9]{8}$/.test(workspace.branch) || !cleanup.commit) throw new Error('工作区恢复记录无效');
   try { await stat(workspace.cwd); await assertManagedWorkspace(workspace); return; }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
   if (await git(workspace.repository, ['rev-parse', workspace.branch]) !== cleanup.commit) throw new Error('归档分支已有变化，请核对后再恢复；不会重置分支');

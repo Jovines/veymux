@@ -21,9 +21,9 @@ import * as authProtection from '../utils/authProtection.js';
 const cleanups: (() => void)[] = [];
 afterEach(() => { for (const close of cleanups.splice(0).reverse()) close(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 it.each([['configured', false], ['preview', false], ['stable', false], ['configured', true]] as const)('keeps A reachable through B using %s configuration (legacy entry=%s) and no public B-to-A dial', async (source, legacyEntry) => {
-  vi.stubEnv('TERMDOCK_PASSWORD', 'reverse-relay-password');
+  vi.stubEnv('VEYMUX_PASSWORD', 'reverse-relay-password');
   vi.stubGlobal('CloseEvent', class extends Event { code: number; reason: string; constructor(type: string, init: { code: number; reason: string }) { super(type); this.code = init.code; this.reason = init.reason; } });
-  const dir = mkdtempSync(join(tmpdir(), 'td-reverse-relay-')); cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+  const dir = mkdtempSync(join(tmpdir(), 'veymux-reverse-relay-')); cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
   execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1', '-keyout', join(dir, 'key.pem'), '-out', join(dir, 'ca.pem'), '-subj', '/CN=localhost', '-addext', 'subjectAltName=IP:127.0.0.1,DNS:localhost'], { stdio: 'ignore' });
   const ca = readFileSync(join(dir, 'ca.pem'));
   execFileSync('openssl', ['req', '-new', '-newkey', 'rsa:2048', '-nodes', '-keyout', join(dir, 'leaf-key.pem'), '-out', join(dir, 'leaf.csr'), '-subj', '/CN=localhost'], { stdio: 'ignore' });
@@ -74,7 +74,7 @@ it.each([['configured', false], ['preview', false], ['stable', false], ['configu
   entry.listen(0, '127.0.0.1'); await once(entry, 'listening');
   cleanups.push(() => { for (const ws of wss.clients) ws.terminate(); wss.close(); entry.close(); });
   const origin = `https://127.0.0.1:${(entry.address() as { port: number }).port}`;
-  const previewDir = join(dir, 'Library', 'Application Support', source === 'stable' ? 'com.jovines.termdock' : 'com.jovines.termdock.preview');
+  const previewDir = join(dir, 'Library', 'Application Support', source === 'stable' ? 'com.jovines.veymux' : 'com.jovines.veymux.preview');
   mkdirSync(previewDir, { recursive: true });
   const previewFile = join(previewDir, 'connections.json');
   const alternateOrigin = origin.replace('127.0.0.1', 'localhost');

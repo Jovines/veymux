@@ -33,11 +33,11 @@ class FakeChild implements SupervisedChild {
   }
 
   ready(): void {
-    for (const listener of this.messageListeners) listener({ type: 'termdock-ready' });
+    for (const listener of this.messageListeners) listener({ type: 'veymux-ready' });
   }
 
   declareIntent(intent: 'restart-after-update' | 'stop'): void {
-    for (const listener of this.messageListeners) listener({ type: 'termdock-intent', intent });
+    for (const listener of this.messageListeners) listener({ type: 'veymux-intent', intent });
   }
 
   exit(code: number | null, signal: NodeJS.Signals | null = null): void {
@@ -120,7 +120,7 @@ describe('supervisor 状态机', () => {
 
     expect(harness.handle.phase()).toBe('running');
     expect(harness.states.at(-1)).toMatchObject({ phase: 'running', serverPid: 1000 });
-    expect(harness.launcher).toEqual([{ type: 'termdock-ready' }]);
+    expect(harness.launcher).toEqual([{ type: 'veymux-ready' }]);
   });
 
   it('就绪后崩溃 → 退避重启，事件记为 crash', async () => {
@@ -144,7 +144,7 @@ describe('supervisor 状态机', () => {
     harness.current().exit(1);
 
     expect(harness.incidents.at(-1)).toMatchObject({ event: 'startup-failure' });
-    expect(harness.launcher).toEqual([{ type: 'termdock-startup-failed', reason: 'startup-failure', detail: expect.stringContaining('exit code 1') }]);
+    expect(harness.launcher).toEqual([{ type: 'veymux-startup-failed', reason: 'startup-failure', detail: expect.stringContaining('exit code 1') }]);
   });
 
   it('spawn 失败（ENOENT）也能说清原因，而不是"什么都没发生"', () => {
@@ -154,7 +154,7 @@ describe('supervisor 状态机', () => {
     harness.current().fail(new Error('spawn ENOENT'));
 
     expect(harness.incidents.at(-1)).toMatchObject({ event: 'startup-failure', spawnError: 'spawn ENOENT' });
-    expect(harness.launcher.at(-1)).toMatchObject({ type: 'termdock-startup-failed', reason: 'spawn-failed' });
+    expect(harness.launcher.at(-1)).toMatchObject({ type: 'veymux-startup-failed', reason: 'spawn-failed' });
   });
 
   it('服务声明 restart-after-update 后退出 → 立刻重启、不计崩溃、退避归零', async () => {
@@ -239,7 +239,7 @@ describe('supervisor 状态机', () => {
     expect(harness.exits).toEqual([1]);
     const giveUp = harness.incidents.filter((entry) => entry.event === 'gave-up');
     expect(giveUp).toHaveLength(1);
-    expect(giveUp[0]).toMatchObject({ restartCommand: 'npm i -g termdock@1.4.261' });
+    expect(giveUp[0]).toMatchObject({ restartCommand: 'npm i -g veymux@1.4.261' });
     // 5 次之后不再拉新进程
     expect(harness.children).toHaveLength(DEFAULT_SUPERVISOR_TIMING.maxConsecutiveCrashes);
   });

@@ -8,12 +8,12 @@
  * them through `applyAgentEvent`, and streams state changes to clients for
  * status dots, "needs your input" notifications, and session resume.
  *
- * Wire shape: `ESC ] 777 ; notify ; termdock://cli-agent ; {"v":1,…} BEL`
+ * Wire shape: `ESC ] 777 ; notify ; veymux://cli-agent ; {"v":1,…} BEL`
  */
 
 import { agentBySlug, type AgentInfo } from './registry.js';
 
-export const AGENT_EVENT_SENTINEL = 'termdock://cli-agent';
+export const AGENT_EVENT_SENTINEL = 'veymux://cli-agent';
 export const AGENT_EVENT_PROTOCOL_VERSION = 1;
 
 /**
@@ -214,7 +214,7 @@ const MAX_HOOK_PROMPT_CHARS = 64_000;
 
 /**
  * Parse a complete OSC payload (identifier included, e.g.
- * `777;notify;termdock://cli-agent;{"v":1,…}`) into an AgentEvent. Returns
+ * `777;notify;veymux://cli-agent;{"v":1,…}`) into an AgentEvent. Returns
  * null for anything that isn't a well-formed sentinel event — including
  * unknown `event` values, so the protocol can grow without old servers
  * mis-classifying new events.

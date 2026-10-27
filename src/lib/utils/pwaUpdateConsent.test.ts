@@ -11,7 +11,7 @@ describe('PWA update consent', () => {
     Object.assign(serviceWorker, { controller: {}, register: vi.fn().mockResolvedValue(registration) });
     Object.defineProperty(navigator, 'serviceWorker', { value: serviceWorker, configurable: true });
     const flush = vi.fn();
-    window.addEventListener('termdock:before-update', flush);
+    window.addEventListener('veymux:before-update', flush);
     const { setupPwaUpdateReload, applyPwaUpdate } = await import('./pwaUpdate');
     setupPwaUpdateReload();
     window.dispatchEvent(new Event('load'));
@@ -24,7 +24,7 @@ describe('PWA update consent', () => {
     expect(flush).toHaveBeenCalledOnce();
     expect(postMessage).toHaveBeenCalledWith({ type: 'SKIP_WAITING' });
     expect(flush.mock.invocationCallOrder[0]).toBeLessThan(postMessage.mock.invocationCallOrder[0]);
-    window.removeEventListener('termdock:before-update', flush);
+    window.removeEventListener('veymux:before-update', flush);
     vi.clearAllTimers();
     vi.useRealTimers();
   });

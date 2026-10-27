@@ -177,7 +177,7 @@ export class CollaborationDeliveryWorker {
       if (route.capture && !message.direct) {
         try { store.setSnapshot(message.id, await route.capture()); } catch { /* best effort */ }
       }
-      this.retry(id, pending, `SHELL_CONFIRMATION_REQUIRED: 目标当前处于 shell，消息可能作为命令执行。确定发送请运行 td collab message confirm-shell ${message.id}`, true);
+      this.retry(id, pending, `SHELL_CONFIRMATION_REQUIRED: 目标当前处于 shell，消息可能作为命令执行。确定发送请运行 veymux collab message confirm-shell ${message.id}`, true);
       return;
     }
     const attempts = store.diagnostic(message.id)?.attempt_count ?? 0;

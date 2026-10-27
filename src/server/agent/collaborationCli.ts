@@ -1,4 +1,4 @@
-import { getTermdockVersion } from '../utils/version.js';
+import { getVeymuxVersion } from '../utils/version.js';
 import fs from 'node:fs';
 import { executeTaskCommand } from './collaborationTaskCli.js';
 import { randomUUID } from 'node:crypto';
@@ -11,7 +11,7 @@ export interface CollaborationCommand {
   options: Record<string, string | boolean>;
   operation?: string;
 }
-export const COLLAB_HELP = `td collab — durable messages; no agent-specific hooks required
+export const COLLAB_HELP = `veymux collab — durable messages; no agent-specific hooks required
 ── 任务闭环 ──
   task list [--group <组id>] [--purpose interactive|automation|all] | task get <任务id>
   task configure <任务id> --purpose interactive|automation --revision <当前版本>
@@ -37,39 +37,39 @@ export const COLLAB_HELP = `td collab — durable messages; no agent-specific ho
   report|plan|review 支持 --evidence <JSON> 保存证据。
   complete 提交结果；用户在工作台回答问题与验收。报告保留成员原文与时间。
   我想…
-    回复刚收到的消息 → 用投递「来自」行里的 id: td collab reply <id> "内容" --text
-    看有谁、我在哪些组 → td collab status --text
-    主动找人 → td collab send <成员id> "消息内容" --text
-    看对方在干什么 → td collab capture <成员id> --text（只读巡屏，不发送按键）
-    取大消息全文 → td collab message get <id> --text
-    改我的显示名 → td collab rename <我的id> <新名字>
-    设角色定位 → td collab role set <组id> <成员id> <定位>
-    查/改群规 → td collab rules get|set <组id>
-    消息发出去没动静 → td collab message get <id>（投递状态与重试原因）
+    回复刚收到的消息 → 用投递「来自」行里的 id: veymux collab reply <id> "内容" --text
+    看有谁、我在哪些组 → veymux collab status --text
+    主动找人 → veymux collab send <成员id> "消息内容" --text
+    看对方在干什么 → veymux collab capture <成员id> --text（只读巡屏，不发送按键）
+    取大消息全文 → veymux collab message get <id> --text
+    改我的显示名 → veymux collab rename <我的id> <新名字>
+    设角色定位 → veymux collab role set <组id> <成员id> <定位>
+    查/改群规 → veymux collab rules get|set <组id>
+    消息发出去没动静 → veymux collab message get <id>（投递状态与重试原因）
   Output: --json (default) | --jsonl | --text (human-readable lines; prefer it
     when reading results yourself. Commands without a dedicated --text form
     still print JSON)
-  Source identity (all collab commands): --session <full-Termdock-session-id>
-    or TERMDOCK_COLLAB_SESSION_ID. CLI option wins; explicit identity bypasses
+  Source identity (all collab commands): --session <full-Veymux-session-id>
+    or VEYMUX_COLLAB_SESSION_ID. CLI option wins; explicit identity bypasses
     environment/tmux detection. Use your own full member ID from status output,
     not a tmux name, backend ID or Claude session ID. Unknown IDs are refused.
-    Example: td collab --session <your-full-session-id> status
+    Example: veymux collab --session <your-full-session-id> status
   Ids: wherever an id is taken, the short id shown in deliveries and --text
     output works too; a shorter unique prefix down to 4 characters also
     resolves — an ambiguous prefix is refused, so use more characters.
-  Scheduled self-reminders: td automation create --name 'Review progress' --every 30 --self --prompt 'Review group progress and continue'
-  Scheduling help: td automation --help
+  Scheduled self-reminders: veymux automation create --name 'Review progress' --every 30 --self --prompt 'Review group progress and continue'
+  Scheduling help: veymux automation --help
 
 ── 后台集成（独立凭据；本机 Unix socket） ──
-  td integration help（管理授权与启动配置）
-  td collab --principal <id> capabilities
+  veymux integration help（管理授权与启动配置）
+  veymux collab --principal <id> capabilities
   send <成员id> "执行正文" --idempotency-key <key>（权限 message.send；普通消息，不创建看板任务）
   reply <原消息id> "追问正文" --idempotency-key <key>（回到原成员、原话题）
   message get <id> | message list [--thread <id>] [--after-id <id>] [--limit 1..200]
     （权限 message.read；list 返回保留记录，next_after_id/has_more 用于分页）
-  以上命令均需前缀 td collab --principal <id>；send/reply 支持 --file/--stdin。
+  以上命令均需前缀 veymux collab --principal <id>；send/reply 支持 --file/--stdin。
   来源可附 --source <name> --external-actor '<JSON object>' --external-message-id <id>。
-  Agent 在终端收到消息后：td collab --session <自己的TD成员id> reply <原消息id> "答复" --response-kind result --idempotency-key <key>
+  Agent 在终端收到消息后：veymux collab --session <自己的TD成员id> reply <原消息id> "答复" --response-kind result --idempotency-key <key>
     ack=明确回复收到；progress=原文进展；result=原文结果。后台回复 status=stored，仅表示持久保存。
     回复通过 message.reply 事件主动推送；payload.reply_to 关联原消息，response_kind 标记回复类型。
   events subscribe --consumer <name> --jsonl（主动推送，默认持续运行）
@@ -91,7 +91,7 @@ export const COLLAB_HELP = `td collab — durable messages; no agent-specific ho
     最低 CLI/实际服务 1.4.314；session_cold_retry=true。既有 create 同键仍不重新启动。
     不终止 Agent、不重建消失的承载、不自动补键；未知消息历史或操作结果拒绝。
     用 session get 查当前状态；同键回读原操作，重启不自动再启动。
-    诊断由管理员 td integration diagnostics <id> 回读，需 session_launch_diagnostics=true。
+    诊断由管理员 veymux integration diagnostics <id> 回读，需 session_launch_diagnostics=true。
     启动代次一致性修复需实际服务1.4.322及agent_launch_generation_consistency=true；只升级CLI不生效。
     terminal_input_check_diagnostics=true时可查guard捕获/承载解析/队列阶段及target_change.check_phase。
     TERMINAL_INPUT_TARGET_CHANGED仍拒绝真实换代，不据此自动重试或重复发送正文。
@@ -106,7 +106,7 @@ export const COLLAB_HELP = `td collab — durable messages; no agent-specific ho
   session close <id> --generation <N> --idempotency-key <key>
     权限 session.close；显式终止精确自有Agent/原失败空shell，移除活动承载；保留历史与诊断。
     1.4.349 缺活动终端登记时，Linux 仅凭唯一持久归属、原单pane及实时writer-lock身份核验关闭；
-    管理员用 td integration close-diagnostics <id> 只读核验，不按名称/argv/旧PID强制关闭。
+    管理员用 veymux integration close-diagnostics <id> 只读核验，不按名称/argv/旧PID强制关闭。
     closed终态拒绝send/reply/restore/retry-cold；release才是保留精确恢复的入口。
     有pending/进行中操作/身份不明确时拒绝；中断只对账不自动再终止，close_pending=true表示结果未确认。
     rename/close最低CLI与实际服务1.4.315；session_rename/session_close=true；两个权限默认不授权。
@@ -117,7 +117,7 @@ export const COLLAB_HELP = `td collab — durable messages; no agent-specific ho
     释放/恢复最低 CLI/实际服务 1.4.309；检查 session_runtime_release/stable_session_identity/session_lifecycle_generation。
     generation 每次实际 restore/release/rename/close/管理员兼容确认递增；旧 generation 拒绝，运行中精确 restore 不递增。
     重用同幂等键回读原操作结果，不能用于新一轮恢复；用 session get 查询当前状态。
-    旧配置须管理员 td integration resume-configuration <id> 查看，再 confirm-resume 显式确认当前指纹。
+    旧配置须管理员 veymux integration resume-configuration <id> 查看，再 confirm-resume 显式确认当前指纹。
     状态 starting/restoring/binding_pending/ready/failed/releasing/released/closing/closed；runtime_present=null 表示无法确认。
     失败码：INVALID_SESSION_GENERATION、SESSION_GENERATION_MISMATCH、SESSION_RELEASE_UNSUPPORTED；
     SESSION_PENDING_MESSAGES/SESSION_STILL_RUNNING/SESSION_OPERATION_IN_PROGRESS 表示应先处理原现场；
@@ -125,7 +125,7 @@ export const COLLAB_HELP = `td collab — durable messages; no agent-specific ho
     SESSION_RELEASE_FAILED、SESSION_STORAGE_FULL 保留原记录，不表示回收成功；
     RESUME_CONFIGURATION_CHANGED/RESUME_CONFIGURATION_UNCONFIRMED 拒绝静默替换配置；OPERATION_OUTCOME_UNCONFIRMED 保留记录待核对。
   task respond <task-id> --attempt <attempt-id> --to-event <comment-event-id> --content <答复>
-  凭据通过 TERMDOCK_INTEGRATION_CREDENTIAL_FILE 注入，不通过命令行传 token。
+  凭据通过 VEYMUX_INTEGRATION_CREDENTIAL_FILE 注入，不通过命令行传 token。
   消息接入最低 CLI/实际服务均为 1.4.308；capabilities 回读双方版本与 integration_message_send/reply/history。
   principal 只操作获授权本机组；不能冒充用户/成员或用户验收。普通消息不需要 task/accepted。
   任务命令适用于需要任务闭环的流程；message.send/read 与 task 权限独立。
@@ -282,12 +282,12 @@ export function parseCollaborationCommand(argv: string[]): CollaborationCommand 
   const requestedAction = options.help ? 'help' : positional.shift() ?? 'status';
   // A discoverable read-only entry point, sharing capture's existing scope and transport.
   if (requestedAction === 'capture') {
-    if (positional.length !== 1) throw new Error('Usage: td collab capture <session-id> [--lines 1..10000] [--raw] [--text]');
+    if (positional.length !== 1) throw new Error('Usage: veymux collab capture <session-id> [--lines 1..10000] [--raw] [--text]');
     positional.push('capture');
   }
   const action = (requestedAction === 'capture' ? 'drive' : requestedAction === 'traits' ? 'role' : requestedAction) as CollaborationCommand['action'];
-  if (!['events', 'session', 'task', 'status', 'inbox', 'send', 'handoff', 'reply', 'add', 'remove', 'spawn', 'message', 'cursor', 'route', 'rebind', 'role', 'rename', 'cleanup', 'drive', 'capabilities', 'ui', 'transport', 'group', 'rules', 'help'].includes(action)) throw new Error('Unknown collaboration command; see td collab --help');
-  if (typeof options.session === 'string' && !options.session.trim()) throw new Error('--session requires a non-empty full Termdock session id');
+  if (!['events', 'session', 'task', 'status', 'inbox', 'send', 'handoff', 'reply', 'add', 'remove', 'spawn', 'message', 'cursor', 'route', 'rebind', 'role', 'rename', 'cleanup', 'drive', 'capabilities', 'ui', 'transport', 'group', 'rules', 'help'].includes(action)) throw new Error('Unknown collaboration command; see veymux collab --help');
+  if (typeof options.session === 'string' && !options.session.trim()) throw new Error('--session requires a non-empty full Veymux session id');
   if (options.pane && !/^%\d+$/.test(String(options.pane))) throw new Error('pane must be a tmux pane id such as %3');
   if (['json', 'jsonl', 'text'].filter((key) => options[key]).length > 1) throw new Error('Choose one output format');
   if (options['wait-until'] && !['queued', 'delivered'].includes(String(options['wait-until']))) throw new Error('wait-until must be queued or delivered');
@@ -310,7 +310,7 @@ export function parseCollaborationCommand(argv: string[]): CollaborationCommand 
     for (const flag of Object.keys(options)) if (!['principal', 'json', 'jsonl', 'text', 'help', ...integrationFlags].includes(flag)) throw new Error(`--${flag} is not supported by ${action} ${command.operation}`);
   } else if (action === 'task') {
     command.operation = positional.shift(); command.target = positional.shift();
-    if (positional.length || !['list', 'get', 'create', 'configure', 'assign', 'report', 'respond', 'answer', 'ask', 'plan', 'review', 'request-review', 'comment', 'revise', 'close', 'reopen', 'coordinate', 'pause', 'resume', 'retry'].includes(command.operation ?? '')) throw new Error('Usage: td collab task list|get|create|assign|report|ask|plan|review|request-review|comment|revise|close|reopen');
+    if (positional.length || !['list', 'get', 'create', 'configure', 'assign', 'report', 'respond', 'answer', 'ask', 'plan', 'review', 'request-review', 'comment', 'revise', 'close', 'reopen', 'coordinate', 'pause', 'resume', 'retry'].includes(command.operation ?? '')) throw new Error('Usage: veymux collab task list|get|create|assign|report|ask|plan|review|request-review|comment|revise|close|reopen');
     if (['list', 'create'].includes(command.operation!) ? Boolean(command.target) : !command.target) throw new Error('task command requires a full task id except list/create');
     if (options.principal && !['list', 'get'].includes(command.operation!) && !options['idempotency-key']) throw new Error('Integration task mutation requires an explicit --idempotency-key');
   } else if (['send', 'reply', 'handoff'].includes(action)) {
@@ -322,15 +322,15 @@ export function parseCollaborationCommand(argv: string[]): CollaborationCommand 
     if (options.revision !== undefined && !options.update) throw new Error('--revision requires --update');
   } else if (action === 'rules') {
     command.operation = positional.shift(); command.groupId = positional.shift(); command.message = positional.join(' ');
-    if (!command.groupId || !['get', 'set', 'clear'].includes(command.operation ?? '')) throw new Error('Usage: td collab rules get|set|clear <group-id>');
+    if (!command.groupId || !['get', 'set', 'clear'].includes(command.operation ?? '')) throw new Error('Usage: veymux collab rules get|set|clear <group-id>');
     if (command.operation === 'set' ? [Boolean(command.message), Boolean(options.file), Boolean(options.stdin)].filter(Boolean).length !== 1
       : Boolean(command.message || options.file || options.stdin)) throw new Error('rules set requires inline text, --file or --stdin');
   } else if (action === 'group') {
     command.operation = positional.shift();
-    if (command.operation !== 'save' || positional.length || !options.file) throw new Error('Usage: td collab group save --file group.json');
+    if (command.operation !== 'save' || positional.length || !options.file) throw new Error('Usage: veymux collab group save --file group.json');
   } else if (action === 'transport') {
     command.operation = positional.shift(); command.groupId = positional.shift();
-    if (positional.length || !['info', 'list', 'invite', 'accept', 'register', 'remove', 'restore'].includes(command.operation ?? '')) throw new Error('Usage: td collab transport info|list|invite|accept|register|remove|restore');
+    if (positional.length || !['info', 'list', 'invite', 'accept', 'register', 'remove', 'restore'].includes(command.operation ?? '')) throw new Error('Usage: veymux collab transport info|list|invite|accept|register|remove|restore');
     if (['remove', 'restore'].includes(command.operation!)) {
       if (!command.groupId || !/^12D3KooW[a-zA-Z0-9]{30,60}$/.test(command.groupId) || options.file || options.origin) throw new Error('transport remove/restore requires a full service id');
     } else if (command.operation === 'register') {
@@ -339,7 +339,7 @@ export function parseCollaborationCommand(argv: string[]): CollaborationCommand 
       : !options.origin || (command.operation === 'accept' ? !options.file : options.file))) throw new Error('transport invite needs --origin; accept needs --origin and --file');
   } else if (action === 'message') {
     command.operation = positional.shift(); command.target = positional.shift();
-    if (!['get', 'watch', 'confirm-shell', 'resolve-delivery', 'list'].includes(command.operation ?? '') || (command.operation === 'list' ? !options.principal || Boolean(command.target) : !command.target) || positional.length) throw new Error('Usage: td collab message get|watch|confirm-shell|resolve-delivery <id>; --principal <id> message list');
+    if (!['get', 'watch', 'confirm-shell', 'resolve-delivery', 'list'].includes(command.operation ?? '') || (command.operation === 'list' ? !options.principal || Boolean(command.target) : !command.target) || positional.length) throw new Error('Usage: veymux collab message get|watch|confirm-shell|resolve-delivery <id>; --principal <id> message list');
     if (command.operation === 'resolve-delivery') {
       if (!['retry', 'cancel'].includes(String(options.decision)) || !/^[1-9]\d*$/.test(String(options.attempt)) || !Number.isSafeInteger(Number(options.attempt))) throw new Error('resolve-delivery requires --decision retry|cancel and --attempt <observed number>');
     } else if (options.decision !== undefined || options.attempt !== undefined) throw new Error('Delivery decision and attempt apply to resolve-delivery only');
@@ -348,7 +348,7 @@ export function parseCollaborationCommand(argv: string[]): CollaborationCommand 
     } else if (['group', 'thread', 'after-id', 'limit'].some(flag => options[flag] !== undefined)) throw new Error('History filters apply to --principal message list only');
   } else if (action === 'cursor') {
     command.operation = positional.shift(); command.target = positional.shift();
-    if (command.operation !== 'commit' || !command.target || !options.consumer || positional.length) throw new Error('Usage: td collab cursor commit <token> --consumer <name>');
+    if (command.operation !== 'commit' || !command.target || !options.consumer || positional.length) throw new Error('Usage: veymux collab cursor commit <token> --consumer <name>');
   } else if (action === 'add' || action === 'remove' || action === 'spawn') {
     command.groupId = positional.shift();
     if (action === 'spawn') command.agentSlug = positional.shift(); else command.sessionId = positional.shift();
@@ -358,32 +358,32 @@ export function parseCollaborationCommand(argv: string[]): CollaborationCommand 
     command.operation = positional.shift();
     command.groupId = positional.shift();
     if (command.operation === 'list') {
-      if (!command.groupId || positional.length) throw new Error('Usage: td collab role list <group-id>');
+      if (!command.groupId || positional.length) throw new Error('Usage: veymux collab role list <group-id>');
     } else if (command.operation === 'set') {
       command.sessionId = positional.shift();
       command.role = positional.join(' ');
-      if (!command.groupId || !command.sessionId || !command.role?.trim()) throw new Error('Usage: td collab role set <group-id> <session-id> <role…>');
+      if (!command.groupId || !command.sessionId || !command.role?.trim()) throw new Error('Usage: veymux collab role set <group-id> <session-id> <role…>');
     } else if (command.operation === 'unset') {
       command.sessionId = positional.shift();
-      if (!command.groupId || !command.sessionId || positional.length) throw new Error('Usage: td collab role unset <group-id> <session-id>');
-    } else throw new Error('Usage: td collab role list|set|unset (see td collab --help)');
+      if (!command.groupId || !command.sessionId || positional.length) throw new Error('Usage: veymux collab role unset <group-id> <session-id>');
+    } else throw new Error('Usage: veymux collab role list|set|unset (see veymux collab --help)');
   } else if (action === 'route') {
     command.operation = positional.shift(); command.target = positional.shift();
-    if (command.operation !== 'get' || !command.target || !/^[a-zA-Z0-9._-]{1,80}$/.test(command.target) || positional.length) throw new Error('Usage: td collab route get <exact-local-session-id>');
+    if (command.operation !== 'get' || !command.target || !/^[a-zA-Z0-9._-]{1,80}$/.test(command.target) || positional.length) throw new Error('Usage: veymux collab route get <exact-local-session-id>');
   } else if (action === 'rename') {
     command.sessionId = positional.shift();
     command.name = positional.join(' ');
-    if (!command.sessionId || !command.name?.trim()) throw new Error('Usage: td collab rename <session-id> <name…>');
+    if (!command.sessionId || !command.name?.trim()) throw new Error('Usage: veymux collab rename <session-id> <name…>');
   } else if (action === 'cleanup') {
     command.sessionIds = [...positional];
-    if (command.sessionIds.length === 0) throw new Error('Usage: td collab cleanup <session-id> [<session-id>…]');
+    if (command.sessionIds.length === 0) throw new Error('Usage: veymux collab cleanup <session-id> [<session-id>…]');
   } else if (action === 'drive') {
     command.sessionId = positional.shift();
     command.operation = positional.shift();
-    if (!command.sessionId || !command.operation) throw new Error('Usage: td collab drive <session-id> approve|enter|escape|space|left|right|up|down|capture|run <command…>');
+    if (!command.sessionId || !command.operation) throw new Error('Usage: veymux collab drive <session-id> approve|enter|escape|space|left|right|up|down|capture|run <command…>');
     if (command.operation === 'run') {
       command.message = positional.join(' ');
-      if (!command.message?.trim()) throw new Error('Usage: td collab drive <session-id> run <command…>');
+      if (!command.message?.trim()) throw new Error('Usage: veymux collab drive <session-id> run <command…>');
     } else if (positional.length || !['approve', 'enter', 'escape', 'space', 'left', 'right', 'up', 'down', 'capture'].includes(command.operation)) {
       throw new Error(`Unknown drive action ${command.operation ?? ''}; use approve|enter|escape|space|left|right|up|down|capture|run`);
     }
@@ -481,7 +481,7 @@ export async function executeCollaborationCommand(command: CollaborationCommand,
       else if (value.message) {
         // One line instead of the full rules text — the CLI is stateless so it
         // cannot diff versions across calls; --no-rules silences it entirely.
-        if (!o['no-rules'] && value.message.instructions?.text) io.write(`消息附群规版本 ${value.message.instructions.version}；td collab rules get <组id> --text 查看全文`);
+        if (!o['no-rules'] && value.message.instructions?.text) io.write(`消息附群规版本 ${value.message.instructions.version}；veymux collab rules get <组id> --text 查看全文`);
         io.write(`[${value.status}] ${canonicalShortId(String(value.message_id ?? ''))}\n${value.message.content}`);
         // A pending message keeps retrying by design (the alternative is
         // dropping it); surface why and when the next attempt is so the sender
@@ -577,14 +577,14 @@ export async function executeCollaborationCommand(command: CollaborationCommand,
             const members = new Map((group.members ?? []).map((member) => [member.sessionId, member.name ?? null]));
             for (const id of group.sessionIds) io.write(roleLine({ sessionId: id, name: members.get(id) ?? null }, group.roles?.[id]));
           }
-          io.write('给成员发消息: td collab send <成员id> "消息内容" --text（成员 id 见上表）');
+          io.write('给成员发消息: veymux collab send <成员id> "消息内容" --text（成员 id 见上表）');
         }
       } catch { /* help stays available without a server or session */ }
       return 0;
     }
     if (command.action === 'capabilities' || command.action === 'status') {
       const result = await request('GET', command.action === 'status' ? '/peers' : '/capabilities') as Json & { source?: { sessionId?: string; name?: string }; peers?: Array<Json & { sessionId?: string; name?: string }>; groups?: Array<Json> };
-      if (command.action === 'capabilities') result.cli_version = getTermdockVersion();
+      if (command.action === 'capabilities') result.cli_version = getVeymuxVersion();
       if (command.action === 'status' && o.text) {
         // Human-readable status: no JSON dump, one line per fact.
         const source = result.source as { sessionId?: string; name?: string } | undefined;
@@ -615,8 +615,8 @@ export async function executeCollaborationCommand(command: CollaborationCommand,
           const name = (peer as { name?: string }).name;
           if (typeof id !== 'string' || id === source?.sessionId) continue;
           io.write(`- ${name || id}：${id.startsWith('remote:')
-            ? `远端成员，请用 td collab send ${id} "当前进展？" --text`
-            : `td collab capture ${id} --text`}`);
+            ? `远端成员，请用 veymux collab send ${id} "当前进展？" --text`
+            : `veymux collab capture ${id} --text`}`);
         }
         return 0;
       }
@@ -699,7 +699,7 @@ export async function executeCollaborationCommand(command: CollaborationCommand,
         role: command.operation === 'unset' ? null : command.role });
       if (o.text) {
         io.write(command.operation === 'set'
-          ? `定位已设置：${command.sessionId} = ${(body.group as { roles?: Record<string, string> }).roles?.[command.sessionId!] ?? ''}\n（改成员显示名: td collab rename ${command.sessionId} <新名字>）`
+          ? `定位已设置：${command.sessionId} = ${(body.group as { roles?: Record<string, string> }).roles?.[command.sessionId!] ?? ''}\n（改成员显示名: veymux collab rename ${command.sessionId} <新名字>）`
           : `定位已清除：${command.sessionId}`);
       } else output(body);
       return 0;

@@ -55,7 +55,7 @@ it.each([390, 320, 1280])('inserts the common todo prompt at the caret with no s
   await commands.composerTap('[aria-label="更多会话操作"]');
   await expect.element(page.getByRole('menu', { name: '会话操作' })).toBeVisible();
   expect(document.activeElement).toBe(editor); expect(blur).not.toHaveBeenCalled();
-  await page.screenshot({ path: `/tmp/termdock-chat-actions-${width}.png` });
+  await page.screenshot({ path: `/tmp/veymux-chat-actions-${width}.png` });
   await commands.composerTap('[role="menuitem"]:has-text("插入待办提示")');
   await expect.poll(() => readChatEditor(editor).text).toBe(`前文 ${TODO_GUIDANCE} 后文`);
   expect(document.activeElement).toBe(editor); expect(blur).not.toHaveBeenCalled();
@@ -108,12 +108,12 @@ it('uses the current directory and current chat Session for copy and share actio
   await commands.composerTap('[aria-label="更多会话操作"]');
   await commands.composerTap('[role="menuitem"]:has-text("复制当前目录")');
   await expect.poll(() => write.mock.calls[0]?.[0]).toBe('/workspace/current-project');
-  const share = vi.fn(); window.addEventListener('termdock:open-services', share);
+  const share = vi.fn(); window.addEventListener('veymux:open-services', share);
   try {
     await commands.composerTap('[aria-label="更多会话操作"]');
     await commands.composerTap('[role="menuitem"]:has-text("分享这个会话")');
     expect((share.mock.calls[0][0] as CustomEvent).detail).toEqual({ inviteSessionId: id, viewMode: 'chat' });
-  } finally { window.removeEventListener('termdock:open-services', share); }
+  } finally { window.removeEventListener('veymux:open-services', share); }
 });
 it('supports keyboard selection without opening a second Session or changing the draft', async () => {
   const editor = await mount(1280); await page.elementLocator(editor).fill('不修改草稿');

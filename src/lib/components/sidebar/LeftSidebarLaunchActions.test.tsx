@@ -82,8 +82,8 @@ describe('LeftSidebar launch actions', () => {
     await user.click(button);
     expect(button.getAttribute('aria-busy')).toBe('true');
     expect(other.getAttribute('aria-busy')).toBe('false');
-    expect(button.querySelector('.td-loading-spinner')).toBeTruthy();
-    expect(other.querySelector('.td-loading-spinner')).toBeNull();
+    expect(button.querySelector('.veymux-loading-spinner')).toBeTruthy();
+    expect(other.querySelector('.veymux-loading-spinner')).toBeNull();
     expect(button.textContent).toContain(name === 'New Codex' ? 'Codex' : 'Terminal');
     expect(screen.queryByText('Still waiting for the service…')).toBeNull();
     await user.click(button);

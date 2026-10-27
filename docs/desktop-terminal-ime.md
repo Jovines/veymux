@@ -42,7 +42,7 @@
 
 若再次锁定 ABC，在重启前记录客户端及 macOS 的精确版本，并比较当前终端、客户端普通搜索框、其他原生应用的输入源切换结果；检查当前 DOM 聚焦节点及其 readonly/inert/inputMode、原生输入上下文的 allowedInputSourceLocales，以及系统 Secure Input 的持有进程。不要通过自动强切系统输入源、周期性 blur/focus 或刷新整个客户端掩盖故障。
 
-本次远程只读检查可连接的 Mac 为 macOS 27.2，但处于锁屏状态（`CGSSessionScreenIsLocked=Yes`），Secure Input 持有者是 loginwindow；这不是反馈用户的故障现场，不能当作 Termdock 导致安全输入残留的证据。未替换安装包或验收签名客户端的新行为。
+本次远程只读检查可连接的 Mac 为 macOS 27.2，但处于锁屏状态（`CGSSessionScreenIsLocked=Yes`），Secure Input 持有者是 loginwindow；这不是反馈用户的故障现场，不能当作 Veymux 导致安全输入残留的证据。未替换安装包或验收签名客户端的新行为。
 
 ## 部分会话中文候选组词卡顿（2026-10-25）
 

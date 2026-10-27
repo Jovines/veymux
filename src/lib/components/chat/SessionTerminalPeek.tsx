@@ -50,7 +50,7 @@ export function TerminalPeekTrigger({ children, className, hoverDelay = 200, lab
 type PeekBounds = { left: number; top: number; width: number; height: number };
 type PeekSize = { width: number; height: number };
 type PeekOrigin = { left: number; top: number; paddingTop: number; paddingBottom: number };
-const sizeKey = 'termdock:terminal-peek-size';
+const sizeKey = 'veymux:terminal-peek-size';
 function readPeekSize(): PeekSize | null {
   try {
     const size = JSON.parse(localStorage.getItem(sizeKey) || 'null');

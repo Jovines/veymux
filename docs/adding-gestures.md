@@ -175,7 +175,7 @@ useGesture({
 
 ```javascript
 // 打开日志
-window.__TERMDOCK_GESTURE_DEBUG__ = true;
+window.__VEYMUX_GESTURE_DEBUG__ = true;
 
 // 查看所有已注册的 handler
 GestureManager.getHandlers();
@@ -196,7 +196,7 @@ GestureManager.getClaimedHandler(pointerId);
 
 | 问题 | 排查方向 |
 |------|---------|
-| 我的手势认领不到 | 打开 `__TERMDOCK_GESTURE_DEBUG__`，看是不是更高优先级的 handler 认领了。检查 `container` 参数是否生效 |
+| 我的手势认领不到 | 打开 `__VEYMUX_GESTURE_DEBUG__`，看是不是更高优先级的 handler 认领了。检查 `container` 参数是否生效 |
 | 点击软键盘没反应 | `container` 写了 `containerRef.current`（非惰性求值）→ 匹配了全局 → 改成 `() => containerRef.current` |
 | 两个手势同时触发 | 检查在 `isClaimed === false` 时是否还在执行动作 → 只改状态、不执行动作 |
 | tmux 里滚不动 | 确认 tmux-scroll（80）能否正常认领。若被长按（90）抢了，检查长按是否在 `isClaimed=false` 时取消了 hold timer |

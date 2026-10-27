@@ -14,7 +14,7 @@ export function probeTmuxReadiness(input: {
 }): Promise<InputCheckResult> {
   const { pane, run, stdin, assertCurrent } = input;
   const key = `${pane.serverPid}:${pane.sessionId}:${pane.paneId}:${pane.panePid}`;
-  const buffer = `termdock-input-check-${process.pid}-${crypto.randomUUID()}`;
+  const buffer = `veymux-input-check-${process.pid}-${crypto.randomUUID()}`;
   const read = async (): Promise<InputFrame> => {
     assertCurrent();
     const [header, ...lines] = (await run(['display-message', '-p', '-t', pane.paneId,

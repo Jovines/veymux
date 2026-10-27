@@ -76,9 +76,9 @@ describe('MultiTerminalView session recovery and keyboard ownership', () => {
   beforeEach(() => {
     vi.clearAllMocks(); terminalReadiness.withheld.clear(); terminalReadiness.release.clear();
     window.localStorage.clear();
-    window.localStorage.setItem('termdock:locale', 'en');
-    window.localStorage.setItem('termdock-sessions-cache', JSON.stringify(sessions));
-    window.localStorage.setItem('termdock-active-session', 'one');
+    window.localStorage.setItem('veymux:locale', 'en');
+    window.localStorage.setItem('veymux-sessions-cache', JSON.stringify(sessions));
+    window.localStorage.setItem('veymux-active-session', 'one');
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1200 });
     Object.defineProperty(window, 'innerHeight', { configurable: true, value: 900 });
     vi.stubGlobal('matchMedia', vi.fn().mockImplementation((media: string) => ({
@@ -104,9 +104,9 @@ describe('MultiTerminalView session recovery and keyboard ownership', () => {
   it.each(['chat', 'terminal'])('releases startup using the restored %s view readiness', async mode => {
     const id = `startup-${mode}`, item = { ...sessions[0], frontendSessionId: id, sessionId: id };
     api.getSessionInventory.mockResolvedValue({ ...inventory, clientSessions: [item] });
-    localStorage.setItem('termdock-sessions-cache', JSON.stringify([item]));
-    localStorage.setItem('termdock-active-session', id);
-    localStorage.setItem(`termdock:session-view:${location.origin}:${id}`, mode);
+    localStorage.setItem('veymux-sessions-cache', JSON.stringify([item]));
+    localStorage.setItem('veymux-active-session', id);
+    localStorage.setItem(`veymux:session-view:${location.origin}:${id}`, mode);
     vi.stubGlobal('fetch', vi.fn(async () => Response.json({ mode, updatedAt: 1 })));
     terminalReadiness.withheld.add(id);
     const ready = vi.fn();
@@ -225,7 +225,7 @@ describe('MultiTerminalView session recovery and keyboard ownership', () => {
     });
     await waitFor(() => expect(current().sessions.map(session => session.id)).toContain('created'));
     expect(current().activeSessionId).toBe(expected);
-    expect(window.localStorage.getItem('termdock-active-session')).toBe(expected);
+    expect(window.localStorage.getItem('veymux-active-session')).toBe(expected);
     expect(useTerminalStore.getState().sessions.get('created')?.terminalSessionId).toBe('backend-created');
     expect(onResult).toHaveBeenCalledWith({ ok: true, sessionId: 'created' });
   });
@@ -240,7 +240,7 @@ describe('MultiTerminalView session recovery and keyboard ownership', () => {
     api.sendTerminalInput.mockResolvedValue(undefined);
     const created = { ...sessions[0], sessionId: createdId, frontendSessionId: createdId, name: 'Created Agent', backendSessionId: `backend-${createdId}` };
     const modes = new Map<string, string>([['one', sourceMode]]);
-    localStorage.setItem(`termdock:session-view:${location.origin}:one`, sourceMode);
+    localStorage.setItem(`veymux:session-view:${location.origin}:one`, sourceMode);
     vi.stubGlobal('fetch', vi.fn(async (url, init?: RequestInit) => {
       const id = /terminal\/([^/]+)\/view-mode/.exec(String(url))?.[1] || '';
       if (init?.body) modes.set(id, JSON.parse(String(init.body)).mode);
@@ -372,7 +372,7 @@ describe('MultiTerminalView session recovery and keyboard ownership', () => {
     await act(async () => { closing.resolve(); await closing.promise; });
     await waitFor(() => expect(current().sessions.map(session => session.id)).not.toContain('one'));
     expect(current().activeSessionId).toBe('three');
-    expect(window.localStorage.getItem('termdock-active-session')).toBe('three');
+    expect(window.localStorage.getItem('veymux-active-session')).toBe('three');
   });
 
 
@@ -383,7 +383,7 @@ describe('MultiTerminalView session recovery and keyboard ownership', () => {
   }
 
   function cachedBackend() {
-    return JSON.parse(localStorage.getItem('termdock-sessions-cache')!).find((session: {sessionId: string}) => session.sessionId === 'one')?.backendSessionId;
+    return JSON.parse(localStorage.getItem('veymux-sessions-cache')!).find((session: {sessionId: string}) => session.sessionId === 'one')?.backendSessionId;
   }
 
   it.each(['rename restored', 'rename other', 'reorder', 'creation'])('uses the rebuilt binding in runtime/store/cache during %s', async (mutation) => {
@@ -496,8 +496,8 @@ describe('MultiTerminalView session recovery and keyboard ownership', () => {
 
   it('split window chrome follows actual platform/Preview/pin facts and preserves pane mounts on pin changes',async()=>{
     const updates=vi.fn();
-    const previousBridge=window.termdockDesktop,previousPreview=document.documentElement.dataset.termdockPreview;
-    window.termdockDesktop={platform:'darwin'} as any;document.documentElement.dataset.termdockPreview='true';
+    const previousBridge=window.veymuxDesktop,previousPreview=document.documentElement.dataset.veymuxPreview;
+    window.veymuxDesktop={platform:'darwin'} as any;document.documentElement.dataset.veymuxPreview='true';
     const props={desktopFloatingTitle:true,desktopLeftSidebarPinned:false,onSessionDataUpdate:updates};
     const view=render(<MultiTerminalView {...props}/>);
     try{
@@ -506,7 +506,7 @@ describe('MultiTerminalView session recovery and keyboard ownership', () => {
       dispatch('combine-terminal-split-sessions',{primaryId:'one',secondaryId:'two'});
       await waitFor(()=>expect(view.container.querySelector('[data-split-window-header]')).toBeTruthy());
       const header=view.container.querySelector('[data-split-window-header]')!;
-      expect(header.getAttribute('data-termdock-window-header')).toBe('true');expect(header.textContent).toBe('Split group');
+      expect(header.getAttribute('data-veymux-window-header')).toBe('true');expect(header.textContent).toBe('Split group');
       dispatch('rename-terminal-split-workspace',{workspaceId:updates.mock.lastCall![0].splitWorkspaces[0].id,name:'Build and logs'});
       expect(header.textContent).toBe('Build and logs');
       expect(header.className).toContain('h-[46px]');expect(header.className).toContain('shrink-0');expect(header.className).toContain('pl-[88px]');
@@ -518,13 +518,13 @@ describe('MultiTerminalView session recovery and keyboard ownership', () => {
       expect(view.container.querySelector('[data-split-window-header]')).toBeNull();
       expect(screen.getByRole('textbox',{name:'Terminal one'})).toBe(one);expect(screen.getByRole('textbox',{name:'Terminal two'})).toBe(two);
       view.rerender(<MultiTerminalView {...props}/>);expect(view.container.querySelector('[data-split-window-header]')).toBeTruthy();
-      for(const platform of ['linux','win32']){window.termdockDesktop={platform} as any;view.rerender(<MultiTerminalView {...props}/>);expect(view.container.querySelector('[data-split-window-header]')).toBeNull();}
-      window.termdockDesktop=undefined;view.rerender(<MultiTerminalView {...props}/>);expect(view.container.querySelector('[data-split-window-header]')).toBeNull();
-      window.termdockDesktop={platform:'darwin'} as any;
-      delete document.documentElement.dataset.termdockPreview;view.rerender(<MultiTerminalView {...props}/>);expect(view.container.querySelector('[data-split-window-header]')).toBeNull();
-      document.documentElement.dataset.termdockPreview='true';view.rerender(<MultiTerminalView {...props} desktopFloatingTitle={false}/>);expect(view.container.querySelector('[data-split-window-header]')).toBeNull();
+      for(const platform of ['linux','win32']){window.veymuxDesktop={platform} as any;view.rerender(<MultiTerminalView {...props}/>);expect(view.container.querySelector('[data-split-window-header]')).toBeNull();}
+      window.veymuxDesktop=undefined;view.rerender(<MultiTerminalView {...props}/>);expect(view.container.querySelector('[data-split-window-header]')).toBeNull();
+      window.veymuxDesktop={platform:'darwin'} as any;
+      delete document.documentElement.dataset.veymuxPreview;view.rerender(<MultiTerminalView {...props}/>);expect(view.container.querySelector('[data-split-window-header]')).toBeNull();
+      document.documentElement.dataset.veymuxPreview='true';view.rerender(<MultiTerminalView {...props} desktopFloatingTitle={false}/>);expect(view.container.querySelector('[data-split-window-header]')).toBeNull();
       view.rerender(<MultiTerminalView {...props}/>);expect(view.container.querySelector('[data-split-window-header]')).toBeTruthy();
-    }finally{window.termdockDesktop=previousBridge;if(previousPreview===undefined)delete document.documentElement.dataset.termdockPreview;else document.documentElement.dataset.termdockPreview=previousPreview;}
+    }finally{window.veymuxDesktop=previousBridge;if(previousPreview===undefined)delete document.documentElement.dataset.veymuxPreview;else document.documentElement.dataset.veymuxPreview=previousPreview;}
   });
 
 });

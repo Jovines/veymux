@@ -17,7 +17,7 @@ import type { TerminalHandlers } from '../../terminal/types';
 import { clearChatSnapshots } from './chatSnapshot';
 import { TerminalGeometry } from '../../terminal/geometry';
 const backend = vi.hoisted(() => ({ inputs: vi.fn(), connect: vi.fn(), resize: vi.fn(), close: vi.fn(), handlers: undefined as TerminalHandlers | undefined }));
-vi.mock('../../terminal/factory', () => ({ createTermdockAPI: () => ({
+vi.mock('../../terminal/factory', () => ({ createVeymuxAPI: () => ({
   connect: (_id: string, handlers: TerminalHandlers) => {
     backend.connect(); backend.handlers = handlers;
     queueMicrotask(() => { handlers.onEvent({ type: 'connected', mode: 'shell', cwd: '/tmp' }); handlers.onEvent({ type: 'data', data: '\r\nlive attach output\r\n' }); handlers.onEvent({ type: 'terminal-output-activity', active: true }); });
@@ -39,7 +39,7 @@ async function mount(width = 1280, withAssistant = false, paneTitle = false, rep
   // Start outside any trigger left under the pointer by the previous journey.
   await commands.peekMove('html', .99, .005);
   sessionId = `peek-${Date.now()}`; let mode = 'chat', replyPending = true;
-  localStorage.setItem(`termdock:session-view:${location.origin}:${sessionId}`, mode);
+  localStorage.setItem(`veymux:session-view:${location.origin}:${sessionId}`, mode);
   vi.stubGlobal('fetch', vi.fn(async (url, init) => {
     if (String(url).includes('/view-mode')) { if (init?.body) mode = JSON.parse(String(init.body)).mode; return Response.json({ mode, chatEligibility: { allowed: true, program: 'codex' } }); }
     if (String(url).includes('/chat')) return Response.json({ agentAvailable: true, agent: { displayName: 'Codex', slug: 'codex' }, replyPending, messages: [{ id: 'u1', role: 'user', content: '检查构建输出', createdAt: 1, status: 'delivered' }, ...(withAssistant ? Array.from({ length: replyCount }, (_, i) => ({ id: `a${i + 1}`, role: 'assistant', content: i ? `继续检查第 ${i + 1} 项构建结果` : '正在检查构建输出', createdAt: i + 2, status: 'stored' })) : [])] });
@@ -72,10 +72,10 @@ it.each([1280, 390])('checks input once after processing and offers the retained
   await expect.element(page.getByRole('button', { name: '输入响应未确认，查看终端' })).toBeVisible();
   expect(checks).toEqual([{ backendSessionId: 'backend-peek' }]);
   expect(document.querySelector('[data-chat-terminal-access]')?.textContent).toBe('检查终端');
-  expect(document.querySelector('[data-chat-terminal-access] .td-loading-spinner')).toBeNull();
+  expect(document.querySelector('[data-chat-terminal-access] .veymux-loading-spinner')).toBeNull();
   expect(editor.textContent).toContain('保留未发送草稿');
   expect(backend.inputs).not.toHaveBeenCalled();
-  await page.screenshot({ path: `/tmp/termdock-input-check-${width}-dpr${devicePixelRatio}.png` });
+  await page.screenshot({ path: `/tmp/veymux-input-check-${width}-dpr${devicePixelRatio}.png` });
   await page.getByRole('button', { name: '输入响应未确认，查看终端' }).click();
   await expect.element(page.getByRole('dialog', { name: '会话终端预览' })).toBeVisible();
   expect(backend.connect).toHaveBeenCalledTimes(1); expect(checks).toHaveLength(1);
@@ -87,7 +87,7 @@ it.each([1280, 390])('checks nonempty idle conversation entries when selecting a
   const ids = [`entry-a-${Date.now()}`, `entry-b-${Date.now()}`];
   const checks: Array<{ id: string; entryId: string }> = [];
   for (const id of ids) {
-    localStorage.setItem(`termdock:session-view:${location.origin}:${id}`, 'chat');
+    localStorage.setItem(`veymux:session-view:${location.origin}:${id}`, 'chat');
     useTerminalStore.getState().setTerminalSession(id, { sessionId: `backend-${id}`, mode: 'shell', cols: 80, rows: 24 });
   }
   vi.stubGlobal('fetch', vi.fn(async (url, init) => {
@@ -117,7 +117,7 @@ it.each([1280, 390])('checks nonempty idle conversation entries when selecting a
   expect(editor.textContent).toContain('切回来保留草稿');
   await page.getByRole('button', { name: '会话 A' }).click(); await frame(); expect(checks).toHaveLength(3);
   expect(backend.inputs).not.toHaveBeenCalled();
-  await page.screenshot({ path: `/tmp/termdock-entry-probe-${width}-dpr${devicePixelRatio}.png` });
+  await page.screenshot({ path: `/tmp/veymux-entry-probe-${width}-dpr${devicePixelRatio}.png` });
 });
 
 it.each([1280, 390])('baseline: switches between chat and the retained full terminal at width %i', async width => {
@@ -145,7 +145,7 @@ it.each([1280, 390])('opens unread chat from the active terminal bell and locate
     ? Response.json({ chatIndex: { conversationId: 'bell-chat', messageIds, viewedMessageIds: messageIds } })
     : fetchHistory(url, init));
   await expect.poll(() => document.querySelector('[data-attention-button]')).not.toBeNull();
-  await page.screenshot({ path: `/tmp/termdock-unread-bell-before-${width}-dpr${devicePixelRatio}.png` });
+  await page.screenshot({ path: `/tmp/veymux-unread-bell-before-${width}-dpr${devicePixelRatio}.png` });
   await page.elementLocator(document.querySelector('[data-attention-button]')!).click();
   await expect.element(page.getByRole('button', { name: '切换到终端' })).toBeVisible();
   await expect.element(page.getByText('继续检查第 4 项构建结果', { exact: true })).toBeVisible();
@@ -156,13 +156,13 @@ it.each([1280, 390])('opens unread chat from the active terminal bell and locate
   expect(useTerminalStore.getState().activeSessionId).toBe(sessionId);
   await expect.poll(() => useTerminalStore.getState().sessions.get(sessionId)?.chatAttention?.unreadIds, { timeout: 3000 }).toEqual([]);
   await expect.poll(() => document.querySelector('[data-attention-button]')).toBeNull();
-  await page.screenshot({ path: `/tmp/termdock-unread-bell-after-${width}-dpr${devicePixelRatio}.png` });
+  await page.screenshot({ path: `/tmp/veymux-unread-bell-after-${width}-dpr${devicePixelRatio}.png` });
 });
 
 it.each([1280, 390])('measures and synchronizes the new Agent terminal behind chat before sending its startup command at width %i', async width => {
   await page.viewport(width, 900);
   sessionId = `chat-startup-${width}-${Date.now()}`;
-  localStorage.setItem(`termdock:session-view:${location.origin}:${sessionId}`, 'chat');
+  localStorage.setItem(`veymux:session-view:${location.origin}:${sessionId}`, 'chat');
   vi.stubGlobal('fetch', vi.fn(async url => String(url).includes('/view-mode') ? Response.json({ mode: 'chat' })
     : String(url).includes('/chat') ? Response.json({ agentAvailable: false, messages: [] }) : Response.json({})));
   useTerminalStore.getState().setTerminalSession(sessionId, { sessionId: 'startup-backend', mode: 'shell', cols: 80, rows: 24, cwd: '/tmp' });
@@ -214,7 +214,7 @@ it('moves the same complete terminal into a hover bubble, accepts input, and clo
   await expect.poll(() => backend.inputs.mock.calls.map(([text]) => text).join('')).toContain('hello\r\x1b\x03');
   expect(editor.textContent).toBe('聊天草稿不变');
   if (toolbar) expect(panel.contains(toolbar)).toBe(true);
-  await page.screenshot({ path: `/tmp/termdock-terminal-peek-dpr${devicePixelRatio}.png` });
+  await page.screenshot({ path: `/tmp/veymux-terminal-peek-dpr${devicePixelRatio}.png` });
   await page.getByRole('button', { name: '查看终端详情' }).hover();
   expect(document.querySelector('[data-terminal-peek]')).toBe(panel);
   await commands.peekMove('body', .99, .005);
@@ -382,7 +382,7 @@ it('uses the whole window for a preview anchored in a narrow split pane', async 
     expect(panel.width).toBeGreaterThan(550);
   };
   check();
-  await page.screenshot({ path: `/tmp/termdock-peek-pane-dpr${devicePixelRatio}.png` });
+  await page.screenshot({ path: `/tmp/veymux-peek-pane-dpr${devicePixelRatio}.png` });
   Object.assign(main.style, { left: '400px', width: '400px', height: '400px' });
   await frame(); await frame();
   // A moved trigger may leave the pointer and close the hover preview.
@@ -397,7 +397,7 @@ it.each([1280, 390])('opens the retained terminal for an explicitly blocked Agen
   const store = useTerminalStore.getState();
   store.setSessionAgentStatus(sessionId, { agentStatus: 'waiting' });
   await expect.element(page.getByRole('status', { name: 'Codex等你处理' })).toBeVisible();
-  expect(document.querySelector('[data-chat-reply-status] .td-loading-spinner')).toBeNull();
+  expect(document.querySelector('[data-chat-reply-status] .veymux-loading-spinner')).toBeNull();
   store.setSessionAgentStatus(sessionId, { agentStatus: 'idle' });
   store.setSessionTuiProgress(sessionId, { source: 'osc7501', state: 'blocked', progress: null, kind: 'question' });
   await expect.element(page.getByRole('status', { name: 'Codex待回答' })).toBeVisible();
@@ -407,7 +407,7 @@ it.each([1280, 390])('opens the retained terminal for an explicitly blocked Agen
   expect(backend.inputs.mock.calls.length).toBe(writes);
   store.setSessionTuiProgress(sessionId, { source: 'osc7501', state: 'blocked', progress: null, kind: 'permission' });
   await expect.element(page.getByRole('status', { name: 'Codex待确认' })).toBeVisible();
-  expect(document.querySelector('[data-chat-reply-status] .td-loading-spinner')).toBeNull();
+  expect(document.querySelector('[data-chat-reply-status] .veymux-loading-spinner')).toBeNull();
   store.setSessionAgentStatus(sessionId, { agentStatus: 'working' });
   await expect.element(page.getByRole('status', { name: 'Codex处理中' })).toBeVisible();
 });
@@ -415,20 +415,20 @@ it.each([1280, 390])('opens the retained terminal for an explicitly blocked Agen
 it.each([1280, 390])('keeps a preview entry above the composer after activity stops at width %i', async width => {
   const { completeReply } = await mount(width, true);
   const status = document.querySelector<HTMLElement>('[data-chat-reply-status]')!;
-  expect(status.querySelector('.td-loading-spinner')).not.toBeNull();
+  expect(status.querySelector('.veymux-loading-spinner')).not.toBeNull();
   expect(status.closest('[data-chat-agent-header]')).toBeNull();
   expect(status.closest('[data-chat-message-actions]')).toBeNull();
   expect(status.closest('[data-chat-terminal-dock]')).not.toBeNull();
   expect(status.closest('.session-chat-scroll')).toBeNull();
   expect(document.querySelector('[data-chat-reply-feedback]')).toBeNull();
-  await page.screenshot({ path: `/tmp/termdock-output-status-${width}-dpr${devicePixelRatio}.png` });
+  await page.screenshot({ path: `/tmp/veymux-output-status-${width}-dpr${devicePixelRatio}.png` });
   backend.handlers!.onEvent({ type: 'terminal-output-activity', active: false });
   await expect.element(page.getByRole('status', { name: 'Codex处理中' })).not.toBeInTheDocument();
   const entry = document.querySelector('[data-chat-terminal-access]')!;
   expect(entry.isConnected).toBe(true);
   expect(status).toBe(entry);
   expect(status.textContent).toBe('详情');
-  expect(status.querySelector('.td-loading-spinner')).toBeNull();
+  expect(status.querySelector('.veymux-loading-spinner')).toBeNull();
   completeReply();
   await expect.poll(() => document.querySelector('[data-chat-reply-status]')).toBeNull();
   expect(entry.textContent).toBe('详情');
@@ -442,7 +442,7 @@ it.each([1280, 390])('keeps a preview entry above the composer after activity st
   expect(document.querySelector('[data-chat-terminal-access]')).toBe(entry);
   await page.getByRole('button', { name: '关闭终端预览' }).click();
   expect(backend.connect).toHaveBeenCalledTimes(1);
-  await page.screenshot({ path: `/tmp/termdock-quiet-status-${width}-dpr${devicePixelRatio}.png` });
+  await page.screenshot({ path: `/tmp/veymux-quiet-status-${width}-dpr${devicePixelRatio}.png` });
 });
 
 it('answers terminal cursor queries during hover before any user interaction', async () => {
@@ -461,11 +461,11 @@ it('resizes the preview with a real drag and preserves its size in a smaller pan
   const panel = document.querySelector<HTMLElement>('[data-terminal-peek]')!;
   const before = panel.getBoundingClientRect();
   await commands.peekResize(-120, -60);
-  await expect.poll(() => JSON.parse(localStorage.getItem('termdock:terminal-peek-size') || '{}').width).toBe(before.width - 120);
+  await expect.poll(() => JSON.parse(localStorage.getItem('veymux:terminal-peek-size') || '{}').width).toBe(before.width - 120);
   const resized = panel.getBoundingClientRect();
   expect(resized.top).toBe(before.top); expect(resized.left).toBe(before.left);
   expect(resized.height).toBe(before.height - 60);
-  const saved = JSON.parse(localStorage.getItem('termdock:terminal-peek-size')!);
+  const saved = JSON.parse(localStorage.getItem('veymux:terminal-peek-size')!);
   await commands.peekMove('body', .99, .005);
   await expect.poll(() => document.querySelector('[data-terminal-peek]')).toBeNull();
   await trigger.hover(); await expect.element(page.getByRole('dialog', { name: '会话终端预览' })).toBeVisible();
@@ -475,7 +475,7 @@ it('resizes the preview with a real drag and preserves its size in a smaller pan
   await frame();
   await trigger.hover(); await expect.element(page.getByRole('dialog', { name: '会话终端预览' })).toBeVisible();
   expect(document.querySelector('[data-terminal-peek]')!.getBoundingClientRect().width).toBe(saved.width);
-  expect(JSON.parse(localStorage.getItem('termdock:terminal-peek-size')!).width).toBe(saved.width);
+  expect(JSON.parse(localStorage.getItem('veymux:terminal-peek-size')!).width).toBe(saved.width);
 });
 
 it.each([1280, 390])('centers an inline image reference with the adjacent message text at width %i', async width => {
@@ -490,7 +490,7 @@ it.each([1280, 390])('centers an inline image reference with the adjacent messag
   const range = document.createRange(); range.selectNodeContents(text!);
   const a = token.getBoundingClientRect(), b = range.getClientRects()[0];
   expect(Math.abs(a.top + a.height / 2 - b.top - b.height / 2)).toBeLessThanOrEqual(4);
-  await page.screenshot({ path: `/tmp/termdock-inline-image-${width}-dpr${devicePixelRatio}.png` });
+  await page.screenshot({ path: `/tmp/veymux-inline-image-${width}-dpr${devicePixelRatio}.png` });
 });
 
 it('keeps processing and an explicit detail action from native working status while the terminal stays silent', async () => {
@@ -501,7 +501,7 @@ it('keeps processing and an explicit detail action from native working status wh
   expect(document.querySelector('[data-chat-reply-status]')?.closest('[data-chat-terminal-dock]')).not.toBeNull();
   await page.getByRole('button', { name: '查看终端详情', exact: true }).click();
   await expect.element(page.getByRole('dialog', { name: '会话终端预览' })).toBeVisible();
-  await page.screenshot({ path: `/tmp/termdock-native-silent-working-dpr${devicePixelRatio}.png` });
+  await page.screenshot({ path: `/tmp/veymux-native-silent-working-dpr${devicePixelRatio}.png` });
   backend.handlers!.onEvent({ type: 'tui-progress', tuiProgress: { source: 'osc7501', state: 'remove', progress: null, app: 'codex' } });
   await expect.element(page.getByRole('status', { name: 'Codex处理中' })).not.toBeInTheDocument();
   expect(document.querySelector('[data-chat-terminal-access]')?.textContent).toBe('详情');
@@ -564,7 +564,7 @@ it.each([1280, 390, 320])('keeps the composer preview dock and reply actions sta
   const beside = document.elementFromPoint(Math.min(innerWidth - 16, button.right + 20), button.top + button.height / 2);
   expect(beside?.closest('.session-chat-composer')).not.toBeNull();
   expect(footer.querySelector('time')!.getBoundingClientRect().right).toBeLessThanOrEqual(innerWidth - 16);
-  await page.screenshot({ path: `/tmp/termdock-inline-status-${width}-dpr${devicePixelRatio}.png` });
+  await page.screenshot({ path: `/tmp/veymux-inline-status-${width}-dpr${devicePixelRatio}.png` });
   for (const active of [false, true, false]) {
     backend.handlers!.onEvent({ type: 'terminal-output-activity', active });
     await expect.poll(() => document.querySelector('[data-chat-terminal-access]')?.getAttribute('data-chat-reply-phase')).toBe(active ? 'output' : 'idle');
@@ -602,7 +602,7 @@ it('keeps unread Session navigation in chat with a keyboard and locates it above
     expect(floating.top).toBeGreaterThanOrEqual(scroll.top);
     expect(floating.bottom).toBeLessThanOrEqual(scroll.bottom);
     expect(floating.bottom).toBeLessThanOrEqual(dock.top);
-    await page.screenshot({ path: `/tmp/termdock-chat-attention-keyboard-dpr${devicePixelRatio}.png` });
+    await page.screenshot({ path: `/tmp/veymux-chat-attention-keyboard-dpr${devicePixelRatio}.png` });
     await page.elementLocator(document.querySelector('[data-attention-button]')!).click();
     expect((switched.mock.calls.at(-1)?.[0] as CustomEvent)?.detail).toBe('unread-background');
   } finally {

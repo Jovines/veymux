@@ -7,15 +7,15 @@ if ! command -v npm >/dev/null 2>&1; then
   exit 1
 fi
 
-if command -v termdock >/dev/null 2>&1; then
-  printf 'Stopping running Termdock service if present...\n'
-  termdock --stop >/dev/null 2>&1 || true
+if command -v veymux >/dev/null 2>&1; then
+  printf 'Stopping running Veymux service if present...\n'
+  veymux --stop >/dev/null 2>&1 || true
 fi
 
-printf 'Removing global termdock installation...\n'
-npm uninstall -g termdock
+printf 'Removing global veymux installation...\n'
+npm uninstall -g veymux
 
-printf 'Cleaning local Termdock state...\n'
-rm -rf "$HOME/.termdock"
+printf 'Cleaning local Veymux state...\n'
+rm -rf "$HOME/.veymux"
 
-printf '\nDone. termdock has been removed.\n'
+printf '\nDone. veymux has been removed.\n'

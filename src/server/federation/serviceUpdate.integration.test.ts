@@ -12,7 +12,7 @@ import { RelaySocket } from '../../lib/federation/relaySocket.js';
 import { readDeviceAuthorization } from '../../lib/federation/deviceAuthorization.js';
 import { runCoordinatedServiceUpdate } from '../../lib/terminal/coordinatedServiceUpdate.js';
 import type { ServiceUpdatePlan } from '../../lib/terminal/serviceUpdatePlan.js';
-import { TermdockAutoUpdateManager } from '../utils/autoUpdate.js';
+import { VeymuxAutoUpdateManager } from '../utils/autoUpdate.js';
 import { createFederationRuntime } from './runtime.js';
 import { createIdentity } from './secureProtocol.js';
 import { RelayRouter } from './relay.js';
@@ -21,21 +21,21 @@ const cleanups: (() => void)[] = [];
 afterEach(() => { for (const close of cleanups.splice(0).reverse()) close(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 it.each(['direct', 'relay', 'lost-reply', 'relay-denied'] as const)('coordinates real encrypted service updates (%s) without a worker or native bridge upload', async mode => {
-  vi.stubEnv('TERMDOCK_PASSWORD', 'isolated-update-test-password'); vi.stubEnv('TERMDOCK_SUPERVISED', '1');
+  vi.stubEnv('VEYMUX_PASSWORD', 'isolated-update-test-password'); vi.stubEnv('VEYMUX_SUPERVISED', '1');
   const previous = Object.getOwnPropertyDescriptor(process, 'connected');
   Object.defineProperty(process, 'connected', { value: true, configurable: true });
   cleanups.push(() => { if (previous) Object.defineProperty(process, 'connected', previous); else Reflect.deleteProperty(process, 'connected'); });
   vi.stubGlobal('CloseEvent', class extends Event { code: number; reason: string; constructor(type: string, init: { code: number; reason: string }) { super(type); this.code = init.code; this.reason = init.reason; } });
   const oldUpload = vi.fn();
-  vi.stubGlobal('window', { termdockDesktop: { uploadDroppedFiles: oldUpload, pasteClipboardImage: oldUpload } });
+  vi.stubGlobal('window', { veymuxDesktop: { uploadDroppedFiles: oldUpload, pasteClipboardImage: oldUpload } });
   vi.stubGlobal('navigator', { serviceWorker: { controller: null } });
   const realFetch = globalThis.fetch;
   const http = vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
     // The only native business HTTP is the runtime's private authenticated hop.
-    expect(new Headers(init?.headers).has('x-termdock-inner')).toBe(true);
+    expect(new Headers(init?.headers).has('x-veymux-inner')).toBe(true);
     return realFetch(input, init);
   });
-  const dir = mkdtempSync(join(tmpdir(), 'td-service-update-')); cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+  const dir = mkdtempSync(join(tmpdir(), 'veymux-service-update-')); cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
   execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1', '-keyout', join(dir, 'key.pem'), '-out', join(dir, 'cert.pem'), '-subj', '/CN=localhost', '-addext', 'subjectAltName=IP:127.0.0.1,DNS:localhost'], { stdio: 'ignore' });
   const ca = readFileSync(join(dir, 'cert.pem')), key = readFileSync(join(dir, 'key.pem'));
   const identity = await createIdentity(), restarts: string[] = [], installs: string[] = [];
@@ -43,7 +43,7 @@ it.each(['direct', 'relay', 'lost-reply', 'relay-denied'] as const)('coordinates
   async function node(label: string) {
     const app = express(); app.use(express.json());
     const sockets = new Set<WebSocket>();
-    const managerFor = (currentVersion: string): TermdockAutoUpdateManager => new TermdockAutoUpdateManager({
+    const managerFor = (currentVersion: string): VeymuxAutoUpdateManager => new VeymuxAutoUpdateManager({
       currentVersion, broadcast() {}, verifyInstalled() {}, verifyRestartEntry() {},
       updateRunner: async () => { installs.push(label); return { status: 'updated', currentVersion, latestVersion: '1.0.1', source: 'official' }; },
       requestRestart() {

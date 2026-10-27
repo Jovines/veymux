@@ -1,10 +1,10 @@
-import { getTermdockDesktopBridge } from './nativeBridge';
+import { getVeymuxDesktopBridge } from './nativeBridge';
 export async function confirmPageAction(options:{title:string;message:string;confirmLabel:string;cancelLabel:string}):Promise<boolean>{
-  const bridge=getTermdockDesktopBridge();
+  const bridge=getVeymuxDesktopBridge();
   return bridge?.confirmationUI==='page-v1'&&bridge.confirm?await bridge.confirm(options):window.confirm(options.message);
 }
 export function showPageFeedback(message:string):void {
-  const bridge=getTermdockDesktopBridge();
+  const bridge=getVeymuxDesktopBridge();
   if(bridge?.confirmationUI==='page-v1'&&bridge.alert)bridge.alert(message);else window.alert(message);
 }
 /** A synchronous lock and live scope cover confirmation, transport awaits and

@@ -1,10 +1,10 @@
 //! Signed updater content must still be the independent Preview application.
 use std::io::{Cursor, Read};
 pub fn validate(bytes: &[u8], version: &str) -> Result<(), String> {
-    validate_identity(bytes, version, "Termdock Preview.app", "com.jovines.termdock.preview")
+    validate_identity(bytes, version, "Veymux Preview.app", "com.jovines.veymux.preview")
 }
 pub fn validate_stable(bytes: &[u8], version: &str) -> Result<(), String> {
-    validate_identity(bytes, version, "Termdock.app", "com.jovines.termdock")
+    validate_identity(bytes, version, "Veymux.app", "com.jovines.veymux")
 }
 fn validate_identity(bytes: &[u8], version: &str, root: &str, identifier: &str) -> Result<(), String> {
     let decoder = flate2::read::GzDecoder::new(Cursor::new(bytes));
@@ -123,23 +123,23 @@ mod tests {
     }
     #[test]
     fn actual_archive_identity_prevents_stable_or_wrong_version_installation() {
-        assert!(validate_stable(&artifact("com.jovines.termdock", "Termdock.app", "1.4.358"), "1.4.358").is_ok());
-        assert!(validate_stable(&artifact("com.jovines.termdock.preview", "Termdock Preview.app", "1.4.358"), "1.4.358").is_err());
+        assert!(validate_stable(&artifact("com.jovines.veymux", "Veymux.app", "1.4.358"), "1.4.358").is_ok());
+        assert!(validate_stable(&artifact("com.jovines.veymux.preview", "Veymux Preview.app", "1.4.358"), "1.4.358").is_err());
         assert!(validate(
             &artifact(
-                "com.jovines.termdock.preview",
-                "Termdock Preview.app",
+                "com.jovines.veymux.preview",
+                "Veymux Preview.app",
                 "0.2.0"
             ),
             "0.2.0"
         )
         .is_ok());
         for (bundle, root, version) in [
-            ("com.jovines.termdock", "Termdock Preview.app", "0.2.0"),
-            ("com.jovines.termdock.preview", "Termdock.app", "0.2.0"),
+            ("com.jovines.veymux", "Veymux Preview.app", "0.2.0"),
+            ("com.jovines.veymux.preview", "Veymux.app", "0.2.0"),
             (
-                "com.jovines.termdock.preview",
-                "Termdock Preview.app",
+                "com.jovines.veymux.preview",
+                "Veymux Preview.app",
                 "0.1.0",
             ),
         ] {
@@ -150,8 +150,8 @@ mod tests {
     #[test]
     fn actual_tar_links_cannot_escape_or_receive_nested_writes() {
         let valid = artifact(
-            "com.jovines.termdock.preview",
-            "Termdock Preview.app",
+            "com.jovines.veymux.preview",
+            "Veymux Preview.app",
             "0.2.0",
         );
         let mut base = Vec::new();
@@ -179,7 +179,7 @@ mod tests {
             header.set_cksum();
             tar.append_data(
                 &mut header,
-                "Termdock Preview.app/Contents/Frameworks/Foo",
+                "Veymux Preview.app/Contents/Frameworks/Foo",
                 std::io::empty(),
             )
             .unwrap();
@@ -190,7 +190,7 @@ mod tests {
                 header.set_cksum();
                 tar.append_data(
                     &mut header,
-                    "Termdock Preview.app/Contents/Frameworks/Foo/file",
+                    "Veymux Preview.app/Contents/Frameworks/Foo/file",
                     &b"x"[..],
                 )
                 .unwrap();

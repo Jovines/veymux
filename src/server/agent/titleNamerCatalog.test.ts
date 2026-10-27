@@ -10,11 +10,11 @@ import {
 } from './titleNamerCatalog.js';
 
 describe('title namer catalog', () => {
-  it('isolates native title CLIs from Termdock and tmux hook routing', () => {
+  it('isolates native title CLIs from Veymux and tmux hook routing', () => {
     expect(nativeTitleCommandEnv({
       PATH: '/bin',
       OPENAI_API_KEY: 'keep-auth',
-      TERMDOCK: '1',
+      VEYMUX: '1',
       TMUX: '/tmp/tmux,1,2',
       TMUX_PANE: '%4',
     })).toEqual(expect.objectContaining({
@@ -23,8 +23,8 @@ describe('title namer catalog', () => {
       NO_COLOR: '1',
       TERM: 'dumb',
     }));
-    const env = nativeTitleCommandEnv({ TERMDOCK: '1', TMUX: 'x', TMUX_PANE: '%1' });
-    expect(env).not.toHaveProperty('TERMDOCK');
+    const env = nativeTitleCommandEnv({ VEYMUX: '1', TMUX: 'x', TMUX_PANE: '%1' });
+    expect(env).not.toHaveProperty('VEYMUX');
     expect(env).not.toHaveProperty('TMUX');
     expect(env).not.toHaveProperty('TMUX_PANE');
   });

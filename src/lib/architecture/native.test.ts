@@ -4,7 +4,7 @@ vi.mock('../terminal/api', () => ({ getCsrfToken: async () => 'csrf-test' }));
 afterEach(() => vi.unstubAllGlobals());
 describe('native architecture page transport', () => {
   it('passes export cancellation to the same page transport as document reads', async () => {
-    const fetch = vi.fn(async () => Response.json({ format: 'termdock-omm-bundle' })); vi.stubGlobal('fetch', fetch);
+    const fetch = vi.fn(async () => Response.json({ format: 'veymux-omm-bundle' })); vi.stubGlobal('fetch', fetch);
     const signal = new AbortController().signal;
     await exportOmmArchitecture('/remote project', '.omm', signal);
     expect(fetch).toHaveBeenCalledWith('/api/terminal/architecture/bundle?file=.omm&root=%2Fremote+project', { signal, cache: 'no-store' });

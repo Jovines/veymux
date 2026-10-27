@@ -12,7 +12,7 @@ import re
 import subprocess
 import tempfile
 
-REPO = 'Jovines/termdock'
+REPO = 'Jovines/veymux'
 
 def require(condition, message):
     if not condition:
@@ -25,22 +25,22 @@ def api(path, *args):
     return json.loads(gh('api', path, *args))
 
 def validate(base, release, version, revision):
-    prefix = f'Termdock_{version}_aarch64'
+    prefix = f'Veymux_{version}_aarch64'
     names = {prefix+'.dmg', prefix+'.app.tar.gz', prefix+'.app.tar.gz.sig', 'latest.json', 'release.json',
-             f'Termdock-Rust-darwin-arm64-{version}.zip', f'Termdock-darwin-arm64-{version}.zip'}
+             f'Veymux-Rust-darwin-arm64-{version}.zip', f'Veymux-darwin-arm64-{version}.zip'}
     require(release['tag_name']==f'v{version}' and release['draft'] and not release['prerelease'], 'Expected a stable draft')
     assets={a['name']:a for a in release['assets']}
     require(set(assets)==names, 'Wrong release asset inventory')
     metadata=json.loads((base/'release.json').read_text())
     require(metadata['version']==version and metadata['tag']==f'v{version}' and metadata['revision']==revision, 'Source/version mismatch')
     require(metadata['notarizationVerified'] is True and metadata['prerelease'] is False, 'Stable notarization missing')
-    require(metadata['config']['identifier']=='com.jovines.termdock' and metadata['config']['productName']=='Termdock', 'Wrong product identity')
+    require(metadata['config']['identifier']=='com.jovines.veymux' and metadata['config']['productName']=='Veymux', 'Wrong product identity')
     root=f'https://github.com/{REPO}/releases/download'
     require(metadata['endpoint']==root+'/stable-channel/latest.json', 'Wrong stable endpoint')
     for key in ['appNotarySubmission','dmgNotarySubmission']:
         require(re.fullmatch(r'[a-f0-9-]{36}',metadata.get(key,'')), 'Missing App/DMG notary receipt')
     for app in [metadata['verification'],metadata['verification']['dmgApp'],metadata['verification']['rustZipApp']]:
-        require(app['version']==version and app['bundle']=='com.jovines.termdock' and app['minimumMacOS']=='14.0' and app['architecture']=='arm64' and app['executable']=='Termdock', 'Wrong verified identity/platform')
+        require(app['version']==version and app['bundle']=='com.jovines.veymux' and app['minimumMacOS']=='14.0' and app['architecture']=='arm64' and app['executable']=='Veymux', 'Wrong verified identity/platform')
         require(all(app[k] is True for k in ['gatekeeperAccepted','notaryTicketValidated','updateTrustPinned']), 'Missing Mac verification')
     bridge=metadata['verification']['legacyBridge']
     require(bridge['version']=='1.4.357' and bridge['minimumMacOS']=='12.0' and bridge['gatekeeperAccepted'] and bridge['notaryTicketValidated'], 'Missing compatibility bridge verification')
@@ -89,7 +89,7 @@ def main():
         published=api(f'repos/{REPO}/releases/{release["id"]}','--method','PATCH','-F','draft=false','-F','prerelease=false','-f','make_latest=true')
         require(not published['draft'] and not published['prerelease'] and commit_for_tag(tag)==revision,'Published source/state mismatch')
         if not channels:
-            gh('release','create','stable-channel','--repo',REPO,'--target',revision,'--prerelease','--latest=false','--title','Termdock stable update channel','--notes','Signed Rust update manifest. Versioned binaries live in stable releases.')
+            gh('release','create','stable-channel','--repo',REPO,'--target',revision,'--prerelease','--latest=false','--title','Veymux stable update channel','--notes','Signed Rust update manifest. Versioned binaries live in stable releases.')
         gh('release','upload','stable-channel',str(base/'latest.json'),'--repo',REPO,'--clobber')
         require(api(f'repos/{REPO}/releases/latest')['tag_name']==tag,'Latest release mismatch')
         print(published['html_url'])

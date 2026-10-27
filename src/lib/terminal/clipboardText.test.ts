@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import {afterEach,expect,it,vi} from 'vitest';
 const state=vi.hoisted(()=>({bridge:undefined as any,read:vi.fn()}));
-vi.mock('../desktop/nativeBridge',()=>({getTermdockDesktopBridge:()=>state.bridge}));
+vi.mock('../desktop/nativeBridge',()=>({getVeymuxDesktopBridge:()=>state.bridge}));
 vi.mock('./api',()=>({sendTmuxAction:state.read}));
 import {writeTerminalClipboardText,copyTmuxTerminalSelection} from './clipboardText';
 import {writeClipboardText} from '../utils/clipboard';

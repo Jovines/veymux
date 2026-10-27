@@ -27,13 +27,13 @@ function entry(overrides: Record<string, unknown>): Record<string, unknown> {
 }
 
 beforeEach(() => {
-  directory = fs.mkdtempSync(path.join(os.tmpdir(), 'termdock-health-'));
+  directory = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-health-'));
   options = {
     crashLogPath: crashLogPath(),
     dismissedPath: path.join(directory, 'dismissed.json'),
     supervisorStatePath: path.join(directory, 'supervisor.json'),
   };
-  delete process.env.TERMDOCK_SUPERVISED;
+  delete process.env.VEYMUX_SUPERVISED;
 });
 
 afterEach(() => {
@@ -157,7 +157,7 @@ describe('serverHealth 快照', () => {
       consecutiveCrashes: 0,
       lastIncident: null,
     }));
-    process.env.TERMDOCK_SUPERVISED = '1';
+    process.env.VEYMUX_SUPERVISED = '1';
     vi.stubGlobal('process', Object.assign(Object.create(process), { connected: true }));
     expect(buildServerHealthState(options)).toMatchObject({
       supervised: true,

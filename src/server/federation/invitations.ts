@@ -43,7 +43,7 @@ export class InvitationStore {
   constructor(private options: { filePath: string; serviceId: string; now?: () => number }) {
     requireValid(identity(options.serviceId)); this.now = options.now ?? Date.now; this.read();
   }
-  private hash(code: string) { return createHash('sha256').update(`termdock-invitation-v1:${this.options.serviceId}:`).update(code).digest('hex'); }
+  private hash(code: string) { return createHash('sha256').update(`veymux-invitation-v1:${this.options.serviceId}:`).update(code).digest('hex'); }
   /** Link expiry stops new acceptance, while explicit link revocation also
    * invalidates existing reusable-link grants, even across a crash mid-revoke. */
   hasGrantAuthority(id: string): boolean { try { return this.read().some(invite => invite.hash === id && invite.reusable === true); } catch { return false; } }

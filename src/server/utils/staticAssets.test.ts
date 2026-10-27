@@ -20,7 +20,7 @@ describe('static asset delivery', () => {
   });
 
   it('serves sidecars with validation and falls back for missing compressed files', async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), 'termdock-static-'));
+    const dir = await mkdtemp(path.join(tmpdir(), 'veymux-static-'));
     cleanup.push(() => rm(dir, { recursive: true, force: true }));
     const body = 'terminal shell '.repeat(100);
     await writeFile(path.join(dir, 'index.html'), body);

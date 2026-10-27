@@ -1,6 +1,6 @@
 # Client Log — 手机端日志收集
 
-Termdock 运行在用户手机上（浏览器 / PWA），无法直接查看开发者工具。
+Veymux 运行在用户手机上（浏览器 / PWA），无法直接查看开发者工具。
 通过 `clientLog` 工具函数，可以将手机端的日志实时转发到服务端，
 方便问题排查。
 
@@ -19,7 +19,7 @@ clientLog('error', 'unexpected condition', { stack: e.stack });
 服务端启动后会打印在 `stdout`：
 
 ```bash
-tail -f /tmp/termdock-dev.log | grep "client-log"
+tail -f /tmp/veymux-dev.log | grep "client-log"
 ```
 
 每一行格式：

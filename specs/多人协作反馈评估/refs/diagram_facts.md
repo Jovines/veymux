@@ -35,7 +35,7 @@
 - `src/server/agent/collaborationStore.ts` 的 mergeFederatedMessages 更新已有记录时只合并状态、时间、失败原因及语义字段，不合并 snapshot；desktop 桥也主要按状态升阶同步消息。接收端有快照不保证源端能获得。
 - `src/lib/collaboration/browserFederation.ts` 的 synchronize 在 document.hidden、离线或无 savedConnection 时直接返回，服务少于两个时也不刷新。循环约 2 秒，并监听恢复可见事件。现场是否属于此条件尚未确认。
 - `src/server/routes/terminal.ts` 实际投递 snapshot 使用 captureTmuxPane，而非已清理的 captureTmuxPaneText。本机完整版 snapshot 实际含 ANSI；已确认第 6 项存在真实样本。
-- 经用户授权仅发送一条测试 `bnsb3xnx47`，标识 TD-DIAG-20260915-A，479 字节，固定幂等键 td-diag-20260915-a；目标为协调者 24alez66。15 秒等待送达超时，后续复查仍 pending、attempt_count=0、诊断为空，无 ACK。尚不能确认协调者已收到；未重复发送，原消息仍可继续投递。
+- 经用户授权仅发送一条测试 `bnsb3xnx47`，标识 TD-DIAG-20260915-A，479 字节，固定幂等键 veymux-diag-20260915-a；目标为协调者 24alez66。15 秒等待送达超时，后续复查仍 pending、attempt_count=0、诊断为空，无 ACK。尚不能确认协调者已收到；未重复发送，原消息仍可继续投递。
 - 已运行 collaborationFederation.integration.test.ts 与 desktop/collaborationFederation.test.ts：2 个文件、15 项测试通过。它们覆盖模拟服务与真实本地 store，不代替现场浏览器或桌面客户端链路验收。
 
 ### 测试最终回执与协调者回复

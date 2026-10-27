@@ -13,7 +13,7 @@ const router = Router();
 import { isValidAndroidSerial, androidRouteAccess } from '../shared/androidDevices.js';
 export { isValidAndroidSerial };
 /** Opt-in per-frame diagnostics. */
-const DEBUG_ANDROID = process.env.TERMDOCK_ANDROID_DEBUG === '1';
+const DEBUG_ANDROID = process.env.VEYMUX_ANDROID_DEBUG === '1';
 
 router.get('/devices', async (req, res) => {
   try {

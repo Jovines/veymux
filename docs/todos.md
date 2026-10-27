@@ -1,6 +1,6 @@
 # Todo 清单
 
-侧栏「待办」提供独立于终端与协作组的清单。待办可以手动添加、由外部程序注入，或由多个自定义收集 Agent 写入。数据保存于服务所在用户的 `~/.termdock/todos.json`，包含收集方向、执行默认值和每轮终端/结果记录。
+侧栏「待办」提供独立于终端与协作组的清单。待办可以手动添加、由外部程序注入，或由多个自定义收集 Agent 写入。数据保存于服务所在用户的 `~/.veymux/todos.json`，包含收集方向、执行默认值和每轮终端/结果记录。
 
 手机或桌面侧栏收起时，终端顶部右侧以轻量文字显示「待办＋未完成数量」，不使用独立灰色卡片或重复图标，不需要先打开会话侧栏；会话标签横向滚动时，该入口仍留在顶部。待办页左上角「终端」直接回到当前终端，重新进入时保留筛选、选择与页面会话中的草稿。桌面侧栏固定展开时只显示侧栏入口，隐藏顶部入口，避免重复。
 
@@ -26,7 +26,7 @@
 
 在会话内容、侧栏会话或会话标签上右键，选择「插入待办提示」，会在对应会话的输入光标处插入一句话：
 
-> 【待办用法：`td todo --help`】
+> 【待办用法：`veymux todo --help`】
 
 使用「【待办用法：…】」标明附加指引的边界。仅插入，不自动发送或回车；原有文字保留，光标停在提示词后，可以作为前缀、中缀，继续补充自己的要求。这是通用能力介绍，不限定添加单条待办，也不预设收集方向。例如聊到一个值得关注的渠道后，插入指引，再补充「把刚才这个渠道设为每个工作日早上九点收集的方向」。Agent 可按对话上下文直接创建方向，无需回到表单逐项填写。选中文字时保留原生复制菜单。
 
@@ -35,16 +35,16 @@
 在服务所在机器、同一系统用户下：
 
 ```sh
-td todo add --title '检查项目依赖' \
+veymux todo add --title '检查项目依赖' \
   --description '核实升级影响，整理处理建议' \
   --source '项目巡检' --external-id 'deps-review'
-td todo list
-td todo complete <todo-id>
-td todo reopen <todo-id>
-td todo ignore <todo-id>
-td todo agents
-td todo collector list
-td todo collector create --name '社区渠道' --agent codex \
+veymux todo list
+veymux todo complete <todo-id>
+veymux todo reopen <todo-id>
+veymux todo ignore <todo-id>
+veymux todo agents
+veymux todo collector list
+veymux todo collector create --name '社区渠道' --agent codex \
   --cwd /path/to/project --at 09:00 --weekdays 1,2,3,4,5 \
   --file /path/to/collection-requirements.txt
 ```
@@ -53,7 +53,7 @@ td todo collector create --name '社区渠道' --agent codex \
 
 收集方向的「定时与启用」支持手动、按间隔和定时。定时可增删多个时间点，重复日期可快捷选每天、工作日、周末，或逐一选择星期；折叠摘要与方向卡片使用同一规则展示全部安排。时间保存时排序、去重，同一时间只运行一次；至少保留一个有效时间和一个重复日期。旧单时间配置及未提交草稿兼容保留。
 
-计划持久化继续使用 `kind: 'daily'`：`time` 保留首个时间，多时间另带 `times: ['09:00', '14:00', '20:00']`，`weekdays` 为重复日期。调度会寻找当天尚未经过的时间，再跳到下一个选中日期。`td todo collector create --at` 支持逗号分隔多个时间；JSON save 与页面使用相同服务端校验。
+计划持久化继续使用 `kind: 'daily'`：`time` 保留首个时间，多时间另带 `times: ['09:00', '14:00', '20:00']`，`weekdays` 为重复日期。调度会寻找当天尚未经过的时间，再跳到下一个选中日期。`veymux todo collector create --at` 支持逗号分隔多个时间；JSON save 与页面使用相同服务端校验。
 
 多时间验收：`npx vitest run --config vitest.collector-schedule.config.ts` 覆盖 320、390、1280 宽度的真实组件浏览器，验证增删、日期组合、空值拦截、重复时间、草稿恢复、再次编辑、切换间隔/手动、底部操作可见和无横向溢出；调度与 store 回归覆盖同日多次触发、跳过未选日期、跨周、重复 tick、停用和重启持久化。浏览器保存回调与模型启动使用隔离数据/替身，未创建正式任务，未做真实 iOS/macOS 客户端验收。
 
@@ -64,21 +64,21 @@ td todo collector create --name '社区渠道' --agent codex \
 每轮执行的提示词附带对应 run ID。提交结果：
 
 ```sh
-td todo report <run-id> --status complete --file /path/to/result.txt
+veymux todo report <run-id> --status complete --file /path/to/result.txt
 # status 还可以是 blocked 或 failed；不会自动完成 Todo
 ```
 
-报告绑定具体 run，迟到的旧结果不会覆盖新一轮。一个 run 的报告重复提交相同内容可重试；不同内容须新开一轮。`td todo --help` 不依赖运行中的服务。
+报告绑定具体 run，迟到的旧结果不会覆盖新一轮。一个 run 的报告重复提交相同内容可重试；不同内容须新开一轮。`veymux todo --help` 不依赖运行中的服务。
 
 ## 每日 TODO 分类与更新
 
 待办支持 `category`：`short`（短期）、`long`（长期）、`delegated`（我分配出去、待跟进）、`uncategorized`（未分类）。未带分类的老数据继续读取为未分类，无需迁移或根据标题猜测。待完成、已完成及已忽略列表分别按分类分组，空组显示「暂无」；新增和编辑可直接选择分类、修改来源链接。
 
 ```sh
-td todo add --title '合入 alpha 并通知相关人' --category short \
+veymux todo add --title '合入 alpha 并通知相关人' --category short \
   --collector <collector-id> --external-id 'stable-issue-id'
-td todo list --collector <collector-id> --category short
-td todo update <todo-id> --collector <collector-id> --description '两个缺陷已解决，仍待合入和通知' \
+veymux todo list --collector <collector-id> --category short
+veymux todo update <todo-id> --collector <collector-id> --description '两个缺陷已解决，仍待合入和通知' \
   --category delegated --revision 1
 ```
 
@@ -88,24 +88,24 @@ Collector 应传入上次读取的 `--revision`；过期更新以退出码 1 拒
 
 重复 `add` 继续按 collector/source + externalId 返回原条目，不覆盖描述、分类或状态；显式 `update` 才修改，不增加隐式 upsert。完成、忽略、重新打开均保留分类与来源。收集提示词包含这些规则，`processing.mode=manual` 继续只存入清单。
 
-工作日 12:00、16:00、20:00、23:00 的收集计划可用 `--at 12:00,16:00,20:00,23:00 --weekdays 1,2,3,4,5` 或 collector JSON 配置；11:00 汇总提醒可使用独立 `td automation`。本次增加原生待办能力，不创建真实外部来源收集方向或定时提醒。
+工作日 12:00、16:00、20:00、23:00 的收集计划可用 `--at 12:00,16:00,20:00,23:00 --weekdays 1,2,3,4,5` 或 collector JSON 配置；11:00 汇总提醒可使用独立 `veymux automation`。本次增加原生待办能力，不创建真实外部来源收集方向或定时提醒。
 
 ## Collector 命名空间与所有权
 
 `collectorId` 是不可变归属；collector 名称及卡片标签可重命名，筛选仍使用稳定 ID。`externalId` 的唯一范围为 `(collectorId, externalId)`；无 collector 的人工条目沿用 `(source, externalId)`。更新中的 `collectorId` 是归属前置条件，不会移动条目；`source` / `sourceId` 不能通过更新改写。
 
 ```sh
-td todo update <todo-id> --collector <collector-id> --revision <n> --category long
-td todo complete <todo-id> --collector <collector-id> --revision <n>
-td todo ignore <todo-id> --collector <collector-id> --revision <n>
-td todo reopen <todo-id> --collector <collector-id> --revision <n>
+veymux todo update <todo-id> --collector <collector-id> --revision <n> --category long
+veymux todo complete <todo-id> --collector <collector-id> --revision <n>
+veymux todo ignore <todo-id> --collector <collector-id> --revision <n>
+veymux todo reopen <todo-id> --collector <collector-id> --revision <n>
 ```
 
 CLI 自动附带实际执行位置（backend session / tmux session）。服务端用现有会话绑定解析稳定 session ID，再从持久化的收集 run 确定 collector，不能用命令里指定的 ID 改变执行身份。TD 发起的 collector 会话执行 add/update/complete/ignore/reopen 时，必须显式提供匹配的 `--collector`；漏传返回 `TODO_COLLECTOR_REQUIRED`，指定别的 collector 或操作其他归属的 todo-id 返回 HTTP 403 / `TODO_OWNERSHIP_MISMATCH`，错误正文包含 `ownership mismatch`。归属检查先于 revision 检查，被拒条目的数据和版本不变。
 
 Collector 的 list/sources/summary 由服务端收窄到自己的命名空间（包括 todos、collectors、runs 和计数），传入其他 collector 的查询会被拒绝。`GET /?collectorId=<id>` 支持人工按稳定 ID 筛选。跨来源的批量交接记录不出现在单来源快照中。收集 Agent 只能报告本 collector 的收集 run，不能用 claim、handoff、收集配置编辑或其他操作绕过门禁。namespace 绑定在该稳定会话生命周期内保留，后续交接不会把 collector 自动提升为管理员；不同 collector 不能复用同一个已绑定收集会话，应使用独立会话。
 
-新版人工 CLI 在非 collector 会话内仍可操作清单；界面仍是用户管理入口，更新时携带条目 collectorId 做归属校验。旧 CLI / 旧本机 token 调用缺少执行上下文时，读取保留兼容，写入返回 `TODO_CALLER_CONTEXT_REQUIRED` 并要求升级，避免自动收集静默落入默认来源。收到无法解析的 Termdock 会话上下文时拒绝执行，不回退为人工身份。
+新版人工 CLI 在非 collector 会话内仍可操作清单；界面仍是用户管理入口，更新时携带条目 collectorId 做归属校验。旧 CLI / 旧本机 token 调用缺少执行上下文时，读取保留兼容，写入返回 `TODO_CALLER_CONTEXT_REQUIRED` 并要求升级，避免自动收集静默落入默认来源。收到无法解析的 Veymux 会话上下文时拒绝执行，不回退为人工身份。
 
 这是 TD 登记收集会话的服务端权限边界。本机系统用户及其管理 token 仍拥有用户管理权限；它不构成同一系统用户下可任意读取状态文件、伪造执行环境或直接改写数据的恶意进程沙箱。
 
@@ -120,9 +120,9 @@ add/update（包括完成、忽略、重开）保留原有 `{todo}` 响应，并
 checkpoint 以 `collectorId + sourceKey` 隔离。每项保存 `revision`、opaque JSON `cursor`、`lastSuccessfulAt`（TD 成功提交时间）及 `lastSuccessfulRunId`。源系统的 watermark 可自行放入 cursor，TD 不解释它的业务含义。尚未提交的来源读取为 revision=0、cursor=null、成功时间/轮次=null。`/clear`、回收和重启不会清除已提交位置。
 
 ```sh
-td todo checkpoint get --collector <id> [--source-key <key>]
-td todo collector inspect <run-id>
-td todo collector finish <run-id> --revision <collection.revision> --file outcome.json
+veymux todo checkpoint get --collector <id> [--source-key <key>]
+veymux todo collector inspect <run-id>
+veymux todo collector finish <run-id> --revision <collection.revision> --file outcome.json
 ```
 
 `checkpoint get` 返回 `{collectorId, checkpoints:[...]}`，指定 source-key 时也保留数组形态。`inspect` 返回实际 run，包括 `collection.revision`。成功提交示例：
@@ -138,7 +138,7 @@ td todo collector finish <run-id> --revision <collection.revision> --file outcom
 
 finish 要求有效 run revision；各 source 的 expectedRevision 必须等于当前值。所有 checkpoint 更新与 run 结果同一次存储事务落盘；任一 CAS 失败，结果和所有 checkpoint 都不变。HTTP 409 返回 currentRevision，checkpoint 冲突带 CHECKPOINT_CONFLICT。同幂等键/同结果重试不再次推进，同键不同结果拒绝。CLI 默认从结果内容生成稳定提交键，也可显式 `--idempotency-key`。
 
-status 还可为 partial/failed，coverage 逐项为 success/partial/failed，可带 note。success 必须明确声明非空覆盖范围且各项成功；只有其中声明成功的来源可以带 checkpoint。partial/failed 不能附推进位置。普通 `td todo report` 只记录结果、结束本轮，绝不推进 cursor。TD 不从“新增零条”或 Agent 的自然语言推断扫描完整性，只承诺提交者声明的覆盖范围。
+status 还可为 partial/failed，coverage 逐项为 success/partial/failed，可带 note。success 必须明确声明非空覆盖范围且各项成功；只有其中声明成功的来源可以带 checkpoint。partial/failed 不能附推进位置。普通 `veymux todo report` 只记录结果、结束本轮，绝不推进 cursor。TD 不从“新增零条”或 Agent 的自然语言推断扫描完整性，只承诺提交者声明的覆盖范围。
 
 此前成功的单条 add/update 不会回滚；部分成功后重扫继续使用 external-id 与 revision。仅本 collector 当前有效 run 能写入或 finish，写待办时须携带 `--collector <id> --run <run-id>`。旧 run 的迟到写入返回 COLLECTOR_RUN_FENCED。人工 owner 从非 collector 会话/界面管理 TODO 的兼容入口保留。
 
@@ -167,9 +167,9 @@ manual、schedule、webhook 共用一份持久门禁。从接受请求到显式 
 服务重启将未决 collect 标为 interrupted/结果待核对并保留门禁；不会自动重放终端命令。回收了未报告的终端也保留这一事实。owner 在原终端已被观测为不存在后，可以使用：
 
 ```sh
-td todo collector inspect <old-run-id>
-td todo collector retry <old-run-id> --revision <n> --idempotency-key <新的稳定键>
-td todo collector cancel <run-id> --revision <n>
+veymux todo collector inspect <old-run-id>
+veymux todo collector retry <old-run-id> --revision <n> --idempotency-key <新的稳定键>
+veymux todo collector cancel <run-id> --revision <n>
 ```
 
 retry/cancel 是用户管理操作，不能从 collector 会话调用以扩大自身权限。原终端仍存在（或无法确认）时返回 COLLECTOR_RUNTIME_PRESENT；先查看并关闭该终端。retry 创建关联 previousRunId 的新轮次，原轮次保存 retryRunId，并拒绝旧 run 的后续写入/结果；相同重试键返回同一新轮次。cancel 只结束记录，不宣称停止外部工具，不推进 cursor。终端在取消竞态后才完成创建时，保留这个实际终端的关联，但在发送 Agent 命令前拦截。
@@ -212,7 +212,7 @@ CLI 与服务端需要一起升级到 >=1.4.386。新 CLI 在发送 collector �
 - 2026-10-27 分类与更新：148 项 Todo/传输边界/配色/层级回归通过，包含实际 CLI 经本机凭据访问隔离 HTTP 服务的 add/list/update、旧 revision 冲突、重复 add 不覆盖、complete/reopen；320、390、1280 宽度的分类编辑/分组浏览器测试 3 项及收集时间浏览器回归 5 项通过。TypeScript 与完整构建通过，已部署到 9834，health、受管进程、前端资源内容与构建产物一致性及正式 CLI 只读分类筛选通过。浏览器使用隔离数据和 API 替身；尚未实测真实外部来源抓取、iOS/macOS 客户端。
 
 - 首轮修复部署使用隔离源码副本，完整生产构建与 64 项回归通过。副本以本轮修复开始时的可构建快照为基础，加入最新 Todo 改动；没有改写其他并行源码。最终构建当时，另一组并行中的共享资源改动触发 `src/server/federation/requestContext.ts` → `src/shared/shareResources.ts` 的 TS6059/rootDir 错误，因此没有把这组未完成改动纳入部署。回归覆盖默认清单保留执行中及已报告事项、记住配置一键处理、新增并处理、收集方向保存并运行、目录快捷选择、跨刷新恢复选择、慢加载保留草稿、不同项目批量处理及重试、切换服务后的迟到响应，以及侧栏、加密边界、配色和层级守卫。
-- 在隔离服务中，从实际界面配置真实 Codex：保存并收集 → CLI 写入待办 → 点击处理 → 新建真实 tmux/PTY → 打开关联终端并返回 → 收到 `TD_TODO_EXEC_OK` 结果 → 用户标记完成并在已完成中找到。测试使用当前机器已有的 Codex 登录和权限配置，没有改动正式服务的用户待办。
+- 在隔离服务中，从实际界面配置真实 Codex：保存并收集 → CLI 写入待办 → 点击处理 → 新建真实 tmux/PTY → 打开关联终端并返回 → 收到 `VEYMUX_TODO_EXEC_OK` 结果 → 用户标记完成并在已完成中找到。测试使用当前机器已有的 Codex 登录和权限配置，没有改动正式服务的用户待办。
 - 从界面添加第二个方向后点击「全部收集」，两个真实 Codex 终端分别回报结果；新方向成功新增待办，原方向识别已经完成的相同事项并跳过去重，没有重新打开它。
 - 在实际手机视口表单中填写不存在的工作目录，验证设置保存与任务启动均明确报错、保留输入；修正目录后重试，真实 Codex 再次回传结果，待办可标记完成。
 - 浏览器验证覆盖 1440×960 桌面与 390×844 手机视口，包含新浏览器首次加载、收集/执行、搜索与来源筛选、目录选择器取消、手机与桌面切换时保留配置草稿。此前使用测试 Agent 程序验证的外部注入去重、并行收集和回报仍有回归覆盖。macOS/iOS 原生客户端、真实手机和其他 Agent 提供方尚未实机验收。
@@ -271,7 +271,7 @@ CLI 与服务端需要一起升级到 >=1.4.386。新 CLI 在发送 collector �
 
 ## 通用待办指引与收集方向 CLI（2026-10-24）
 
-- 复用会话菜单「插入待办提示」，短提示统一为「【待办用法：`td todo --help`】」。完整帮助介绍清单管理及定期收集；新增 `td todo agents`、`td todo collector list/create`，可从对话整理要求并直接保存方向，无需逐项填写表单。
+- 复用会话菜单「插入待办提示」，短提示统一为「【待办用法：`veymux todo --help`】」。完整帮助介绍清单管理及定期收集；新增 `veymux todo agents`、`veymux todo collector list/create`，可从对话整理要求并直接保存方向，无需逐项填写表单。
 - 创建支持文字、UTF-8 文件或标准输入，可选择 Agent、启动命令、目录及手动/间隔/每日计划。保存不立即启动任务；已有服务端校验和持久化路径保持一致，失败不自动重试或回退接口。
 - 9 个测试文件共 56 项回归通过；最终短文案另通过 4 文件 33 项回归，完整类型检查及生产构建通过。HTTP 集成测试使用临时 TodoStore，验证文件要求与计划持久化、查询和页面快照一致、无额外启动，以及无效目录/文件失败；未启动真实模型任务。
 - 隔离组件浏览器在桌面 1440×960、手机 390×844 验证原会话操作与真实聊天编辑器插入链路：光标位置插入、保留原文、不自动发送，最终短提示无横向溢出。此为浏览器验证，未做真实 iOS/macOS 原生验收；没有修改正式待办数据。
@@ -300,12 +300,12 @@ CLI 与服务端需要一起升级到 >=1.4.386。新 CLI 在发送 collector �
 - 每个来源的「收集后」默认仅入清单；可明确选择自动新建 Agent（每条待办一个会话），或发送到已存在的 Agent，并填写额外处理要求。只影响保存后该来源新注入的待办，不追溯启动旧任务。自动交接先持久记录再发送；重复注入不重复执行，失败会留在卡片上，不换目标或自动重放。
 - 「外部通知」可启用来源专用 Webhook，与原有手动、定时触发并存。`POST /hooks/todo/<collector-id>` 接收 JSON；`Authorization: Bearer <source-secret>` 只能触发该来源的收集。UI 保存后可复制调用示例，替换成服务实际可达的 HTTPS 地址；远端明文请求拒绝，本机 loopback 可用于 CLI/测试。不改变任何 `/api` 的鉴权或加密要求。
 - 通知正文仅作收集上下文，不能覆盖 Agent 启动命令或权限。建议发送稳定的 `Idempotency-Key`（兼容 `X-Webhook-Id`、`X-GitHub-Delivery`）；同一通知不重复发起。限制 32 KB JSON 解析、16 KB 通知正文和每来源每分钟 10 次请求；停用来源或 Webhook 后不触发。
-- UI 与 CLI 共用 `/operations/todos/collectors` 和同一份持久化配置。`td todo collector schema` 输出配置示例，`collector save --file config.json`（或 `--stdin`）创建/更新；更新提供 `id`，保留未修改字段并按 revision 检查冲突。还支持 `collector run/remove <id>`。
-- `td todo sources` 显示来源名称、稳定 ID 及待领取数量；`list --collector <id>` 或 `list --source <标签>` 筛选。名称可能重复或被改名，优先使用稳定 `--collector`。
-- `td todo claim --collector <id>` 原子领取一条可领取待办，自动使用与 `td automation --self` 相同的当前会话解析。可显式指定 `--session <id>`，也支持 `--source <标签>` / `--todo <id>`。没有明确范围会拒绝领取，提示先向用户确认。已交接、已完成、待自动交接及有效领取中的待办不能重复领取。
-- 领取返回 claim ID、到期时间及结果 run ID；默认 30 分钟，`--lease` 可设 1–1440 分钟。`td todo renew <todo-id> --claim <claim-id> --lease 60` 续期；`release` 释放。到期后未提交结果的事项可重新领取，过期/已替换的 claim 不能续期或释放别人的领取。UI 卡片显示领取者，更多菜单可由用户释放领取。
+- UI 与 CLI 共用 `/operations/todos/collectors` 和同一份持久化配置。`veymux todo collector schema` 输出配置示例，`collector save --file config.json`（或 `--stdin`）创建/更新；更新提供 `id`，保留未修改字段并按 revision 检查冲突。还支持 `collector run/remove <id>`。
+- `veymux todo sources` 显示来源名称、稳定 ID 及待领取数量；`list --collector <id>` 或 `list --source <标签>` 筛选。名称可能重复或被改名，优先使用稳定 `--collector`。
+- `veymux todo claim --collector <id>` 原子领取一条可领取待办，自动使用与 `veymux automation --self` 相同的当前会话解析。可显式指定 `--session <id>`，也支持 `--source <标签>` / `--todo <id>`。没有明确范围会拒绝领取，提示先向用户确认。已交接、已完成、待自动交接及有效领取中的待办不能重复领取。
+- 领取返回 claim ID、到期时间及结果 run ID；默认 30 分钟，`--lease` 可设 1–1440 分钟。`veymux todo renew <todo-id> --claim <claim-id> --lease 60` 续期；`release` 释放。到期后未提交结果的事项可重新领取，过期/已替换的 claim 不能续期或释放别人的领取。UI 卡片显示领取者，更多菜单可由用户释放领取。
 - 领取只返回任务，不向领取 Agent 再写一遍提示词。Agent 应只处理实际领取的任务，将结果报告到返回的 run ID；未获用户授权时不要自行标记用户验收完成。
-- 定时领取复用 `td automation create --self --every ... --prompt ...`，不增加另一套调度器。短提示词仍为 `【待办用法：`td todo --help`】`，帮助指引要求先确认未声明的来源、范围、频率与执行权限，再创建定时任务、领取或启用自动处理。
+- 定时领取复用 `veymux automation create --self --every ... --prompt ...`，不增加另一套调度器。短提示词仍为 `【待办用法：`veymux todo --help`】`，帮助指引要求先确认未声明的来源、范围、频率与执行权限，再创建定时任务、领取或启用自动处理。
 
 ### 本次验证
 

@@ -11,7 +11,7 @@ afterEach(async () => {
 });
 
 async function createTemporaryRoot(): Promise<string> {
-  const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'termdock-delete-file-'));
+  const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'veymux-delete-file-'));
   temporaryRoots.push(root);
   return root;
 }

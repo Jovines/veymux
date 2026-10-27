@@ -16,21 +16,28 @@ export function useChatImagePreview(files: ChatAttachment[]) {
       return root === '/' || path === root || path.startsWith(`${root}/`);
     }) === true);
   }, [allowed, access]);
-  const [selected, setSelected] = useState<string | null>(null);
   const images = useMemo(() => files.filter(file => canRead(file) && chatAttachmentKind(file) === '图片').map(file => ({
     kind: 'image' as const,
     src: `/api/terminal/fs/blob?${new URLSearchParams({ path: file.path })}`,
     alt: file.name,
     title: file.name,
   })), [files, canRead]);
-  const index = images.findIndex(image => image.src === selected);
+  const lightbox = useChatImageLightbox(images);
   const open = useCallback((file: ChatAttachment) => {
-    if (canRead(file) && chatAttachmentKind(file) === '图片') setSelected(`/api/terminal/fs/blob?${new URLSearchParams({ path: file.path })}`);
-  }, [canRead]);
+    if (canRead(file) && chatAttachmentKind(file) === '图片') lightbox.open(`/api/terminal/fs/blob?${new URLSearchParams({ path: file.path })}`);
+  }, [canRead, lightbox.open]);
+  return { onPreview: allowed ? open : undefined, preview: lightbox.preview };
+}
+
+/** Inputs have already passed the caller's resource authorization boundary. */
+export function useChatImageLightbox(images: { kind: 'image'; src: string; alt: string; title?: string }[]) {
+  const [selected, setSelected] = useState<string | null>(null);
+  const index = images.findIndex(image => image.src === selected);
+  const open = useCallback((src: string) => setSelected(src), []);
   const close = useCallback(() => setSelected(null), []);
   const change = (next: number) => setSelected(images[next]?.src ?? null);
   useEffect(() => {
-    if (!allowed || index < 0) return;
+    if (index < 0) return;
     // The editor can retain focus beneath a portal and stops bubbling keys.
     // Handle preview keys before they reach the underlying composer.
     const keyDown = (event: KeyboardEvent) => {
@@ -48,9 +55,9 @@ export function useChatImagePreview(files: ChatAttachment[]) {
     };
     document.addEventListener('keydown', keyDown, true);
     return () => document.removeEventListener('keydown', keyDown, true);
-  }, [allowed, index, images, close]);
+  }, [index, images, close]);
   return {
-    onPreview: allowed ? open : undefined,
-    preview: allowed && index >= 0 ? <Suspense fallback={null}><Lightbox images={images} index={index} onChange={change} onClose={close} /></Suspense> : null,
+    open,
+    preview: index >= 0 ? <Suspense fallback={null}><Lightbox images={images} index={index} onChange={change} onClose={close} /></Suspense> : null,
   };
 }

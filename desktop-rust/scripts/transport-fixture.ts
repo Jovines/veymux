@@ -17,10 +17,10 @@ import { createRelaySocketFactory } from '../../src/lib/federation/relaySocket.t
 const dirs: string[] = [], cleanups: Array<() => void> = [], wire: Buffer[] = [];
 let ordinaryBusinessRequests=0;
 async function peer(options: object = {}) {
-  const dir=mkdtempSync(join(tmpdir(),'td-preview-noise-')); dirs.push(dir);
+  const dir=mkdtempSync(join(tmpdir(),'veymux-preview-noise-')); dirs.push(dir);
   let publicPort = 0;
   const app=express(); app.get('/',(_req,res)=>res.type('html').send('<html>existing service frontend</html>'));
-  app.get('/api/meta',(_req,res)=>res.json({product:'termdock'}));
+  app.get('/api/meta',(_req,res)=>res.json({product:'veymux'}));
   app.use((req,_res,next)=>{ if(req.path.startsWith('/api/terminal') && req.socket.localPort === publicPort) ordinaryBusinessRequests++; next(); });
   app.get('/api/terminal/:session/health',(req,res)=>res.json({session:req.params.session,output:'private-output-unique'}));
   app.post('/api/terminal/fs/upload',async(req,res)=>{let size=0;for await(const chunk of req)size+=chunk.length;res.json({bytes:size});});
@@ -65,7 +65,7 @@ try {
     constructor(url:string,protocols?:string|string[]) { super(url,protocols,{headers:{Origin:boot.origin,Cookie:boot.cookie}}); }
   }
   const context={window:null as unknown,location:{origin:boot.origin,pathname:'/',hash:''},navigator:{},sessionStorage:{setItem(){}},URL,Request,Response,Uint8Array,Promise,Object,Set,String,JSON,TypeError,Error};
-  const window={__TD_PREVIEW_BOOT__:{...boot,connection:{url:entry.url,serviceOrigin:target.url,targetPeerId:target.runtime.serviceId,entryServiceId:entry.runtime.serviceId,label:'target'},version:'0.1.0',platform:'linux'},top:null as unknown,WebSocket:LocalSocket,fetch:globalThis.fetch,addEventListener:events.addEventListener.bind(events),removeEventListener:events.removeEventListener.bind(events)};
+  const window={__VEYMUX_PREVIEW_BOOT__:{...boot,connection:{url:entry.url,serviceOrigin:target.url,targetPeerId:target.runtime.serviceId,entryServiceId:entry.runtime.serviceId,label:'target'},version:'0.1.0',platform:'linux'},top:null as unknown,WebSocket:LocalSocket,fetch:globalThis.fetch,addEventListener:events.addEventListener.bind(events),removeEventListener:events.removeEventListener.bind(events)};
   window.top=window;context.window=window;vm.runInNewContext(readFileSync(new URL('../renderer/bridge.js',import.meta.url),'utf8'),context);
   Object.defineProperty(globalThis,'WebSocket',{value:window.WebSocket,configurable:true});
   Object.defineProperty(globalThis,'CloseEvent',{value:class extends Event{code:number;reason:string;wasClean:boolean;constructor(type:string,init:any){super(type);Object.assign(this,init);}},configurable:true});

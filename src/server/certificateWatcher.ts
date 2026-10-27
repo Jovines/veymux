@@ -26,8 +26,8 @@ function fileExists(filePath: string | undefined): filePath is string {
 function requiredNames(): string[] {
   const localName = getLocalAccessSetting().name;
   return [
-    '*.termdock.local',
-    `${localName}.termdock.local`,
+    '*.veymux.local',
+    `${localName}.veymux.local`,
     ...getLanIPv4Addresses(),
     'localhost',
     '127.0.0.1',

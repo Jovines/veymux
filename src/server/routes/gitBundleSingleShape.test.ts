@@ -26,7 +26,7 @@ async function call(cwd: string, includeNested: boolean, options: { refresh?: bo
   return body;
 }
 
-function makeRepo(dir = fs.mkdtempSync(path.join(os.tmpdir(), 'td-single-shape-'))): string {
+function makeRepo(dir = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-single-shape-'))): string {
   fs.mkdirSync(dir, { recursive: true });
   const git = (...args: string[]) => execFileSync('git', args, { cwd: dir, stdio: 'pipe' });
   git('init');

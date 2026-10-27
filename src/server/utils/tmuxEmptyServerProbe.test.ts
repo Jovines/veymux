@@ -16,7 +16,7 @@ it('accepts only exit 1 exact no-current-target with a nonempty target and a suc
  expect(await isConfirmedEmptyTmuxServer({code:1,stderr:'no current target'},'owned',async()=>{throw Error('read failed');})).toBe(false);
 });
 it('recognizes a real live empty tmux server and permits a subsequent owned session creation',async()=>{
- const socket='td-empty-regression-'+randomUUID(),env={...process.env};delete env.TMUX;
+ const socket='veymux-empty-regression-'+randomUUID(),env={...process.env};delete env.TMUX;
  const run=async(args:string[])=>(await exec('tmux',['-L',socket,'-f','/dev/null',...args],{env,timeout:5000})).stdout;
  try{
   await run(['new-session','-d','-s','owned-seed','/bin/sleep 30']);await run(['set-option','-g','exit-empty','off']);

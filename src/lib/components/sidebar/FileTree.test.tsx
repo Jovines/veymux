@@ -73,7 +73,7 @@ describe('FileTree file deletion', () => {
   });
 
   afterEach(() => {
-    cleanup();delete window.termdockDesktop;vi.restoreAllMocks();
+    cleanup();delete window.veymuxDesktop;vi.restoreAllMocks();
     if (originalScrollIntoView) Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', originalScrollIntoView);
     else delete (HTMLElement.prototype as { scrollIntoView?: unknown }).scrollIntoView;
     deleteFileMock.mockClear();
@@ -219,7 +219,7 @@ describe('FileTree file deletion', () => {
       const payload = terminalSequencePayload(detail.text, { ...detail, ownedPaste: token ?? undefined });
       const ok = !!token && consumeOwnedTerminalPaste(token, 'shell', payload);
       if (ok) payloads.push(payload);
-      window.dispatchEvent(new CustomEvent('termdock-insert-reference-ack', { detail: { nonce: detail.nonce, ok } }));
+      window.dispatchEvent(new CustomEvent('veymux-insert-reference-ack', { detail: { nonce: detail.nonce, ok } }));
     };
     function ExplorerLayer() {
       const ref = useRef<HTMLDivElement>(null);
@@ -227,14 +227,14 @@ describe('FileTree file deletion', () => {
       return <div ref={ref}><FileTree rootPath="/workspace" selectedFilePath={null} onFileSelect={vi.fn()} query={mode === 'search' ? 'src' : undefined}
         onPathReference={(path, _key, source) => { void requestReferenceInsertion(path + ' ', 'shell', () => true, source).then(accepted); }} /></div>;
     }
-    window.addEventListener('termdock-insert-reference', receive);
+    window.addEventListener('veymux-insert-reference', receive);
     try {
       await renderFixture(<I18nProvider><ExplorerLayer /></I18nProvider>);
       await user.click(await screen.findByRole('button', { name: 'Insert file reference into active terminal' }));
       await waitFor(() => expect(accepted).toHaveBeenCalledWith(true));
       expect(payloads).toEqual(['\x1b[200~/workspace/src \x1b[201~']);
       expect(useSidebarStore.getState().expandedPaths.has('/workspace/src')).toBe(false);
-    } finally { window.removeEventListener('termdock-insert-reference', receive); }
+    } finally { window.removeEventListener('veymux-insert-reference', receive); }
   });
 
   it('only deletes after the user confirms the irreversible action', async () => {
@@ -269,23 +269,23 @@ describe('FileTree file deletion', () => {
 
   it('Preview delete waits for explicit async confirmation, rejects double click and expires on page change',async()=>{
     const user=userEvent.setup();let answer!:(value:boolean)=>void;const confirm=vi.fn(()=>new Promise<boolean>(resolve=>{answer=resolve;}));
-    window.termdockDesktop={platform:'darwin',confirmationUI:'page-v1',confirm,alert:vi.fn()} as any;
+    window.veymuxDesktop={platform:'darwin',confirmationUI:'page-v1',confirm,alert:vi.fn()} as any;
     const view=await renderFixture(<I18nProvider><FileTree rootPath="/workspace" selectedFilePath={null} onFileSelect={vi.fn()}/></I18nProvider>);
     await user.click(screen.getByTitle('More file actions'));await user.click(screen.getByRole('button',{name:'Delete file'}));expect(confirm).toHaveBeenCalledTimes(1);expect(deleteFileMock).not.toHaveBeenCalled();
-    window.dispatchEvent(new Event('pagehide'));answer(true);await waitFor(()=>expect(screen.getByText('notes.txt')).toBeTruthy());expect(deleteFileMock).not.toHaveBeenCalled();view.unmount();delete window.termdockDesktop;
+    window.dispatchEvent(new Event('pagehide'));answer(true);await waitFor(()=>expect(screen.getByText('notes.txt')).toBeTruthy());expect(deleteFileMock).not.toHaveBeenCalled();view.unmount();delete window.veymuxDesktop;
   });
   it('an old delete response cannot remove a replacement file or mutate pins and a current failure uses page feedback',async()=>{
-    const user=userEvent.setup(),pin=vi.fn(),alert=vi.fn();window.termdockDesktop={platform:'darwin',confirmationUI:'page-v1',confirm:async()=>true,alert} as any;
+    const user=userEvent.setup(),pin=vi.fn(),alert=vi.fn();window.veymuxDesktop={platform:'darwin',confirmationUI:'page-v1',confirm:async()=>true,alert} as any;
     let finish!:()=>void;deleteFileMock.mockImplementationOnce(()=>new Promise<void>(resolve=>{finish=resolve;}));
     await renderFixture(<I18nProvider><FileTree rootPath="/workspace" selectedFilePath={null} onFileSelect={vi.fn()} onFilePinToggle={pin} pinnedPaths={new Set(['/workspace/notes.txt'])}/></I18nProvider>);
     await user.click(screen.getByTitle('More file actions'));await user.click(screen.getByRole('button',{name:'Delete file'}));await waitFor(()=>expect(finish).toBeTypeOf('function'));
     useSidebarStore.setState({directoryCache:new Map([['/workspace',[{name:'notes.txt',path:'/workspace/notes.txt',type:'file',modified:'replacement'}]]])});finish();await waitFor(()=>expect(screen.getByText('notes.txt')).toBeTruthy());expect(pin).not.toHaveBeenCalled();
-    deleteFileMock.mockRejectedValueOnce(new Error('Controlled delete failure'));await user.click(screen.getByTitle('More file actions'));await user.click(screen.getByRole('button',{name:'Delete file'}));await waitFor(()=>expect(alert).toHaveBeenCalledWith(expect.stringContaining('Controlled delete failure')));delete window.termdockDesktop;
+    deleteFileMock.mockRejectedValueOnce(new Error('Controlled delete failure'));await user.click(screen.getByTitle('More file actions'));await user.click(screen.getByRole('button',{name:'Delete file'}));await waitFor(()=>expect(alert).toHaveBeenCalledWith(expect.stringContaining('Controlled delete failure')));delete window.veymuxDesktop;
   });
 
   it('keeps a confirmed delete valid across an equivalent cache refresh and applies pin cleanup after its own watch event',async()=>{
     const user=userEvent.setup(),pin=vi.fn();let answer!:(value:boolean)=>void,finish!:()=>void;
-    window.termdockDesktop={platform:'darwin',confirmationUI:'page-v1',confirm:()=>new Promise<boolean>(resolve=>{answer=resolve;}),alert:vi.fn()} as any;
+    window.veymuxDesktop={platform:'darwin',confirmationUI:'page-v1',confirm:()=>new Promise<boolean>(resolve=>{answer=resolve;}),alert:vi.fn()} as any;
     deleteFileMock.mockImplementationOnce(()=>new Promise<void>(resolve=>{finish=resolve;}));
     await renderFixture(<I18nProvider><FileTree rootPath="/workspace" selectedFilePath={null} onFileSelect={vi.fn()} onFilePinToggle={pin} pinnedPaths={new Set(['/workspace/notes.txt'])}/></I18nProvider>);
     await user.click(screen.getByTitle('More file actions'));await user.click(screen.getByRole('button',{name:'Delete file'}));
@@ -302,7 +302,7 @@ describe('FileTree file deletion', () => {
   it.each(['root','target','client','closed-client'] as const)('no delete is approved after %s changes while the normal async confirmation waits',async kind=>{
     const user=userEvent.setup();let answer!:(value:boolean)=>void,target:any={url:'https://owned',targetPeerId:'a'},client:any={closed:false};
     vi.spyOn(browserScope,'savedConnection').mockImplementation(()=>target);vi.spyOn(browserScope,'currentSecureClient').mockImplementation(()=>client);
-    window.termdockDesktop={platform:'darwin',confirmationUI:'page-v1',confirm:()=>new Promise<boolean>(resolve=>{answer=resolve;}),alert:vi.fn()} as any;
+    window.veymuxDesktop={platform:'darwin',confirmationUI:'page-v1',confirm:()=>new Promise<boolean>(resolve=>{answer=resolve;}),alert:vi.fn()} as any;
     const view=await renderFixture(<I18nProvider><FileTree rootPath="/workspace" selectedFilePath={null} onFileSelect={vi.fn()}/></I18nProvider>);
     await user.click(screen.getByTitle('More file actions'));await user.click(screen.getByRole('button',{name:'Delete file'}));
     if(kind==='root')view.rerender(<I18nProvider><FileTree rootPath="/different-owned-root" selectedFilePath={null} onFileSelect={vi.fn()}/></I18nProvider>);

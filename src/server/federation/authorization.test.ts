@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { AuthorizationStore, type GrantInput } from './authorization.js';
 const dirs: string[] = [];
 function fixture() {
-  const dir = mkdtempSync(join(tmpdir(), 'td-auth-')); dirs.push(dir);
+  const dir = mkdtempSync(join(tmpdir(), 'veymux-auth-')); dirs.push(dir);
   const filePath = join(dir, 'private', 'grants.json'); let now = 1000;
   const store = new AuthorizationStore({ filePath, serviceId: 'C', now: () => now });
   const allowed = (action: string, sessionId = 's1', subjectId = 'phone') => store.authorize({ subjectId, serviceId: 'C', action, sessionId }).allowed;

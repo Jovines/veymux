@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createInviteLink, createOnboardingInviteLink } from '../federation/inviteLink';
-import type { TermdockDesktopBridge } from '../desktop/nativeBridge';
+import type { VeymuxDesktopBridge } from '../desktop/nativeBridge';
 import { addDesktopService, desktopCertificateTrust, desktopConnectionIntent, openDesktopService, serviceConnectionInput } from './desktopServiceConnection';
 import { parseInviteLink } from '../federation/inviteLink';
 
@@ -9,14 +9,14 @@ afterEach(() => vi.restoreAllMocks());
 const target = '12D3KooW' + 'a'.repeat(44), entry = '12D3KooW' + 'b'.repeat(44);
 const service = { id: target, targetPeerId: target, url: 'https://entry.example', serviceOrigin: 'https://target.internal', label: 'Target', routes: [{ url: 'https://backup.example', targetPeerId: entry }] };
 function bridge() {
-  return { openServiceConnection: vi.fn().mockResolvedValue({ ok: true }), reviewServiceConnection: vi.fn().mockResolvedValue(undefined) } as unknown as TermdockDesktopBridge;
+  return { openServiceConnection: vi.fn().mockResolvedValue({ ok: true }), reviewServiceConnection: vi.fn().mockResolvedValue(undefined) } as unknown as VeymuxDesktopBridge;
 }
 describe('shared desktop connection actions', () => {
   it('keeps HTTPS and native certificate review when pasting an HTTP share landing link', async () => {
     const original = createInviteLink({ v: 1, serviceId: target, entryUrl: 'https://192.168.1.20:9834', code: 'c'.repeat(43) });
     const invitation = createOnboardingInviteLink(original, 'http://192.168.1.20:21000/connect');
     const native = bridge(); await addDesktopService(native, invitation);
-    expect(native.reviewServiceConnection).toHaveBeenCalledWith(expect.objectContaining({ url: 'https://192.168.1.20:9834', targetPeerId: target }), expect.stringMatching(/^https:\/\/192\.168\.1\.20:9834\/#termdock-invite=/));
+    expect(native.reviewServiceConnection).toHaveBeenCalledWith(expect.objectContaining({ url: 'https://192.168.1.20:9834', targetPeerId: target }), expect.stringMatching(/^https:\/\/192\.168\.1\.20:9834\/#veymux-invite=/));
     expect(parseInviteLink(vi.mocked(native.reviewServiceConnection!).mock.calls[0][1]!)).toMatchObject({ targetPeerId: target, pairingCode: 'c'.repeat(43) });
     expect(native.openServiceConnection).not.toHaveBeenCalled();
   });
@@ -58,7 +58,7 @@ describe('shared desktop connection actions', () => {
       routeCode: 'd'.repeat(32), ...(routeOnly ? { routeOnly: true } : { pairingCode: 'c'.repeat(32) }), viewMode: 'chat' as const };
     const request = desktopConnectionIntent(intent);
     expect(parseInviteLink(request.invitation!)).toMatchObject(intent);
-    expect(JSON.stringify(request.connection)).not.toMatch(/pairingCode|routeCode|routeOnly|termdock-invite/);
+    expect(JSON.stringify(request.connection)).not.toMatch(/pairingCode|routeCode|routeOnly|veymux-invite/);
   });
   it.each(['computer.example:9834', 'wss://computer.example:9834/api/federation/secure'])('normalizes %s identically for both entry points', input => {
     expect(serviceConnectionInput(input)).toEqual({ connection: { id: 'https://computer.example:9834', url: 'https://computer.example:9834', label: 'computer.example:9834' } });
@@ -68,7 +68,7 @@ describe('shared desktop connection actions', () => {
     const request = serviceConnectionInput(invitation);
     expect(request.invitation).toBe(invitation);
     expect(request.connection).toMatchObject({ targetPeerId: target, entryServiceId: entry, url: service.url, serviceOrigin: service.serviceOrigin });
-    expect(JSON.stringify(request.connection)).not.toMatch(/pairingCode|routeCode|termdock-invite/);
+    expect(JSON.stringify(request.connection)).not.toMatch(/pairingCode|routeCode|veymux-invite/);
   });
   it.each(['PREVIEW_DISCOVERY_FAILED', 'PREVIEW_CERTIFICATE_REJECTED'])('hands %s to the trusted center with all original connection metadata', async code => {
     const native = bridge();

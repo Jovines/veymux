@@ -16,7 +16,7 @@ const ast = ts.createSourceFile('terminal.ts', source, ts.ScriptTarget.Latest, t
 const directories: string[] = [];
 afterEach(() => { for (const dir of directories.splice(0)) fs.rmSync(dir, { recursive: true, force: true }); });
 function fixture() {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'td-search-routes-')); directories.push(directory);
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-search-routes-')); directories.push(directory);
   const search = new SessionSearchStore(path.join(directory, 'search'));
   const history = new AgentResumeHistoryStore(path.join(directory, 'history.json'));
   const routes = new Map<string, (...args: any[]) => Promise<unknown>>();

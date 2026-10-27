@@ -1,5 +1,5 @@
 import { uploadFiles } from './api';
-import { getTermdockDesktopBridge } from '../desktop/nativeBridge';
+import { getVeymuxDesktopBridge } from '../desktop/nativeBridge';
 import { selectedTarget } from '../federation/clientScope';
 
 /** A recognized movie must never fall through to its text or cover image. */
@@ -10,7 +10,7 @@ export class TerminalClipboardVideoError extends Error {}
 export function prepareTerminalClipboardImage(image: File): File {
   if (!image.type.startsWith('image/') || image.size === 0) throw new Error('Clipboard image is empty');
   const extension = image.type === 'image/jpeg' ? 'jpg' : image.type.split('/')[1].replace(/[^a-z0-9]/gi, '') || 'png';
-  return new File([image], `termdock-clipboard-${Date.now()}-${crypto.randomUUID()}.${extension}`, { type: image.type });
+  return new File([image], `veymux-clipboard-${Date.now()}-${crypto.randomUUID()}.${extension}`, { type: image.type });
 }
 
 export async function uploadTerminalClipboardImage(image: File, signal?: AbortSignal): Promise<string> {
@@ -20,7 +20,7 @@ export async function uploadTerminalClipboardImage(image: File, signal?: AbortSi
 }
 
 export async function readTerminalClipboardImage(clipboard?: Pick<Clipboard, 'read'>): Promise<File | null> {
-  const bridge = getTermdockDesktopBridge();
+  const bridge = getVeymuxDesktopBridge();
   if (bridge?.readClipboardImage) {
     const png = await bridge.readClipboardImage();
     return png?.byteLength
@@ -33,7 +33,7 @@ export async function readTerminalClipboardImage(clipboard?: Pick<Clipboard, 're
     if (!type) continue;
     const blob = await item.getType(type);
     const extension = type === 'image/jpeg' ? 'jpg' : type.split('/')[1].replace(/[^a-z0-9]/gi, '') || 'png';
-    return new File([blob], `termdock-clipboard-${Date.now()}.${extension}`, { type });
+    return new File([blob], `veymux-clipboard-${Date.now()}.${extension}`, { type });
   }
   return null;
 }
@@ -62,7 +62,7 @@ export async function readTerminalClipboardVideos(clipboard?: Pick<Clipboard, 'r
     if (!blob.size) throw new Error('Clipboard video is empty');
     const mime = type.split(';')[0].toLowerCase();
     const extension = extensions[mime] || mime.slice('video/'.length).replace(/[^a-z0-9]/g, '') || 'mp4';
-    files.push(new File([blob], `termdock-clipboard-${Date.now()}-${crypto.randomUUID()}.${extension}`, { type }));
+    files.push(new File([blob], `veymux-clipboard-${Date.now()}-${crypto.randomUUID()}.${extension}`, { type }));
   }
   return files;
 }
@@ -73,10 +73,10 @@ export async function readTerminalClipboardFiles(): Promise<{ files: File[]; pat
   const targetPeerId = selectedTarget()?.targetPeerId;
   let input;
   try {
-    input = await getTermdockDesktopBridge()?.readClipboardFiles?.({ localServiceId: targetPeerId });
+    input = await getVeymuxDesktopBridge()?.readClipboardFiles?.({ localServiceId: targetPeerId });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    const marker = 'TERMDOCK_CLIPBOARD_VIDEO_ERROR:';
+    const marker = 'VEYMUX_CLIPBOARD_VIDEO_ERROR:';
     const index = message.indexOf(marker);
     if (index !== -1) throw new TerminalClipboardVideoError(message.slice(index + marker.length).trim());
     // 1.4.292–1.4.294 readers have no marker. Match only the actual stderr

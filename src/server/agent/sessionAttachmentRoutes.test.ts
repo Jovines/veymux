@@ -30,7 +30,7 @@ async function dial(url: string, ready = false) {
 }
 it.each([false, true])('uploads Session attachments without directory grants, encrypted and relay-only=%s', async relayed => {
   vi.stubGlobal('CloseEvent', class extends Event { code = 1000; reason = ''; });
-  const directory = mkdtempSync(join(tmpdir(), 'td-session-attachment-')); cleanup.push(() => rmSync(directory, { recursive: true, force: true }));
+  const directory = mkdtempSync(join(tmpdir(), 'veymux-session-attachment-')); cleanup.push(() => rmSync(directory, { recursive: true, force: true }));
   const app = express(); app.use(express.json()); app.use('/api/terminal', sessionAttachmentRoutes(join(directory, 'attachments'), id => id === 'one' ? 'stable-one' : undefined)); app.use('/api/android', androidRouter); app.use('/api/terminal/fs', sharedFileBoundary, filesystem);
   const runtime = await createFederationRuntime(app, join(directory, 'federation'), { terminal() {}, control() {} }, { resolveSessionId: id => id === 'one' ? 'stable-one' : id, sessionAttachmentDirectory: join(directory, 'attachments') }); cleanup.push(() => runtime.close());
   const target = await endpoint(), wire: string[] = [];

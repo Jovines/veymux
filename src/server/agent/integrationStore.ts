@@ -87,11 +87,11 @@ export class IntegrationStore {
   private warning = '';
   private rejected = new Map<string, number>();
   constructor(file: string, private retention = 10000, options: IntegrationStorageOptions = {}) {
-    this.maxBytes = positiveInteger(options.maxBytes, 'TERMDOCK_INTEGRATION_EVENT_MAX_BYTES', 512 * 1024 * 1024);
-    this.maxGroupBytes = positiveInteger(options.maxGroupBytes, 'TERMDOCK_INTEGRATION_EVENT_GROUP_MAX_BYTES', Math.min(this.maxBytes, 128 * 1024 * 1024));
-    this.warnPercent = positiveInteger(options.warnPercent, 'TERMDOCK_INTEGRATION_EVENT_WARN_PERCENT', 80);
-    this.metadataWarnBytes = positiveInteger(options.metadataWarnBytes, 'TERMDOCK_INTEGRATION_METADATA_WARN_BYTES', 16 * 1024 * 1024);
-    const segmentBytes = positiveInteger(options.segmentBytes, 'TERMDOCK_INTEGRATION_EVENT_SEGMENT_BYTES', 1024 * 1024);
+    this.maxBytes = positiveInteger(options.maxBytes, 'VEYMUX_INTEGRATION_EVENT_MAX_BYTES', 512 * 1024 * 1024);
+    this.maxGroupBytes = positiveInteger(options.maxGroupBytes, 'VEYMUX_INTEGRATION_EVENT_GROUP_MAX_BYTES', Math.min(this.maxBytes, 128 * 1024 * 1024));
+    this.warnPercent = positiveInteger(options.warnPercent, 'VEYMUX_INTEGRATION_EVENT_WARN_PERCENT', 80);
+    this.metadataWarnBytes = positiveInteger(options.metadataWarnBytes, 'VEYMUX_INTEGRATION_METADATA_WARN_BYTES', 16 * 1024 * 1024);
+    const segmentBytes = positiveInteger(options.segmentBytes, 'VEYMUX_INTEGRATION_EVENT_SEGMENT_BYTES', 1024 * 1024);
     if (this.warnPercent > 100 || !Number.isSafeInteger(retention) || retention < 1) integrationError('INVALID_EVENT_STORAGE_CONFIG', 'Invalid warning percentage or event retention');
     this.journal = new IntegrationJournal(file, segmentBytes);
     this.doc = this.journal.read() ?? this.doc;
@@ -176,7 +176,7 @@ export class IntegrationStore {
     if (bytes > this.maxBytes || [...changedGroups].some(group => groupBytes.get(group)! > this.maxGroupBytes)) {
       for (const group of changedGroups) this.rejected.set(group, bytes);
       this.reportCapacity();
-      integrationError('EVENT_STORAGE_FULL', 'Unconfirmed integration events exceed global/group capacity; consume and ACK existing events or increase TERMDOCK_INTEGRATION_EVENT_MAX_BYTES / TERMDOCK_INTEGRATION_EVENT_GROUP_MAX_BYTES. No source update in this group batch was committed', 503);
+      integrationError('EVENT_STORAGE_FULL', 'Unconfirmed integration events exceed global/group capacity; consume and ACK existing events or increase VEYMUX_INTEGRATION_EVENT_MAX_BYTES / VEYMUX_INTEGRATION_EVENT_GROUP_MAX_BYTES. No source update in this group batch was committed', 503);
     }
   }
   consumerStatus() {

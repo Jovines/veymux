@@ -19,7 +19,7 @@ async function fixture() {
   state.identity = await createIdentity();
   vi.stubGlobal('WebSocket', WebSocket);
   vi.stubGlobal('CloseEvent', class extends Event { code: number; reason: string; constructor(type: string, init: { code: number; reason: string }) { super(type); this.code = init.code; this.reason = init.reason; } });
-  const dir = mkdtempSync(join(tmpdir(), 'termdock-background-test-'));
+  const dir = mkdtempSync(join(tmpdir(), 'veymux-background-test-'));
   cleanup.push(() => rmSync(dir, { recursive: true, force: true }));
   const app = express(); app.use(express.json());
   const received: unknown[] = [];
@@ -57,7 +57,7 @@ it.each(['direct', 'relay'])('updates subscriptions over a real %s encrypted cha
   const f = await fixture();
   const client = await connectBackgroundTarget({ ...f.config, addresses: mode === 'relay' ? [] : f.config.addresses });
   try {
-    const response = await client.fetch('/api/notifications/subscribe', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-termdock-device': 'forged' }, body: JSON.stringify({ endpoint: 'renew-secret-endpoint' }) });
+    const response = await client.fetch('/api/notifications/subscribe', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-veymux-device': 'forged' }, body: JSON.stringify({ endpoint: 'renew-secret-endpoint' }) });
     expect(response.status).toBe(200); await response.text();
     expect(f.received).toEqual([{ body: { endpoint: 'renew-secret-endpoint' }, subject: state.identity!.peerId }]);
     expect(Buffer.concat(f.wire).includes(Buffer.from('renew-secret-endpoint'))).toBe(false);

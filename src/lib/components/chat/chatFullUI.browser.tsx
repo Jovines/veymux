@@ -1,10 +1,14 @@
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, expect, it, vi } from 'vitest';
-import { page } from 'vitest/browser';
+import { page, userEvent } from 'vitest/browser';
 import '../../../index.css';
 import { I18nProvider } from '../../i18n';
 import { ChatFullContent } from './ChatFullContent';
 import type { ChatMessage } from './chatMessages';
+vi.mock('../../terminal/api', async original => ({
+  ...await original<typeof import('../../terminal/api')>(),
+  readImagePreviewBlob: async (path: string) => ({ path, blob: new Blob(['<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1536"><rect width="1024" height="1536" fill="currentColor"/></svg>'], { type: 'image/svg+xml' }), size: 1, modified: '', mimeType: 'image/svg+xml' }),
+}));
 let root: Root | undefined;
 afterEach(() => { root?.unmount(); root = undefined; vi.unstubAllGlobals(); sessionStorage.clear(); document.body.replaceChildren(); document.documentElement.removeAttribute('style'); });
 const code = `$open = false
@@ -48,5 +52,27 @@ for (const layout of [
     expect(dialog.right).toBeLessThanOrEqual(layout.width - layout.right + 1); expect(dialog.bottom).toBeLessThanOrEqual(layout.height - layout.bottom + 1);
     await page.getByRole('button', { name: '关闭', exact: true }).click();
     await expect.element(page.getByRole('dialog', { name: '确认信息' })).not.toBeInTheDocument();
+  });
+}
+
+for (const width of [390, 844, 1280]) {
+  it(`shows the complete portrait image and opens a usable preview at ${width}px`, async () => {
+    await page.viewport(width, 844);
+    const message: ChatMessage = { id: 'portrait-image', role: 'assistant', content: '图标设计', createdAt: 1, status: 'stored', ui: { version: 2, code: 'root = Stack([ImageBlock("/tmp/portrait.png", "完整设计稿")])' } };
+    const host = document.createElement('div'); host.id = 'root'; document.body.append(host);
+    root = createRoot(host); root.render(<I18nProvider><div className="h-full overflow-auto px-4"><ChatFullContent message={message} sessionId="image-browser" canWrite onAction={async () => true} /></div></I18nProvider>);
+    await expect.poll(() => document.querySelector('img')?.naturalHeight).toBe(1536);
+    const img = document.querySelector('img')!;
+    const box = img.getBoundingClientRect();
+    // A cover image in a short, clipped parent hides the top/bottom of a
+    // real design sheet. Require an uncropped fit and reachable preview.
+    expect(getComputedStyle(img).objectFit).toBe('contain');
+    expect(box.height).toBeLessThanOrEqual(844 * .65);
+    expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(width + 1);
+    await page.getByRole('button', { name: '查看图片：完整设计稿' }).click();
+    await expect.poll(() => document.querySelector('[data-markdown-image-lightbox]')).toBeTruthy();
+    await expect.poll(() => document.querySelector('[data-markdown-image-lightbox] img')?.getAttribute('src')).toMatch(/^blob:/);
+    await userEvent.keyboard('{Escape}');
+    await expect.poll(() => document.querySelector('[data-markdown-image-lightbox]')).toBeNull();
   });
 }

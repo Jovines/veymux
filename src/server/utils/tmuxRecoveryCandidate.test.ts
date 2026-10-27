@@ -3,20 +3,20 @@ import { isTmuxRecoveryCandidate } from './tmuxRecoveryCandidate.js';
 
 describe('isTmuxRecoveryCandidate', () => {
   const lostGuiSession = {
-    managedByTermdock: true,
+    managedByVeymux: true,
     sourceFrontendSessionId: 'frontend-1',
     guiDetachedAt: null,
     boundFrontendSessionId: null,
   };
 
-  it('accepts a Termdock GUI session whose frontend binding was lost', () => {
+  it('accepts a Veymux GUI session whose frontend binding was lost', () => {
     expect(isTmuxRecoveryCandidate(lostGuiSession)).toBe(true);
   });
 
-  it('rejects ordinary tmux and Termdock CLI-only sessions', () => {
+  it('rejects ordinary tmux and Veymux CLI-only sessions', () => {
     expect(isTmuxRecoveryCandidate({
       ...lostGuiSession,
-      managedByTermdock: false,
+      managedByVeymux: false,
       sourceFrontendSessionId: null,
     })).toBe(false);
     expect(isTmuxRecoveryCandidate({

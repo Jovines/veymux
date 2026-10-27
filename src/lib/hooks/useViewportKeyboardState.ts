@@ -163,7 +163,7 @@ export function useViewportKeyboardState(
     window.addEventListener('orientationchange', handleOrientationChange);
     viewportWindow().visualViewport?.addEventListener('resize', handleVisualViewportResize);
     viewportWindow().visualViewport?.addEventListener('scroll', handleVisualViewportScroll);
-    document.addEventListener('termdock:viewport-keyboard-change', handleViewportKeyboardChange);
+    document.addEventListener('veymux:viewport-keyboard-change', handleViewportKeyboardChange);
 
     // 从后台返回 / BFCache 恢复时强制重读 visualViewport，避免 isOpen 卡在
     // "软键盘打开"状态。和 useViewportHeight 一样要多次 schedule 覆盖 iOS
@@ -190,7 +190,7 @@ export function useViewportKeyboardState(
       window.removeEventListener('orientationchange', handleOrientationChange);
       viewportWindow().visualViewport?.removeEventListener('resize', handleVisualViewportResize);
       viewportWindow().visualViewport?.removeEventListener('scroll', handleVisualViewportScroll);
-      document.removeEventListener('termdock:viewport-keyboard-change', handleViewportKeyboardChange);
+      document.removeEventListener('veymux:viewport-keyboard-change', handleViewportKeyboardChange);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('pageshow', handlePageShow);
 

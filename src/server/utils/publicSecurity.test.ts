@@ -7,28 +7,28 @@ import { isAllowedOrigin, isUpgradeOriginAllowed } from './requestSecurity.js';
 import { getCookieSecurityOptions, setSecureCookieMode } from './cookieSecurity.js';
 import { readAuthFile } from './authProtection.js';
 
-vi.mock('./authProtection.js', () => ({ isAuthEnabled: () => Boolean(process.env.TERMDOCK_PASSWORD || readAuthFile()), readAuthFile: vi.fn(() => null) }));
-vi.mock('./localAccess.js', () => ({ getLanIPv4Addresses: () => ['192.168.1.2'], localAccessManager: { getState: () => ({ hostname: 'test.termdock.local' }) } }));
+vi.mock('./authProtection.js', () => ({ isAuthEnabled: () => Boolean(process.env.VEYMUX_PASSWORD || readAuthFile()), readAuthFile: vi.fn(() => null) }));
+vi.mock('./localAccess.js', () => ({ getLanIPv4Addresses: () => ['192.168.1.2'], localAccessManager: { getState: () => ({ hostname: 'test.veymux.local' }) } }));
 afterEach(() => { vi.unstubAllEnvs(); vi.mocked(readAuthFile).mockReset(); setSecureCookieMode(false); });
 
 describe('public ingress security', () => {
   it('fails closed without auth and for weak env passwords or non-HTTPS origins', () => {
-    vi.stubEnv('TERMDOCK_PUBLIC_ORIGIN', 'https://term.example.com');
-    vi.stubEnv('TERMDOCK_PASSWORD', '');
+    vi.stubEnv('VEYMUX_PUBLIC_ORIGIN', 'https://term.example.com');
+    vi.stubEnv('VEYMUX_PASSWORD', '');
     expect(assertPublicSecurity).toThrow(/requires authentication/);
-    vi.stubEnv('TERMDOCK_PASSWORD', '1234567');
+    vi.stubEnv('VEYMUX_PASSWORD', '1234567');
     expect(assertPublicSecurity).toThrow(/8 characters/);
-    vi.stubEnv('TERMDOCK_PASSWORD', '12345678');
+    vi.stubEnv('VEYMUX_PASSWORD', '12345678');
     expect(assertPublicSecurity).not.toThrow();
     for (const value of ['http://term.example.com', 'https://user@term.example.com', 'https://term.example.com/path']) {
-      vi.stubEnv('TERMDOCK_PUBLIC_ORIGIN', value);
+      vi.stubEnv('VEYMUX_PUBLIC_ORIGIN', value);
       expect(getPublicOrigin).toThrow();
     }
   });
 
   it('requires at least 8 characters in stored password metadata', () => {
-    vi.stubEnv('TERMDOCK_PUBLIC_ORIGIN', 'https://term.example.com');
-    vi.stubEnv('TERMDOCK_PASSWORD', '');
+    vi.stubEnv('VEYMUX_PUBLIC_ORIGIN', 'https://term.example.com');
+    vi.stubEnv('VEYMUX_PASSWORD', '');
     const authFile = { version: 1 as const, passwordHash: 'fixture-hash', createdAt: 0 };
     for (const passwordLength of [undefined, 7]) {
       vi.mocked(readAuthFile).mockReturnValue({ ...authFile, passwordLength });
@@ -39,7 +39,7 @@ describe('public ingress security', () => {
   });
 
   it('requires exact HTTPS origin including port in public mode', () => {
-    vi.stubEnv('TERMDOCK_PUBLIC_ORIGIN', 'https://term.example.com');
+    vi.stubEnv('VEYMUX_PUBLIC_ORIGIN', 'https://term.example.com');
     for (const origin of ['http://term.example.com', 'https://term.example.com:444', 'https://term.example.com.attacker.org', 'null', 'https://localhost', 'ftp://term.example.com']) {
       expect(isAllowedOrigin(origin, 'localhost:9834')).toBe(false);
       expect(isUpgradeOriginAllowed(origin, 'localhost:9834')).toBe(false);
@@ -51,14 +51,14 @@ describe('public ingress security', () => {
 
   it('keeps local Vite proxy origins working without public mode', () => {
     vi.stubEnv('NODE_ENV', 'development');
-    vi.stubEnv('TERMDOCK_PUBLIC_ORIGIN', '');
+    vi.stubEnv('VEYMUX_PUBLIC_ORIGIN', '');
     expect(isAllowedOrigin('http://192.168.1.2:9833', 'localhost:9835')).toBe(true);
     expect(isAllowedOrigin('https://evil.example.com', 'localhost:9835')).toBe(false);
     expect(isAllowedOrigin('ftp://localhost', 'localhost:9835')).toBe(false);
   });
 
   it('sends a server-enforced opaque-origin sandbox for direct HTML and SVG navigation', async () => {
-    vi.stubEnv('TERMDOCK_PUBLIC_ORIGIN', '');
+    vi.stubEnv('VEYMUX_PUBLIC_ORIGIN', '');
     const app = express();
     app.use(securityHeaders);
     app.use((_req, res) => res.send('<script>fetch("/api/terminal")</script>'));
@@ -81,7 +81,7 @@ describe('public ingress security', () => {
 
 
 it('rejects same-host cross-port or cross-scheme WebSocket hijacking in production', () => {
-  vi.stubEnv('TERMDOCK_PUBLIC_ORIGIN', '');
+  vi.stubEnv('VEYMUX_PUBLIC_ORIGIN', '');
   vi.stubEnv('NODE_ENV', 'production');
   setSecureCookieMode(true);
   expect(isUpgradeOriginAllowed('https://localhost:9834', 'localhost:9834')).toBe(true);

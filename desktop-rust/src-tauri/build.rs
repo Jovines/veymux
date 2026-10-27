@@ -2,14 +2,14 @@
 mod runtime_icon;
 
 fn main() {
-    for key in ["TERMDOCK_PREVIEW_UPDATE_ENDPOINT", "TERMDOCK_PREVIEW_UPDATE_PUBLIC_KEY", "TERMDOCK_DESKTOP_CHANNEL", "TERMDOCK_STABLE_UPDATE_ENDPOINT", "TERMDOCK_STABLE_UPDATE_PUBLIC_KEY"] {
+    for key in ["VEYMUX_PREVIEW_UPDATE_ENDPOINT", "VEYMUX_PREVIEW_UPDATE_PUBLIC_KEY", "VEYMUX_DESKTOP_CHANNEL", "VEYMUX_STABLE_UPDATE_ENDPOINT", "VEYMUX_STABLE_UPDATE_PUBLIC_KEY"] {
         println!("cargo:rerun-if-env-changed={key}");
     }
     if std::env::var_os("CARGO_FEATURE_DESKTOP").is_some() {
-        println!("cargo:rerun-if-changed=../../public/pwa-512x512.png");
+        println!("cargo:rerun-if-changed=../../desktop/assets/veymux-macos-icon.png");
         println!("cargo:rerun-if-changed=build/runtime_icon.rs");
         runtime_icon::generate(
-            std::path::Path::new("../../public/pwa-512x512.png"),
+            std::path::Path::new("../../desktop/assets/veymux-macos-icon.png"),
             std::path::Path::new(".runtime-icons/icon.png"),
         )
         .expect("Preview runtime icon must be decoded RGBA8 before Tauri codegen");
@@ -22,7 +22,7 @@ fn main() {
                 .flag("-fobjc-arc")
                 .flag("-fblocks")
                 .flag("-mmacosx-version-min=14.0")
-                .compile("termdock_preview_desktop");
+                .compile("veymux_preview_desktop");
             for framework in [
                 "AppKit",
                 "UserNotifications",

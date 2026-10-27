@@ -45,5 +45,5 @@ it.each([320, 390, 1280])('recovers an interrupted collection explicitly and kee
   await expect.element(page.getByRole('button', { name: '再次收集', exact: true })).toBeEnabled();
   expect(data.runs).toHaveLength(2); expect(data.runs[1].collection?.state).toBe('cancelled');
   expect(document.documentElement.scrollWidth).toBe(width);
-  await page.screenshot({ path: `/tmp/termdock-collection-recovery-${width}.png` });
+  await page.screenshot({ path: `/tmp/veymux-collection-recovery-${width}.png` });
 });

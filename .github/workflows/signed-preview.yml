@@ -49,12 +49,12 @@ jobs:
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TERMDOCK_PREVIEW_UPDATE_PUBLIC_KEY: ${{ secrets.TERMDOCK_PREVIEW_UPDATE_PUBLIC_KEY }}
+          VEYMUX_PREVIEW_UPDATE_PUBLIC_KEY: ${{ secrets.VEYMUX_PREVIEW_UPDATE_PUBLIC_KEY }}
         run: |
           test "$(uname -m)" = arm64
           python3 - <<'PY'
           import os
-          names = ['APPLE_CERTIFICATE', 'APPLE_CERTIFICATE_PASSWORD', 'APPLE_SIGNING_IDENTITY', 'APPLE_API_KEY', 'APPLE_API_ISSUER', 'APPLE_API_PRIVATE_KEY', 'TAURI_SIGNING_PRIVATE_KEY', 'TERMDOCK_PREVIEW_UPDATE_PUBLIC_KEY']
+          names = ['APPLE_CERTIFICATE', 'APPLE_CERTIFICATE_PASSWORD', 'APPLE_SIGNING_IDENTITY', 'APPLE_API_KEY', 'APPLE_API_ISSUER', 'APPLE_API_PRIVATE_KEY', 'TAURI_SIGNING_PRIVATE_KEY', 'VEYMUX_PREVIEW_UPDATE_PUBLIC_KEY']
           missing = [name for name in names if not os.environ.get(name)]
           if missing: raise SystemExit('Missing GitHub Actions secrets: '+', '.join(missing))
           print('All release credentials are configured')
@@ -92,7 +92,7 @@ jobs:
           APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          TERMDOCK_PREVIEW_UPDATE_PUBLIC_KEY: ${{ secrets.TERMDOCK_PREVIEW_UPDATE_PUBLIC_KEY }}
+          VEYMUX_PREVIEW_UPDATE_PUBLIC_KEY: ${{ secrets.VEYMUX_PREVIEW_UPDATE_PUBLIC_KEY }}
         shell: bash
         run: |
           set -euo pipefail
@@ -105,7 +105,7 @@ jobs:
           unset APPLE_API_PRIVATE_KEY
           trap 'rm -f "$APPLE_API_KEY_PATH"' EXIT
           npm --prefix desktop-rust run package:preview -- "$PREVIEW_VERSION" "$RUNNER_TEMP/preview-output" 2>&1 | tee "$RUNNER_TEMP/preview-build.log"
-          python3 desktop-rust/scripts/notarize-preview.py "$RUNNER_TEMP/preview-output" 'desktop-rust/src-tauri/target/release/bundle/macos/Termdock Preview.app' "$RUNNER_TEMP/preview-build.log"
+          python3 desktop-rust/scripts/notarize-preview.py "$RUNNER_TEMP/preview-output" 'desktop-rust/src-tauri/target/release/bundle/macos/Veymux Preview.app' "$RUNNER_TEMP/preview-build.log"
           rm "$RUNNER_TEMP/preview-output/build-config.json"
       - name: Upload verified signed artifacts
         uses: actions/upload-artifact@v4
@@ -123,9 +123,9 @@ jobs:
           import os, subprocess
           repo=os.environ['GITHUB_REPOSITORY']; tag='preview-v'+os.environ['PREVIEW_VERSION']
           subprocess.run(['gh','api',f'repos/{repo}/git/refs','--method','POST','-f','ref=refs/tags/'+tag,'-f','sha='+os.environ['GITHUB_SHA']],check=True)
-          subprocess.run(['gh','release','create',tag,'--repo',repo,'--verify-tag','--draft','--prerelease','--title','Termdock Preview '+os.environ['PREVIEW_VERSION'],'--notes','Signed and notarized macOS arm64 Preview. Independent Preview update channel.'],check=True)
+          subprocess.run(['gh','release','create',tag,'--repo',repo,'--verify-tag','--draft','--prerelease','--title','Veymux Preview '+os.environ['PREVIEW_VERSION'],'--notes','Signed and notarized macOS arm64 Preview. Independent Preview update channel.'],check=True)
           PY
-          PREFIX="$RUNNER_TEMP/preview-output/Termdock-Preview_${PREVIEW_VERSION}_aarch64"
+          PREFIX="$RUNNER_TEMP/preview-output/Veymux-Preview_${PREVIEW_VERSION}_aarch64"
           gh release upload "preview-v$PREVIEW_VERSION" "$PREFIX.dmg" "$PREFIX.app.tar.gz" "$PREFIX.app.tar.gz.sig" "$RUNNER_TEMP/preview-output/preview.json" "$RUNNER_TEMP/preview-output/release.json" --repo "$GITHUB_REPOSITORY"
           python3 desktop-rust/scripts/promote-preview.py
       - name: Remove temporary Apple credentials

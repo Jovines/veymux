@@ -8,7 +8,7 @@
 
 “消息与成员”页保留成员消息、引用、文件插入和成员管理；查看消息时任务待处理数仍更新。展开查看与小浮窗是布局菜单中的可选方式，不承担默认的日常协作路径。
 
-Termdock 跟踪消息传输；Agent 或其他接入方显式报告接手、进展和结果。无需专用 Agent hooks，也不从终端输出、`done`、工具活动推断任务完成。协作协议只交换消息、回执和成员信息，不提供远程文件读取、命令执行或凭据共享。
+Veymux 跟踪消息传输；Agent 或其他接入方显式报告接手、进展和结果。无需专用 Agent hooks，也不从终端输出、`done`、工具活动推断任务完成。协作协议只交换消息、回执和成员信息，不提供远程文件读取、命令执行或凭据共享。
 
 ## CLI 快速使用
 
@@ -33,19 +33,19 @@ Termdock 跟踪消息传输；Agent 或其他接入方显式报告接手、进�
 目标详情默认展开尚待完成的工作：每项说明交付标准、负责人和未满足的依赖；已完成的执行交付可展开查看。列表保留最近协调摘要，完整技术说明在原始更新里。进展、阻塞、失败报告和 `task coordinate` 支持 `--summary`，摘要和原始正文、时间同时保存；没有摘要的旧记录按原文显示，不重写历史。新增目标可在更多设置中填写简短的目标名称，避免“好的、按这个计划”等对话回复成为看板标题。
 
 ```sh
-td collab task create --group <组ID> --managed --coordinator <协调成员ID> \
+veymux collab task create --group <组ID> --managed --coordinator <协调成员ID> \
   --reviewers <执行模板ID,执行模板ID> --title '目标' --content '完整目标'
 # 协调者拆分；依赖可在完成前登记。
-td collab task create --group <组ID> --parent <目标ID> --assignee <执行模板ID> \
+veymux collab task create --group <组ID> --parent <目标ID> --assignee <执行模板ID> \
   --title '子任务' --content '完整要求' --acceptance '交付标准'
-td collab task create --group <组ID> --parent <目标ID> --assignee <执行模板ID> \
+veymux collab task create --group <组ID> --parent <目标ID> --assignee <执行模板ID> \
   --integration --depends-on <实施任务ID,实施任务ID> --title '集成' --content '集成全部交付'
-td collab task review <任务ID> --artifact <版本ID> --verdict pass --content '结论及证据'
-td collab task coordinate <目标ID> --revision <当前版本> \
+veymux collab task review <任务ID> --artifact <版本ID> --verdict pass --content '结论及证据'
+veymux collab task coordinate <目标ID> --revision <当前版本> \
   --summary '已安排两项实现，依赖交付后集成；目前不需要你处理' --content '完整拆分、产物与依赖说明'
 ```
 
-独立 worktree 和执行记录放在 `~/.termdock/task-workspaces`，以目标启动后的已提交 HEAD 固定基线，原目录未提交改动不进入任务目录。成员提交、评审和集成都不自动改写原分支，不自动发布。依赖提交不在执行机器时，通过既有 Noise RPC 分片传递已评审版本的 Git bundle，校验提交、基线、长度与 SHA-256 后导入；每个提交包最多 128 MiB。基线缺失、合并冲突、非 Git 目录、Agent 不可用等均保留具体原因和现场；非代码任务可关闭独立目录选项。仅有会话范围授权的远端不能自动创建新成员，需要完整协作授权或使用现有会话。
+独立 worktree 和执行记录放在 `~/.veymux/task-workspaces`，以目标启动后的已提交 HEAD 固定基线，原目录未提交改动不进入任务目录。成员提交、评审和集成都不自动改写原分支，不自动发布。依赖提交不在执行机器时，通过既有 Noise RPC 分片传递已评审版本的 Git bundle，校验提交、基线、长度与 SHA-256 后导入；每个提交包最多 128 MiB。基线缺失、合并冲突、非 Git 目录、Agent 不可用等均保留具体原因和现场；非代码任务可关闭独立目录选项。仅有会话范围授权的远端不能自动创建新成员，需要完整协作授权或使用现有会话。
 
 「暂停安排」停止后续服务安排，已入队或写入终端的工作仍保留；继续或重试使用最新 revision。关闭目标暂停其子任务自动接续，保留所有终端、分支和工作目录。取消不需要的子任务后，协调者须明确处理依赖和最终交付，不自动清理成员进程或用户文件。
 
@@ -53,55 +53,55 @@ td collab task coordinate <目标ID> --revision <当前版本> \
 
 ```sh
 # 组 ID 可使用唯一前缀；负责人使用完整会话 ID。
-td collab task create --group <group-id> --title '改善协作入口' \
+veymux collab task create --group <group-id> --title '改善协作入口' \
   --content '现状、目标与预期交付物' --constraints '遵守项目约束' \
   --acceptance '用户可以找到待回答问题并完成结果验收' \
   --assignee <session-id> --coordinator <coordinator-session-id>
 
-td collab task list --group <group-id> --text
-td collab task get <task-id> --text
-td collab task report <task-id> --attempt <attempt-id> \
+veymux collab task list --group <group-id> --text
+veymux collab task get <task-id> --text
+veymux collab task report <task-id> --attempt <attempt-id> \
   --status ack --content '确认接手，先梳理现有流程'
-td collab task ask <task-id> --attempt <attempt-id> \
+veymux collab task ask <task-id> --attempt <attempt-id> \
   --content '需要优先处理哪一类入口？' --options '["桌面工作台","手机入口"]'
-td collab task plan <task-id> --attempt <attempt-id> --file plan.txt
-td collab task report <task-id> --attempt <attempt-id> \
+veymux collab task plan <task-id> --attempt <attempt-id> --file plan.txt
+veymux collab task report <task-id> --attempt <attempt-id> \
   --status complete --file result.txt
-td collab task review <task-id> --artifact <artifact-id> --file review.txt
+veymux collab task review <task-id> --artifact <artifact-id> --file review.txt
 ```
 
 用户在工作台回答问题、确认方案、请求独立评审、提出修改要求和验收。选项只填入回答草稿，点击「保存并回复」才提交；回答与后续投递在一个存储事务内保存，客户端关闭后仍由服务端继续投递。修改要求之后须提交新结果才能验收，待回答的问题须先处理。评审绑定明确的方案或结果版本，不能自评；方案确认会通知提交者，但不会替代各 Agent 自己的工具权限审批。
 
-每次分派产生独立 `attempt-id` 与消息线程。成员须使用收到的尝试 ID，不能猜当前分派。改派后的旧问题不可再回答；迟到的报告仍保留在原尝试里，旧结果不会进入新分派的验收入口。关闭任务不会终止终端，也不会撤回已经写入终端的内容。任务关联的用户消息可用 `td collab reply` 回复：明确的状态报告或普通补充会保存到任务，返回 `task_recorded=true / status=stored`，这不是写入另一个终端的回执。普通用户消息仍没有 Agent 回复目标。
+每次分派产生独立 `attempt-id` 与消息线程。成员须使用收到的尝试 ID，不能猜当前分派。改派后的旧问题不可再回答；迟到的报告仍保留在原尝试里，旧结果不会进入新分派的验收入口。关闭任务不会终止终端，也不会撤回已经写入终端的内容。任务关联的用户消息可用 `veymux collab reply` 回复：明确的状态报告或普通补充会保存到任务，返回 `task_recorded=true / status=stored`，这不是写入另一个终端的回执。普通用户消息仍没有 Agent 回复目标。
 
 用户或当前协调者可以分派、修改要求和归档，回答、方案确认及验收由用户操作。协调者会收到任务上下文和 CLI 使用入口；明确的问题、报告、方案、评审与用户决策也会持久化通知协调者，不依赖对终端输出的猜测。子任务继承父任务的协调者。分派须等依赖任务验收，并提交最新 `revision`：
 
 ```sh
-td collab task create --group <group-id> --parent <task-id> \
+veymux collab task create --group <group-id> --parent <task-id> \
   --title '子任务' --content '独立目标' --assignee <session-id>
-td collab task assign <task-id> --assignee <session-id> --revision <revision>
-td collab task revise <task-id> --revision <revision> --content '请补充证据'
-td collab task close <task-id> --revision <revision> --content '保留历史，结束此任务'
+veymux collab task assign <task-id> --assignee <session-id> --revision <revision>
+veymux collab task revise <task-id> --revision <revision> --content '请补充证据'
+veymux collab task close <task-id> --revision <revision> --content '保留历史，结束此任务'
 ```
 
 任务修改支持 `--idempotency-key`；不提供时 CLI 生成随机键，并在成功结果或失败诊断里返回 `idempotency_key`。网络结果不明确时，应保留同一键与相同内容重试。网页保留未确认请求的键以及本机草稿。列表只传输摘要，选中任务才取完整记录；跨服务后台先对比版本，再拉取变化的任务。
 
 每个任务有唯一来源服务；远端副本可查看，变更送回来源服务保存，来源服务离线时变更明确失败，记录保留。父任务与依赖必须有同一来源；从另一节点创建子任务也送回父任务来源。任务消息沿已配对服务的 Noise 通道发送，并复用本机终端投递队列，不依赖浏览器在线。服务范围和组成员检查仍有效，不增加远程文件读取或通用 HTTP 接口。
 
-任务文件位于 `~/.termdock/collaboration-tasks.json`，按原子替换方式写入，权限为 `0600`。每个服务最多 2000 个任务、总文件 64 MiB，单任务最多 500 KiB、100 轮分派、200 个交付物、1000 条事件；达到上限时拒绝新增记录，保留已有历史。工作台支持复制当前上下文与导出单任务 JSON。删除协作组不会删除任务文件，但该组任务不再出现在原工作区；需要保留可查看的归档时请保留协作组，删除前可导出记录。
+任务文件位于 `~/.veymux/collaboration-tasks.json`，按原子替换方式写入，权限为 `0600`。每个服务最多 2000 个任务、总文件 64 MiB，单任务最多 500 KiB、100 轮分派、200 个交付物、1000 条事件；达到上限时拒绝新增记录，保留已有历史。工作台支持复制当前上下文与导出单任务 JSON。删除协作组不会删除任务文件，但该组任务不再出现在原工作区；需要保留可查看的归档时请保留协作组，删除前可导出记录。
 
-在 Termdock 管理的会话中运行 `td collab --help` 查看全部选项，`td collab capabilities` 查看服务实际支持的协议和限制。
+在 Veymux 管理的会话中运行 `veymux collab --help` 查看全部选项，`veymux collab capabilities` 查看服务实际支持的协议和限制。
 
 ```sh
-td collab send <session-id> '请检查证据包' \
+veymux collab send <session-id> '请检查证据包' \
   --idempotency-key review-2026-09-08 \
   --wait-until delivered --timeout 30s
 
-td collab message get <message-id> --receipt-only
-td collab message watch <message-id> --wait-until delivered --timeout 2m
+veymux collab message get <message-id> --receipt-only
+veymux collab message watch <message-id> --wait-until delivered --timeout 2m
 
-td collab reply <message-id> '收到，开始检查' --response-kind ack
-td collab reply <message-id> '检查完成' \
+veymux collab reply <message-id> '收到，开始检查' --response-kind ack
+veymux collab reply <message-id> '检查完成' \
   --task-envelope '{"task_id":"review-1","status":"complete","progress":100,"evidence":["检查报告编号 R1"]}'
 ```
 
@@ -116,7 +116,7 @@ td collab reply <message-id> '检查完成' \
 | 状态/事件 | 含义 |
 | --- | --- |
 | `pending` | 本地已持久化排队，尚未确认写入接收端终端或被主动读取。对应 `--wait-until queued`。 |
-| `delivered` | Termdock 已写入接收端 PTY。大消息写入的是通知与读取命令。不能据此判断 Agent 接手。读取正文不改变投递状态。 |
+| `delivered` | Veymux 已写入接收端 PTY。大消息写入的是通知与读取命令。不能据此判断 Agent 接手。读取正文不改变投递状态。 |
 | `failed` | 明确不能继续投递，例如接收服务版本不支持该消息；查看 `failure_reason`。 |
 | `expired` | 指定的 `--expires-at` 已到且消息仍未提交；不再投递。没有指定期限时不会自动过期。 |
 | `ack` | 接收方显式报告已收到/接手。不会自动产生任务结果。 |
@@ -145,26 +145,26 @@ td collab reply <message-id> '检查完成' \
 
 终端连接与协作投递路由分别观测。尚未加入协作组、没有待投递消息的会话可能未被投递 worker 检查：此时 `route_state=unchecked / route_error=ROUTE_NOT_CHECKED`，不能标为正在恢复连接。如果服务持有该会话的 live backend，列表显示「终端已连接」；否则显示「投递目标未检查」。实际检查过程中显示「正在检查投递目标」。已有 live backend 不意味着已核验固定 Agent pane，也不意味着 Agent 忙闲或已读。
 
-本地协作使用独立的持久化路由登记（`~/.termdock/collaboration-routing.json`）；global session state 是界面绑定的投影，搜索索引只负责搜索。创建、接管会话时登记后端绑定，后台发现投影为空或陈旧时从路由登记和存活会话重建。历史绑定本身不证明在线。
+本地协作使用独立的持久化路由登记（`~/.veymux/collaboration-routing.json`）；global session state 是界面绑定的投影，搜索索引只负责搜索。创建、接管会话时登记后端绑定，后台发现投影为空或陈旧时从路由登记和存活会话重建。历史绑定本身不证明在线。
 
 服务启动后自动检查协作成员和持久化待投递队列，不需要浏览器打开、调用 status 或产生新的 Agent hook。每个 peer 的恢复、投递和显式重绑串行执行，多个 peer 可独立推进。消息按接收方队列顺序提交；路由或写入失败保留消息，按 2 秒至 30 秒退避重试。回执中的 `last_error`、`next_retry_at` 解释阻塞原因；`attempt_count` 只统计真正进入终端写入的尝试，路由尚未就绪时为 0 是正常的。
 
 tmux 存活而 TD 后端缺失时，只挂接现存会话，不新建 tmux 会话、不启动或恢复 Agent。目标首次定位后固定到 tmux server/session/pane 和 pane 进程身份，投递不跟随活动 pane，也不改变焦点。多个候选无法唯一定位或 tmux 重建时保留队列；在目标会话内显式运行：
 
 ```sh
-td collab rebind            # 当前会话只有一个可识别 Agent 时
-td collab rebind --pane %3  # 明确指定当前 tmux 会话内的 Agent pane
+veymux collab rebind            # 当前会话只有一个可识别 Agent 时
+veymux collab rebind --pane %3  # 明确指定当前 tmux 会话内的 Agent pane
 ```
 
 重绑只作用于调用方 peer，成功后继续投递积压消息。它不会把 `delivered` 改回待投递，也不会启动新的 Agent。
 
-`td collab status` 中的 `route_state` / `route_error` / `route_checked_at` 描述路由观测：`recovering`（等待或正在检查）、`detached`（tmux 后端尚未挂接成功）、`ready`（可投递）、`shell`（目标处于 shell，发送需确认；未知程序不会被认定为 Agent 退出）、`offline`（会话或后端已不存在）、`ambiguous`（多个候选）、`identity-mismatch`（目标身份变化）、`unavailable`（检查或恢复出错）。路由 ready 不表示 Agent 空闲；不能将其他活动 pane 的 turn 状态归给当前 peer。
+`veymux collab status` 中的 `route_state` / `route_error` / `route_checked_at` 描述路由观测：`recovering`（等待或正在检查）、`detached`（tmux 后端尚未挂接成功）、`ready`（可投递）、`shell`（目标处于 shell，发送需确认；未知程序不会被认定为 Agent 退出）、`offline`（会话或后端已不存在）、`ambiguous`（多个候选）、`identity-mismatch`（目标身份变化）、`unavailable`（检查或恢复出错）。路由 ready 不表示 Agent 空闲；不能将其他活动 pane 的 turn 状态归给当前 peer。
 
 **投递保证的边界：**提交结果仍是“已写入终端”，不等于应用 ACK。成功回执已保存的消息不会被后台重放。本机终端投递记录写入阶段，在首次粘贴前与回车写入完成后同步落盘；重启后只自动重试确定尚未写入的消息，已记录回车完成的消息直接补记回执。可能已经粘贴但结果未知时暂停该目标队列，返回 `DELIVERY_OUTCOME_UNCONFIRMED`，不自动重放正文或补回车；旧版本未记录阶段的在途尝试同样按结果未知处理。终端与文件无法组成原子事务，因此仍不宣称恰好一次。跨服务网络重试继续沿用原消息 ID 并在接收端归并；需要应用确认时使用显式回复和消费游标。TTL 不会把结果未知的写入伪装成未发送过期，尚未写入的后续排队消息仍正常过期。
 
 普通会话的 tmux 承载变化后，服务自动核验原会话 ID、实时前台进程和唯一终端归属。Linux 普通精确 resume 会话可使用内核进程起始身份、控制终端、前台进程组及祖先关系联合核验；同组的启动包装器和实际进程不会被误当成两个会话。恢复前连续核验两次，并在输入队列内、粘贴和回车前重新检查。仅有进程名、缓存 UUID、多个当前归属或历史写入结果未知时不会自动重绑。后台集成会话保留原有独占 writer-lock 和恢复生命周期约束。网页的「重新连接」只重新核验当前会话、唤醒原队列，不创建新消息或绕过这些条件，也不要求用户执行 CLI 命令。
 
-结果未知时，完整服务网页提供「确认未发送，重新投递」和「停止这条投递」。前者复用原消息 ID，后者终止该消息的重试、放行后续队列，并不伪造已写入终端。两者均绑定观测到的尝试次数，重复点击不重复提交，过期决定会被拒绝。分享入口没有这些管理权限。终端拥有者也可使用 `td collab message resolve-delivery <id> --decision retry|cancel --attempt <观测次数>`；发送方不能替接收方判断其终端是否执行过。
+结果未知时，完整服务网页提供「确认未发送，重新投递」和「停止这条投递」。前者复用原消息 ID，后者终止该消息的重试、放行后续队列，并不伪造已写入终端。两者均绑定观测到的尝试次数，重复点击不重复提交，过期决定会被拒绝。分享入口没有这些管理权限。终端拥有者也可使用 `veymux collab message resolve-delivery <id> --decision retry|cancel --attempt <观测次数>`；发送方不能替接收方判断其终端是否执行过。
 
 发给 Agent 的普通会话投递会先在同一输入队列中粘贴两个随机符号，确认回显后退格两次并确认标记已清除，再粘贴正文，最后仍只提交一次回车。标记不会保留到正文中，也不发送独立测试任务；它只证明终端回显，不证明 Agent 已读取或开始执行。回显失败或读取异常时仍对原运行实例执行一次清理；运行实例已切换则停止操作，不向替换后的终端发送按键。tmux 在探测及提交前同时检查 pane 身份、退出和禁用输入状态；普通 PTY 用包含当前光标行的独立快照检查，自动标题仍排除该行。读取与回显均有等待上限。
 
@@ -173,15 +173,15 @@ td collab rebind --pane %3  # 明确指定当前 tmux 会话内的 Agent pane
 ## 增量收件箱与消费游标
 
 ```sh
-td collab inbox --consumer coordinator --limit 20 --json
+veymux collab inbox --consumer coordinator --limit 20 --json
 # 处理成功后，使用这一页返回的 next_cursor：
-td collab cursor commit <next_cursor> --consumer coordinator
+veymux collab cursor commit <next_cursor> --consumer coordinator
 
 
-td collab inbox --from <session-id> --group <group-id> \
+veymux collab inbox --from <session-id> --group <group-id> \
   --thread <thread-id> --response-kind result --limit 20 --jsonl
 
-td collab inbox --consumer coordinator --follow --timeout 2m --jsonl
+veymux collab inbox --consumer coordinator --follow --timeout 2m --jsonl
 ```
 
 支持 `--since`（ISO 时间或 Unix 毫秒）、`--after-id`、`--cursor`、`--limit`、`--from`、`--group`、`--thread`、`--kind`、`--response-kind`。默认最新优先，最多 50 条。游标/consumer 模式按本服务接收顺序取最早未消费的一页，因此远端时钟回拨或晚到消息不会使消费游标漏读。
@@ -217,16 +217,16 @@ Session 对话的消息查看记录由服务端按会话和对话通道持久化
 两端均升级后，新版已授权网页可以自动交换服务公开身份并完成一次登记；它只承担配置，不承担登记后的消息投递。旧客户端保留旧同步行为，但不能代替首次登记。完全通过 CLI 配置时，在双方受管会话分别运行：
 
 ```sh
-td collab transport info
+veymux collab transport info
 ```
 
 通过可信方式收集输出中的 `node`（仅服务公钥身份及 CA 指纹），为每项添加与该协作组使用地址一致的 `origin`，组成 `nodes.json` 数组，在两端执行：
 
 ```sh
-td collab transport register <group-id> --file nodes.json
+veymux collab transport register <group-id> --file nodes.json
 ```
 
-数组必须包含本服务。登记持久化在本机 `~/.termdock/federation/collaboration-peers.json`，重启后保留；不能用未经核实的远端公钥替换固定身份。未登记时回执明确显示 `PEER_REGISTRATION_REQUIRED`；连接失败显示错误及下次重试时间。
+数组必须包含本服务。登记持久化在本机 `~/.veymux/federation/collaboration-peers.json`，重启后保留；不能用未经核实的远端公钥替换固定身份。未登记时回执明确显示 `PEER_REGISTRATION_REQUIRED`；连接失败显示错误及下次重试时间。
 
 `fragments_sent=0` 不能用于判断是否发送：服务 RPC 的完整消息和旧桥接的非分片消息都不增加此计数。以 `status`、送达时间及回执为准。`--wait-until delivered` 等待终端投递，`--expect-reply ack` 另外等待对方确认；CLI 超时不取消队列。
 
@@ -234,7 +234,7 @@ td collab transport register <group-id> --file nodes.json
 
 状态输出只提供终端和传输事实，不提供已读、Agent 内部 turn/task_state、工具活动或心跳占位字段。终端输出时间不代表任务进度；明确回复及任务报告保留原始消息和时间，不推断会话忙闲。旧版 `message read` 返回 `READ_RECEIPTS_UNSUPPORTED`；使用 `message get` 查看正文和快照，用显式回复确认。消费游标仅记录调用者明确提交的位置。
 
-`--task-envelope` 接受 `task_id`、`status=ack|working|blocked|complete|failed`、可选 `progress`（0–100）、`evidence` 和 `blocker`；自动映射 response_kind。显式指定的 response_kind 与任务状态冲突时拒绝。`--metadata` 接受任意 JSON 对象，正文仍然自由。字段中的路径和链接只是证据引用，不会触发 Termdock 读取另一台机器的文件或凭据。
+`--task-envelope` 接受 `task_id`、`status=ack|working|blocked|complete|failed`、可选 `progress`（0–100）、`evidence` 和 `blocker`；自动映射 response_kind。显式指定的 response_kind 与任务状态冲突时拒绝。`--metadata` 接受任意 JSON 对象，正文仍然自由。字段中的路径和链接只是证据引用，不会触发 Veymux 读取另一台机器的文件或凭据。
 
 ## 会话目录与桌面兼容边界
 
@@ -269,14 +269,14 @@ td collab transport register <group-id> --file nodes.json
 
 投递按绑定终端定位，不再要求程序名匹配已知 Agent，也不因 Agent 类型或原生会话 ID 变化而拦截同一 pane。投递后的终端快照用于发送方判断结果。
 
-仅在明确检测到目标处于 shell 时暂停该消息，回执返回 `SHELL_CONFIRMATION_REQUIRED` 和确认命令。发送方确认内容可以写入 shell 后执行 `td collab message confirm-shell <message-id>`，继续原消息，不创建副本；确认持久化并通过协作同步传递。跨机双方及运行同步的客户端需更新到支持此确认的新版本。
+仅在明确检测到目标处于 shell 时暂停该消息，回执返回 `SHELL_CONFIRMATION_REQUIRED` 和确认命令。发送方确认内容可以写入 shell 后执行 `veymux collab message confirm-shell <message-id>`，继续原消息，不创建副本；确认持久化并通过协作同步传递。跨机双方及运行同步的客户端需更新到支持此确认的新版本。
 
 ## 长消息、群规与观察能力
 
-- 超过 4096 UTF-8 字节的正文不再直接灌入终端；信封携带 `td collab message get <id> --text`。完整正文及该消息当时的群规版本一并返回，读取和回复都不产生已读回执。
-- `td collab rules get <group> --text` 查看群规；`rules set <group> --file rules.md` 保存（最多 8192 UTF-8 字节）；`rules clear <group>` 清空。可用 `--if-version <version>` 防止覆盖已更新版本。每次修改产生新版本，跨节点独立同步；短规则自动注入信封，长规则随 message get 获取。
-- `td collab traits set <group> <member> "深度评审，不接急单"` 是 role 的别名，成员定位在 status/role list 可见。不推断实时排队长度，不自动拦截派单。
-- `td collab capture <member> --lines 200 --text` 读取最多指定数量的 tmux 历史行加当前屏幕，范围 1..10000；仍限定同组本机 tmux。它不提供精确时间索引，也不保证重绘式 TUI 的完整历史。
+- 超过 4096 UTF-8 字节的正文不再直接灌入终端；信封携带 `veymux collab message get <id> --text`。完整正文及该消息当时的群规版本一并返回，读取和回复都不产生已读回执。
+- `veymux collab rules get <group> --text` 查看群规；`rules set <group> --file rules.md` 保存（最多 8192 UTF-8 字节）；`rules clear <group>` 清空。可用 `--if-version <version>` 防止覆盖已更新版本。每次修改产生新版本，跨节点独立同步；短规则自动注入信封，长规则随 message get 获取。
+- `veymux collab traits set <group> <member> "深度评审，不接急单"` 是 role 的别名，成员定位在 status/role list 可见。不推断实时排队长度，不自动拦截派单。
+- `veymux collab capture <member> --lines 200 --text` 读取最多指定数量的 tmux 历史行加当前屏幕，范围 1..10000；仍限定同组本机 tmux。它不提供精确时间索引，也不保证重绘式 TUI 的完整历史。
 - capture、inbox、message get 的快照默认清理终端控制序列；`--raw` 请求未清理的捕获或已存快照。正文原样保留。
 - status 提供最后终端输出时间、观测时间和来源。跨节点由服务后台同步；最后输出不是最后工具调用，长时间无输出不是卡死证据。
 - 回执新增 `delivery` 与 `reply` 对象。等待 ACK 超时时 reply 标记 timeout，已送达的 delivery 仍保持 delivered；旧的顶层字段及退出码保留兼容。
@@ -303,11 +303,11 @@ macOS 页面、浏览器和 CLI 共用服务端协作目录、建组、投递及
 ```sh
 # A：origin 必须是 B 可以访问、且与旧群地址一致的 HTTPS 根地址。
 umask 077
-td collab transport invite --origin https://A:9834 > invitation.json
+veymux collab transport invite --origin https://A:9834 > invitation.json
 # 私下把 invitation.json 交给 B；邀请 10 分钟有效，只能绑定一个服务身份。
 # B：保存邀请文件后执行。
-td collab transport accept --origin https://B:9834 --file invitation.json
-td collab transport list
+veymux collab transport accept --origin https://B:9834 --file invitation.json
+veymux collab transport list
 ```
 
 邀请授予协作目录和群管理权限，不授予任意 HTTP、文件访问或客户端私钥。双方通过 TLS 验证和 Noise 身份固定建立通信，授权持久保存在服务端；已有共同群自动同步并补齐投递绑定，无需逐群重新登记。更改服务地址/证书/身份不会静默覆盖已有信任。
@@ -404,9 +404,9 @@ td collab transport list
 
 本服务组不会因成员离开、关闭或归档而删除，讨论与任务结果继续保留；组的删除是独立操作。跨服务组沿用联邦成员边界，仍需两名成员，归档本地终端后其联邦身份保留为离线成员，不用关闭终端推断退组或删除远端副本。
 
-已验收或关闭的独立执行任务，在左侧“已完成的执行会话”中提供“归档”操作。先验证它没有承担开放任务、协调或评审，再将真实 Agent 会话 ID、启动参数、原组定位、任务、目录、分支和提交原子写入 `~/.termdock/execution-archives.json`，然后停止终端。归档记录不受最近 30 条会话历史的上限限制。没有真实原生 ID 或不支持原生恢复的 Agent 会明确拒绝归档，保留终端。
+已验收或关闭的独立执行任务，在左侧“已完成的执行会话”中提供“归档”操作。先验证它没有承担开放任务、协调或评审，再将真实 Agent 会话 ID、启动参数、原组定位、任务、目录、分支和提交原子写入 `~/.veymux/execution-archives.json`，然后停止终端。归档记录不受最近 30 条会话历史的上限限制。没有真实原生 ID 或不支持原生恢复的 Agent 会明确拒绝归档，保留终端。
 
-目录回收仅限经验证属于原仓库、分支未变、且完全干净的 Termdock 独立 worktree。未提交、未跟踪或忽略的文件均阻止回收；共享目录和非托管目录不会被删除。不强制清理、不重置分支；干净目录移除后仍保留分支、提交及任务结果，后续依赖 bundle 从原仓库导出，避免引用已回收的工作目录。
+目录回收仅限经验证属于原仓库、分支未变、且完全干净的 Veymux 独立 worktree。未提交、未跟踪或忽略的文件均阻止回收；共享目录和非托管目录不会被删除。不强制清理、不重置分支；干净目录移除后仍保留分支、提交及任务结果，后续依赖 bundle 从原仓库导出，避免引用已回收的工作目录。
 
 归档条目留在所属组的“已归档的执行会话”中，可查看原生 ID 与目录处置原因并恢复。恢复回收目录时重建原 worktree，要求分支仍对应归档提交；有变化则拒绝重置并保留归档。检查原生会话未在其他终端打开后，恢复同一个前端会话 ID，运行对应 Agent 的原生 resume 命令，恢复组成员定位并打开终端。恢复不自动重新分派或重开已完成任务。恢复请求重复提交时返回已有终端，不重复发送 resume 命令。
 
@@ -416,10 +416,10 @@ td collab transport list
 
 ### 组外直接联系
 
-完整服务页面的 `@` 候选包含当前会话目录中本服务的其他 Agent 会话，以及已认证协作目录内明确支持直接联系的远端 Agent 会话；同组成员优先显示并保留组上下文。选择组外会话时，提及信息的 `groupId` / `groupName` 为空，Agent 使用 `td collab send <session-id> "消息内容" --text`，省略 `--group`。优先联系组内成员，仅在用户明确要求或任务确有必要时联系组外会话。
+完整服务页面的 `@` 候选包含当前会话目录中本服务的其他 Agent 会话，以及已认证协作目录内明确支持直接联系的远端 Agent 会话；同组成员优先显示并保留组上下文。选择组外会话时，提及信息的 `groupId` / `groupName` 为空，Agent 使用 `veymux collab send <session-id> "消息内容" --text`，省略 `--group`。优先联系组内成员，仅在用户明确要求或任务确有必要时联系组外会话。
 
 没有共同协作组的本机或已认证远端会话通过独立直接消息发送、回复与持久重试，不创建协作组，不改变双方成员列表或权限。直接消息的送达回执不附带接收方终端截图，shell 确认阶段也不获取截图；`capture`、`drive` 和路由诊断继续要求同组权限。显式指定 `--group` 时双方仍必须属于该组，不会静默降级成组外消息。跨服务直接联系使用现有 TLS 校验和固定服务身份的 Noise RPC，发送端持久保存原消息，断网或回执丢失时按原 ID 重试；接收端去重并仅返回终端写入回执，不同步协作组上下文或终端屏幕。两端都须部署支持 `directContacts` 的服务；旧服务不开放组外候选，CLI 明确提示升级，绝不回退成建群、明文 HTTP 或后台客户端中转。只持有会话分享授权的服务对端不能使用直接联系或取得入口中转权限；已完整配对的服务可经同样完整配对的入口转发密文，最终目标仍独立鉴权。
 
-单会话和多会话分享入口继续不授予 `collaboration.mention`，也不开放协作目录或 CLI 协作 API。聊天提交在服务端拒绝分享客户端手工拼接的提及元数据；完整服务客户端提交的提及也校验目标和组上下文，失效目标在入队前拒绝。此边界针对 Termdock 分享界面与认证 API；可写终端或拥有宿主机权限的 Agent 不是进程沙箱，不能将这些界面权限描述为宿主机隔离。
+单会话和多会话分享入口继续不授予 `collaboration.mention`，也不开放协作目录或 CLI 协作 API。聊天提交在服务端拒绝分享客户端手工拼接的提及元数据；完整服务客户端提交的提及也校验目标和组上下文，失效目标在入队前拒绝。此边界针对 Veymux 分享界面与认证 API；可写终端或拥有宿主机权限的 Agent 不是进程沙箱，不能将这些界面权限描述为宿主机隔离。
 
 协作投递的每条消息用一行注明来源服务和源服务内的完整会话 ID：本服务表示与收件人同一服务；跨服务消息始终明确标为远端，并显示服务地址，即使地址是 `localhost` 也不视作当前机器。来源依据服务认证后的路由身份，不从显示名、正文或当前目录推断。显示名截短，静态帮助只随首次引导出现；消息正文、回复锚点与权限边界保留。

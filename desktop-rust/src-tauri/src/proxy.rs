@@ -77,7 +77,7 @@ pub async fn discover_connection_identity(
     let source = upstream(connection.url.clone(), pins.get(&connection.url).map(String::as_str))?;
     let response = source.http.get(format!("{}/api/auth/open/parameters", connection.url))
         .send().await.map_err(|error| {
-            eprintln!("[Termdock Preview] service discovery failed for {}: {error:#}", connection.url);
+            eprintln!("[Veymux Preview] service discovery failed for {}: {error:#}", connection.url);
             "Cannot discover service. Verify the address and Preview certificate fingerprint."
         })?;
     if [401, 403].contains(&response.status().as_u16()) { return Ok(None); }
@@ -91,8 +91,8 @@ pub async fn discover_connection_identity(
 /// This public discovery is a compatibility hint, never device authorization.
 /// Pinned relay/legacy connections still validate Noise and actual packet support.
 pub fn validate_metadata(meta: &serde_json::Value) -> Result<(), String> {
-    if meta["product"] != "termdock" {
-        return Err("这不是可连接的 Termdock 服务".into());
+    if meta["product"] != "veymux" {
+        return Err("这不是可连接的 Veymux 服务".into());
     }
     if meta["protocolVersion"] != 1
         || !meta["capabilities"]
@@ -110,7 +110,7 @@ pub async fn bind(port: Option<u16>) -> Result<TcpListener, String> {
 
 fn bind_error_message(error: &std::io::Error) -> &'static str {
     if error.kind() == std::io::ErrorKind::AddrInUse {
-        "另一个 Preview 正在使用此连接的本地代理端口。关闭旧 Preview 后重试；无需停止 Termdock 服务。"
+        "另一个 Preview 正在使用此连接的本地代理端口。关闭旧 Preview 后重试；无需停止 Veymux 服务。"
     } else {
         "无法启动此连接的本地代理，请重试或检查本机权限。"
     }
@@ -206,7 +206,7 @@ pub async fn start_with_assets(
     Ok((
         ProxyHandle {
             origin: origin.clone(),
-            launch_url: format!("{origin}/api/auth/status?__td_launch={token}"),
+            launch_url: format!("{origin}/api/auth/status?__veymux_launch={token}"),
             bundled_workspace,
             stop: Some(tx),
         },
@@ -311,7 +311,7 @@ async fn handle(
         return rejected(StatusCode::FORBIDDEN, "Cross-origin request denied");
     }
     let cookie = format!(
-        "td_preview_{}={}",
+        "veymux_preview_{}={}",
         boundary.host.split(':').next_back().unwrap(),
         boundary.token
     );
@@ -321,7 +321,7 @@ async fn handle(
         .and_then(|v| v.to_str().ok())
         .is_some_and(|v| v.split(';').any(|c| c.trim() == cookie));
     let launch = matches!(request.uri().path(), "/" | "/health" | "/api/auth/status")
-        && request.uri().query() == Some(format!("__td_launch={}", boundary.token).as_str());
+        && request.uri().query() == Some(format!("__veymux_launch={}", boundary.token).as_str());
     if launch {
         return Response::builder()
             .status(303)
@@ -336,11 +336,11 @@ async fn handle(
     }
     if !authenticated {
         static REJECTS:std::sync::atomic::AtomicUsize=std::sync::atomic::AtomicUsize::new(0);
-        if REJECTS.fetch_add(1,std::sync::atomic::Ordering::Relaxed)<8{eprintln!("Termdock loopback capability missing: {}",if request.uri().path()=="/"{"document"}else{"request"});}
+        if REJECTS.fetch_add(1,std::sync::atomic::Ordering::Relaxed)<8{eprintln!("Veymux loopback capability missing: {}",if request.uri().path()=="/"{"document"}else{"request"});}
         return rejected(StatusCode::FORBIDDEN, "Preview window capability required");
     }
     let original_path = request.uri().path();
-    let (index, path) = if let Some(route) = original_path.strip_prefix("/__td_route/") {
+    let (index, path) = if let Some(route) = original_path.strip_prefix("/__veymux_route/") {
         let Some((index, path)) = route.split_once('/') else {
             return rejected(StatusCode::NOT_FOUND, "Invalid route");
         };
@@ -358,7 +358,7 @@ async fn handle(
         );
     };
     // A route prefix only exists for public bootstrap and encrypted sockets.
-    if kind == Access::Static && original_path.starts_with("/__td_route/") {
+    if kind == Access::Static && original_path.starts_with("/__veymux_route/") {
         return rejected(StatusCode::FORBIDDEN, "Static route denied");
     }
     if kind == Access::Static {
@@ -510,7 +510,7 @@ async fn handle(
         }
         let boot = serde_json::json!({"origins":boundary.sources.iter().map(|s| &s.origin).collect::<Vec<_>>(),"defaultRoute":boundary.default_source});
         let mut script = format!(
-            "self.__TD_PREVIEW_TRANSPORT__={boot};\n{}\n",
+            "self.__VEYMUX_PREVIEW_TRANSPORT__={boot};\n{}\n",
             include_str!("../../renderer/worker-transport.js")
         )
         .into_bytes();
@@ -708,7 +708,7 @@ mod tests {
             .build()
             .unwrap();
         assert_eq!(url::Url::parse(&proxy.launch_url).unwrap().path(), "/api/auth/status");
-        assert_eq!(http.get(format!("{}/health?__td_launch=wrong",proxy.origin)).send().await.unwrap().status(),403);
+        assert_eq!(http.get(format!("{}/health?__veymux_launch=wrong",proxy.origin)).send().await.unwrap().status(),403);
         assert_eq!(http.get(&proxy.origin).send().await.unwrap().status(), 403);
         let launch = http.get(&proxy.launch_url).send().await.unwrap();
         assert_eq!(launch.status(),303);
@@ -730,7 +730,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(result.text().await.unwrap(), "<html>service page</html>");
-        for path in ["/api/terminal/fs/upload", "/__td_route/8/api/meta"] {
+        for path in ["/api/terminal/fs/upload", "/__veymux_route/8/api/meta"] {
             assert!(!http
                 .get(format!("{}{path}", proxy.origin))
                 .header(header::COOKIE, &cookie)
@@ -875,7 +875,7 @@ async fn serve_asset(
         }
         let boot = serde_json::json!({"origins":boundary.sources.iter().map(|s|&s.origin).collect::<Vec<_>>(),"defaultRoute":boundary.default_source});
         let mut script = format!(
-            "self.__TD_PREVIEW_TRANSPORT__={boot};\n{}\n",
+            "self.__VEYMUX_PREVIEW_TRANSPORT__={boot};\n{}\n",
             include_str!("../../renderer/worker-transport.js")
         )
         .into_bytes();
@@ -1135,11 +1135,11 @@ mod compatibility_tests {
     async fn actual_metadata_gate_keeps_v1_and_rejects_unknown_or_oversized_bootstrap() {
         for (meta, accepted) in [
             (
-                serde_json::json!({"product":"termdock","version":"1.4.320","protocolVersion":1,"capabilities":["terminal-ws","filesystem"]}),
+                serde_json::json!({"product":"veymux","version":"1.4.320","protocolVersion":1,"capabilities":["terminal-ws","filesystem"]}),
                 true,
             ),
             (
-                serde_json::json!({"product":"termdock","protocolVersion":2,"capabilities":["terminal-ws"]}),
+                serde_json::json!({"product":"veymux","protocolVersion":2,"capabilities":["terminal-ws"]}),
                 false,
             ),
             (
@@ -1147,11 +1147,11 @@ mod compatibility_tests {
                 false,
             ),
             (
-                serde_json::json!({"product":"termdock","protocolVersion":1,"capabilities":[]}),
+                serde_json::json!({"product":"veymux","protocolVersion":1,"capabilities":[]}),
                 false,
             ),
             (
-                serde_json::json!({"product":"termdock","protocolVersion":1,"capabilities":["terminal-ws"],"padding":"x".repeat(70*1024)}),
+                serde_json::json!({"product":"veymux","protocolVersion":1,"capabilities":["terminal-ws"],"padding":"x".repeat(70*1024)}),
                 false,
             ),
         ] {

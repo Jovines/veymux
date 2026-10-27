@@ -104,7 +104,7 @@ describe('collaboration goal journeys', () => {
     expect(screen.queryByRole('button', { name: '验收此结果' })).toBeNull();
     expect(screen.getByText('等待新结果后可验收')).toBeTruthy();
     expect(screen.getByRole('region', { name: '最近跟进' }).textContent).toContain('等待写入终端');
-    expect(localStorage.getItem(`termdock:tasks:${location.origin}:team:goal:feedback`)).toBe('""');
+    expect(localStorage.getItem(`veymux:tasks:${location.origin}:team:goal:feedback`)).toBe('""');
     expect(api.update.mock.calls[0][1]).toMatchObject({ kind: 'revise', content: '继续查看磁盘占用' });
   });
   it('offers one follow-up action after acceptance and keeps a cancelled draft', async () => {
@@ -157,7 +157,7 @@ describe('collaboration goal journeys', () => {
     let resolve!: (value: { task: CollaborationTaskView }) => void;
     api.update.mockImplementation(() => new Promise(done => { resolve = done; }));
     fireEvent.click(screen.getByRole('button', { name: '发送补充' }));
-    act(() => useCollaborationTaskWorkspace.getState().updateDetail(`termdock:tasks:${location.origin}:team:goal`, 'feedback', '另一个面板中的新草稿'));
+    act(() => useCollaborationTaskWorkspace.getState().updateDetail(`veymux:tasks:${location.origin}:team:goal`, 'feedback', '另一个面板中的新草稿'));
     await act(async () => resolve({ task: { ...record, revision: 3 } }));
     expect((screen.getByRole('textbox', { name: '补充说明或修改要求' }) as HTMLTextAreaElement).value).toBe('另一个面板中的新草稿');
   });
@@ -790,7 +790,7 @@ it('prefers the most common group Agent for new members and preserves a saved ma
   fireEvent.change(await screen.findByRole('combobox', { name: '协调者' }), { target: { value: '__new_coordinator__' } });
   expect(screen.getByRole('combobox', { name: '协作 Agent' })).toHaveProperty('value', 'codex');
   cleanup(); useCollaborationTaskWorkspace.setState({ views: {}, details: {} });
-  localStorage.setItem(`termdock:tasks:${location.origin}:team:agent`, JSON.stringify('claude'));
+  localStorage.setItem(`veymux:tasks:${location.origin}:team:agent`, JSON.stringify('claude'));
   setup([], { group: { ...group, sessionIds: ['lead'] }, sessions: [sessions[0]], agents: launchers });
   expect(await screen.findByRole('combobox', { name: '协作 Agent' })).toHaveProperty('value', 'claude');
 });
@@ -838,5 +838,5 @@ it('exports the complete task using the shared native/browser save flow and pres
   setup([task()]); await choose();
   fireEvent.click(screen.getByRole('button', { name: '导出记录' }));
   await screen.findByText('Download canceled');
-  expect(api.save).toHaveBeenCalledExactlyOnceWith(expect.any(Blob), 'termdock-task-goal.json', expect.any(AbortSignal));
+  expect(api.save).toHaveBeenCalledExactlyOnceWith(expect.any(Blob), 'veymux-task-goal.json', expect.any(AbortSignal));
 });

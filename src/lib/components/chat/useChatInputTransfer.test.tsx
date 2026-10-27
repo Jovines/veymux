@@ -42,13 +42,13 @@ it('keeps a failed upload retryable without inserting a partial result', async (
   expect(f.insert).not.toHaveBeenCalled(); act(() => f.result.current.retry()); await waitFor(() => expect(f.insert).toHaveBeenCalledOnce());
 });
 it('reads older native clipboard files but never invokes a legacy preload uploader', async () => {
-  const legacy = vi.fn(); vi.stubGlobal('termdockDesktop', { readClipboardFiles: vi.fn(async () => [{ name: 'a.txt', bytes: new Uint8Array([1]).buffer }]), uploadDroppedFiles: legacy, pasteClipboardImage: legacy });
+  const legacy = vi.fn(); vi.stubGlobal('veymuxDesktop', { readClipboardFiles: vi.fn(async () => [{ name: 'a.txt', bytes: new Uint8Array([1]).buffer }]), uploadDroppedFiles: legacy, pasteClipboardImage: legacy });
   mocks.upload.mockResolvedValue({ files: [{ path: '/tmp/native-a.txt' }] });
   const f = fixture(); await act(async () => { await f.result.current.paste({ files: [], text: 'cover text' }); });
   expect(f.insert).toHaveBeenCalledWith('/tmp/native-a.txt ', true); expect(legacy).not.toHaveBeenCalled();
 });
 it('does not replace an unreadable video with its cover text or image', async () => {
-  vi.stubGlobal('termdockDesktop', { readClipboardFiles: vi.fn(async () => { throw new Error('TERMDOCK_CLIPBOARD_VIDEO_ERROR: 无法读取剪贴板视频'); }) });
+  vi.stubGlobal('veymuxDesktop', { readClipboardFiles: vi.fn(async () => { throw new Error('VEYMUX_CLIPBOARD_VIDEO_ERROR: 无法读取剪贴板视频'); }) });
   const f = fixture(); await act(async () => { await f.result.current.paste({ files: [new File(['cover'], 'cover.png', { type: 'image/png' })], text: 'cover text' }); });
   expect(f.insert).not.toHaveBeenCalled(); expect(mocks.upload).not.toHaveBeenCalled(); expect(f.error).toHaveBeenCalledWith('无法读取剪贴板视频');
 });

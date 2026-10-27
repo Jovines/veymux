@@ -1,6 +1,6 @@
 import { openAuthorizedServiceClient } from '../federation/browserIntegration';
 import { readDeviceAuthorization } from '../federation/deviceAuthorization';
-import type { TermdockUpdateState } from './api';
+import type { VeymuxUpdateState } from './api';
 import type { ServiceUpdatePlan } from './serviceUpdatePlan';
 import type { ServiceUpdateSnapshots } from './serviceUpdateOverview';
 import { compareVersions } from '../utils/version';
@@ -31,7 +31,7 @@ export async function inspectServiceUpdates(plan: ServiceUpdatePlan, options: {
     if (!data || typeof data.currentVersion !== 'string' || !['idle', 'checking', 'current', 'installing', 'ready', 'restarting', 'error'].includes(data.status)) throw new Error('Invalid update response');
     compareVersions(data.currentVersion, data.currentVersion);
     if (data.latestVersion != null) compareVersions(data.latestVersion, data.currentVersion);
-    snapshots[id] = { state: data as TermdockUpdateState }; publish();
+    snapshots[id] = { state: data as VeymuxUpdateState }; publish();
   }
   try {
     // An explicit check verifies every participant before it prepares any update.

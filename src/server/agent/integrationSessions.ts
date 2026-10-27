@@ -128,8 +128,8 @@ export class IntegrationSessions {
   private stopped = false;
   private storage: JsonStorageBudget;
   constructor(file: string, private adapter: IntegrationSessionAdapter, private bindingTimeout = 120000, options: JsonStorageOptions = {}) {
-    this.storage = new JsonStorageBudget(file, 'integration-sessions', 'TERMDOCK_SESSION_STORAGE_MAX_BYTES', 64 * 1024 * 1024,
-      () => new CollaborationError('SESSION_STORAGE_FULL', 'New recovery operations exceed capacity; existing outcomes and close/release remain recordable. Configure TERMDOCK_SESSION_STORAGE_MAX_BYTES', 503), options);
+    this.storage = new JsonStorageBudget(file, 'integration-sessions', 'VEYMUX_SESSION_STORAGE_MAX_BYTES', 64 * 1024 * 1024,
+      () => new CollaborationError('SESSION_STORAGE_FULL', 'New recovery operations exceed capacity; existing outcomes and close/release remain recordable. Configure VEYMUX_SESSION_STORAGE_MAX_BYTES', 503), options);
     try {
       const doc = JSON.parse(fs.readFileSync(file, 'utf8')) as Document;
       if (doc.version !== 1 || !Array.isArray(doc.sessions) || !doc.requests) throw new Error('Invalid integration session store'); this.doc = doc;

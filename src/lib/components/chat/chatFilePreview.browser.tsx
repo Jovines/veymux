@@ -45,7 +45,7 @@ let fetchMock: ReturnType<typeof vi.fn>;
 beforeEach(async () => {
   await commands.filePreviewPolicy('desktop');
   fixture.text = html; fixture.failure = false; fixture.resources = {};
-  window.localStorage.setItem('termdock:locale', 'zh');
+  window.localStorage.setItem('veymux:locale', 'zh');
   window.localStorage.setItem('secret', 'parent-secret');
   fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
@@ -222,7 +222,7 @@ for (const policy of ['desktop', 'server'] as const) {
     await expect.poll(async () => (await commands.filePreviewAction('state'))?.request).toBe('request-ready');
     await expect.poll(async () => (await commands.filePreviewAction('state'))?.images).toBe(true);
     await expect.poll(async () => (await commands.filePreviewAction('state'))?.requestBlocked).toBe('yes');
-    expect((await commands.filePreviewAction('state'))?.base).toMatch(/^https:\/\/termdock-preview\.invalid\/[a-f0-9-]+\/$/);
+    expect((await commands.filePreviewAction('state'))?.base).toMatch(/^https:\/\/veymux-preview\.invalid\/[a-f0-9-]+\/$/);
     expect(document.querySelector('[aria-label="有预览提示"]')).toBeNull();
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/api/terminal/settings'))).toBe(false);
   });

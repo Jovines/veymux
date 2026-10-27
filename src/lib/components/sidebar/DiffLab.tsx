@@ -158,7 +158,7 @@ ${' '}
 +++ b/payload.json
 @@ -1,9 +1,11 @@
  {
-   "workspaceRoot": "/Users/developer/vscode/termdock",
+   "workspaceRoot": "/Users/developer/vscode/veymux",
 -  "mode": "basic",
 +  "mode": "advanced",
    "features": {
@@ -771,11 +771,11 @@ export function DiffLab() {
           <DiffViewer
             onInsertDiffReference={(label, text) => setInsertedReference({ label, text })}
             filePath={fixture.path}
-            repoRoot="/tmp/termdock-diff-lab"
+            repoRoot="/tmp/veymux-diff-lab"
             changedFile={{
               path: fixture.path,
-              absolutePath: `/tmp/termdock-diff-lab/${fixture.path}`,
-              repoRoot: '/tmp/termdock-diff-lab',
+              absolutePath: `/tmp/veymux-diff-lab/${fixture.path}`,
+              repoRoot: '/tmp/veymux-diff-lab',
               status: 'modified',
               staged: false,
               unstaged: true,

@@ -31,13 +31,13 @@ export function CodexQuotaBadge({ onOpen, compact = false }: { onOpen: () => voi
     const onVisible = () => {
       if (document.visibilityState === 'visible') void load();
     };
-    window.addEventListener('termdock:quota-update', onQuota);
+    window.addEventListener('veymux:quota-update', onQuota);
     window.addEventListener('focus', onVisible);
     document.addEventListener('visibilitychange', onVisible);
     void load();
     return () => {
       disposed = true;
-      window.removeEventListener('termdock:quota-update', onQuota);
+      window.removeEventListener('veymux:quota-update', onQuota);
       window.removeEventListener('focus', onVisible);
       document.removeEventListener('visibilitychange', onVisible);
     };

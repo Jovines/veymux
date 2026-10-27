@@ -1,5 +1,5 @@
 use std::{collections::BTreeMap, path::PathBuf, process::Stdio};
-use termdock_preview::{config::Connection, proxy};
+use veymux_preview::{config::Connection, proxy};
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     process::Command,

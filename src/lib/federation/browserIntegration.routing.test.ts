@@ -268,7 +268,7 @@ describe('browser federation entry routing', () => {
       perspectives: [{ id: 'overview', title: 'Overview', summary: '',
         nodes: [{ id: 'server', title: 'Server', summary: '', files: [{ path: 'src/server.ts', line: 2 }] }], edges: [] }] };
     const business = vi.fn(async (input: string) => input.startsWith('/api/terminal/architecture/documents?')
-      ? Response.json({ files: ['.termdock/architectures/feature-Upload-12345678.json'] })
+      ? Response.json({ files: ['.veymux/architectures/feature-Upload-12345678.json'] })
       : Response.json({ document, revision: null }));
     mocks.connect.mockImplementation(async args => {
       if (mode === 'relay' && args.targetPeerId === 'B' && !args.socketFactory) throw new TypeError('direct unavailable');
@@ -285,8 +285,8 @@ describe('browser federation entry routing', () => {
     const { listArchitectures, readArchitecture } = await import('../architecture/api');
     const controller = new AbortController();
     expect(await readArchitecture('/remote project', controller.signal)).toEqual(document);
-    expect(business).toHaveBeenCalledWith('/api/terminal/architecture/document?file=.termdock%2Farchitecture.json&root=%2Fremote+project', expect.objectContaining({ signal: controller.signal, cache: 'no-store' }));
-    expect(await listArchitectures('/remote project', controller.signal)).toEqual(['.termdock/architectures/feature-Upload-12345678.json']);
+    expect(business).toHaveBeenCalledWith('/api/terminal/architecture/document?file=.veymux%2Farchitecture.json&root=%2Fremote+project', expect.objectContaining({ signal: controller.signal, cache: 'no-store' }));
+    expect(await listArchitectures('/remote project', controller.signal)).toEqual(['.veymux/architectures/feature-Upload-12345678.json']);
     expect(business).toHaveBeenCalledWith('/api/terminal/architecture/documents?root=%2Fremote+project', expect.objectContaining({ signal: controller.signal, cache: 'no-store' }));
     business.mockResolvedValueOnce(Response.json({ document: null, revision: null }));
     expect(await readArchitecture('/remote project', controller.signal)).toBeNull();
@@ -491,7 +491,7 @@ describe('browser federation entry routing', () => {
       ? { group: { ...JSON.parse(String(init.body)), id: 'created', createdAt: 1, updatedAt: 1 } } : local));
     Object.assign(client, { fetch: business });
     const nativeSave = vi.fn().mockRejectedValue(new Error('legacy upload must not run'));
-    Object.assign(window, { location, addEventListener: vi.fn(), removeEventListener: vi.fn(), termdockDesktop: { collaborationList: () => Promise.reject(new Error('old preload unavailable')), collaborationSave: nativeSave } });
+    Object.assign(window, { location, addEventListener: vi.fn(), removeEventListener: vi.fn(), veymuxDesktop: { collaborationList: () => Promise.reject(new Error('old preload unavailable')), collaborationSave: nativeSave } });
     integration.installEncryptedFetch();
     const api = await import('../terminal/api');
     vi.stubGlobal('fetch', window.fetch);
@@ -589,8 +589,8 @@ describe('browser federation entry routing', () => {
   });
   it('opens a temporary directory channel through saved grants without discovering or granting reverse routes', async () => {
     const service = { id: 'B', url: 'https://private.internal', targetPeerId: 'B', label: 'Work', routes: [{ url: 'https://public.example', targetPeerId: 'A' }] };
-    local.setItem('termdock.federation.connections.v1', JSON.stringify([service]));
-    const before = local.getItem('termdock.federation.connections.v1');
+    local.setItem('veymux.federation.connections.v1', JSON.stringify([service]));
+    const before = local.getItem('veymux.federation.connections.v1');
     const dial = mocks.connect.getMockImplementation()!;
     const opened: Array<{ request: ReturnType<typeof vi.fn>; close: ReturnType<typeof vi.fn> }> = [];
     mocks.connect.mockImplementation(async args => {
@@ -604,7 +604,7 @@ describe('browser federation entry routing', () => {
     expect(mocks.connect.mock.calls.some(([args]) => args.targetPeerId === 'B' && args.socketFactory)).toBe(true);
     expect(opened.flatMap(c => c.request.mock.calls.map(([packet]) => packet.type)).sort()).toEqual(['route-targets', 'route-ticket']);
     expect(opened.every(c => c.close.mock.calls.length === 1)).toBe(true);
-    expect(local.getItem('termdock.federation.connections.v1')).toBe(before); expect(mocks.save).not.toHaveBeenCalled();
+    expect(local.getItem('veymux.federation.connections.v1')).toBe(before); expect(mocks.save).not.toHaveBeenCalled();
     expect(integration.currentSecureClient()).toBeUndefined(); expect(nativeFetch).not.toHaveBeenCalled();
   });
   it('preserves a borrowed directory denial without reconnecting, granting access or closing the shared client', async () => {
@@ -624,7 +624,7 @@ describe('browser federation entry routing', () => {
   it('does not borrow a different target or automatically grant a reverse route to read a directory', async () => {
     const integration = await import('./browserIntegration'); await integration.connectDevice({ url: 'https://b.example', targetPeerId: 'B' });
     const active = clients.get('B')!; active.request.mockClear();
-    local.setItem('termdock.federation.connections.v1', JSON.stringify([
+    local.setItem('veymux.federation.connections.v1', JSON.stringify([
       { id: 'B', url: 'https://b.example', targetPeerId: 'B', label: 'B', routes: [{ url: 'https://c.private', targetPeerId: 'C' }] },
       { id: 'C', url: 'https://c.private', targetPeerId: 'C', label: 'C' },
     ]));
@@ -653,7 +653,7 @@ describe('browser federation entry routing', () => {
     const intent = await integration.prepareRelayConnection({ url: 'https://b.example', targetPeerId: 'B' }, 'C');
     expect(intent).toMatchObject({ targetPeerId: 'C', serviceOrigin: 'https://c.internal', routes: [{ url: 'https://b.example', targetPeerId: 'B' }] });
     expect(clients.get('B')!.request).toHaveBeenCalledWith({ type: 'route-grant', subjectId: 'phone', serviceId: 'C' });
-    expect(local.getItem('termdock.federation.connections.v1')).toBeNull();
+    expect(local.getItem('veymux.federation.connections.v1')).toBeNull();
     await expect(integration.prepareRelayConnection({ url: 'https://b.example', targetPeerId: 'B' }, 'hidden')).rejects.toThrow('不可见');
     expect(clients.get('B')!.request.mock.calls.some(([packet]) => packet.type === 'route-grant')).toBe(false);
   });
@@ -681,7 +681,7 @@ describe('browser federation entry routing', () => {
   });
   it('preserves another address of the same entry when preparing a relay target', async () => {
     const existing = { url: 'https://entry-home.example', targetPeerId: 'B' };
-    local.setItem('termdock.federation.connections.v1', JSON.stringify([
+    local.setItem('veymux.federation.connections.v1', JSON.stringify([
       { id: 'C', url: 'https://c.example', targetPeerId: 'C', label: 'Target', routes: [existing] },
     ]));
     const base = mocks.connect.getMockImplementation()!;
@@ -774,8 +774,8 @@ describe('browser federation entry routing', () => {
   it('does not save an address whose handshake fails the pinned service check', async () => {
     mocks.connect.mockRejectedValueOnce(new Error('Unexpected remote peer'));
     const integration = await import('./browserIntegration');
-    await expect(integration.addServiceAddress({ id: 'C', url: 'https://home.internal', targetPeerId: 'C', label: 'Computer' }, 'https://wrong.internal')).rejects.toThrow('同一台 Termdock');
-    expect(local.getItem('termdock.federation.connections.v1')).toBeNull();
+    await expect(integration.addServiceAddress({ id: 'C', url: 'https://home.internal', targetPeerId: 'C', label: 'Computer' }, 'https://wrong.internal')).rejects.toThrow('同一台 Veymux');
+    expect(local.getItem('veymux.federation.connections.v1')).toBeNull();
     expect(mocks.save).not.toHaveBeenCalled();
     expect(integration.currentSecureClient()).toBeUndefined();
   });
@@ -833,7 +833,7 @@ describe('browser federation entry routing', () => {
     mocks.boot = 'A';
     const a = { id: 'A', url: 'https://a.internal', targetPeerId: 'A', label: 'A', routes: [] };
     const b = { id: 'B', url: 'https://b.internal', targetPeerId: 'B', label: 'B', routes: mode === 'directory-discovery' ? [] : [{ url: 'https://a.internal', targetPeerId: 'A' }] };
-    local.setItem('termdock.federation.connections.v1', JSON.stringify([a, b]));
+    local.setItem('veymux.federation.connections.v1', JSON.stringify([a, b]));
     mocks.saved.mockReturnValue(a);
     const base = mocks.connect.getMockImplementation()!;
     const entryRequests: ReturnType<typeof vi.fn>[] = [];

@@ -4724,47 +4724,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "termdock-preview"
-version = "0.1.0"
-dependencies = [
- "arboard",
- "axum",
- "base64 0.22.1",
- "bs58",
- "cc",
- "flate2",
- "futures-util",
- "hex",
- "libc",
- "minisign-verify",
- "objc2",
- "objc2-app-kit",
- "objc2-foundation",
- "open",
- "plist",
- "png 0.17.16",
- "rcgen",
- "reqwest 0.12.28",
- "rfd",
- "rustls",
- "rustls-native-certs",
- "serde",
- "serde_json",
- "sha2",
- "tar",
- "tauri",
- "tauri-build",
- "tauri-plugin-updater",
- "tempfile",
- "tokio",
- "tokio-rustls",
- "tokio-tungstenite 0.28.0",
- "url",
- "uuid",
- "webpki-roots 1.0.9",
-]
-
-[[package]]
 name = "thiserror"
 version = "1.0.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5287,6 +5246,47 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
+
+[[package]]
+name = "veymux-preview"
+version = "0.1.0"
+dependencies = [
+ "arboard",
+ "axum",
+ "base64 0.22.1",
+ "bs58",
+ "cc",
+ "flate2",
+ "futures-util",
+ "hex",
+ "libc",
+ "minisign-verify",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-foundation",
+ "open",
+ "plist",
+ "png 0.17.16",
+ "rcgen",
+ "reqwest 0.12.28",
+ "rfd",
+ "rustls",
+ "rustls-native-certs",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tar",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-updater",
+ "tempfile",
+ "tokio",
+ "tokio-rustls",
+ "tokio-tungstenite 0.28.0",
+ "url",
+ "uuid",
+ "webpki-roots 1.0.9",
+]
 
 [[package]]
 name = "vswhom"

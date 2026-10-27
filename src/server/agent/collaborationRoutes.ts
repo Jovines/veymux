@@ -1,5 +1,5 @@
 import { terminalMessage } from './collaborationStore.js';
-import { getTermdockVersion } from '../utils/version.js';
+import { getVeymuxVersion } from '../utils/version.js';
 import { assertPeerRegistrationAuthority } from './collaborationPeerTransport.js';
 import { Router, type Request, type Response } from 'express';
 import { CollaborationStore, type CollaborationGroup, type CollaborationMessageKind } from './collaborationStore.js';
@@ -58,7 +58,7 @@ export function collaborationRoutes({ store, resolveSession, resolveContact, res
         const original = resolveMessage(String(req.body.messageId ?? ''));
         if (original?.integrationOrigin && original.toSessionId === req.body.sessionId) sessionId = original.toSessionId;
       }
-      if (!sessionId) throw new CollaborationError('SESSION_NOT_FOUND', 'Run inside a Termdock managed session', 404);
+      if (!sessionId) throw new CollaborationError('SESSION_NOT_FOUND', 'Run inside a Veymux managed session', 404);
       await handler(req, res, sessionId);
     } catch (error) {
       res.status(error instanceof CollaborationError ? error.httpStatus : 400).json({ ok: false,
@@ -179,14 +179,14 @@ export function collaborationRoutes({ store, resolveSession, resolveContact, res
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
   };
-  router.get('/capabilities', run((_req, res) => { res.json({ protocol_version: 2, server_version: getTermdockVersion(), limits: COLLAB_LIMITS,
+  router.get('/capabilities', run((_req, res) => { res.json({ protocol_version: 2, server_version: getVeymuxVersion(), limits: COLLAB_LIMITS,
     direct_contacts: { local: Boolean(resolveContact), remote: remoteContacts, shared: false, recipient_snapshot: false },
     relay_authorization_errors: true, relay_authorization_errors_min_version: '1.4.351',
     relay_self_target_guard: true, relay_self_target_guard_min_version: '1.4.351',
     route_diagnostics: !!diagnoseRoute, route_identity_recovery: !!diagnoseRoute, route_identity_recovery_min_version: '1.4.321',
     agent_launch_generation_consistency: true, agent_launch_generation_consistency_min_version: '1.4.322',
     terminal_input_check_diagnostics: true,
-    task_workflow: { version: 2, command: 'td collab task', single_authority: true, explicit_reports: true,
+    task_workflow: { version: 2, command: 'veymux collab task', single_authority: true, explicit_reports: true,
       managed_goals: true, automatic_review: true, dependency_dispatch: true, isolated_worktrees: true, encrypted_commit_transfer: true,
       durable_questions: true, user_acceptance: true, versioned_artifacts: true, independent_reviews: true,
       correlated_responses: true, accepted_comments: true,
@@ -253,7 +253,7 @@ export function collaborationRoutes({ store, resolveSession, resolveContact, res
       res.json({ ok: true, ...store.receipt(reply.id), integration_recorded: true }); return;
     }
     if (!original.fromSessionId) {
-      const link = original.metadata?.termdockTask as { taskId?: string; attemptId?: string; replyToEventId?: string } | undefined;
+      const link = original.metadata?.veymuxTask as { taskId?: string; attemptId?: string; replyToEventId?: string } | undefined;
       if (link?.taskId && req.app.locals.collaborationTasks) {
         const extras = extrasFromBody(req.body);
         const status = extras.task?.status ?? (extras.responseKind === 'ack' ? 'ack' : extras.responseKind === 'result' ? 'complete' : extras.responseKind === 'progress' ? 'working' : null);
@@ -263,7 +263,7 @@ export function collaborationRoutes({ store, resolveSession, resolveContact, res
         }, req.app.locals.collaborationService.taskMember(sessionId));
         res.json({ ok: true, status: 'stored', task_recorded: true, task_id: task.id, task_revision: task.revision }); return;
       }
-      throw new CollaborationError('NO_REPLY_TARGET', '该消息没有成员回复目标；任务请使用 td collab task report 或 task comment');
+      throw new CollaborationError('NO_REPLY_TARGET', '该消息没有成员回复目标；任务请使用 veymux collab task report 或 task comment');
     }
     if (original.direct && (resolveReplyContact ?? resolveContact)?.(original.fromSessionId, req) !== original.fromSessionId) {
       throw new CollaborationError('SESSION_SCOPE_DENIED', 'Direct reply target is no longer accessible', 403);
@@ -389,7 +389,7 @@ export function collaborationRoutes({ store, resolveSession, resolveContact, res
       return;
     }
     // Without a group this lists the caller's own groups with full role
-    // snapshots — what `td collab --help` renders so a newcomer sees every
+    // snapshots — what `veymux collab --help` renders so a newcomer sees every
     // member's role in one step instead of hunting the group id first.
     res.json({ ok: true, groups: store.groupsForSession(sessionId)
       .filter((group) => !group.deleted)

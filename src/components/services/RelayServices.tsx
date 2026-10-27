@@ -44,7 +44,7 @@ function RelayServiceItem({ target, saved, entry, access, busy, choose }: {
         <dt>入口地址</dt><dd>{entry.serviceOrigin || entry.url}</dd>
         <dt>目标地址</dt><dd>{address || '目标未提供直连地址，通过入口中转连接'}</dd>
         <dt>机器名称</dt><dd>{target.hostname || '目标服务尚未提供'}</dd>
-        <dt>系统 / 版本</dt><dd>{[platform, target.version && `Termdock ${target.version}`].filter(Boolean).join(' · ') || '目标服务尚未提供'}</dd>
+        <dt>系统 / 版本</dt><dd>{[platform, target.version && `Veymux ${target.version}`].filter(Boolean).join(' · ') || '目标服务尚未提供'}</dd>
         <dt>服务标识</dt><dd><code>{target.serviceId}</code></dd>
         {target.error && <><dt>诊断代码</dt><dd><code>{target.error}</code></dd></>}
       </dl>

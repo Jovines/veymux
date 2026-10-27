@@ -24,7 +24,7 @@ it.each([true, false])('honors explicit keyboard dismissal with stale viewport d
   const report = (height: number) => {
     act(() => {
       document.documentElement.style.setProperty('--kb-height', `${height}px`);
-      document.dispatchEvent(new CustomEvent('termdock:viewport-keyboard-change'));
+      document.dispatchEvent(new CustomEvent('veymux:viewport-keyboard-change'));
     });
     flush();
   };

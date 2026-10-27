@@ -31,7 +31,7 @@ import { ChatTimeline, ChatReferenceCard, ChatUserMessage, chatTime } from './Ch
 import { composeChatContent, parseChatContent, type ChatReference } from './chatReferences';
 import { readChatTextSelection, type ChatTextSelection } from './chatTextSelection';
 import { useChatInputTransfer } from './useChatInputTransfer';
-import { getTermdockDesktopBridge } from '../../desktop/nativeBridge';
+import { getVeymuxDesktopBridge } from '../../desktop/nativeBridge';
 import { writeTerminalClipboardText } from '../../terminal/clipboardText';
 import { useShareAccess, useSessionCapabilities } from '../../federation/ShareAccessContext';
 import { readContextReferenceDrag, readFileReferenceDrag } from './fileReferenceTransfer';
@@ -74,7 +74,7 @@ function SessionChatContent({ sessionId, name = '当前会话', canWrite: reques
   // The chat shell owns its loading/error UI. Showing it must not depend on
   // either an offscreen terminal handshake or the history request completing.
   useEffect(() => { onReadyChange?.(true); return () => onReadyChange?.(false); }, [onReadyChange]);
-  const storageKey = `termdock:chat:${savedConnection()?.targetPeerId || location.origin}:${sessionId}`;
+  const storageKey = `veymux:chat:${savedConnection()?.targetPeerId || location.origin}:${sessionId}`;
   const [snapshot] = useState(() => readChatSnapshot(storageKey));
   const [hasOlder, setHasOlder] = useState(snapshot?.hasOlder ?? false);
   const [olderLoading, setOlderLoading] = useState(false);
@@ -536,7 +536,7 @@ function SessionChatContent({ sessionId, name = '当前会话', canWrite: reques
     } catch (failure) { if (attempt === generation.current) setError(failure instanceof Error && failure.name === 'TimeoutError' ? '发送状态待确认，请重试。' : '发送失败，请重试。'); return false; }
     finally { busy.current = false; if (attempt === generation.current) setSending(false); }
   };
-  useEffect(() => { const insert = (event: Event) => { const detail = (event as CustomEvent<{ sessionId: string; text: string }>).detail; if (active && canWrite && detail.sessionId === sessionId) { insertText(detail.text); } }; window.addEventListener('termdock:chat-insert', insert); return () => window.removeEventListener('termdock:chat-insert', insert); }, [sessionId, active, canWrite, insertText]);
+  useEffect(() => { const insert = (event: Event) => { const detail = (event as CustomEvent<{ sessionId: string; text: string }>).detail; if (active && canWrite && detail.sessionId === sessionId) { insertText(detail.text); } }; window.addEventListener('veymux:chat-insert', insert); return () => window.removeEventListener('veymux:chat-insert', insert); }, [sessionId, active, canWrite, insertText]);
   useEffect(() => {
     if (!active) return;
     const insert = (event: Event) => {
@@ -545,10 +545,10 @@ function SessionChatContent({ sessionId, name = '当前会话', canWrite: reques
       event.stopImmediatePropagation();
       const allowed = canWrite && (!detail.ownedPaste || !!authorizeOwnedTerminalPaste(detail, sessionId));
       if (allowed) { insertReference(detail.text!, detail.reference, detail.focus !== false); }
-      if (detail.nonce) window.dispatchEvent(new CustomEvent('termdock-insert-reference-ack', { detail: { nonce: detail.nonce, ok: allowed } }));
+      if (detail.nonce) window.dispatchEvent(new CustomEvent('veymux-insert-reference-ack', { detail: { nonce: detail.nonce, ok: allowed } }));
     };
-    window.addEventListener('termdock-insert-reference', insert, true);
-    return () => window.removeEventListener('termdock-insert-reference', insert, true);
+    window.addEventListener('veymux-insert-reference', insert, true);
+    return () => window.removeEventListener('veymux-insert-reference', insert, true);
   }, [sessionId, active, canWrite, insertReference]);
   const sendLatest = useRef(send); sendLatest.current = send;
   const onAction = useCallback((content: string) => sendLatest.current(undefined, content), []);
@@ -694,7 +694,7 @@ function SessionChatContent({ sessionId, name = '当前会话', canWrite: reques
         <div aria-hidden="true" className={`session-chat-input-sizer pointer-events-none col-start-1 row-start-1 overflow-hidden whitespace-pre-wrap break-words px-1 py-2 text-base leading-7 ${inputMasked ? '' : 'invisible'} ${draft ? '' : 'text-muted-foreground/60'}`}>{draft ? <ChatInlineContent text={draft + ' '} files={attachments} mentions={mentions} mirror /> : (inputMasked ? canWrite ? '输入消息… ' : '此会话仅允许查看 ' : ' ')}</div>
         <ChatRichEditor input={input} value={draft} files={attachments} mentions={mentions} masked={inputMasked} readOnly={!canWrite || chatUnavailable} label={`给${agentName}的消息`} placeholder={canWrite ? '输入消息…' : '此会话仅允许查看'}
           onInput={updateFromEditor} onFocus={() => setSelectedReference(null)} onTokenRemove={removeComposerToken}
-          onPaste={event => { const { files, text } = clipboardEventContent(event.clipboardData); const native = getTermdockDesktopBridge();
+          onPaste={event => { const { files, text } = clipboardEventContent(event.clipboardData); const native = getVeymuxDesktopBridge();
             if (files.length || native?.readClipboardFiles || !text && (native || typeof navigator.clipboard?.read === 'function')) { event.preventDefault(); void transfer.paste({ files, text }); return; }
             if (text) { event.preventDefault(); const selection = input.current ? readChatEditor(input.current) : { start: draft.length, end: draft.length }; const next = draft.slice(0, selection.start) + text + draft.slice(selection.end); writeEditorDraft(next, selection.start + text.length, true); }
           }}

@@ -38,7 +38,7 @@ export function ChatUserContent({ content }: { content: string }) {
 }
 export function ChatUserMessage({ content, createdAt, status, messageId, actionsOpen, children, delivery }: { content: string; createdAt: number; status: string; messageId?: string; actionsOpen?: boolean; children?: ReactNode; delivery?: ReactNode }) {
   return <article data-chat-turn="user" data-chat-message={messageId} data-actions-open={actionsOpen || undefined} className="ml-auto flex w-fit max-w-[88%] flex-col items-end sm:max-w-[85%]">
-    <div data-chat-user-bubble data-chat-message-content className="termdock-native-select w-fit max-w-full rounded-2xl bg-surface-2 px-4 py-3"><ChatUserContent content={content} /></div>
+    <div data-chat-user-bubble data-chat-message-content className="veymux-native-select w-fit max-w-full rounded-2xl bg-surface-2 px-4 py-3"><ChatUserContent content={content} /></div>
     <div data-chat-message-actions className="chat-user-meta mt-1 flex min-h-8 flex-wrap items-center justify-end gap-2 text-[10px] text-muted-foreground">
       <span>{status}</span><ChatTime at={createdAt} className="opacity-60" />{children}
     </div>
@@ -107,7 +107,7 @@ export const ChatTimeline = memo(function ChatTimeline({ messages, agentName, ag
       <ChatAgentHeader name={agentName} slug={agentSlug} />
       <div className="chat-replies min-w-0">{turn.messages.map((message, index) => <ChatMessageViewport key={message.id} id={message.id} root={scrollRoot} nearby={nearbyIds} located={locatedMessageId === message.id} unread={unreadIds?.includes(message.id)} viewing={viewing && !message.ui?.streaming} onViewed={onViewed}><div data-chat-message={message.id} data-actions-open={openActions === message.id || undefined} className="chat-reply min-w-0">
         {message.replyTo && message.replyTo !== turn.messages[index - 1]?.replyTo && <ChatReplyTarget message={message} original={originals.get(message.replyTo)} onJump={onJumpToReply} loading={locatingReply === message.id} />}
-        <div data-chat-message-content className="session-chat-markdown termdock-native-select min-w-0 break-words">
+        <div data-chat-message-content className="session-chat-markdown veymux-native-select min-w-0 break-words">
           {message.ui && RichContent ? <RichContent key={message.id} message={message} sessionId={sessionId} canWrite={uiWritable} onAction={onAction} onReference={canWrite ? text => onReference(message, text) : undefined} /> : <ChatMarkdown content={message.content} />}
         </div>
         <div data-chat-message-actions className="chat-reply-meta flex items-center gap-2">

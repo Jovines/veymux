@@ -15,12 +15,12 @@ function stripPort(hostHeader: string | undefined): string {
   return raw.split(':')[0] ?? raw;
 }
 
-// 额外主机白名单：TERMDOCK_ALLOWED_HOSTS=逗号分隔的主机名/IP（带端口也行，
+// 额外主机白名单：VEYMUX_ALLOWED_HOSTS=逗号分隔的主机名/IP（带端口也行，
 // 端口会被剥掉）。用于公网域名 / 反向代理 / 内网穿透等默认白名单覆盖不到的入口，
-// 例如 TERMDOCK_ALLOWED_HOSTS=term.example.com,10.8.0.2
+// 例如 VEYMUX_ALLOWED_HOSTS=term.example.com,10.8.0.2
 let cachedEnvHosts: { raw: string; hosts: string[] } | null = null;
 function getEnvExtraHosts(): string[] {
-  const raw = process.env.TERMDOCK_ALLOWED_HOSTS ?? '';
+  const raw = process.env.VEYMUX_ALLOWED_HOSTS ?? '';
   if (!cachedEnvHosts || cachedEnvHosts.raw !== raw) {
     cachedEnvHosts = {
       raw,

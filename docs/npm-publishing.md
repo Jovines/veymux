@@ -1,15 +1,15 @@
 # npm Trusted Publishing
 
-Termdock 的 npm 发布使用 GitHub 托管的 Actions runner 和 OIDC 临时身份，不需要保存 `NPM_TOKEN`。工作流只允许从 `master` 手动触发，并要求输入与已提交 `package.json` / lockfile 一致的版本。
+Veymux 的 npm 发布使用 GitHub 托管的 Actions runner 和 OIDC 临时身份，不需要保存 `NPM_TOKEN`。工作流只允许从 `master` 手动触发，并要求输入与已提交 `package.json` / lockfile 一致的版本。
 
 ## 首次绑定
 
-账号所有者登录 npm 后，打开 <https://www.npmjs.com/package/termdock/access>，在 **Trusted publishing** 中添加 GitHub Actions：
+账号所有者登录 npm 后，打开 <https://www.npmjs.com/package/veymux/access>，在 **Trusted publishing** 中添加 GitHub Actions：
 
 | 字段 | 值 |
 | --- | --- |
 | Organization or user | `Jovines` |
-| Repository | `termdock` |
+| Repository | `veymux` |
 | Workflow filename | `npm-publish.yml` |
 | Environment name | 留空 |
 | Allowed actions | 启用直接 `npm publish` |

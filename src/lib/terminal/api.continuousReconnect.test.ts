@@ -3,7 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // Reconnection policy sits above the encrypted transport; simulate its socket facade.
 vi.mock('../federation/browserIntegration', () => ({ secureSocket: (url: string) => new WebSocket(url) }));
-import { createTermdockAPI } from './factory';
+import { createVeymuxAPI } from './factory';
 import {
   connectTerminalStream,
   probeTerminalConnection,
@@ -239,7 +239,7 @@ describe('connectTerminalStream reconnect policy', () => {
 
   it('uses the measured viewport on the first connection and reads it again on reconnect', () => {
     let dimensions = { cols: 58, rows: 40 };
-    const subscription = createTermdockAPI().connect('initial-geometry', { onEvent: vi.fn() }, {
+    const subscription = createVeymuxAPI().connect('initial-geometry', { onEvent: vi.fn() }, {
       getDimensions: () => dimensions,
     });
     const initial = new URL(FakeWebSocket.instances[0].url).searchParams;
@@ -257,7 +257,7 @@ describe('connectTerminalStream reconnect policy', () => {
 
   it('does not promote a hidden viewer using its previous visible size', async () => {
     let dimensions: { cols: number; rows: number } | null = { cols: 120, rows: 40 };
-    const subscription = createTermdockAPI().connect('hidden-geometry-owner', { onEvent: vi.fn() }, {
+    const subscription = createVeymuxAPI().connect('hidden-geometry-owner', { onEvent: vi.fn() }, {
       getDimensions: () => dimensions,
     });
     FakeWebSocket.instances[0].readyState = FakeWebSocket.OPEN;

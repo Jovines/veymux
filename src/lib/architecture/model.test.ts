@@ -13,7 +13,7 @@ const sample = (): ArchitectureDocument => ({
 });
 const parse = (doc: unknown) => parseArchitecture(JSON.stringify(doc));
 
-describe('Termdock architecture documents', () => {
+describe('Veymux architecture documents', () => {
   it('keeps analyzed sources and limitations separate from the architecture summary', () => {
     const details = { analyzedPaths: ['src/App.tsx', 'src/server'], limitations: ['Static analysis; native client not exercised'] };
     expect(parse({ ...sample(), details }).details).toEqual(details);
@@ -26,7 +26,7 @@ describe('Termdock architecture documents', () => {
   it('saves scopes independently with stable paths, regardless of input order or dependency depth', () => {
     const module = { ...DEFAULT_ANALYSIS, kind: 'module' as const, paths: ['packages/auth', 'src/server', 'src/server'] };
     const file = analysisFile(module);
-    expect(file).toMatch(/^\.termdock\/architectures\/module-/);
+    expect(file).toMatch(/^\.veymux\/architectures\/module-/);
     expect(isArchitectureFile(file)).toBe(true);
     expect(analysisFile({ ...module, paths: ['src/server', 'packages/auth'], depth: 'dependencies', focus: 'Errors' })).toBe(file);
     expect(analysisFile({ ...module, paths: ['src/client'] })).not.toBe(file);
@@ -34,7 +34,7 @@ describe('Termdock architecture documents', () => {
     expect(analysisFile(DEFAULT_ANALYSIS)).toBe(ARCHITECTURE_FILE);
     expect(architectureFilePath('/project/', file)).toBe(`/project/${file}`);
   });
-  it.each(['.termdock/architectures/../secret.json', '.termdock/architectures/feature-foo-12345678.json/extra', '/tmp/map.json', '.termdock/architectures/feature-foo-12345678.json?query', '.termdock/architectures/unrelated.json'])('rejects unsafe or unrelated output path %s', file => {
+  it.each(['.veymux/architectures/../secret.json', '.veymux/architectures/feature-foo-12345678.json/extra', '/tmp/map.json', '.veymux/architectures/feature-foo-12345678.json?query', '.veymux/architectures/unrelated.json'])('rejects unsafe or unrelated output path %s', file => {
     expect(isArchitectureFile(file)).toBe(false);
     expect(() => architectureFilePath('/project', file)).toThrow();
   });
@@ -100,7 +100,7 @@ describe('Termdock architecture documents', () => {
     const root = '/repo with spaces/$(touch /tmp/unwanted)';
     const prompt = buildArchitecturePrompt(root, 'zh');
     expect(prompt).toContain(JSON.stringify(root));
-    expect(prompt).toContain('.termdock/architecture.json');
+    expect(prompt).toContain('.veymux/architecture.json');
     expect(prompt).toContain('Chinese');
     expect(prompt).toContain('write atomically');
     expect(prompt).not.toContain('npm install');

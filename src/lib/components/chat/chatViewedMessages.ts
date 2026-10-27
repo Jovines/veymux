@@ -1,7 +1,7 @@
 import { savedConnection, currentSecureClient } from '../../federation/browserIntegration';
 import type { SessionChatIndex } from '../../../server/shared/sessionChatAttention';
 function key(sessionId: string, conversationId: string) {
-  return `termdock:chat-viewed:${savedConnection()?.targetPeerId || location.origin}:${sessionId}:${conversationId}`;
+  return `veymux:chat-viewed:${savedConnection()?.targetPeerId || location.origin}:${sessionId}:${conversationId}`;
 }
 export function viewedChatMessages(sessionId: string, index: SessionChatIndex): Set<string> {
   try {
@@ -76,6 +76,6 @@ export function clearChatViewingUpdates() {
 if (typeof window !== 'undefined') {
   const retry = () => { for (const [key, entry] of updates) { if (currentScope() === entry.scope) void flushUpdate(key, entry); } };
   window.addEventListener('online', retry);
-  window.addEventListener('termdock:secure-ready', retry);
+  window.addEventListener('veymux:secure-ready', retry);
   window.addEventListener('auth:unauthorized', clearChatViewingUpdates);
 }

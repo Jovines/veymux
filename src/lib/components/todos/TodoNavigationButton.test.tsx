@@ -20,9 +20,9 @@ it('shows the same unfinished count at both navigation entrances and opens the s
 it('caps the visible badge while retaining the full count and refreshes after mutations', async () => {
   render(<TodoNavigationButton placement="toolbar" onOpen={() => {}} />);
   await screen.findByText('7');
-  api.count.mockResolvedValue({ count: 137 }); fireEvent(window, new Event('termdock:todos-changed'));
+  api.count.mockResolvedValue({ count: 137 }); fireEvent(window, new Event('veymux:todos-changed'));
   await screen.findByText('99+'); expect(screen.getByRole('button').title).toContain('137 项未完成');
-  api.count.mockResolvedValue({ count: 0 }); fireEvent(window, new Event('termdock:todos-changed'));
+  api.count.mockResolvedValue({ count: 0 }); fireEvent(window, new Event('veymux:todos-changed'));
   await waitFor(() => expect(screen.getByRole('button').getAttribute('aria-description')).toBe('0 项未完成'));
   expect(screen.queryByText('99+')).toBeNull(); expect(screen.queryByText('0')).toBeNull();
   expect(screen.getByRole('button').querySelector('[data-todo-count]')).toBeNull();
@@ -40,7 +40,7 @@ it('does not present an unknown count as zero or leak an old service response in
 });
 it('keeps the last confirmed count across a failed refresh and updates on reconnection', async () => {
   render(<TodoNavigationButton placement="toolbar" onOpen={() => {}} />); await screen.findByText('7');
-  api.count.mockRejectedValueOnce(Error('offline')); fireEvent(window, new Event('termdock:todos-changed'));
+  api.count.mockRejectedValueOnce(Error('offline')); fireEvent(window, new Event('veymux:todos-changed'));
   await act(async () => { await Promise.resolve(); }); expect(screen.getByText('7')).toBeTruthy();
   api.count.mockResolvedValue({ count: 3 }); fireEvent(window, new Event('test:ready')); await screen.findByText('3');
 });

@@ -25,7 +25,7 @@ async function stop(child: ChildProcess) {
 }
 
 async function setup() {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'termdock-handoff-'));
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-handoff-'));
   const old = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
   await once(old, 'spawn');
   const portFile = path.join(directory, 'port');
@@ -43,7 +43,7 @@ async function setup() {
   child.stderr?.on('data', data => { error += data; });
   const ready = await once(child, 'message');
   expect(ready[0], error).toEqual({ type: 'handoff-ready' });
-  const statePath = path.join(directory, '.termdock/supervisor.json');
+  const statePath = path.join(directory, '.veymux/supervisor.json');
   const readState = () => {
     try { return JSON.parse(fs.readFileSync(statePath, 'utf8')); } catch { return undefined; }
   };

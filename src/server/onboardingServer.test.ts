@@ -17,15 +17,15 @@ const { JSDOM } = createRequire(import.meta.url)('jsdom') as {
   };
 };
 
-const fixture = vi.hoisted(() => ({ dir: `/tmp/termdock-onboarding-test-${process.pid}-${Math.random().toString(36).slice(2)}` }));
-vi.mock('./utils/termdockState.js', async original => ({ ...await original<typeof import('./utils/termdockState.js')>(), TERMDOCK_DIR: fixture.dir }));
+const fixture = vi.hoisted(() => ({ dir: `/tmp/veymux-onboarding-test-${process.pid}-${Math.random().toString(36).slice(2)}` }));
+vi.mock('./utils/veymuxState.js', async original => ({ ...await original<typeof import('./utils/veymuxState.js')>(), VEYMUX_DIR: fixture.dir }));
 import { getOnboardingCertificateFingerprint, startOnboardingServer, stopOnboardingServer } from './onboardingServer.js';
 
 const caPath = path.join(fixture.dir, 'root.crt');
 let server: ReturnType<typeof startOnboardingServer>['server'];
 beforeAll(() => {
   fs.mkdirSync(fixture.dir, { recursive: true });
-  execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1', '-subj', '/CN=Termdock Setup Test', '-keyout', path.join(fixture.dir, 'key.pem'), '-out', caPath], { stdio: 'ignore' });
+  execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1', '-subj', '/CN=Veymux Setup Test', '-keyout', path.join(fixture.dir, 'key.pem'), '-out', caPath], { stdio: 'ignore' });
 });
 afterAll(() => { stopOnboardingServer(); fs.rmSync(fixture.dir, { recursive: true, force: true }); });
 async function start(extra: Partial<import('./onboardingServer.js').OnboardingServerOptions> = {}) {
@@ -67,12 +67,12 @@ it('serves actionable HTTP guidance, preserves the HTTPS destination and publish
     expect(response.headers.get('cache-control')).toBe('no-store');
     expect(response.headers.get('content-security-policy')).toContain("default-src 'none'");
     const html = await response.text();
-    const dom = new JSDOM(html, { url: `${origin}/connect#termdock-invite=example-fragment`, runScripts: 'dangerously' });
+    const dom = new JSDOM(html, { url: `${origin}/connect#veymux-invite=example-fragment`, runScripts: 'dangerously' });
     const doc = dom.window.document;
     expect((doc.querySelector('#device') as HTMLSelectElement).value).toBe('ios');
     expect((doc.querySelector('[data-device="ios"]') as HTMLElement).hidden).toBe(false);
     expect((doc.querySelector('[data-device="mac"]') as HTMLElement).hidden).toBe(true);
-    expect(doc.querySelector('#continue')?.getAttribute('href')).toBe('https://127.0.0.1:19876/#termdock-invite=example-fragment');
+    expect(doc.querySelector('#continue')?.getAttribute('href')).toBe('https://127.0.0.1:19876/#veymux-invite=example-fragment');
     expect(html).toContain('根证书的信任范围不限于本次分享');
     expect(html).toContain('通过你已信任的对话渠道');
     const device = doc.querySelector('#device') as HTMLSelectElement;
@@ -85,7 +85,7 @@ it('serves actionable HTTP guidance, preserves the HTTPS destination and publish
     expect(doc.querySelector('#continue')?.classList.contains('primary')).toBe(true);
     dom.window.close();
     const cert = await fetch(`${origin}/onboarding/ca.crt`);
-    expect(cert.headers.get('content-disposition')).toContain('termdock-ca.crt');
+    expect(cert.headers.get('content-disposition')).toContain('veymux-ca.crt');
     const fingerprint = new X509Certificate(await cert.text()).fingerprint256;
     expect(getOnboardingCertificateFingerprint()).toBe(fingerprint);
     expect(html).toContain(fingerprint);

@@ -21,7 +21,7 @@ vi.mock('../utils/authProtection.js', async (importOriginal) => ({
 const tempDirs: string[] = [];
 
 function makeTempDir(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'termdock-html-preview-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-html-preview-'));
   tempDirs.push(dir);
   return dir;
 }
@@ -96,7 +96,7 @@ describe('HTML preview auth tokens', () => {
   });
 
   it('validates paths inside the token root and rejects escapes', () => {
-    const root = path.join(os.tmpdir(), 'termdock-preview-root');
+    const root = path.join(os.tmpdir(), 'veymux-preview-root');
     expect(isPathWithinPreviewRoot(root, path.join(root, 'img/a.png'))).toBe(true);
     expect(isPathWithinPreviewRoot(root, root)).toBe(true);
     expect(isPathWithinPreviewRoot(root, path.join(root, '..', 'escape.png'))).toBe(false);
@@ -106,14 +106,14 @@ describe('HTML preview auth tokens', () => {
   });
 
   it('accepts a fresh token for paths inside its root', () => {
-    const root = path.join(os.tmpdir(), 'termdock-preview-valid');
+    const root = path.join(os.tmpdir(), 'veymux-preview-valid');
     const token = mintPreviewToken(root);
     expect(validatePreviewToken(token, path.join(root, 'index.html'))).toBe(true);
     expect(validatePreviewToken(token, path.join(root, 'img/a.png'))).toBe(true);
   });
 
   it('rejects unknown, expired, and out-of-root tokens', () => {
-    const root = path.join(os.tmpdir(), 'termdock-preview-invalid');
+    const root = path.join(os.tmpdir(), 'veymux-preview-invalid');
     expect(validatePreviewToken('f'.repeat(32), path.join(root, 'index.html'))).toBe(false);
 
     const token = mintPreviewToken(root);

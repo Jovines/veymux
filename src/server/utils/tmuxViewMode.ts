@@ -1,7 +1,7 @@
 import type { SessionViewMode, SessionViewModeStore } from '../agent/sessionViewModeRoutes.js';
 
-export const TMUX_VIEW_MODE_OPTION = '@termdock-view-mode';
-export const TMUX_FRONTEND_SESSION_OPTION = '@termdock-frontend-session-id';
+export const TMUX_VIEW_MODE_OPTION = '@veymux-view-mode';
+export const TMUX_FRONTEND_SESSION_OPTION = '@veymux-frontend-session-id';
 export const isSessionViewMode = (mode: unknown): mode is SessionViewMode => mode === 'chat' || mode === 'terminal';
 
 /** Adopt the surviving tmux preference before replacing its frontend identity.

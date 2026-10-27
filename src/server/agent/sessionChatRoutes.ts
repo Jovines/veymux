@@ -127,7 +127,7 @@ export function sessionChatRoutes(options: {
     const body = req.body;
     if (!body || Object.keys(body).some(k => !['content', 'requestId'].includes(k)) || typeof body.content !== 'string' || !body.content.trim() || Buffer.byteLength(body.content) > 32000 || typeof body.requestId !== 'string' || !/^[a-zA-Z0-9_-]{16,100}$/.test(body.requestId)) { res.status(400).json({ error: '消息为空、过长或请求无效' }); return; }
     try {
-      const marker = '```termdock-context\n', at = body.content.lastIndexOf(marker);
+      const marker = '```veymux-context\n', at = body.content.lastIndexOf(marker);
       if (at >= 0 && (at === 0 || body.content.slice(0, at).endsWith('\n\n')) && body.content.endsWith('\n```')) {
         // The metadata is user input, never authority. Narrow shares cannot
         // acquire contact access by submitting a hand-crafted draft.

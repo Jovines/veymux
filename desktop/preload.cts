@@ -25,7 +25,7 @@ window.addEventListener('message', (event) => {
     source?: unknown;
     activity?: { runningCount?: unknown; reviewCount?: unknown };
   } | null;
-  if (data?.source !== 'termdock-desktop-activity-v1') return;
+  if (data?.source !== 'veymux-desktop-activity-v1') return;
   ipcRenderer.send('desktop:observe-service-activity', data.activity ?? {});
 });
 
@@ -41,7 +41,7 @@ function clearNativeDropState(target: HTMLElement): void {
   delete target.dataset.nativeFileDropState;
 }
 
-contextBridge.exposeInMainWorld('termdockDesktop', {
+contextBridge.exposeInMainWorld('veymuxDesktop', {
   platform: process.platform,
   deviceInfo: (): Promise<Record<string, string>> => ipcRenderer.invoke('desktop:device-info'),
   collaborationFocus: (id: string) => ipcRenderer.invoke('desktop:collaboration-focus', id),
@@ -127,7 +127,7 @@ contextBridge.exposeInMainWorld('termdockDesktop', {
   ): void => {
     const handleDragOver = (event: DragEvent) => {
       const target = event.target instanceof Element
-        ? event.target.closest<HTMLElement>('[data-termdock-terminal-dropzone]')
+        ? event.target.closest<HTMLElement>('[data-veymux-terminal-dropzone]')
         : null;
       if (!target || !event.dataTransfer?.types.includes('Files')) return;
       event.preventDefault();
@@ -139,13 +139,13 @@ contextBridge.exposeInMainWorld('termdockDesktop', {
     };
     const clearDragState = (event: DragEvent) => {
       const target = event.target instanceof Element
-        ? event.target.closest<HTMLElement>('[data-termdock-terminal-dropzone]')
+        ? event.target.closest<HTMLElement>('[data-veymux-terminal-dropzone]')
         : null;
       if (target) clearNativeDropState(target);
     };
     const handleDrop = async (event: DragEvent) => {
       const target = event.target instanceof Element
-        ? event.target.closest<HTMLElement>('[data-termdock-terminal-dropzone]')
+        ? event.target.closest<HTMLElement>('[data-veymux-terminal-dropzone]')
         : null;
       if (!target || !event.dataTransfer) return;
       const files = Array.from(event.dataTransfer.files);
@@ -155,7 +155,7 @@ contextBridge.exposeInMainWorld('termdockDesktop', {
       }
       event.preventDefault();
       event.stopPropagation();
-      const sessionKey = target.dataset.termdockTerminalDropzone ?? '';
+      const sessionKey = target.dataset.veymuxTerminalDropzone ?? '';
 
       if (!shouldUploadDroppedFiles(window.location.hostname)) {
         const paths = files
@@ -186,17 +186,17 @@ contextBridge.exposeInMainWorld('termdockDesktop', {
 });
 
 window.addEventListener('DOMContentLoaded', () => {
-  document.documentElement.dataset.termdockDesktop = 'true';
+  document.documentElement.dataset.veymuxDesktop = 'true';
 });
 
 ipcRenderer.on('desktop:open-settings', () => {
-  window.dispatchEvent(new CustomEvent('termdock:open-settings'));
+  window.dispatchEvent(new CustomEvent('veymux:open-settings'));
 });
 
 ipcRenderer.on('desktop:command', (_event, command: string) => {
-  window.dispatchEvent(new CustomEvent('termdock:native-command', { detail: command }));
+  window.dispatchEvent(new CustomEvent('veymux:native-command', { detail: command }));
 });
 
 ipcRenderer.on('desktop:focus-session', (_event, sessionId: string) => {
-  window.dispatchEvent(new CustomEvent('termdock:focus-session', { detail: sessionId }));
+  window.dispatchEvent(new CustomEvent('veymux:focus-session', { detail: sessionId }));
 });

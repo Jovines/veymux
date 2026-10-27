@@ -12,7 +12,7 @@ describe('durable collaboration reliability', () => {
   let store: CollaborationStore;
   let groupId: string;
   beforeEach(() => {
-    directory = fs.mkdtempSync(path.join(os.tmpdir(), 'td-collab-reliability-'));
+    directory = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-collab-reliability-'));
     file = path.join(directory, 'messages.json'); store = new CollaborationStore(file);
     groupId = store.save({ name: 'Pair', sessionIds: ['a', 'b'] }).id;
   });

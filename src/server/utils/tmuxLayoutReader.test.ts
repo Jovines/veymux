@@ -23,7 +23,7 @@ it.each([
 
 const exec = promisify(execFile);
 it.skipIf(process.platform === 'win32')('matches real split/window state without adding clients, resizing, input or changing processes', async () => {
-  const socket = `td-layout-${process.pid}-${Date.now()}`;
+  const socket = `veymux-layout-${process.pid}-${Date.now()}`;
   const run = async (args: string[]) => (await exec('tmux', ['-L', socket, ...args], { timeout: 5000 })).stdout;
   try {
     await run(['new-session', '-d', '-s', 'sample', '-x', '93', '-y', '31', '/bin/sleep', '120']);

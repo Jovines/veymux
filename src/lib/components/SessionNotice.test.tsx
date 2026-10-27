@@ -5,7 +5,7 @@ import type { ControlEvent } from '../utils/clientStateSync';
 const state = vi.hoisted(() => ({ active: true, listener: null as null | ((event: ControlEvent) => void), focus: vi.fn(() => true) }));
 vi.mock('../utils/clientStateSync', () => ({ subscribeClientState: (listener: (event: ControlEvent) => void) => { state.listener = listener; return () => { state.listener = null; }; } }));
 vi.mock('../federation/browserIntegration', () => ({ savedConnection: () => ({ targetPeerId: 'remote-service' }) }));
-vi.mock('../services/workspaceHost', () => ({ getWorkspaceHost: () => ({ focusSession: state.focus }), isWorkspaceActive: () => state.active, WORKSPACE_VISIBILITY_EVENT: 'termdock:workspace-visibility' }));
+vi.mock('../services/workspaceHost', () => ({ getWorkspaceHost: () => ({ focusSession: state.focus }), isWorkspaceActive: () => state.active, WORKSPACE_VISIBILITY_EVENT: 'veymux:workspace-visibility' }));
 vi.mock('../i18n', () => ({ useI18n: () => ({ locale: 'zh' }) }));
 import { useTerminalStore } from '../stores/useTerminalStore';
 import { useSessionNoticeStore } from '../stores/useSessionNoticeStore';
@@ -68,6 +68,6 @@ it('does not acknowledge a selected session in a hidden workspace until activati
   render(<><SessionNoticeCenter /><SessionNoticeBridge /><SessionNoticeUnreadBadge sessionIds={['source-session']} /></>);
   act(() => { state.listener!(event); });
   expect(screen.getByLabelText('1 条未读进展')).toBeTruthy();
-  act(() => { state.active = true; window.dispatchEvent(new Event('termdock:workspace-visibility')); });
+  act(() => { state.active = true; window.dispatchEvent(new Event('veymux:workspace-visibility')); });
   expect(screen.queryByLabelText('1 条未读进展')).toBeNull();
 });

@@ -48,8 +48,8 @@ describe('architecture reading journey', () => {
       const component = render(<ArchitecturePanel rootPath="/project" active onOpenFile={onOpenFile} onInsertPrompt={vi.fn()} renderSource={file => <div>Source {file.path}:{file.line}</div>} />);
       fireEvent.click(await screen.findByRole('button', { name: 'Server' }));
       expect(screen.queryByRole('dialog')).toBeNull();
-      await waitFor(() => expect(component.container.querySelector('.termdock-architecture-viewport')).toBeTruthy());
-      const viewport = component.container.querySelector<HTMLElement>('.termdock-architecture-viewport')!;
+      await waitFor(() => expect(component.container.querySelector('.veymux-architecture-viewport')).toBeTruthy());
+      const viewport = component.container.querySelector<HTMLElement>('.veymux-architecture-viewport')!;
       viewport.scrollLeft = 130; viewport.scrollTop = 90;
       const zoom = screen.getByRole('button', { name: 'Reset diagram zoom' }).textContent;
       screen.getByRole('combobox', { name: 'Perspective' }).focus();
@@ -107,7 +107,7 @@ describe('architecture reading journey', () => {
   it('keeps fullscreen, zoom and pan through node, relation and source reading, and dismisses one layer per Escape', async () => {
     const { dialog, onOpenFile } = await setup();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Zoom in diagram' }));
-    const viewport = dialog.querySelector<HTMLElement>('.termdock-architecture-viewport')!;
+    const viewport = dialog.querySelector<HTMLElement>('.veymux-architecture-viewport')!;
     viewport.scrollLeft = 240; viewport.scrollTop = 130;
     const zoom = within(dialog).getByRole('button', { name: 'Reset diagram zoom' }).textContent;
     fireEvent.click(within(dialog).getByRole('button', { name: 'Server' }));
@@ -160,7 +160,7 @@ describe('architecture reading journey', () => {
     expect(within(dialog).getByRole('button', { name: 'Insert prompt' })).toBeTruthy();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Insert prompt' }));
     await waitFor(() => expect(onInsertPrompt).toHaveBeenCalledOnce());
-    expect((screen.getByRole('combobox', { name: 'Saved analyses' }) as HTMLSelectElement).value).toBe('.termdock/architecture.json');
+    expect((screen.getByRole('combobox', { name: 'Saved analyses' }) as HTMLSelectElement).value).toBe('.veymux/architecture.json');
     expect(await within(dialog).findByRole('button', { name: 'View this analysis' })).toBeTruthy();
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(within(dialog).getByRole('region', { name: 'Server' })).toBeTruthy();

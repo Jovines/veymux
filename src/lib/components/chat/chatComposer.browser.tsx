@@ -109,7 +109,7 @@ it('scrolls code horizontally without switching the Session', async () => {
 it.each([390, 1280])('keeps attachments, the editor and send action visible at width %i', async width => {
   await page.viewport(width, 844);
   const files = [{ path: '/tmp/cover.png', name: '界面截图.png', type: 'image/png', size: 12000 }, { path: '/tmp/demo.mov', name: '操作演示.mov', type: 'video/quicktime', size: 2000000 }];
-  sessionStorage.setItem(`termdock:chat:${location.origin}:browser-composer:extras`, composeChatDraft('', files, []));
+  sessionStorage.setItem(`veymux:chat:${location.origin}:browser-composer:extras`, composeChatDraft('', files, []));
   await mount(); await expect.element(page.getByRole('button', { name: '移除附件 操作演示.mov' })).toBeVisible();
   const composer = document.querySelector('[data-chat-composer]')!.getBoundingClientRect();
   expect(composer.top).toBeGreaterThan(500); expect(composer.bottom).toBeLessThanOrEqual(844);
@@ -137,8 +137,8 @@ it('keeps the member picker above the composer and selects without sending', asy
 it('renders independent inline attachment chips between editable prose', async () => {
   const files = [{ path: '/tmp/a.png', name: '第一张.png', type: 'image/png', reference: '图片1' }, { path: '/tmp/b.png', name: '第二张.png', type: 'image/png', reference: '图片2' }];
   const text = '请对比这张【图片1】与这张【图片2】，说明差别。';
-  sessionStorage.setItem(`termdock:chat:${location.origin}:browser-composer:draft`, text);
-  sessionStorage.setItem(`termdock:chat:${location.origin}:browser-composer:extras`, composeChatDraft(text, files, []));
+  sessionStorage.setItem(`veymux:chat:${location.origin}:browser-composer:draft`, text);
+  sessionStorage.setItem(`veymux:chat:${location.origin}:browser-composer:extras`, composeChatDraft(text, files, []));
   await mount(); const editor = document.querySelector('[role="textbox"]') as HTMLElement;
   expect(readChatEditor(editor).text).toBe(text);
   expect(editor.querySelectorAll('[data-chat-inline-token][contenteditable="false"]')).toHaveLength(2);
@@ -159,8 +159,8 @@ it.each([390, 1280])('keeps inline attachments in place through sending at width
   await page.viewport(width, 844);
   const files = [{ path: '/tmp/one.png', name: '截图.png', type: 'image/png', reference: '图片1' }];
   const text = '请看【图片1】这里的间距';
-  sessionStorage.setItem(`termdock:chat:${location.origin}:browser-composer:draft`, text);
-  sessionStorage.setItem(`termdock:chat:${location.origin}:browser-composer:extras`, composeChatDraft(text, files, []));
+  sessionStorage.setItem(`veymux:chat:${location.origin}:browser-composer:draft`, text);
+  sessionStorage.setItem(`veymux:chat:${location.origin}:browser-composer:extras`, composeChatDraft(text, files, []));
   await mount();
   const editor = document.querySelector('[role="textbox"]') as HTMLElement;
   const chip = editor.querySelector<HTMLElement>('[data-chat-inline-token]')!;
@@ -192,8 +192,8 @@ it.each([390, 1280])('previews a picture while editing and after sending at widt
   await page.viewport(width, 844);
   const files = [{ path: '/tmp/preview.png', name: '预览图.png', type: 'image/png', reference: '图片1' }];
   const text = '看看【图片1】间距';
-  sessionStorage.setItem(`termdock:chat:${location.origin}:browser-composer:draft`, text);
-  sessionStorage.setItem(`termdock:chat:${location.origin}:browser-composer:extras`, composeChatDraft(text, files, []));
+  sessionStorage.setItem(`veymux:chat:${location.origin}:browser-composer:draft`, text);
+  sessionStorage.setItem(`veymux:chat:${location.origin}:browser-composer:extras`, composeChatDraft(text, files, []));
   await mount();
   const saved: object[] = [];
   vi.mocked(fetch).mockImplementation(async (url, init) => {
@@ -234,7 +234,7 @@ it.each([390, 1280])('removes a pasted image with a single Backspace at width %i
   const clipboardData = new DataTransfer();
   clipboardData.items.add(new File(['image'], '很长的截图文件名.png', { type: 'image/png' }));
   editor.dispatchEvent(new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true }));
-  await expect.element(page.getByRole('button', { name: /移除附件 termdock-clipboard-/ })).toBeVisible();
+  await expect.element(page.getByRole('button', { name: /移除附件 veymux-clipboard-/ })).toBeVisible();
   await expect.poll(() => readChatEditor(editor).end).toBe('【图片1】 '.length);
   await userEvent.keyboard('{Backspace}');
   await expect.poll(() => editor.querySelector('[data-chat-inline-token]')).toBeNull();
@@ -250,8 +250,8 @@ it.each([
   { text: '【图片1】 ', at: '【图片1】 '.length, key: 'deleteContentBackward', expected: '', caret: 0, chips: 0 },
 ])('deletes inline chips or adjacent text predictably: $text / $key', async ({ text, at, key, expected, caret, chips }) => {
   const files = [{ path: '/tmp/one.png', name: '一个很长的图片文件名.png', reference: '图片1' }];
-  sessionStorage.setItem(`termdock:chat:${location.origin}:browser-composer:draft`, text);
-  sessionStorage.setItem(`termdock:chat:${location.origin}:browser-composer:extras`, composeChatDraft(text, files, []));
+  sessionStorage.setItem(`veymux:chat:${location.origin}:browser-composer:draft`, text);
+  sessionStorage.setItem(`veymux:chat:${location.origin}:browser-composer:extras`, composeChatDraft(text, files, []));
   await mount(); const editor = document.querySelector('[role="textbox"]') as HTMLElement;
   expect(editor.querySelector('[data-chat-inline-token]')?.textContent).toBe('图片1');
   editor.focus(); setChatEditorCaret(editor, at);
@@ -298,8 +298,8 @@ it.each([390, 1280])('previews a video in the editor and sent message at width %
   const clip = await recorded; stream.getTracks().forEach(track => track.stop());
   const files = [{ path: '/tmp/recorded-demo.webm', name: '录屏演示.webm', type: 'video/webm', reference: '视频1' }];
   const text = '看看【视频1】这个问题';
-  sessionStorage.setItem(`termdock:chat:${location.origin}:browser-composer:draft`, text);
-  sessionStorage.setItem(`termdock:chat:${location.origin}:browser-composer:extras`, composeChatDraft(text, files, []));
+  sessionStorage.setItem(`veymux:chat:${location.origin}:browser-composer:draft`, text);
+  sessionStorage.setItem(`veymux:chat:${location.origin}:browser-composer:extras`, composeChatDraft(text, files, []));
   await mount(); const saved: object[] = [];
   vi.mocked(fetch).mockImplementation(async (url, init) => {
     if (String(url).includes('/api/terminal/fs/video?')) return new Response(clip, { headers: { 'Content-Type': 'video/webm' } });
@@ -371,7 +371,7 @@ it.each([390, 1280])('keeps reply loading in the conversation and the terminal e
   expect(dock.querySelector('[data-chat-terminal-access]')?.textContent).toBe('详情');
 
   store.setTerminalOutputActivity('browser-composer', true);
-  await page.screenshot({ path: `/tmp/termdock-agent-waiting-${width}.png` });
+  await page.screenshot({ path: `/tmp/veymux-agent-waiting-${width}.png` });
   messages.push({ id: 'progress-author', role: 'assistant', content: Array.from({ length: 24 }, (_, index) => `正在核对第 ${index} 项结果。`).join('\n\n'), createdAt: Date.now(), status: 'stored', responseKind: 'progress' });
   window.dispatchEvent(new Event('online'));
   await expect.element(page.getByText('正在核对第 23 项结果。')).toBeVisible();
@@ -380,9 +380,9 @@ it.each([390, 1280])('keeps reply loading in the conversation and the terminal e
   expect(document.querySelector('[data-chat-agent-awaiting]')).toBeNull();
   expect(tailStatus.closest('[data-chat-message-actions]')).toBeNull();
   expect(document.querySelector('[data-chat-agent-header]')?.contains(tailStatus)).toBe(false);
-  expect(tailStatus.querySelector('.td-loading-spinner')).not.toBeNull();
+  expect(tailStatus.querySelector('.veymux-loading-spinner')).not.toBeNull();
   await expect.element(page.getByRole('status', { name: 'Codex处理中' })).toBeVisible();
-  await page.screenshot({ path: `/tmp/termdock-agent-reply-status-${width}.png` });
+  await page.screenshot({ path: `/tmp/veymux-agent-reply-status-${width}.png` });
 });
 
 it.each([390, 1280])('selects and sends a direct mention without creating group context at width %i', async width => {
@@ -471,7 +471,7 @@ it.each([390, 1280])('keeps history and input stationary through image upload st
     expect(scroll.scrollTop).toBe(before.historyScroll);
     // The inserted attachment chip has its own text metrics. Remove it before
     // comparing with the empty draft, so this measures only the transient UI.
-    await page.getByRole('button', { name: /移除附件 termdock-clipboard-/ }).click(); await frame();
+    await page.getByRole('button', { name: /移除附件 veymux-clipboard-/ }).click(); await frame();
     expect(geometry()).toEqual(before);
   } finally {
     vi.mocked(uploadFiles).mockReset().mockResolvedValue({ files: [{ name: 'pasted.png', path: '/tmp/pasted.png', size: 1 }] });

@@ -27,9 +27,9 @@ describe('native architecture browsing', () => {
     render(<ArchitecturePanel {...props()} />);
     await screen.findByText('Upload map');
     expect((screen.getByRole('combobox', { name: 'Saved analyses' }) as HTMLSelectElement).value).toBe(file);
-    fireEvent.change(screen.getByRole('combobox', { name: 'Saved analyses' }), { target: { value: '.termdock/architecture.json' } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Saved analyses' }), { target: { value: '.veymux/architecture.json' } });
     await screen.findByText("Understand this project's architecture");
-    expect((screen.getByRole('combobox', { name: 'Saved analyses' }) as HTMLSelectElement).value).toBe('.termdock/architecture.json');
+    expect((screen.getByRole('combobox', { name: 'Saved analyses' }) as HTMLSelectElement).value).toBe('.veymux/architecture.json');
     expect(read).toHaveBeenCalledTimes(3);
   });
   it('keeps verbose analysis notes collapsed and shows readable module cards without a graph on narrow panels', async () => {
@@ -87,9 +87,9 @@ describe('native architecture browsing', () => {
     const reopened = render(<ArchitecturePanel {...input} />);
     await waitFor(() => expect(read).toHaveBeenLastCalledWith('/project', expect.any(AbortSignal), file));
     expect((screen.getByRole('combobox', { name: 'Saved analyses' }) as HTMLSelectElement).value).toBe(file);
-    sessionStorage.setItem('termdock.architecture.selection:/another', '../../secret.json');
+    sessionStorage.setItem('veymux.architecture.selection:/another', '../../secret.json');
     reopened.rerender(<ArchitecturePanel {...input} rootPath="/another" />);
-    await waitFor(() => expect(read).toHaveBeenLastCalledWith('/another', expect.any(AbortSignal), '.termdock/architecture.json'));
+    await waitFor(() => expect(read).toHaveBeenLastCalledWith('/another', expect.any(AbortSignal), '.veymux/architecture.json'));
   });
   it('closes update settings on Escape, restores focus and does not insert a prompt', async () => {
     read.mockResolvedValue(document);
@@ -151,7 +151,7 @@ describe('native architecture browsing', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Insert prompt' }));
     await waitFor(() => expect(input.onInsertPrompt).toHaveBeenCalledWith(expect.stringContaining('Analyze ONLY the requested feature'), expect.any(HTMLFormElement)));
     await screen.findByText(/Review the current input/);
-    expect(input.onInsertPrompt.mock.calls[0][0]).toContain('.termdock/architectures/feature-File-upload-');
+    expect(input.onInsertPrompt.mock.calls[0][0]).toContain('.veymux/architectures/feature-File-upload-');
     fireEvent.click(screen.getByRole('button', { name: 'Close analysis settings' }));
     await screen.findByText(/This analysis has not been saved yet/);
     expect((screen.getByRole('combobox', { name: 'Saved analyses' }) as HTMLSelectElement).value).toContain('/feature-');
@@ -186,12 +186,12 @@ describe('native architecture browsing', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Feature to understand' }), { target: { value: 'Upload retries' } });
     fireEvent.click(screen.getByRole('button', { name: 'Insert prompt' }));
     await waitFor(() => expect(input.onInsertPrompt).toHaveBeenCalledOnce());
-    expect(read).toHaveBeenLastCalledWith('/project', expect.any(AbortSignal), '.termdock/architecture.json');
+    expect(read).toHaveBeenLastCalledWith('/project', expect.any(AbortSignal), '.veymux/architecture.json');
     expect(read).toHaveBeenCalledTimes(1);
     await act(async () => finish(false));
     expect(screen.getByRole('status').textContent).toContain('Could not add the prompt');
-    expect(read).toHaveBeenLastCalledWith('/project', expect.any(AbortSignal), '.termdock/architecture.json');
-    expect(sessionStorage.getItem('termdock.architecture.selection:/project')).toBeNull();
+    expect(read).toHaveBeenLastCalledWith('/project', expect.any(AbortSignal), '.veymux/architecture.json');
+    expect(sessionStorage.getItem('veymux.architecture.selection:/project')).toBeNull();
     expect((screen.getByRole('textbox', { name: 'Feature to understand' }) as HTMLInputElement).value).toBe('Upload retries');
     expect(read).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole('button', { name: 'Insert prompt' }));
@@ -199,7 +199,7 @@ describe('native architecture browsing', () => {
     const featureFile = analysisFile({ ...DEFAULT_ANALYSIS, kind: 'feature', target: 'Upload retries' });
     fireEvent.click(screen.getByRole('button', { name: 'Close analysis settings' }));
     expect((screen.getByRole('combobox', { name: 'Saved analyses' }) as HTMLSelectElement).value).toBe(featureFile);
-    expect(sessionStorage.getItem('termdock.architecture.selection:/project')).toBe(featureFile);
+    expect(sessionStorage.getItem('veymux.architecture.selection:/project')).toBe(featureFile);
     await waitFor(() => expect(read).toHaveBeenLastCalledWith('/project', expect.any(AbortSignal), featureFile));
   });
   it('prepares a module analysis from verified sources without changing the current map on cancel', async () => {
@@ -262,7 +262,7 @@ describe('native architecture browsing', () => {
     expect(input.onInsertPrompt).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
     fireEvent.click(screen.getByRole('button', { name: 'Insert prompt' }));
-    await waitFor(() => expect(input.onInsertPrompt).toHaveBeenCalledWith(expect.stringContaining('.termdock/architecture.json'), expect.any(HTMLFormElement)));
+    await waitFor(() => expect(input.onInsertPrompt).toHaveBeenCalledWith(expect.stringContaining('.veymux/architecture.json'), expect.any(HTMLFormElement)));
     expect((await screen.findByRole('status')).textContent).toContain('Review the current input');
   });
   it('browses nested modules, opens source at a verified line, and resets hierarchy when changing perspective', async () => {

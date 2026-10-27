@@ -1,6 +1,6 @@
 // Based on scrcpy 3.3.4 CaptureReset, Copyright Genymobile.
 // SPDX-License-Identifier: Apache-2.0
-// Termdock addition: a separate, session-scoped bitrate control socket.
+// Veymux addition: a separate, session-scoped bitrate control socket.
 package com.genymobile.scrcpy.video;
 
 import android.media.MediaCodec;
@@ -34,10 +34,10 @@ public class CaptureReset implements SurfaceCapture.CaptureListener {
         runningMediaCodec = codec;
         // Reapply after an actual rotation/reset, without causing one ourselves.
         if (codec != null && bitrate > 0) applyBitrate(bitrate);
-        String name = System.getProperty("termdock.bitrate");
+        String name = System.getProperty("veymux.bitrate");
         if (codec != null && !started && name != null) {
             started = true;
-            Thread thread = new Thread(() -> serve(name), "termdock-bitrate");
+            Thread thread = new Thread(() -> serve(name), "veymux-bitrate");
             thread.setDaemon(true);
             thread.start();
         }
@@ -61,7 +61,7 @@ public class CaptureReset implements SurfaceCapture.CaptureListener {
 
     private void serve(String name) {
         try {
-            if (Boolean.getBoolean("termdock.bitrateForward")) {
+            if (Boolean.getBoolean("veymux.bitrateForward")) {
                 try (LocalServerSocket server = new LocalServerSocket(name);
                      LocalSocket socket = server.accept()) {
                     exchange(socket);

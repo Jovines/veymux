@@ -14,8 +14,8 @@ import type { GitDiffWhitespaceMode } from '../../terminal/api';
 export type DiffWhitespacePref = GitDiffWhitespaceMode;
 export type DiffContextPref = 3 | 10 | 25 | 'all';
 
-export const DIFF_WHITESPACE_STORAGE_KEY = 'termdock:diff-viewer:whitespace:v1';
-export const DIFF_CONTEXT_STORAGE_KEY = 'termdock:diff-viewer:context:v1';
+export const DIFF_WHITESPACE_STORAGE_KEY = 'veymux:diff-viewer:whitespace:v1';
+export const DIFF_CONTEXT_STORAGE_KEY = 'veymux:diff-viewer:context:v1';
 
 export interface DiffDisplayPrefs {
   whitespace: DiffWhitespacePref;

@@ -15,7 +15,7 @@ it('projects detached live titles and bound directory names through the same inv
   const titles = new Map([['detached-one', '优化对话模式HTML体验'], ['detached-two', '修复 PWA 侧栏'], ['bound', 'Runtime title']]);
   const context = vm.createContext({
     Date, console, getTmuxStatus: async () => ({ available: true }), listLiveTmuxInventorySessions: async () => tmux,
-    isTermdockManagedTmuxSession: () => true, resolveLiveTmuxMetadata: async (name: string) => ({ ...tmux[0], shellTitle: titles.get(name) }),
+    isVeymuxManagedTmuxSession: () => true, resolveLiveTmuxMetadata: async (name: string) => ({ ...tmux[0], shellTitle: titles.get(name) }),
     backfillAgentResumeFromTmuxProcess: vi.fn(), syncDynamicTmuxMetadata: vi.fn(), observeTmuxServerGeneration: vi.fn(),
     globalSessionState: { sessions: [{ sessionId: 'frontend', name: '自定义会话名称', customName: true, mode: 'tmux', tmuxSessionName: 'bound' }] },
     terminalSessions: new Map(), todoStore: { collectionSessions: () => new Map() }, sessionViewModes: { get: () => null },

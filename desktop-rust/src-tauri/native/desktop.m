@@ -19,7 +19,7 @@
 
 // Tao's y inset controls a container height, not a button's top edge. Align
 // using the actual WK/button conversion, retaining normal horizontal placement.
-@interface TDTitlebarAlignment : NSObject
+@interface VeymuxTitlebarAlignment : NSObject
 @property(nonatomic,weak) NSView *view;
 @property(nonatomic) CGFloat center;
 @property(nonatomic) BOOL aligning;
@@ -27,29 +27,29 @@
 @property(nonatomic,strong) NSHashTable<NSView *> *observedViews;
 @property(nonatomic,weak) NSWindow *diagnosticWindow;
 @property(nonatomic) uint64_t diagnosticOwner, diagnosticDocument;
-@property(nonatomic) TDChromeReserve diagnosticReserve;
-@property(nonatomic) TDChromeReceive diagnosticReceive;
-@property(nonatomic) TDChromeCounts diagnosticCounts;
+@property(nonatomic) VeymuxChromeReserve diagnosticReserve;
+@property(nonatomic) VeymuxChromeReceive diagnosticReceive;
+@property(nonatomic) VeymuxChromeCounts diagnosticCounts;
 @property(nonatomic) uint32_t scheduleCount, writeCount, rejectCount, countsSaturated;
 - (void)count:(unsigned)kind;
 - (void)diagnostic:(uint32_t)phase ticket:(uint64_t)ticket owner:(uint64_t)owner document:(uint64_t)document window:(NSWindow *)window;
 - (void)schedule;
 - (void)observeView:(NSView *)view;
 @end
-static char TDTitlebarAlignmentKey;
-static void chromeRect(TDWindowChromeSnapshot *p,unsigned index,NSRect rect){
+static char VeymuxTitlebarAlignmentKey;
+static void chromeRect(VeymuxWindowChromeSnapshot *p,unsigned index,NSRect rect){
     double v[]={rect.origin.x,rect.origin.y,rect.size.width,rect.size.height};
     for(unsigned i=0;i<4;i++)if(!isfinite(v[i])||fabs(v[i])>1e7)return;
     if(v[2]<0||v[3]<0)return;
     memcpy(p->rects[index],v,sizeof(v));p->present|=(1u<<index);
 }
-static void chromeButtonRect(TDWindowChromeButton *p,unsigned index,NSRect rect){
+static void chromeButtonRect(VeymuxWindowChromeButton *p,unsigned index,NSRect rect){
     double v[]={rect.origin.x,rect.origin.y,rect.size.width,rect.size.height};
     for(unsigned i=0;i<4;i++)if(!isfinite(v[i])||fabs(v[i])>1e7)return;
     if(v[2]<0||v[3]<0)return;
     memcpy(p->rects[index],v,sizeof(v));p->present|=1u<<index;
 }
-static void chromeButton(TDWindowChromeButton *p,NSButton *button,NSView *view,NSView *closeParent){
+static void chromeButton(VeymuxWindowChromeButton *p,NSButton *button,NSView *view,NSView *closeParent){
     NSView *parent=button.superview,*grandparent=parent.superview;
     if(!button||!parent||button.window!=view.window)return;
     NSRect wk=[view convertRect:button.bounds fromView:button];
@@ -71,11 +71,11 @@ static void chromeButton(TDWindowChromeButton *p,NSButton *button,NSView *view,N
         if(layer.backgroundColor){double alpha=CGColorGetAlpha(layer.backgroundColor);if(isfinite(alpha)&&alpha>=0&&alpha<=1){p->background_alpha[i]=alpha;p->present|=1u<<(9+i);}}
     }
 }
-@implementation TDTitlebarAlignment
+@implementation VeymuxTitlebarAlignment
 - (void)diagnostic:(uint32_t)phase ticket:(uint64_t)ticket owner:(uint64_t)owner document:(uint64_t)document window:(NSWindow *)window {
     NSView *view=self.view;
     if(!ticket||!NSThread.isMainThread||!view||!window||view.window!=window||self.diagnosticWindow!=window||self.diagnosticOwner!=owner||self.diagnosticDocument!=document||!self.diagnosticReceive)return;
-    TDWindowChromeSnapshot p={0};p.owner_generation=owner;p.document_generation=document;
+    VeymuxWindowChromeSnapshot p={0};p.owner_generation=owner;p.document_generation=document;
     chromeRect(&p,0,window.frame);chromeRect(&p,1,window.contentLayoutRect);
     NSView *content=window.contentView;if(content){chromeRect(&p,2,content.frame);chromeRect(&p,3,content.bounds);chromeRect(&p,6,[view convertRect:view.bounds toView:content]);}
     chromeRect(&p,4,view.frame);chromeRect(&p,5,view.bounds);chromeRect(&p,7,[view convertRect:view.bounds toView:nil]);
@@ -159,7 +159,7 @@ static void chromeButton(TDWindowChromeButton *p,NSButton *button,NSView *view,N
             double f[]={frame.origin.x,frame.origin.y,frame.size.width,frame.size.height},b[]={area.origin.x,area.origin.y,area.size.width,area.size.height};
             memcpy(frames[i],f,sizeof(f));memcpy(bounds[i],b,sizeof(b));vectors[i][0]=to.x-from.x;vectors[i][1]=to.y-from.y;
         }
-        if(!td_chrome_button_frames(frames,bounds,vectors,result)){[self count:2];return;}
+        if(!veymux_chrome_button_frames(frames,bounds,vectors,result)){[self count:2];return;}
         uint64_t ticket=0;
         if(capturedWindow&&view.window==capturedWindow&&self.diagnosticWindow==capturedWindow&&self.diagnosticOwner==diagnosticOwner&&self.diagnosticDocument==diagnosticDocument&&self.diagnosticReserve)
             ticket=self.diagnosticReserve(diagnosticOwner,diagnosticDocument,2);
@@ -176,9 +176,9 @@ static void chromeButton(TDWindowChromeButton *p,NSButton *button,NSView *view,N
 }
 - (void)dealloc {[NSNotificationCenter.defaultCenter removeObserver:self];}
 @end
-static TDTitlebarAlignment *titlebarAlignment(NSView *view) {
-    TDTitlebarAlignment *alignment=objc_getAssociatedObject(view,&TDTitlebarAlignmentKey);
-    if(!alignment){alignment=[TDTitlebarAlignment new];alignment.view=view;objc_setAssociatedObject(view,&TDTitlebarAlignmentKey,alignment,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+static VeymuxTitlebarAlignment *titlebarAlignment(NSView *view) {
+    VeymuxTitlebarAlignment *alignment=objc_getAssociatedObject(view,&VeymuxTitlebarAlignmentKey);
+    if(!alignment){alignment=[VeymuxTitlebarAlignment new];alignment.view=view;objc_setAssociatedObject(view,&VeymuxTitlebarAlignmentKey,alignment,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         for(NSString *name in @[NSWindowDidResizeNotification,NSWindowDidExitFullScreenNotification,NSWindowDidChangeBackingPropertiesNotification,NSWindowDidUpdateNotification])
             [NSNotificationCenter.defaultCenter addObserver:alignment selector:@selector(changed:) name:name object:view.window];
         // Wry can apply its own size after the window resize notification.
@@ -189,7 +189,7 @@ static TDTitlebarAlignment *titlebarAlignment(NSView *view) {
     }
     return alignment;
 }
-void td_preview_window_background(void *wk_view,unsigned char red,unsigned char green,unsigned char blue) {
+void veymux_preview_window_background(void *wk_view,unsigned char red,unsigned char green,unsigned char blue) {
     if(!NSThread.isMainThread||!wk_view)return;
     WKWebView *view=(__bridge WKWebView *)wk_view;
     if(![view isKindOfClass:WKWebView.class])return;
@@ -197,25 +197,25 @@ void td_preview_window_background(void *wk_view,unsigned char red,unsigned char 
     view.window.backgroundColor=color;
     if(@available(macOS 12.0,*))view.underPageBackgroundColor=color;
 }
-void td_preview_align_titlebar(void *wk_view,double center) {
+void veymux_preview_align_titlebar(void *wk_view,double center) {
     if(!NSThread.isMainThread||!wk_view||!isfinite(center)||center<8||center>128)return;
     NSView *view=(__bridge NSView *)wk_view;if(!view.window)return;
-    TDTitlebarAlignment *alignment=titlebarAlignment(view);
+    VeymuxTitlebarAlignment *alignment=titlebarAlignment(view);
     alignment.center=center;alignment.configuredForAlignment=YES;[alignment schedule];
 }
 
-void td_preview_window_chrome(void *wk_view,uint64_t owner,uint64_t document,uint32_t phase,TDChromeReserve reserve,TDChromeReceive receive,TDChromeCounts counts){
+void veymux_preview_window_chrome(void *wk_view,uint64_t owner,uint64_t document,uint32_t phase,VeymuxChromeReserve reserve,VeymuxChromeReceive receive,VeymuxChromeCounts counts){
     if(!NSThread.isMainThread||!wk_view||!owner||!reserve||!receive)return;
     NSView *view=(__bridge NSView *)wk_view;if(!view.window)return;
-    TDTitlebarAlignment *alignment=titlebarAlignment(view);
+    VeymuxTitlebarAlignment *alignment=titlebarAlignment(view);
     if(alignment.diagnosticOwner&&alignment.diagnosticOwner!=owner)return;
     if(alignment.diagnosticWindow&&alignment.diagnosticWindow!=view.window)return;
     alignment.diagnosticOwner=owner;alignment.diagnosticDocument=document;alignment.diagnosticWindow=view.window;alignment.diagnosticReserve=reserve;alignment.diagnosticReceive=receive;alignment.diagnosticCounts=counts;
     if(phase==0||phase==1){uint64_t ticket=reserve(owner,document,1);[alignment diagnostic:phase ticket:ticket owner:owner document:document window:view.window];}
 }
 
-typedef void (*TDCallback)(void *, const char *);
-static TDCallback clickCallback;
+typedef void (*VeymuxCallback)(void *, const char *);
+static VeymuxCallback clickCallback;
 static void *clickContext;
 static NSMutableDictionary<NSString *, NSDictionary *> *notificationTargets;
 static NSMutableDictionary<NSString *, NSString *> *notificationGenerations;
@@ -239,10 +239,10 @@ static id propertyList(id value) {
     }
     return value;
 }
-static void result(TDCallback cb, void *ctx, NSDictionary *value) { cb(ctx, json(value).UTF8String); }
-@interface TDNotificationDelegate : NSObject <UNUserNotificationCenterDelegate>
+static void result(VeymuxCallback cb, void *ctx, NSDictionary *value) { cb(ctx, json(value).UTF8String); }
+@interface VeymuxNotificationDelegate : NSObject <UNUserNotificationCenterDelegate>
 @end
-@implementation TDNotificationDelegate
+@implementation VeymuxNotificationDelegate
 - (void)userNotificationCenter:(UNUserNotificationCenter *)center willPresentNotification:(UNNotification *)notification withCompletionHandler:(void (^)(UNNotificationPresentationOptions))completion {
     // The Rust process suppresses only notifications from the focused source;
     // other service windows may still need an alert while the app is active.
@@ -260,15 +260,15 @@ static void result(TDCallback cb, void *ctx, NSDictionary *value) { cb(ctx, json
     });
 }
 @end
-static TDNotificationDelegate *delegate;
-void td_notifications_init(TDCallback cb, void *ctx) {
+static VeymuxNotificationDelegate *delegate;
+void veymux_notifications_init(VeymuxCallback cb, void *ctx) {
     clickCallback = cb; clickContext = ctx;
     notificationTargets = [NSMutableDictionary dictionary];
     notificationGenerations = [NSMutableDictionary dictionary];
-    delegate = [TDNotificationDelegate new];
+    delegate = [VeymuxNotificationDelegate new];
     [UNUserNotificationCenter currentNotificationCenter].delegate = delegate;
 }
-static void confirmDelivery(UNUserNotificationCenter *center, NSString *identifier, NSString *generation, int attempt, TDCallback cb, void *ctx) {
+static void confirmDelivery(UNUserNotificationCenter *center, NSString *identifier, NSString *generation, int attempt, VeymuxCallback cb, void *ctx) {
     [center getDeliveredNotificationsWithCompletionHandler:^(NSArray<UNNotification *> *delivered) {
         dispatch_async(dispatch_get_main_queue(), ^{
             if (![notificationGenerations[identifier] isEqualToString:generation]) {
@@ -293,7 +293,7 @@ static void confirmDelivery(UNUserNotificationCenter *center, NSString *identifi
         });
     }];
 }
-void td_notification_show(const char *raw, TDCallback cb, void *ctx) {
+void veymux_notification_show(const char *raw, VeymuxCallback cb, void *ctx) {
     NSDictionary *payload = [NSJSONSerialization JSONObjectWithData:[[NSString stringWithUTF8String:raw] dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil];
     UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
     [center requestAuthorizationWithOptions:UNAuthorizationOptionAlert | UNAuthorizationOptionSound | UNAuthorizationOptionBadge completionHandler:^(BOOL granted, NSError *error) {
@@ -324,8 +324,8 @@ void td_notification_show(const char *raw, TDCallback cb, void *ctx) {
         });
     }];
 }
-void td_notification_attention(void) { [NSApp requestUserAttention:NSInformationalRequest]; }
-char *td_preview_service_menus(void) {
+void veymux_notification_attention(void) { [NSApp requestUserAttention:NSInformationalRequest]; }
+char *veymux_preview_service_menus(void) {
     if(!NSThread.isMainThread)return NULL;NSMutableArray *menus=[NSMutableArray array];
     for(NSMenuItem *top in NSApp.mainMenu.itemArray)for(NSMenuItem *item in top.submenu.itemArray){
         if(![item.title isEqualToString:@"打开服务"]||!item.submenu)continue;
@@ -338,7 +338,7 @@ char *td_preview_service_menus(void) {
     if([encoded lengthOfBytesUsingEncoding:NSUTF8StringEncoding]>16384)return strdup("{\"error\":\"ServiceMenuEvidenceTooLarge\"}");
     return strdup(encoded.UTF8String);
 }
-bool td_menu_configure(void) {
+bool veymux_menu_configure(void) {
     // Tauri exposes physical accelerators. Match Electron's logical Cmd+'+'
     // without requiring a numeric keypad or adding Shift to the menu binding.
     for (NSMenuItem *section in NSApp.mainMenu.itemArray) {
@@ -352,7 +352,7 @@ bool td_menu_configure(void) {
     }
     return false;
 }
-void td_panel_configure(void *raw) {
+void veymux_panel_configure(void *raw) {
     NSWindow *window = (__bridge NSWindow *)raw;
     window.collectionBehavior |= NSWindowCollectionBehaviorCanJoinAllSpaces | NSWindowCollectionBehaviorFullScreenAuxiliary | NSWindowCollectionBehaviorTransient | NSWindowCollectionBehaviorIgnoresCycle;
     window.hidesOnDeactivate = NO;
@@ -362,7 +362,7 @@ void td_panel_configure(void *raw) {
 static void clipboard_stage(const char *stage) {dprintf(STDERR_FILENO,"TDCP1 stage=%s\n",stage);}
 static void clipboard_number(const char *key,uint64_t value) {dprintf(STDERR_FILENO,"TDCP1 %s=%llu\n",key,(unsigned long long)value);}
 static bool clipboard_limit_error(void) {clipboard_number("errno",(uint64_t)errno);return false;}
-bool td_clipboard_helper_limits(void) {
+bool veymux_clipboard_helper_limits(void) {
     // Preserve every existing resource bound; diagnostics only identify failure.
     clipboard_stage("limits-cpu");struct rlimit cpu={8,8};
     if(setrlimit(RLIMIT_CPU,&cpu)!=0)return clipboard_limit_error();clipboard_number("cpu",8);
@@ -376,7 +376,7 @@ bool td_clipboard_helper_limits(void) {
     if(setrlimit(RLIMIT_AS,&addressSpace)!=0)return clipboard_limit_error();
     clipboard_number("as",limit);clipboard_stage("limits-ready");return true;
 }
-uint64_t td_clipboard_child_rss(int pid) {
+uint64_t veymux_clipboard_child_rss(int pid) {
     struct proc_taskinfo info;
     int read = proc_pidinfo(pid, PROC_PIDTASKINFO, 0, &info, sizeof(info));
     return read == sizeof(info) ? info.pti_resident_size : 0;
@@ -429,7 +429,7 @@ static char *clipboard_read_from(NSPasteboard *pasteboard,const char *rawDirecto
                 CGImageRelease(decoded);
                 return strdup(json(@{ @"error": @"Clipboard image exceeds Preview's size limit" }).UTF8String);
             }
-            NSString *name = [NSString stringWithFormat:@"termdock-clipboard-%@.png", [NSUUID UUID].UUIDString];
+            NSString *name = [NSString stringWithFormat:@"veymux-clipboard-%@.png", [NSUUID UUID].UUIDString];
             NSString *path = [directory stringByAppendingPathComponent:name];
             clipboard_stage("image-destination");
             CGImageDestinationRef destination = CGImageDestinationCreateWithURL((__bridge CFURLRef)[NSURL fileURLWithPath:path], (__bridge CFStringRef)UTTypePNG.identifier, 1, NULL);
@@ -461,36 +461,36 @@ static char *clipboard_read_from(NSPasteboard *pasteboard,const char *rawDirecto
                     UTType *type = [identifier hasPrefix:@"video/"] ? [UTType typeWithMIMEType:identifier] : [UTType typeWithIdentifier:identifier];
                     if (![type conformsToType:UTTypeMovie] && ![type conformsToType:UTTypeVideo]) continue;
                     advertised = YES; movieFile = YES;
-                    if (files.count >= 50) return strdup(json(@{ @"error": @"TERMDOCK_CLIPBOARD_VIDEO_ERROR:请选择最多50个剪贴板文件" }).UTF8String);
+                    if (files.count >= 50) return strdup(json(@{ @"error": @"VEYMUX_CLIPBOARD_VIDEO_ERROR:请选择最多50个剪贴板文件" }).UTF8String);
                     NSData *data = [item dataForType:identifier];
                     if (!data.length) continue;
-                    if (data.length > 128 * 1024 * 1024 - total) return strdup(json(@{ @"error": @"TERMDOCK_CLIPBOARD_VIDEO_ERROR:剪贴板视频超过128 MiB，请选择文件上传" }).UTF8String);
+                    if (data.length > 128 * 1024 * 1024 - total) return strdup(json(@{ @"error": @"VEYMUX_CLIPBOARD_VIDEO_ERROR:剪贴板视频超过128 MiB，请选择文件上传" }).UTF8String);
                     total += data.length;
                     NSString *ext = type.preferredFilenameExtension ?: @"mov";
                     if (ext.length > 16 || [ext rangeOfCharacterFromSet:[NSCharacterSet alphanumericCharacterSet].invertedSet].location != NSNotFound) ext = @"mov";
-                    NSString *name = [NSString stringWithFormat:@"termdock-clipboard-%@-%d.%@", [NSUUID UUID].UUIDString, index++, ext];
+                    NSString *name = [NSString stringWithFormat:@"veymux-clipboard-%@-%d.%@", [NSUUID UUID].UUIDString, index++, ext];
                     NSString *path = [directory stringByAppendingPathComponent:name];
                     NSError *writeError = nil;
-                    if (![data writeToFile:path options:NSDataWritingWithoutOverwriting error:&writeError]) return strdup(json(@{ @"error": @"TERMDOCK_CLIPBOARD_VIDEO_ERROR:无法读取剪贴板视频" }).UTF8String);
+                    if (![data writeToFile:path options:NSDataWritingWithoutOverwriting error:&writeError]) return strdup(json(@{ @"error": @"VEYMUX_CLIPBOARD_VIDEO_ERROR:无法读取剪贴板视频" }).UTF8String);
                     [files addObject:@{ @"name": name, @"type": type.preferredMIMEType ?: @"video/quicktime", @"temporary": path }];
                     saved = YES; break;
                 }
-                if (advertised && !saved) return strdup(json(@{ @"error": @"TERMDOCK_CLIPBOARD_VIDEO_ERROR:复制来源未提供可读取的视频数据，请重新复制视频或选择文件上传" }).UTF8String);
+                if (advertised && !saved) return strdup(json(@{ @"error": @"VEYMUX_CLIPBOARD_VIDEO_ERROR:复制来源未提供可读取的视频数据，请重新复制视频或选择文件上传" }).UTF8String);
             } }
         }
         return strdup(json(@{ @"files": files, @"hasMovie": @(movieFile) }).UTF8String);
     }
 }
-char *td_clipboard_read(const char *directory,bool image) {
+char *veymux_clipboard_read(const char *directory,bool image) {
     @autoreleasepool {clipboard_stage("pasteboard");return clipboard_read_from([NSPasteboard generalPasteboard],directory,image);}
 }
 // CLI fixture helper only. The ordinary bridge never accepts a pasteboard name.
-char *td_clipboard_read_owned(const char *directory,bool image,const char *name) {
-    if(!name||strlen(name)>96||strncmp(name,"termdock-preview-owned-",23)!=0)return NULL;
+char *veymux_clipboard_read_owned(const char *directory,bool image,const char *name) {
+    if(!name||strlen(name)>96||strncmp(name,"veymux-preview-owned-",strlen("veymux-preview-owned-"))!=0)return NULL;
     @autoreleasepool {clipboard_stage("pasteboard");return clipboard_read_from([NSPasteboard pasteboardWithName:[NSString stringWithUTF8String:name]],directory,image);}
 }
 // Fully synthetic, private CLI fixture. Never touches generalPasteboard.
-char *td_clipboard_fixture_create(const char *kind) {
+char *veymux_clipboard_fixture_create(const char *kind) {
     @autoreleasepool {
         if(!NSThread.isMainThread||!kind)return NULL;
         BOOL pdf=strcmp(kind,"pdf")==0||strcmp(kind,"pdf-too-large")==0;
@@ -501,7 +501,7 @@ char *td_clipboard_fixture_create(const char *kind) {
             NSMutableData *data=[NSMutableData data];CGDataConsumerRef consumer=CGDataConsumerCreateWithCFData((__bridge CFMutableDataRef)data);
             CGRect box=CGRectMake(0,0,side,side);CGContextRef context=consumer?CGPDFContextCreate(consumer,&box,NULL):NULL;if(consumer)CGDataConsumerRelease(consumer);if(!context)return NULL;
             CGPDFContextBeginPage(context,NULL);CGContextSetRGBFillColor(context,0,1,0,1);CGContextFillRect(context,box);CGPDFContextEndPage(context);CGPDFContextClose(context);CGContextRelease(context);
-            NSString *name=[@"termdock-preview-owned-" stringByAppendingString:NSUUID.UUID.UUIDString];NSPasteboard *board=[NSPasteboard pasteboardWithName:name];[board clearContents];
+            NSString *name=[@"veymux-preview-owned-" stringByAppendingString:NSUUID.UUID.UUIDString];NSPasteboard *board=[NSPasteboard pasteboardWithName:name];[board clearContents];
             if(![board setData:data forType:NSPasteboardTypePDF]){[board releaseGlobally];return NULL;}
             return strdup(json(@{@"name":name,@"type":type,@"width":@(side),@"height":@(side),@"encodedBytes":@(data.length)}).UTF8String);
         }
@@ -511,16 +511,16 @@ char *td_clipboard_fixture_create(const char *kind) {
         CGImageRef image=CGBitmapContextCreateImage(context);CGContextRelease(context);if(!image)return NULL;
         NSMutableData *data=[NSMutableData data];CGImageDestinationRef destination=CGImageDestinationCreateWithData((__bridge CFMutableDataRef)data,(__bridge CFStringRef)type,1,NULL);
         BOOL encoded=NO;if(destination){CGImageDestinationAddImage(destination,image,NULL);encoded=CGImageDestinationFinalize(destination);CFRelease(destination);}CGImageRelease(image);if(!encoded)return NULL;
-        NSString *name=[@"termdock-preview-owned-" stringByAppendingString:NSUUID.UUID.UUIDString];NSPasteboard *board=[NSPasteboard pasteboardWithName:name];[board clearContents];
+        NSString *name=[@"veymux-preview-owned-" stringByAppendingString:NSUUID.UUID.UUIDString];NSPasteboard *board=[NSPasteboard pasteboardWithName:name];[board clearContents];
         if(![board setData:data forType:type]){[board releaseGlobally];return NULL;}
         return strdup(json(@{@"name":name,@"type":type,@"width":@8,@"height":@8,@"encodedBytes":@(data.length)}).UTF8String);
     }
 }
-void td_clipboard_fixture_release(const char *name) {
-    if(!name||strlen(name)>96||strncmp(name,"termdock-preview-owned-",23)!=0)return;
+void veymux_clipboard_fixture_release(const char *name) {
+    if(!name||strlen(name)>96||strncmp(name,"veymux-preview-owned-",strlen("veymux-preview-owned-"))!=0)return;
     @autoreleasepool {[[NSPasteboard pasteboardWithName:[NSString stringWithUTF8String:name]] releaseGlobally];}
 }
-bool td_clipboard_fixture_verify_png(const char *path,uint64_t values[3]) {
+bool veymux_clipboard_fixture_verify_png(const char *path,uint64_t values[3]) {
     if(!path||!values||!NSThread.isMainThread)return false;
     @autoreleasepool {
         NSURL *url=[NSURL fileURLWithPath:[NSString stringWithUTF8String:path]];
@@ -538,11 +538,11 @@ bool td_clipboard_fixture_verify_png(const char *path,uint64_t values[3]) {
         CFRelease(source);return png&&withinBudget&&decodedMatches;
     }
 }
-void td_string_free(char *value) { free(value); }
+void veymux_string_free(char *value) { free(value); }
 
 // Process-only registration of validated bundled SFNTs; no system font install.
 #import <CoreText/CoreText.h>
-int td_preview_register_font(const char *path) {
+int veymux_preview_register_font(const char *path) {
     @autoreleasepool {
         NSString *text=[[NSString alloc] initWithUTF8String:path];if(!text)return 0;
         CFErrorRef error=NULL;

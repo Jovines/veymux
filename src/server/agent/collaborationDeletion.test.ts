@@ -6,7 +6,7 @@ import { CollaborationStore } from './collaborationStore.js';
 
 let directory: string;
 let file: string;
-beforeEach(() => { directory = fs.mkdtempSync(path.join(os.tmpdir(), 'td-deletion-')); file = path.join(directory, 'groups.json'); });
+beforeEach(() => { directory = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-deletion-')); file = path.join(directory, 'groups.json'); });
 afterEach(() => { vi.restoreAllMocks(); fs.rmSync(directory, { recursive: true, force: true }); });
 const replica = { id: 'cross-deleted', name: 'Old group', sessionIds: ['a', 'b'], federated: true,
   remoteSessions: [], createdAt: 1, updatedAt: 100 };

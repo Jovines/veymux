@@ -23,7 +23,7 @@ def api(path, *args):
 
 
 def validate(base, release, version, revision, repo):
-    prefix = f'Termdock-Preview_{version}_aarch64'
+    prefix = f'Veymux-Preview_{version}_aarch64'
     names = {prefix+'.dmg', prefix+'.app.tar.gz', prefix+'.app.tar.gz.sig', 'preview.json', 'release.json'}
     require(release['tag_name'] == f'preview-v{version}' and release['prerelease'] and release['draft'], 'Expected a Preview draft')
     assets = {asset['name']: asset for asset in release['assets']}
@@ -35,11 +35,11 @@ def validate(base, release, version, revision, repo):
     manifest = json.loads((base/'preview.json').read_text())
     require(metadata['revision'] == revision and metadata['version'] == version and metadata['tag'] == release['tag_name'], 'Source/version mismatch')
     require(metadata['prerelease'] is True and metadata['notarizationVerified'] is True, 'Notarization is not verified')
-    require(metadata['config']['identifier'] == 'com.jovines.termdock.preview', 'Wrong product identity')
+    require(metadata['config']['identifier'] == 'com.jovines.veymux.preview', 'Wrong product identity')
     for key in ['appNotarySubmission', 'dmgNotarySubmission']:
         require(re.fullmatch(r'[a-f0-9-]{36}', metadata.get(key, '')), 'Missing App/DMG notary receipt')
     for app in [metadata['verification'], metadata['verification']['dmgApp']]:
-        require(app['version'] == version and app['bundle'] == 'com.jovines.termdock.preview' and app['architecture'] == 'arm64', 'Wrong verified App identity')
+        require(app['version'] == version and app['bundle'] == 'com.jovines.veymux.preview' and app['architecture'] == 'arm64', 'Wrong verified App identity')
         require(all(app[key] is True for key in ['gatekeeperAccepted', 'notaryTicketValidated', 'updateTrustPinned']), 'Missing Mac acceptance record')
     records = {item['name']: item for item in metadata['artifacts']}
     require(set(records) == names-{'release.json'}, 'Unexpected local artifact inventory')

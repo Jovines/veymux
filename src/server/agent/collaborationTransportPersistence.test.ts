@@ -14,7 +14,7 @@ const diagnostic = (patch: Partial<TransportDiagnostic> = {}): TransportDiagnost
 });
 beforeEach(() => {
   vi.useFakeTimers(); vi.setSystemTime(100_000);
-  directory = fs.mkdtempSync(path.join(os.tmpdir(), 'td-transport-persistence-'));
+  directory = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-transport-persistence-'));
   file = path.join(directory, 'groups.json');
   store = new CollaborationStore(file);
   const group = store.save({ name: 'Team', sessionIds: ['sender', 'local', 'remote:https%3A%2F%2Fpeer.test:worker'] });

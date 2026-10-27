@@ -7,7 +7,7 @@ import { BINARY_DETECTION_PREFIX_BYTES, inspectBinaryFile } from './binaryFile';
 const temporaryDirectories: string[] = [];
 
 async function makeTemporaryDirectory(): Promise<string> {
-  const directory = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'termdock-binary-file-'));
+  const directory = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'veymux-binary-file-'));
   temporaryDirectories.push(directory);
   return directory;
 }
@@ -41,6 +41,6 @@ describe('inspectBinaryFile', () => {
   });
 
   it('lets missing files fall back to Git', async () => {
-    await expect(inspectBinaryFile('/definitely/missing/termdock-file')).resolves.toBeNull();
+    await expect(inspectBinaryFile('/definitely/missing/veymux-file')).resolves.toBeNull();
   });
 });

@@ -26,7 +26,7 @@ it.each([['iPhone', undefined], ['Linux', { preventScroll: true }]] as const)('p
 
 it('includes the retained workspace frame displacement in the physical position', () => {
   history.replaceState({}, '', '/workspace.html');
-  const parent = { location: { origin: location.origin }, __termdockWorkspaceHost: {} } as unknown as Window;
+  const parent = { location: { origin: location.origin }, __veymuxWorkspaceHost: {} } as unknown as Window;
   const frame = document.createElement('iframe');
   vi.spyOn(window, 'parent', 'get').mockReturnValue(parent);
   vi.spyOn(window, 'frameElement', 'get').mockReturnValue(frame);

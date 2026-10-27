@@ -160,8 +160,8 @@ export function QuotaView({ isOpen, onClose }: QuotaViewProps): React.ReactEleme
       const detail = (e as CustomEvent<QuotaResult[]>).detail;
       if (Array.isArray(detail)) { setProviders(detail); }
     };
-    window.addEventListener('termdock:quota-update', onQuota);
-    return () => { window.removeEventListener('termdock:quota-update', onQuota); };
+    window.addEventListener('veymux:quota-update', onQuota);
+    return () => { window.removeEventListener('veymux:quota-update', onQuota); };
   }, [isOpen]);
 
   if (!isOpen) return null;

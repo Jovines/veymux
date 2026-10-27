@@ -110,7 +110,7 @@ it('shows reported machine information and keeps full identity in a disclosure w
   expect(row.textContent).not.toContain('12D3KooW');
   fireEvent.click(screen.getByLabelText('编译 Mac的服务详情'));
   expect(screen.getByText('build-mac.local')).toBeTruthy();
-  expect(screen.getByText('macOS · Termdock 1.4.374')).toBeTruthy();
+  expect(screen.getByText('macOS · Veymux 1.4.374')).toBeTruthy();
   expect(screen.getByText('12D3KooWmacIdentity')).toBeTruthy();
   expect(screen.getByText('目标未提供直连地址，通过入口中转连接')).toBeTruthy();
   expect(mocks.prepare).not.toHaveBeenCalled();

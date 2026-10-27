@@ -34,7 +34,7 @@ it('persists only message identifiers and survives refresh and backend rebinding
   expect(attention().mode).toBe(true); expect(attention().unreadIds).toEqual(['b']);
   store().clearAllTerminalSessions(); store().setSessionChatIndex('chat', index);
   expect(attention().unreadIds).toEqual(['b']);
-  expect(localStorage.getItem('termdock:chat-viewed:service-a:chat:conversation')).toBe('["a"]');
+  expect(localStorage.getItem('veymux:chat-viewed:service-a:chat:conversation')).toBe('["a"]');
 });
 it('isolates service and conversation identity and drops pruned history from attention', () => {
   store().setSessionChatIndex('chat', index); store().markChatMessagesViewed('chat', ['a', 'b']);

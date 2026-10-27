@@ -2,7 +2,7 @@ import type { TodoLaunchConfig, TodoSnapshot } from './api';
 
 type Choice = Omit<TodoLaunchConfig, 'prompt'>;
 interface Preferences { choice?: Choice; directories: string[] }
-const storageKey = (service: string) => `termdock:todo-preferences:v1:${service}`;
+const storageKey = (service: string) => `veymux:todo-preferences:v1:${service}`;
 export const directoryName = (path: string) => path.replace(/\/+$/, '').split('/').pop() || path;
 export function uniqueDirectories(paths: Array<string | null | undefined>): string[] {
   return [...new Set(paths.filter((path): path is string => typeof path === 'string' && !!path.trim()).map(path => path.trim().replace(/\/+$/, '') || '/'))];

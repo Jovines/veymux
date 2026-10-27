@@ -1,8 +1,8 @@
-# Termdock 配置体系
+# Veymux 配置体系
 
 ## 浏览器本地偏好的所有权
 
-`termdock-settings` 同时保存终端排版和新建会话默认值。各模块只能更新自己拥有的字段：
+`veymux-settings` 同时保存终端排版和新建会话默认值。各模块只能更新自己拥有的字段：
 `normalizeTerminalSettings` 返回排版字段投影，持久化时必须合并原文档，不能用投影替换整份配置。
 初始化、修改字号和恢复默认排版都应保留其他偏好；`useTerminalSettings.test.tsx` 覆盖这些流程及重新加载。
 
@@ -20,7 +20,7 @@ CLI 参数 (--port / --host)
     ↓ 覆盖
 CWD .env （项目级，开发用）
     ↓ 覆盖
-~/.termdock/.env （用户级，npm i -g 后推荐放这里）
+~/.veymux/.env （用户级，npm i -g 后推荐放这里）
     ↓ 覆盖
 config.ts 默认值
 ```
@@ -34,17 +34,17 @@ config.ts 默认值
 | 文件 | 用途 | 何时生效 |
 |------|------|---------|
 | `src/server/config.ts` | 定义默认值 + 环境变量映射 | 编译时，运行期 lazily 读 env |
-| `~/.termdock/.env` | 用户级持久配置 | 每次 `td start` |
+| `~/.veymux/.env` | 用户级持久配置 | 每次 `veymux start` |
 | `CWD/.env` | 开发者本地覆盖 | 开发时 `npm run dev` |
-| `~/.termdock/settings.json` | 运行时状态（自动管理） | 程序自动读写 |
-| `~/.termdock/.boot-check-ok` | 启动检查 marker（自动管理） | CLI 启动 + postinstall |
+| `~/.veymux/settings.json` | 运行时状态（自动管理） | 程序自动读写 |
+| `~/.veymux/.boot-check-ok` | 启动检查 marker（自动管理） | CLI 启动 + postinstall |
 
 ---
 
 ## 启动自检系统 (Boot Check)
 
-Termdock 在每次 CLI 启动时实际检查系统依赖，同一进程内复用检查结果。
-`~/.termdock/.boot-check-ok` 仅记录诊断信息；不会用它跳过 Node 升级、
+Veymux 在每次 CLI 启动时实际检查系统依赖，同一进程内复用检查结果。
+`~/.veymux/.boot-check-ok` 仅记录诊断信息；不会用它跳过 Node 升级、
 切换安装目录或删除 tmux 后的检查。
 
 **检查项目：**
@@ -55,7 +55,7 @@ Termdock 在每次 CLI 启动时实际检查系统依赖，同一进程内复用
 | tmux 可用性 | 验证实际可执行文件；root/免密码 sudo 可自动安装，否则给出适合该系统的命令，不等待密码输入 |
 
 **适用场景：**
-- npm 安装通常会执行 postinstall；用户使用 `--ignore-scripts` 或安装策略跳过脚本时，首次 `td` 启动会补做检查。
+- npm 安装通常会执行 postinstall；用户使用 `--ignore-scripts` 或安装策略跳过脚本时，首次 `veymux` 启动会补做检查。
 - 使用 `/bin/sh` 验证原生终端，不依赖 `$SHELL` 是否有效，也不要求精简 Linux 已安装 bash。原生终端无法修复时停止启动；缺 tmux 时保留 shell 模式。
 
 ### 初始化回归
@@ -86,17 +86,17 @@ npm 发布也会运行初始化失败矩阵。CI runner 不替代真实 macOS/iO
 
 // —— 值类型：数字 ——
 export const FILESYSTEM = {
-  get maxFileSize(): number { return envInt('TERMDOCK_FS_MAX_FILE_SIZE', 50 * 1024 * 1024); },
+  get maxFileSize(): number { return envInt('VEYMUX_FS_MAX_FILE_SIZE', 50 * 1024 * 1024); },
 };
 
 // —— 值类型：字符串 ——
 export const PATHS = {
-  get uploadDir(): string { return envStr('TERMDOCK_UPLOAD_DIR', '/tmp/termdock'); },
+  get uploadDir(): string { return envStr('VEYMUX_UPLOAD_DIR', '/tmp/veymux'); },
 };
 
 // —— 值类型：布尔 ——
 export const FEATURES = {
-  get enableExperimental(): boolean { return envBool('TERMDOCK_FEATURE_EXPERIMENTAL', false); },
+  get enableExperimental(): boolean { return envBool('VEYMUX_FEATURE_EXPERIMENTAL', false); },
 };
 ```
 
@@ -110,18 +110,18 @@ export const FEATURES = {
 
 #### Step 2：命名规则
 
-环境变量命名：`TERMDOCK_<CATEGORY>_<PROPERTY>`，全大写蛇形。
+环境变量命名：`VEYMUX_<CATEGORY>_<PROPERTY>`，全大写蛇形。
 
 | 类别 | 前缀 | 示例 |
 |------|------|------|
-| 核心服务 | `TERMDOCK_` 或 `PORT`/`HOST` | `PORT`, `HOST` |
-| 端口 | `TERMDOCK_PORT_` | `TERMDOCK_PORT_FRONTEND` |
-| 安全/认证 | `TERMDOCK_AUTH_` | `TERMDOCK_AUTH_TOKEN_EXPIRY` |
+| 核心服务 | `VEYMUX_` 或 `PORT`/`HOST` | `PORT`, `HOST` |
+| 端口 | `VEYMUX_PORT_` | `VEYMUX_PORT_FRONTEND` |
+| 安全/认证 | `VEYMUX_AUTH_` | `VEYMUX_AUTH_TOKEN_EXPIRY` |
 | 终端行为 | `TERMINAL_` | `TERMINAL_IDLE_TIMEOUT` |
-| Tmux | `TERMDOCK_TMUX_` | `TERMDOCK_TMUX_HISTORY_LIMIT` |
-| Local Access | `TERMDOCK_LOCAL_ACCESS_` | `TERMDOCK_LOCAL_ACCESS_DOMAIN_SUFFIX` |
-| 文件系统 | `TERMDOCK_FS_` | `TERMDOCK_FS_MAX_FILE_SIZE` |
-| 功能开关 | `TERMDOCK_FEATURE_` | `TERMDOCK_FEATURE_ENABLE_X` |
+| Tmux | `VEYMUX_TMUX_` | `VEYMUX_TMUX_HISTORY_LIMIT` |
+| Local Access | `VEYMUX_LOCAL_ACCESS_` | `VEYMUX_LOCAL_ACCESS_DOMAIN_SUFFIX` |
+| 文件系统 | `VEYMUX_FS_` | `VEYMUX_FS_MAX_FILE_SIZE` |
+| 功能开关 | `VEYMUX_FEATURE_` | `VEYMUX_FEATURE_ENABLE_X` |
 
 #### Step 3：在 `.env.example` 和本文档补充
 
@@ -163,21 +163,21 @@ export const PORT = {
 | 配置项 | 环境变量 | 默认值 | 定义位置 |
 |--------|---------|--------|---------|
 | 正式服务端口 | `PORT` | 9834 | `config.ts` PORT.backend |
-| 前端开发端口 | `TERMDOCK_PORT_FRONTEND` | 9833 | `config.ts` PORT.frontend |
-| 后端开发端口 | `TERMDOCK_PORT_DEV_BACKEND` | 9835 | `config.ts` PORT.devBackend |
+| 前端开发端口 | `VEYMUX_PORT_FRONTEND` | 9833 | `config.ts` PORT.frontend |
+| 后端开发端口 | `VEYMUX_PORT_DEV_BACKEND` | 9835 | `config.ts` PORT.devBackend |
 
 ### 网络
 
 | 配置项 | 环境变量 | 默认值 | 定义位置 |
 |--------|---------|--------|---------|
 | 监听地址 | `HOST` | 0.0.0.0 | `config.ts` DEFAULT_HOST |
-| 公网严格模式 | `TERMDOCK_PUBLIC_ORIGIN` | 未启用 | `utils/publicSecurity.ts` |
-| 登录密码（覆盖文件） | `TERMDOCK_PASSWORD` | 未设置 | `utils/authProtection.ts` |
-| 域名白名单 | `TERMDOCK_ALLOWED_HOSTS` | — | 多个文件读 env |
-| mDNS 域名后缀 | `TERMDOCK_LOCAL_ACCESS_DOMAIN_SUFFIX` | termdock.local | `config.ts` LOCAL_ACCESS |
-| mDNS 名称长度 | `TERMDOCK_LOCAL_ACCESS_NAME_LENGTH` | 4 | `config.ts` LOCAL_ACCESS |
-| mDNS 字母表 | `TERMDOCK_LOCAL_ACCESS_NAME_ALPHABET` | a-z0-9 | `config.ts` LOCAL_ACCESS |
-| mDNS TTL | `TERMDOCK_LOCAL_ACCESS_MDNS_TTL` | 120s | `config.ts` LOCAL_ACCESS |
+| 公网严格模式 | `VEYMUX_PUBLIC_ORIGIN` | 未启用 | `utils/publicSecurity.ts` |
+| 登录密码（覆盖文件） | `VEYMUX_PASSWORD` | 未设置 | `utils/authProtection.ts` |
+| 域名白名单 | `VEYMUX_ALLOWED_HOSTS` | — | 多个文件读 env |
+| mDNS 域名后缀 | `VEYMUX_LOCAL_ACCESS_DOMAIN_SUFFIX` | veymux.local | `config.ts` LOCAL_ACCESS |
+| mDNS 名称长度 | `VEYMUX_LOCAL_ACCESS_NAME_LENGTH` | 4 | `config.ts` LOCAL_ACCESS |
+| mDNS 字母表 | `VEYMUX_LOCAL_ACCESS_NAME_ALPHABET` | a-z0-9 | `config.ts` LOCAL_ACCESS |
+| mDNS TTL | `VEYMUX_LOCAL_ACCESS_MDNS_TTL` | 120s | `config.ts` LOCAL_ACCESS |
 
 ### 终端行为
 
@@ -192,7 +192,7 @@ export const PORT = {
 
 | 配置项 | 环境变量 | 默认值 | 定义位置 |
 |--------|---------|--------|---------|
-| 历史限制 | `TERMDOCK_TMUX_HISTORY_LIMIT` | 10000 | `config.ts` TMUX.historyLimit |
+| 历史限制 | `VEYMUX_TMUX_HISTORY_LIMIT` | 10000 | `config.ts` TMUX.historyLimit |
 | 轮询间隔 | `TMUX_POLL_INTERVAL` | 500ms | terminal.ts 直接读 env |
 | 活跃程序轮询 | `TERMINAL_ACTIVE_PROGRAM_POLL_INTERVAL` | 1200ms | terminal.ts 直接读 env |
 
@@ -206,48 +206,48 @@ export const PORT = {
 
 ### 服务监督（supervisor）
 
-后台启动（`td`，不带 `--foreground`）默认经过一个常驻 supervisor：服务崩了按退避重启，
-重启原因写进 `~/.termdock/crash.log`，连续 5 次崩溃后停手并保留 `phase:'gave-up'` 的状态。
+后台启动（`veymux`，不带 `--foreground`）默认经过一个常驻 supervisor：服务崩了按退避重启，
+重启原因写进 `~/.veymux/crash.log`，连续 5 次崩溃后停手并保留 `phase:'gave-up'` 的状态。
 界面在侧栏 More 按钮上点红点、设置里的「服务健康」给出最近一次异常。
 
 | 配置项 | 环境变量/参数 | 默认值 | 说明 |
 |--------|--------------|--------|------|
-| 关掉监督 | `TERMDOCK_SUPERVISOR=0` / `--no-supervisor` | 开启 | 后台启动但不带 supervisor |
+| 关掉监督 | `VEYMUX_SUPERVISOR=0` / `--no-supervisor` | 开启 | 后台启动但不带 supervisor |
 | 前台受管 | `--supervise` | — | 前台运行，supervisor 跑在本进程（给 setsid/systemd/docker 用） |
 | 不受管前台 | `--foreground` | — | 自己管生命周期，supervisor 不介入（dev / Electron） |
 | 重启受管服务 | `--restart` | — | 让 supervisor 重启子进程，但继续监督 |
-| 监督节奏 | `TERMDOCK_SUPERVISOR_TIMING` (JSON) | 见下 | 探测间隔、退避、放弃阈值等；只接受正整数 |
+| 监督节奏 | `VEYMUX_SUPERVISOR_TIMING` (JSON) | 见下 | 探测间隔、退避、放弃阈值等；只接受正整数 |
 
-`TERMDOCK_SUPERVISOR_TIMING` 字段：`healthIntervalMs`(15000)、`healthTimeoutMs`(5000)、
+`VEYMUX_SUPERVISOR_TIMING` 字段：`healthIntervalMs`(15000)、`healthTimeoutMs`(5000)、
 `healthFailuresBeforeKill`(3)、`killGraceMs`(5000)、`maxConsecutiveCrashes`(5)、
 `crashResetMs`(60000)、`updateRestartDelayMs`(250)、`readyTimeoutMs`(30000)、
 `backoffBaseMs`(1000)、`backoffMaxMs`(30000)。JSON 解析失败会退回默认值并打印一行 stderr。
 
-`TERMDOCK_SUPERVISED=1` 由 supervisor 注入给子进程（内部标志，用户不要手动设置）。
+`VEYMUX_SUPERVISED=1` 由 supervisor 注入给子进程（内部标志，用户不要手动设置）。
 它决定三件事：服务不主动断开 IPC、装 `disconnect` 处理器记录「与监督者失联」、
 把 `supervised` 报给界面。
 
-systemd 启动 `td --supervise` 时，如需服务重启后保留 TD 管理的 tmux/Agent，必须设置
+systemd 启动 `veymux --supervise` 时，如需服务重启后保留 TD 管理的 tmux/Agent，必须设置
 `KillMode=process`；默认 `control-group` 会同时终止整个 unit cgroup 内的 tmux 和 Agent。
 参见[systemd部署说明](systemd.md)及仓库附带的 drop-in。systemd stop 会有意保留这些运行时，
 永久卸载前应通过 TD 会话生命周期显式关闭并确认清空。
 
 ## 公网安全模式
 
-Termdock 的登录用户拥有运行服务的系统账户权限，终端可以执行任意命令。
+Veymux 的登录用户拥有运行服务的系统账户权限，终端可以执行任意命令。
 Host 白名单、CSRF 和文件路径检查不能代替认证，也不是操作系统沙箱。
 
-先运行 `td --set-password` 设置至少 8 位、唯一的高强度密码，再配置：
+先运行 `veymux --set-password` 设置至少 8 位、唯一的高强度密码，再配置：
 
 ```dotenv
-TERMDOCK_PUBLIC_ORIGIN=https://term.example.com:9834
+VEYMUX_PUBLIC_ORIGIN=https://term.example.com:9834
 ```
 
 该值是浏览器访问的完整 HTTPS origin，端口映射时填写外部端口。
 程序自动加入对应 Host 白名单，并只接受这个精确的浏览器 Origin（协议、主机、端口都匹配）；
 WebSocket 在此模式下不能省略 Origin。HTTP CLI 可不带 Origin，但私有接口仍要求认证。
 
-端口映射应指向 Termdock 的 HTTPS 监听器。程序在公网模式下拒绝无 TLS 的非回环监听。
+端口映射应指向 Veymux 的 HTTPS 监听器。程序在公网模式下拒绝无 TLS 的非回环监听。
 已有 TLS 反向代理可以连接仅监听 `127.0.0.1` / `::1` 的 HTTP 后端；程序不会自动信任
 `X-Forwarded-For` 或 `X-Forwarded-Proto`。此配置不会申请证书、配置路由器或开放防火墙。
 公网访问需要客户端可验证、与访问域名匹配的证书。
@@ -255,7 +255,7 @@ WebSocket 在此模式下不能省略 Origin。HTTP CLI 可不带 Origin，但�
 公网模式同时强制 Secure Cookie 和 HSTS。所有认证会话采用 30 天滑动有效期：已认证访问同时续期服务端会话与浏览器 Cookie，
 连续 30 天未访问才需要重新登录，不另设 12 小时或 30 分钟上限。页面切回前台及可见时每小时
 会检查登录状态并续期，续期结果会持久化；改密码和主动退出仍立即撤销会话。
-旧版本存储的密码如果没有长度元数据，需要重新运行 `td --set-password`。
+旧版本存储的密码如果没有长度元数据，需要重新运行 `veymux --set-password`。
 建议使用文件保存密码哈希；环境变量密码会被子进程继承，并且对应会话在重启后失效。
 本次会话存储升级会使旧格式会话失效，需要重新登录。
 
@@ -275,7 +275,7 @@ WebSocket 在此模式下不能省略 Origin。HTTP CLI 可不带 Origin，但�
 
 ## tmux Agent 批量恢复资源限制
 
-Termdock 的“恢复全部”请求先持久化恢复操作并立即返回 `202 accepted`，后台按有界并发执行。浏览器通过终端控制 WebSocket继续接收操作状态；也可使用以下接口查询或控制：
+Veymux 的“恢复全部”请求先持久化恢复操作并立即返回 `202 accepted`，后台按有界并发执行。浏览器通过终端控制 WebSocket继续接收操作状态；也可使用以下接口查询或控制：
 
 - `GET /api/terminal/tmux/recovery/operations`：最近 50 个操作。
 - `GET /api/terminal/tmux/recovery/operations/:operationId`：单个操作与逐会话结果。
@@ -286,20 +286,20 @@ Termdock 的“恢复全部”请求先持久化恢复操作并立即返回 `202
 
 兼容迁移：`restore-all` 路径保留，但从 1.4.325 起响应改为 `202 { accepted: true, operation_id, operation }`，表示恢复操作已持久接收，不表示整批完成。原来等待同步 `200` 最终结果的调用方需改为读取 `operation_id`，轮询 operation API 或订阅终端控制 WebSocket，并处理逐项结果。没有同步等待模式；不要对超时请求换幂等键重放。
 
-可用下列环境变量调整准入，修改后需重启 Termdock：
+可用下列环境变量调整准入，修改后需重启 Veymux：
 
 | 环境变量 | 默认值 | 作用 |
 |---|---:|---|
-| `TD_TMUX_RECOVERY_CONCURRENCY` | `3` | 整机同时执行的恢复数，允许 1–16。 |
-| `TD_AGENT_MIN_AVAILABLE_MB` | `2048` | 启动前至少保留的可用内存底线。 |
-| `TD_AGENT_ESTIMATED_RSS_MB` | `512` | 新 Agent 的额外内存预算估值。 |
-| `TD_MAX_RESIDENT_AGENTS` | `48` | 整机驻留 Agent 进程组上限。 |
-| `TD_MAX_AGENTS_PER_GROUP` | `32` | 单个协作组的驻留 Agent 上限。 |
-| `TD_AGENT_MAX_MEMORY_PSI_SOME_AVG10` | `10` | Linux memory PSI `some avg10` 准入上限（百分比，0–100）。 |
-| `TD_AGENT_MAX_MEMORY_PSI_FULL_AVG10` | `1` | Linux memory PSI `full avg10` 准入上限（百分比，0–100）。 |
+| `VEYMUX_TMUX_RECOVERY_CONCURRENCY` | `3` | 整机同时执行的恢复数，允许 1–16。 |
+| `VEYMUX_AGENT_MIN_AVAILABLE_MB` | `2048` | 启动前至少保留的可用内存底线。 |
+| `VEYMUX_AGENT_ESTIMATED_RSS_MB` | `512` | 新 Agent 的额外内存预算估值。 |
+| `VEYMUX_MAX_RESIDENT_AGENTS` | `48` | 整机驻留 Agent 进程组上限。 |
+| `VEYMUX_MAX_AGENTS_PER_GROUP` | `32` | 单个协作组的驻留 Agent 上限。 |
+| `VEYMUX_AGENT_MAX_MEMORY_PSI_SOME_AVG10` | `10` | Linux memory PSI `some avg10` 准入上限（百分比，0–100）。 |
+| `VEYMUX_AGENT_MAX_MEMORY_PSI_FULL_AVG10` | `1` | Linux memory PSI `full avg10` 准入上限（百分比，0–100）。 |
 
-低于预算或资源采样不可用时，会话进入 `paused`，逐项 `pauseReason="resources"` 并保留准确原因，不启动进程；队列每隔数秒重新评估，资源满足后自动继续。操作快照的 `counts` 对象包含 `total/queued/running/succeeded/failed/paused`，`paused_count` 是兼容计数，顶层 `paused` 布尔值表示人工暂停，`resource_wait` 计数也作为兼容字段保留。手动暂停使用 `pauseReason="manual"`，需显式 resume。逐会话记录包含准入时 MemAvailable、估算 RSS、可观测时的启动后 RSS 和错误阶段。`/api/terminal/tmux/recovery/diagnostics` 会持久保存 MemAvailable、Linux memory PSI、kswapd、D-state、Agent 进程组与浏览器进程计数、恢复队列和最近完成项；Termdock 进程 CPU/RSS 与 event-loop lag 继续由 `/api/diagnostics/runtime` 提供。进程命令行仅用于当前内存中的分类，不写入诊断文件。
+低于预算或资源采样不可用时，会话进入 `paused`，逐项 `pauseReason="resources"` 并保留准确原因，不启动进程；队列每隔数秒重新评估，资源满足后自动继续。操作快照的 `counts` 对象包含 `total/queued/running/succeeded/failed/paused`，`paused_count` 是兼容计数，顶层 `paused` 布尔值表示人工暂停，`resource_wait` 计数也作为兼容字段保留。手动暂停使用 `pauseReason="manual"`，需显式 resume。逐会话记录包含准入时 MemAvailable、估算 RSS、可观测时的启动后 RSS 和错误阶段。`/api/terminal/tmux/recovery/diagnostics` 会持久保存 MemAvailable、Linux memory PSI、kswapd、D-state、Agent 进程组与浏览器进程计数、恢复队列和最近完成项；Veymux 进程 CPU/RSS 与 event-loop lag 继续由 `/api/diagnostics/runtime` 提供。进程命令行仅用于当前内存中的分类，不写入诊断文件。
 
-Integration `/capabilities` 返回 `tmux_recovery_operations=true` / `tmux_recovery_operations_min_version="1.4.325"` 与 `tmux_recovery_resource_admission=true` / 对应最低版本。1.4.326 新增 `tmux_recovery_pause_status`、`tmux_recovery_memory_psi_admission`、`tmux_recovery_td_owned_resident_admission`，各自的最低版本字段均为 `1.4.326`。Linux PSI 超过上限或无法读取时不启动 Agent；resident 配额只计算 TD 自己登记的活跃 Agent 会话和恢复预留。非 Linux 平台使用 MemAvailable 与 TD-owned resident 配额。批量 release 继续回读 `session_release_batch_min_version="1.4.325"`。
+Integration `/capabilities` 返回 `tmux_recovery_operations=true` / `tmux_recovery_operations_min_version="1.4.325"` 与 `tmux_recovery_resource_admission=true` / 对应最低版本。1.4.326 新增 `tmux_recovery_pause_status`、`tmux_recovery_memory_psi_admission`、`tmux_recovery_veymux_owned_resident_admission`，各自的最低版本字段均为 `1.4.326`。Linux PSI 超过上限或无法读取时不启动 Agent；resident 配额只计算 TD 自己登记的活跃 Agent 会话和恢复预留。非 Linux 平台使用 MemAvailable 与 TD-owned resident 配额。批量 release 继续回读 `session_release_batch_min_version="1.4.325"`。
 
-该限制只控制 Termdock 执行的批量恢复启动，不会终止浏览器、Agent 或其他应用。诊断中的 `hostObservedAgentProcessGroupCount` / RSS 是主机进程观察值，可能包含第三方 Agent；只有 `tdOwnedResidentAgentCount` 用于 TD 自有配额，浏览器计数仅用于诊断。IntegrationSession 可通过新增的受管批量 release 进入 `released`（逻辑会话、消息/诊断历史、工作目录和原生历史保留，运行承载回收）；接口为 `POST /sessions/release-batch`，请求 `{session_ids:[...], idempotency_key:"..."}`，返回 `accepted` 和可由 `GET /sessions/release-batches/:id` 查询的持久 operation。它要求 principal 有 `session.release` 权限，并逐会话复用 generation、pending-message、配置指纹和运行时核验；不会强制终止校验失败的会话，也不会把普通 tmux 会话、浏览器或外部 Agent 纳入范围。`capabilities` 返回 `session_release_batch=true` 与最低服务版本字段。
+该限制只控制 Veymux 执行的批量恢复启动，不会终止浏览器、Agent 或其他应用。诊断中的 `hostObservedAgentProcessGroupCount` / RSS 是主机进程观察值，可能包含第三方 Agent；只有 `tdOwnedResidentAgentCount` 用于 TD 自有配额，浏览器计数仅用于诊断。IntegrationSession 可通过新增的受管批量 release 进入 `released`（逻辑会话、消息/诊断历史、工作目录和原生历史保留，运行承载回收）；接口为 `POST /sessions/release-batch`，请求 `{session_ids:[...], idempotency_key:"..."}`，返回 `accepted` 和可由 `GET /sessions/release-batches/:id` 查询的持久 operation。它要求 principal 有 `session.release` 权限，并逐会话复用 generation、pending-message、配置指纹和运行时核验；不会强制终止校验失败的会话，也不会把普通 tmux 会话、浏览器或外部 Agent 纳入范围。`capabilities` 返回 `session_release_batch=true` 与最低服务版本字段。

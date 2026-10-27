@@ -15,7 +15,7 @@ const cleanup: (() => void)[] = [];
 afterEach(() => { for (const close of cleanup.splice(0).reverse()) close(); });
 
 async function fixture(san = 'IP:127.0.0.1,DNS:localhost', days = '1') {
-  const dir = mkdtempSync(join(tmpdir(), 'td-preview-leaf-')); cleanup.push(() => rmSync(dir, { recursive: true, force: true }));
+  const dir = mkdtempSync(join(tmpdir(), 'veymux-preview-leaf-')); cleanup.push(() => rmSync(dir, { recursive: true, force: true }));
   const openssl = (...args: string[]) => execFileSync('openssl', args, { cwd: dir, stdio: 'ignore' });
   openssl('req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1', '-keyout', 'ca-key.pem', '-out', 'ca.pem', '-subj', '/CN=Private CA');
   writeFileSync(join(dir, 'extensions'), `subjectAltName=${san}\nbasicConstraints=CA:FALSE\n`);

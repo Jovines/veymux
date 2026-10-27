@@ -27,7 +27,7 @@ it('parses both Linux and macOS ps rows without splitting executable arguments',
     .toEqual([{ pid: 123, parentPid: 1, uid: 501, started: 'Mon Oct 26 10:00:00 2026', command: '/opt/homebrew/bin/tmux -u attach-session -t wt-old' }]);
 });
 
-it('recognizes legacy displays, control clients and numeric session IDs only on confirmed Termdock targets', () => {
+it('recognizes legacy displays, control clients and numeric session IDs only on confirmed Veymux targets', () => {
   const targets = new Set(['wt-old', '$10', 'named project']);
   for (const command of ['tmux -u -T RGB,sync attach-session -f ignore-size -t wt-old',
     '/opt/homebrew/bin/tmux -u -C attach-session -r -t =wt-old', 'tmux -C attach -r -t wt-old',

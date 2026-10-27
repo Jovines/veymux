@@ -38,7 +38,7 @@ export function collaborationGroupRoutes(options: {
       // renames) to the command that actually does it.
       const unknownKeys = Object.keys(body).filter((key) => !['id', 'name', 'sessionIds', 'expectedUpdatedAt', 'launchProfiles', 'defaultLaunchProfileId'].includes(key));
       if (unknownKeys.length) {
-        const hint = unknownKeys.includes('members') ? '；要改成员显示名请用 td collab rename <session-id> <新名字>' : '';
+        const hint = unknownKeys.includes('members') ? '；要改成员显示名请用 veymux collab rename <session-id> <新名字>' : '';
         throw new CollaborationError('INVALID_GROUP', `含未知字段 ${unknownKeys.join('、')}（合法字段：name, sessionIds, id, expectedUpdatedAt, launchProfiles, defaultLaunchProfileId）${hint}`, 400);
       }
       if ((id !== undefined && (typeof id !== 'string' || !id))

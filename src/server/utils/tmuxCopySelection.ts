@@ -18,7 +18,7 @@ export async function copyTmuxSelection(target: string, run: TmuxCopyRunner): Pr
   const before = await read();
   const empty = (): TmuxCopySelectionResult => ({ status: 'empty', paneId: before.pane, text: '', bytes: 0 });
   if (!before.inMode || !before.selected) return empty();
-  const prefix = `termdock-copy-${randomUUID()}-`;
+  const prefix = `veymux-copy-${randomUUID()}-`;
   const own = new RegExp(`^${prefix}[0-9]+$`);
   const buffers: Array<{ name: string; bytes: number }> = [];
   let failed = false;

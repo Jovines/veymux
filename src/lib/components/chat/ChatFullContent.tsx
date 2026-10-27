@@ -68,7 +68,7 @@ export function ChatFullContent({ message, sessionId, canWrite, onAction }: {
   const context = useMemo(() => ({ canWrite: writable, canReadPath, openFile }), [writable, canReadPath, openFile]);
   if (!valid || invalid) return <div className="space-y-2"><ChatMarkdown content={message.content} /><p role={parsed && !permittedTools ? 'alert' : undefined} className="text-xs text-muted-foreground">{parsed && !permittedTools ? '界面请求的数据操作未注册或未获准，已显示文字说明' : '已显示文字说明'}</p></div>;
   return <ErrorBoundary fallback={<ChatMarkdown content={message.content} />}><FullUIContext.Provider value={context}><FullUITheme>
-    <div data-chat-rich-content className="termdock-rich-ui termdock-native-select min-w-0 space-y-3">
+    <div data-chat-rich-content className="veymux-rich-ui veymux-native-select min-w-0 space-y-3">
       <Renderer.Root library={chatFullUILibrary} response={ui.code} isStreaming={streaming || !canWrite || !capabilities.has('session.input') || acting}
         initialState={state.hydration} onStateUpdate={state.update} onAction={event => { void action(event); }} toolProvider={tools}
         publishObservability={false} onError={errors => { if (!streaming) { const fatal = errors.find(error => error.severity !== 'warning' && !['tool-error', 'tool-not-found', 'mcp-error'].includes(error.code)); if (fatal) setInvalid(fatal.message); } }}>

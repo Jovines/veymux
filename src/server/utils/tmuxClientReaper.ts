@@ -31,7 +31,7 @@ function readProcess(pid: number): TmuxClientProcess | null {
   } catch { return null; }
 }
 
-/** Only attach clients on a confirmed Termdock session qualify. No pane,
+/** Only attach clients on a confirmed Veymux session qualify. No pane,
  * server, shell wrapper, live owner's client, or arbitrary tmux command does. */
 export function isLegacyTmuxClient(command: string, targets: ReadonlySet<string>, serverArgs: readonly string[] = []): boolean {
   const args = command.trim().split(/\s+/);
@@ -182,7 +182,7 @@ export class TmuxClientReaper {
       if (this.closing) return;
       try {
         const count = await this.sweepLegacy(await getTargets());
-        if (count) log(`[tmux-clients] reclaiming ${count} orphaned Termdock display clients`);
+        if (count) log(`[tmux-clients] reclaiming ${count} orphaned Veymux display clients`);
       } catch (error) { log(`[tmux-clients] orphan check deferred: ${(error as Error).message}`); }
     };
     if (!this.maintenance && !this.closing) {

@@ -13,7 +13,7 @@ export function LoadingSpinner({ size = 16, className = '', ...props }: LoadingS
       width={size} height={size} viewBox="0 0 24 24" fill="none"
       aria-hidden={labelled ? undefined : true} role={labelled ? 'img' : undefined}
       focusable="false" {...props}
-      className={`td-loading-spinner animate-spin ${className.replace(/\b(?:animate-spin|service-spinning)\b/g, '')}`}
+      className={`veymux-loading-spinner animate-spin ${className.replace(/\b(?:animate-spin|service-spinning)\b/g, '')}`}
     >
       <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2.5"
         strokeDasharray="18 44.8" strokeLinecap="round" />
@@ -23,7 +23,7 @@ export function LoadingSpinner({ size = 16, className = '', ...props }: LoadingS
 
 export function LoadingDots() {
   return (
-    <span className="td-loading-dots" aria-hidden="true">
+    <span className="veymux-loading-dots" aria-hidden="true">
       {[0, 1, 2].map((dot) => <span key={dot} style={{ animationDelay: `${(dot - 3) * 400}ms` }} />)}
     </span>
   );

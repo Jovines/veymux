@@ -15,7 +15,7 @@ const SERVICE_DOCUMENT_STATE_SCRIPT = String.raw`
   origin: window.location.origin,
   readyState: document.readyState,
   rootChildren: document.getElementById('root')?.childElementCount ?? 0,
-  bootError: Boolean(document.querySelector('.termdock-boot-error')),
+  bootError: Boolean(document.querySelector('.veymux-boot-error')),
 }))()
 `;
 

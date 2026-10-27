@@ -3,11 +3,11 @@
  *
  * The observer deliberately watches the page's existing terminal streams
  * instead of opening extra HTTP/WS connections. That lets a new desktop shell
- * understand agent activity from older Termdock web clients without doubling
+ * understand agent activity from older Veymux web clients without doubling
  * terminal traffic or requiring the remote service to upgrade first.
  */
 export function installServiceActivityObserver(): void {
-  const marker = '__termdockDesktopActivityObserverV1';
+  const marker = '__veymuxDesktopActivityObserverV1';
   const page = window as typeof window & Record<string, unknown>;
   if (page[marker]) return;
   page[marker] = true;
@@ -36,7 +36,7 @@ export function installServiceActivityObserver(): void {
       if (activity.review) reviewCount += 1;
     }
     window.postMessage({
-      source: 'termdock-desktop-activity-v1',
+      source: 'veymux-desktop-activity-v1',
       activity: { runningCount, reviewCount },
     }, window.location.origin);
   };

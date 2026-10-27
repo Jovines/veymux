@@ -114,7 +114,7 @@ describe('inferResumeSessionId', () => {
     expect(inferResumeSessionId(separate, ['fixture-agent', 'threads', 'continue', 'native-id', '--model', 'test'])).toBe('native-id');
     expect(inferResumeSessionId(separate, ['fixture-agent', 'threads', 'resume', 'native-id'])).toBeNull();
   });
-  it('recovers ids from resumed Agent argv after Termdock reattaches', () => {
+  it('recovers ids from resumed Agent argv after Veymux reattaches', () => {
     expect(inferResumeSessionId(agentBySlug('claude')!, ['/home/user/.local/bin/claude', '--session-id', 'new-uuid']))
       .toBe('new-uuid');
     expect(inferResumeSessionId(agentBySlug('claude')!, ['claude', '--session-id=inline-uuid']))

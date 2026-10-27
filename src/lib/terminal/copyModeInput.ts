@@ -31,7 +31,7 @@ export function isTmuxMouseOrFocusInput(input: string): boolean {
 }
 
 /**
- * Escape is tmux copy-mode's cancel key. When Termdock exits copy mode through
+ * Escape is tmux copy-mode's cancel key. When Veymux exits copy mode through
  * the control channel first, forwarding the same byte would leak it into the
  * program running in the pane.
  */

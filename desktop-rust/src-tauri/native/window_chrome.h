@@ -1,5 +1,5 @@
-#ifndef TD_WINDOW_CHROME_H
-#define TD_WINDOW_CHROME_H
+#ifndef VEYMUX_WINDOW_CHROME_H
+#define VEYMUX_WINDOW_CHROME_H
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
@@ -12,8 +12,8 @@ typedef struct {
     // grandparent in WK, grandparent in window, button frame(in parent).
     double rects[6][4];
     double center_top_wk, border_width[2], background_alpha[2];
-} TDWindowChromeButton;
-_Static_assert(sizeof(TDWindowChromeButton)==240,"window chrome button POD size");
+} VeymuxWindowChromeButton;
+_Static_assert(sizeof(VeymuxWindowChromeButton)==240,"window chrome button POD size");
 typedef struct {
     uint32_t present, role, flags, event_type;
     uint64_t owner_generation, document_generation;
@@ -23,14 +23,14 @@ typedef struct {
     // content(bounds), WK(frame parent), WK(bounds), WK(in content), WK(in window),
     // moved button grandparent(frame parent). Physical backing scale is separate.
     double rects[9][4];
-    TDWindowChromeButton buttons[3];
-} TDWindowChromeSnapshot;
-_Static_assert(sizeof(TDWindowChromeSnapshot)==1048,"window chrome POD size");
-_Static_assert(_Alignof(TDWindowChromeSnapshot)==8,"window chrome POD alignment");
-_Static_assert(offsetof(TDWindowChromeSnapshot,rects)==40,"window chrome POD rect offset");
-_Static_assert(offsetof(TDWindowChromeSnapshot,buttons)==328,"window chrome button offset");
+    VeymuxWindowChromeButton buttons[3];
+} VeymuxWindowChromeSnapshot;
+_Static_assert(sizeof(VeymuxWindowChromeSnapshot)==1048,"window chrome POD size");
+_Static_assert(_Alignof(VeymuxWindowChromeSnapshot)==8,"window chrome POD alignment");
+_Static_assert(offsetof(VeymuxWindowChromeSnapshot,rects)==40,"window chrome POD rect offset");
+_Static_assert(offsetof(VeymuxWindowChromeSnapshot,buttons)==328,"window chrome button offset");
 // Pure parent-local batch preflight. No output changes until all three pass.
-static inline bool td_chrome_button_frames(const double frames[3][4],const double bounds[3][4],const double vectors[3][2],double result[3][4]) {
+static inline bool veymux_chrome_button_frames(const double frames[3][4],const double bounds[3][4],const double vectors[3][2],double result[3][4]) {
     double candidates[3][4];
     for(unsigned i=0;i<3;i++){
         for(unsigned j=0;j<4;j++)if(!isfinite(frames[i][j])||!isfinite(bounds[i][j])||fabs(frames[i][j])>1e7||fabs(bounds[i][j])>1e7)return false;
@@ -42,7 +42,7 @@ static inline bool td_chrome_button_frames(const double frames[3][4],const doubl
     memcpy(result,candidates,sizeof(candidates));return true;
 }
 // Owned-only cumulative counters, saturated at65535. No extra geometry samples.
-typedef void (*TDChromeCounts)(uint64_t,uint64_t,uint32_t,uint32_t,uint32_t,uint32_t);
-typedef uint64_t (*TDChromeReserve)(uint64_t,uint64_t,uint32_t);
-typedef void (*TDChromeReceive)(uint64_t,uint32_t,const TDWindowChromeSnapshot *);
+typedef void (*VeymuxChromeCounts)(uint64_t,uint64_t,uint32_t,uint32_t,uint32_t,uint32_t);
+typedef uint64_t (*VeymuxChromeReserve)(uint64_t,uint64_t,uint32_t);
+typedef void (*VeymuxChromeReceive)(uint64_t,uint32_t,const VeymuxWindowChromeSnapshot *);
 #endif

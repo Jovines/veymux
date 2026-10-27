@@ -15,7 +15,7 @@ describe('background collaboration delivery', () => {
   let write: ReturnType<typeof vi.fn<(messages: unknown[]) => Promise<void>>>;
   beforeEach(() => {
     vi.useFakeTimers();
-    directory = fs.mkdtempSync(path.join(os.tmpdir(), 'td-collab-worker-'));
+    directory = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-collab-worker-'));
     file = path.join(directory, 'messages.json');
     store = new CollaborationStore(file);
     groupId = store.save({ name: 'Team', sessionIds: ['a', 'b', 'c'] }).id;
@@ -345,12 +345,12 @@ describe('background collaboration delivery', () => {
 });
 
 it('durable local messages in federated groups wake the worker and expose identity blocking without a terminal write', async () => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'td-fed-local-worker-'));
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-fed-local-worker-'));
   const store = new CollaborationStore(path.join(directory, 'messages.json'));
   const group = { id: 'cross-local', name: 'Cross', sessionIds: ['sender', 'target', 'remote:https%3A%2F%2Fother.example:remote'], federated: true, remoteSessions: [], createdAt: 1, updatedAt: 1 };
   store.mergeFederatedGroup(group);
   const identity = { expected: { serverPid: 1, sessionId: '$1', paneId: '%1', panePid: 2, agentSlug: 'fixture', nativeSessionId: 'old' },
-    observed: [], truncated: false, recovery: 'confirmation-required' as const, reason: 'NATIVE_IDENTITY_UNCONFIRMED', rebind_command: 'td collab --session target rebind' };
+    observed: [], truncated: false, recovery: 'confirmation-required' as const, reason: 'NATIVE_IDENTITY_UNCONFIRMED', rebind_command: 'veymux collab --session target rebind' };
   const write = vi.fn(async (_messages: CollaborationMessage[]) => undefined), resolver = vi.fn(async (): Promise<CollaborationRoute> => ({ state: 'identity-mismatch', reason: 'TMUX_PANE_CHANGED', diagnostics: identity, write }));
   const worker = new CollaborationDeliveryWorker({ store, isLocal: id => !id.startsWith('remote:'), resolve: resolver, onError: error => { throw error; } });
   try {

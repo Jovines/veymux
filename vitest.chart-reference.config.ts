@@ -21,7 +21,7 @@ export default defineConfig({
           else await context.page.mouse.click(x, y);
         },
         async captureChartReference(context, width: number) {
-          await context.iframe.locator('[data-session-chat]').screenshot({ path: `/tmp/termdock-chart-reference/selected-${width}.png` });
+          await context.iframe.locator('[data-session-chat]').screenshot({ path: `/tmp/veymux-chart-reference/selected-${width}.png` });
         },
       },
     },

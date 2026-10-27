@@ -9,7 +9,7 @@ const directories: string[] = [];
 afterEach(() => { for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true }); });
 
 it('persists private short-lived certificates and rotates expiring or mismatched keys', async () => {
-  const directory = mkdtempSync(join(tmpdir(), 'td-quic-cert-')); directories.push(directory);
+  const directory = mkdtempSync(join(tmpdir(), 'veymux-quic-cert-')); directories.push(directory);
   const now = Date.now(), first = await transportCertificate(directory, now);
   expect((await transportCertificate(directory, now)).hash).toBe(first.hash);
   expect(statSync(join(directory, 'quic-certificate.json')).mode & 0o777).toBe(0o600);

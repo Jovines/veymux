@@ -6,7 +6,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 function findExecutable(command, { env = process.env, home = os.homedir(), platform = process.platform } = {}) {
-  const extra = [path.join(home, '.termdock/bin'), path.join(home, '.local/bin'), '/usr/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin'];
+  const extra = [path.join(home, '.veymux/bin'), path.join(home, '.local/bin'), '/usr/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin'];
   if (platform === 'darwin') extra.push('/opt/homebrew/bin', '/opt/local/bin');
   const candidates = command.includes(path.sep) ? [path.resolve(command)] : [...new Set([...(env.PATH || '').split(path.delimiter).filter(Boolean), ...extra])].map(dir => path.resolve(dir, command));
   for (const candidate of candidates) {

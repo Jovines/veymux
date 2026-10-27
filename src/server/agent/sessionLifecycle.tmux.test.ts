@@ -12,8 +12,8 @@ import { releaseSessionRuntime } from './sessionLifecycle.js';
 /** Real runtime fixture, not a private Agent compatibility test. Keeps the
  * original process/pane identity pinned and verifies actual tmux absence. */
 it.skipIf(process.platform === 'win32')('releases real tmux with zero surviving pane, then recreates the same logical descriptor and exact native argument', async () => {
-  const dir = fs.mkdtempSync(path.join(tmpdir(), 'td-runtime-'));
-  const socket = `td-runtime-${process.pid}-${Date.now()}`;
+  const dir = fs.mkdtempSync(path.join(tmpdir(), 'veymux-runtime-'));
+  const socket = `veymux-runtime-${process.pid}-${Date.now()}`;
   const exec = promisify(execFile);
   const run = async (args: string[]) => (await exec('tmux', ['-f', '/dev/null', '-L', socket, ...args], { timeout: 5000 })).stdout;
   const wrapper = path.join(dir, 'fixture');

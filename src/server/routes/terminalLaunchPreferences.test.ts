@@ -13,7 +13,7 @@ const directories: string[] = [];
 afterEach(() => { for (const directory of directories.splice(0)) fs.rmSync(directory, { recursive: true, force: true }); });
 
 function fixture() {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'td-launch-preferences-'));
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-launch-preferences-'));
   directories.push(directory);
   const filePath = path.join(directory, 'automations.json');
   const automationStore = new AutomationStore(filePath);

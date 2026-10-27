@@ -1,12 +1,20 @@
-/** tmux consumes one XTVERSION reply per query. A second reply (for example
- * from a browser repainting old output) is interpreted as pane keyboard input.
- * Keep ownership on the display connection, including for older clients.
+export const TERMINAL_VERSION_REPLY = '\x1bP>|Veymux\x1b\\';
+
+/** Only discard complete parser records, never keys or literal pasted bytes. */
+export function filterTerminalVersionReplies(data: string): string {
+  return /^(?:(?:\x1bP|\x90)>\|[^\x1b\x9c]*(?:\x1b\\|\x9c))+$/.test(data) ? '' : data;
+}
+
+/** The service owns tmux identification. Browser replies can be delayed,
+ * replayed, or produced by multiple observers of the same PTY, so they must
+ * never be allowed to answer a server-side display's query.
  */
 export class TerminalVersionReplies {
-  private pending = 0;
   private state: 'text' | 'escape' | 'csi' | 'string' | 'string-escape' = 'text';
   private csi = '';
   private osc = false;
+
+  constructor(private readonly reply: (data: string) => void) {}
 
   observe(data: string): void {
     for (const char of data) {
@@ -28,7 +36,7 @@ export class TerminalVersionReplies {
       }
       if (this.state === 'csi') {
         if (char >= '@' && char <= '~') {
-          if (char === 'q' && /^>0?$/.test(this.csi)) this.pending++;
+          if (char === 'q' && /^>0?$/.test(this.csi)) this.reply(TERMINAL_VERSION_REPLY);
           this.state = 'text';
         } else if (char >= ' ' && char <= '?' && this.csi.length < 32) this.csi += char;
         else if (char >= ' ') this.state = 'text';
@@ -40,12 +48,6 @@ export class TerminalVersionReplies {
   filter(data: string): string {
     // xterm emits a complete reply in one onData record. Never rewrite keys,
     // mouse reports or paste records (which may contain literal escape bytes).
-    const replies = data.match(/(?:\x1bP|\x90)>\|[^\x1b\x9c]*(?:\x1b\\|\x9c)/g);
-    if (!replies || replies.join('') !== data) return data;
-    return replies.filter(() => {
-      if (!this.pending) return false;
-      this.pending--;
-      return true;
-    }).join('');
+    return filterTerminalVersionReplies(data);
   }
 }

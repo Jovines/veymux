@@ -3,7 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { freshGroupSettingsDraft, readGroupSettingsDraft, rebaseGroupSettingsDraft, writeGroupSettingsDraft } from './groupSettingsDraft';
 const group = { id: 'storage-failure', name: '已保存名称', sessionIds: [], createdAt: 1, updatedAt: 1 };
 const otherGroup = { ...group, id: 'other-storage-group', name: '另一组已保存名称' };
-const key = (id: string) => `termdock-group-settings:${location.origin}:${id}`;
+const key = (id: string) => `veymux-group-settings:${location.origin}:${id}`;
 it('rebases only explicit dirty fields and adopts the reviewed revision and member snapshot', () => {
   const old = { ...group, sessionIds: ['removed'] };
   const latest = { ...group, name: '最新已保存名称', sessionIds: ['new-member'], updatedAt: 20,
@@ -24,7 +24,7 @@ it('keeps drafts when storage writes fail but storage reads continue to return n
   sessionStorage.clear();
   vi.spyOn(Storage.prototype, 'setItem').mockImplementationOnce(() => { throw new DOMException('Full', 'QuotaExceededError'); });
   writeGroupSettingsDraft(group.id, { ...freshGroupSettingsDraft(group), name: '未保存名称', rules: '尚未发布的群规' });
-  expect(sessionStorage.getItem(`termdock-group-settings:${location.origin}:${group.id}`)).toBeNull();
+  expect(sessionStorage.getItem(`veymux-group-settings:${location.origin}:${group.id}`)).toBeNull();
   expect(readGroupSettingsDraft(group, '')).toMatchObject({ name: '未保存名称', rules: '尚未发布的群规', updatedAt: 1 });
   writeGroupSettingsDraft(group.id, freshGroupSettingsDraft(group));
   expect(readGroupSettingsDraft(group, '').name).toBe('已保存名称');

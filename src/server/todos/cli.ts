@@ -6,7 +6,7 @@ import path from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
 import type { AutomationSchedule } from '../agent/automationStore.js';
 
-export const TODO_HELP = `td todo — persistent todos on the local Termdock service
+export const TODO_HELP = `veymux todo — persistent todos on the local Veymux service
   list [--source <name> | --collector <id>] [--category short|long|delegated|uncategorized]
   sources (show source names/IDs and available counts)
   claim (--source <name> | --collector <id> | --todo <id>) [--session <id>] [--lease 30]
@@ -38,14 +38,14 @@ OFF by default. Ask the user to confirm any unspecified source, selection scope,
 execution permission BEFORE claiming tasks, enabling automatic handling, or changing triggers.
 Never assume "all sources". Start with sources/list, then claim an explicitly authorized source.
 Prefer --collector with the stable source ID (from sources), which survives source renaming.
-claim atomically assigns one task to the current Termdock Agent (or --session), returns its
+claim atomically assigns one task to the current Veymux Agent (or --session), returns its
 claim ID, expiry and run ID. Process only the returned todo, report results against that run,
 renew before expiry during long work, and release if unable to continue. Do not act on an
 expired/replaced claim. An empty claim means no available task; do not invent a different source.
 To handle a source periodically, ask/confirm the frequency, then configure the existing scheduler
 or have the source dispatch automatically; a one-time claim does not install a timer.
-Use td automation --help for periodic work in this Agent (--self); include the exact source
-and td todo claim in its prompt, and only create the schedule after confirming the interval.
+Use veymux automation --help for periodic work in this Agent (--self); include the exact source
+and veymux todo claim in its prompt, and only create the schedule after confirming the interval.
 collector schema shows the shared UI/API configuration. collector save creates or updates a source;
 include id to update (existing fields are retained; revision prevents overwriting concurrent edits).
 processing.mode: manual | new | existing; existing requires sessionId, new can specify Agent config.
@@ -62,7 +62,7 @@ No schedule means manual collection. --every uses whole minutes (1–43200); --a
 timezone (e.g. --at 09:00,14:00,20:00); weekdays: 0=Sunday through 6=Saturday (default: every day). Scheduled collectors repeat
 while enabled and the service runs, even with the browser closed. Creation saves configuration;
 it does not immediately collect. Follow the user's requested frequency; if unspecified, save as manual.
-Example: td todo collector create --name '项目巡检' --agent codex --every 1440 --file collect.txt
+Example: veymux todo collector create --name '项目巡检' --agent codex --every 1440 --file collect.txt
 Collector execution is scoped by the server to its recorded session and stable collector ID.
 Collector mutations require --collector and --run <active-run-id> matching that namespace; ownership mismatches are rejected.
 Checkpoint commits are explicit successful collector finish operations; text reports never advance them.
@@ -90,7 +90,7 @@ export function parseTodoCommand(argv: string[]): TodoCommand {
     else throw new Error(`Unknown option --${key}`);
   }
   const action = (options.help ? 'help' : positional.shift() ?? 'help') as TodoCommand['action'];
-  if (!['help', 'list', 'add', 'update', 'report', 'complete', 'reopen', 'ignore', 'agents', 'collector', 'checkpoint', 'sources', 'claim', 'renew', 'release'].includes(action)) throw new Error('See td todo --help');
+  if (!['help', 'list', 'add', 'update', 'report', 'complete', 'reopen', 'ignore', 'agents', 'collector', 'checkpoint', 'sources', 'claim', 'renew', 'release'].includes(action)) throw new Error('See veymux todo --help');
   if (action === 'help') return { action, options };
   if (action === 'checkpoint') {
     if (positional.shift() !== 'get' || positional.length || !options.collector) throw new Error('checkpoint get requires --collector');
@@ -100,7 +100,7 @@ export function parseTodoCommand(argv: string[]): TodoCommand {
   if (action === 'collector') {
     const collectorAction = positional.shift();
     const id = ['run', 'remove', 'inspect', 'finish', 'retry', 'cancel'].includes(collectorAction ?? '') ? positional.shift() : undefined;
-    if (!['list', 'create', 'save', 'schema', 'run', 'remove', 'inspect', 'finish', 'retry', 'cancel'].includes(collectorAction ?? '') || positional.length || ['run', 'remove', 'inspect', 'finish', 'retry', 'cancel'].includes(collectorAction ?? '') && !id) throw new Error('See td todo collector --help');
+    if (!['list', 'create', 'save', 'schema', 'run', 'remove', 'inspect', 'finish', 'retry', 'cancel'].includes(collectorAction ?? '') || positional.length || ['run', 'remove', 'inspect', 'finish', 'retry', 'cancel'].includes(collectorAction ?? '') && !id) throw new Error('See veymux todo collector --help');
     const allowed = ['list', 'schema', 'remove', 'inspect'].includes(collectorAction!) ? ['json'] : collectorAction === 'run' ? ['json', 'idempotency-key'] : ['finish', 'retry', 'cancel'].includes(collectorAction!) ? ['json', 'revision', ...(collectorAction === 'cancel' ? [] : ['idempotency-key']), ...(collectorAction === 'finish' ? ['file', 'stdin'] : [])] : collectorAction === 'save' ? ['json', 'file', 'stdin'] : ['json', 'name', 'agent', 'command', 'cwd', 'prompt', 'file', 'stdin', 'every', 'at', 'weekdays', 'disabled'];
     for (const flag of Object.keys(options)) if (!allowed.includes(flag)) throw new Error(`--${flag} is not supported by collector ${collectorAction}`);
     const command: TodoCommand = { action, collectorAction: collectorAction as TodoCommand['collectorAction'], id, options };
@@ -131,7 +131,7 @@ export function parseTodoCommand(argv: string[]): TodoCommand {
   const allowed: Record<string, string[]> = { list: ['source', 'collector', 'category'], sources: [], claim: ['source', 'collector', 'todo', 'session', 'lease', 'idempotency-key'], renew: ['claim', 'lease'], release: ['claim'], agents: [], add: ['run', 'title', 'description', 'file', 'stdin', 'source', 'external-id', 'url', 'collector', 'idempotency-key', 'category'], update: ['run', 'collector', 'title', 'description', 'file', 'stdin', 'category', 'url', 'external-id', 'revision'], report: ['status', 'content', 'file', 'stdin'], complete: ['collector', 'revision', 'run'], reopen: ['collector', 'revision', 'run'], ignore: ['collector', 'revision', 'run'] };
   for (const flag of Object.keys(options)) if (flag !== 'json' && !allowed[action].includes(flag)) throw new Error(`--${flag} is not supported by ${action}`);
   const id = !['list', 'add', 'agents', 'sources', 'claim'].includes(action) ? positional.shift() : undefined;
-  if ((!['list', 'add', 'agents', 'sources', 'claim'].includes(action) && !id) || positional.length) throw new Error('Invalid arguments; see td todo --help');
+  if ((!['list', 'add', 'agents', 'sources', 'claim'].includes(action) && !id) || positional.length) throw new Error('Invalid arguments; see veymux todo --help');
   if (action === 'claim' && !['source', 'collector', 'todo'].some(k => String(options[k] ?? '').trim())) throw new Error('Confirm the source with the user, then specify --source, --collector or --todo');
   if (['renew', 'release'].includes(action) && !options.claim) throw new Error('--claim is required');
   if (options.lease && (!Number.isInteger(Number(options.lease)) || Number(options.lease) < 1 || Number(options.lease) > 1440)) throw new Error('--lease must be whole minutes from 1 to 1440');
@@ -203,7 +203,7 @@ export async function executeTodoCommand(command: TodoCommand, io: {
         const data = JSON.parse(response.body);
         if (response.statusCode < 200 || response.statusCode >= 300) throw new Error(data.error || 'Agent request failed');
         const agent = data.agents.find((item: { slug: string }) => item.slug === o.agent);
-        if (!agent) throw new Error('Agent not available; use td todo agents');
+        if (!agent) throw new Error('Agent not available; use veymux todo agents');
         launchCommand = agent.command;
       }
       result = await request('POST', '/collectors', { name: o.name,
@@ -221,7 +221,7 @@ export async function executeTodoCommand(command: TodoCommand, io: {
       }
       result = { sources: [...groups.values()] };
     } else if (command.action === 'claim') result = await request('POST', '/claim', { source: o.source, collectorId: o.collector, todoId: o.todo,
-      sessionId: o.session || (io.self ? await io.self() : undefined), backendSessionId: !o.session && !io.self ? process.env.TERMDOCK_BACKEND_SESSION_ID : undefined,
+      sessionId: o.session || (io.self ? await io.self() : undefined), backendSessionId: !o.session && !io.self ? process.env.VEYMUX_BACKEND_SESSION_ID : undefined,
       leaseMinutes: Number(o.lease ?? 30), requestId: o['idempotency-key'] || randomUUID() });
     else if (command.action === 'renew') result = await request('POST', `/${encodeURIComponent(command.id!)}/renew`, { claimId: o.claim, minutes: Number(o.lease ?? 30) });
     else if (command.action === 'release') {

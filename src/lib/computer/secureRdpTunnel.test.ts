@@ -18,9 +18,9 @@ beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn(() => { throw new Error('Native fetch forbidden'); }));
   vi.stubGlobal('WebSocket', vi.fn(() => { throw new Error('Native socket forbidden'); }));
   Object.defineProperty(navigator, 'serviceWorker', { configurable: true, value: { controller: null } });
-  Object.defineProperty(window, 'termdockDesktop', { configurable: true, value: { uploadClipboardImage: vi.fn(), uploadDroppedFiles: vi.fn() } });
+  Object.defineProperty(window, 'veymuxDesktop', { configurable: true, value: { uploadClipboardImage: vi.fn(), uploadDroppedFiles: vi.fn() } });
 });
-afterEach(() => { vi.unstubAllGlobals(); delete (window as unknown as { termdockDesktop?: unknown }).termdockDesktop; });
+afterEach(() => { vi.unstubAllGlobals(); delete (window as unknown as { veymuxDesktop?: unknown }).veymuxDesktop; });
 
 describe('secure RDP tunnel', () => {
   it('carries login verification inside the encrypted socket without consuming display sequence numbers', () => {

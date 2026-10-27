@@ -1,7 +1,7 @@
 import type { ConnectionIntent } from './browserIntegration';
 
 export interface InviteDescriptor { showAccessGuide?: boolean; viewLayout?: 'split'; viewMode?: 'terminal' | 'chat'; v: 1; serviceId: string; code?: string; routeOnly?: boolean; entryUrl: string; serviceUrl?: string; name?: string; entryServiceId?: string; routeCode?: string }
-const PREFIX = '#termdock-invite=';
+const PREFIX = '#veymux-invite=';
 export function createInviteLink(descriptor: InviteDescriptor): string {
   const entry = new URL(descriptor.entryUrl);
   entry.hash = ''; entry.search = ''; entry.pathname = '/';
@@ -20,7 +20,7 @@ export function createOnboardingInviteLink(invite: string, onboardingUrl: string
 }
 export function parseInviteLink(value: string, options: { httpTransport?: boolean } = {}): ConnectionIntent {
   const link = new URL(value);
-  if (!['https:', 'http:'].includes(link.protocol) || !link.hash.startsWith(PREFIX)) throw new Error('这不是有效的 Termdock 邀请链接');
+  if (!['https:', 'http:'].includes(link.protocol) || !link.hash.startsWith(PREFIX)) throw new Error('这不是有效的 Veymux 邀请链接');
   const encoded = link.hash.slice(PREFIX.length);
   if (encoded.length > 8192) throw new Error('邀请链接过长');
   let data: InviteDescriptor;

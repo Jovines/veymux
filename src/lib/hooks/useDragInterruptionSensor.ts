@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import type { SensorAPI } from '@hello-pangea/dnd';
 import { observeDragLifetime, prepareDragLifetimes } from '../gesture/dragLifetime';
 
-const INTERRUPT_DRAG = 'termdock-interrupt-drag';
+const INTERRUPT_DRAG = 'veymux-interrupt-drag';
 
 /** Release both pending touch lifts and active drags before opening an overlay. */
 export function interruptActiveDrag(): void {

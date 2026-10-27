@@ -12,7 +12,7 @@ import type { TodoCollector } from './types.js';
 let dir: string, store: TodoStore, server: Server, origin: string, a: TodoCollector, b: TodoCollector, runtime: TodoRuntime;
 const config = { agentSlug: 'fixture', command: 'fixture', cwd: '/tmp', prompt: '仅收集待办' };
 beforeEach(async () => {
-  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'td-collection-http-')); store = new TodoStore(path.join(dir, 'todos.json'));
+  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-collection-http-')); store = new TodoStore(path.join(dir, 'todos.json'));
   a = store.saveCollector({ name: 'A', config, webhook: { enabled: true, secret: "" } }); b = store.saveCollector({ name: 'B', config });
   runtime = { validate: async c => c, launch: vi.fn(async (run, _prompt, created) => created(run.collectorId === a.id ? 'session-a' : 'session-b')),
     callerSession: context => { if (['session-a', 'session-b'].includes(context.backendSessionId ?? '')) return context.backendSessionId!; throw new TodoError('Unknown caller', 403); },
@@ -25,7 +25,7 @@ beforeEach(async () => {
 afterEach(async () => { await new Promise<void>(resolve => server.close(() => resolve())); fs.rmSync(dir, { recursive: true, force: true }); });
 const call = async (suffix: string, body?: unknown, caller?: string) => {
   const response = await fetch(origin + '/todos' + suffix, { method: body === undefined ? 'GET' : 'POST', headers: {
-    'Content-Type': 'application/json', 'X-Termdock-Local-Token': 'fixture', 'X-Termdock-Todo-Context': encodeURIComponent(JSON.stringify(caller ? { backendSessionId: caller } : {})),
+    'Content-Type': 'application/json', 'X-Veymux-Local-Token': 'fixture', 'X-Veymux-Todo-Context': encodeURIComponent(JSON.stringify(caller ? { backendSessionId: caller } : {})),
   }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
   return { status: response.status, data: await response.json() };
 };

@@ -369,7 +369,7 @@ export class CollaborationFederation {
     if (!input.id?.startsWith('cross-') && !input.sessionIds.some((id) => sessionAddress(id))) {
       return service.request('/collaboration-groups', 'POST', input);
     }
-    if (!this.reachable.has(origin)) throw new Error('当前服务需要升级 Termdock 后才能跨服务组队');
+    if (!this.reachable.has(origin)) throw new Error('当前服务需要升级 Veymux 后才能跨服务组队');
     const ids = [...new Set(input.sessionIds.map((id) => qualifySession(origin, id)))];
     const retained = new Set(original?.sessionIds.map((id) => qualifySession(origin, id)) ?? []);
     if (!input.name?.trim() || ids.length < 2 || ids.some((id) => !retained.has(id)

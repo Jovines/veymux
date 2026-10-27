@@ -45,11 +45,11 @@ export class TmuxMetadataWriter {
         if (!changed && now - current.at < this.heartbeatMs) return;
         await this.write(name, {
           ...(changed ? {
-            '@termdock-label': desired.label,
-            '@termdock-program': desired.program ?? '',
-            '@termdock-cwd': desired.cwd ?? '',
+            '@veymux-label': desired.label,
+            '@veymux-program': desired.program ?? '',
+            '@veymux-cwd': desired.cwd ?? '',
           } : {}),
-          '@termdock-last-active-at': String(now),
+          '@veymux-last-active-at': String(now),
         });
         current.written = signature;
         current.at = now;

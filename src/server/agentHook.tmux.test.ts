@@ -20,7 +20,7 @@ afterEach(() => {
 });
 
 it.skipIf(process.platform !== 'linux')('delivers real hook transitions to every managed tmux observer without writing to ordinary clients', async () => {
-  directory = fs.mkdtempSync(path.join(os.tmpdir(), 'td-hook-'));
+  directory = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-hook-'));
   socket = path.join(directory, 'tmux.sock');
   const tmux = (args: string[]) => execFileSync('tmux', ['-S', socket!, ...args], { encoding: 'utf8' });
   tmux(['-f', '/dev/null', 'new-session', '-d', '-s', 'fixture', '-x', '80', '-y', '24', '/bin/sh']);
@@ -28,12 +28,12 @@ it.skipIf(process.platform !== 'linux')('delivers real hook transitions to every
   const env = { ...process.env, TERM: 'xterm-256color' } as Record<string, string>;
   delete env.TMUX;
   delete env.TMUX_PANE;
-  delete env.TERMDOCK;
+  delete env.VEYMUX;
   const output = ['', '', ''];
   for (let i = 0; i < output.length; i++) {
     const client = spawn('tmux', ['-S', socket, 'attach-session', '-t', 'fixture'], {
       name: 'xterm-256color', cols: 80, rows: 24, cwd: directory,
-      env: i < 2 ? { ...env, TERMDOCK: '1' } : env,
+      env: i < 2 ? { ...env, VEYMUX: '1' } : env,
     });
     client.onData(data => { output[i] += data; });
     clients.push(client);
@@ -50,13 +50,13 @@ it.skipIf(process.platform !== 'linux')('delivers real hook transitions to every
     output.fill('');
     await new Promise<void>((resolve, reject) => {
       const child = execFile(process.execPath, ['--import', 'tsx', path.resolve('src/server/agentHook.ts'), 'agent-hook', 'codex', event], {
-        env: { ...env, TERMDOCK: '1', TMUX: `${socket},${serverPid},0`, TMUX_PANE: paneId }, timeout: 5000,
+        env: { ...env, VEYMUX: '1', TMUX: `${socket},${serverPid},0`, TMUX_PANE: paneId }, timeout: 5000,
       }, error => error ? reject(error) : resolve());
       child.stdin!.end(JSON.stringify({ session_id: 'fixture-native', ...input }));
     });
-    await expect.poll(() => output.slice(0, 2).every(data => data.includes('termdock://cli-agent'))).toBe(true);
+    await expect.poll(() => output.slice(0, 2).every(data => data.includes('veymux://cli-agent'))).toBe(true);
     for (let i = 0; i < states.length; i++) {
-      const payload = output[i].match(/\x1b\](777;notify;termdock:\/\/cli-agent;[^\x07]+)\x07/)?.[1];
+      const payload = output[i].match(/\x1b\](777;notify;veymux:\/\/cli-agent;[^\x07]+)\x07/)?.[1];
       const parsed = payload && parseAgentEvent(payload);
       expect(parsed).toBeTruthy();
       if (parsed) applyAgentEvent(states[i], parsed);
@@ -64,6 +64,6 @@ it.skipIf(process.platform !== 'linux')('delivers real hook transitions to every
       expect(states[i].sessionId).toBe('fixture-native');
       if (event === 'prompt-submit') expect(parsed && parsed.promptPayload).toContain('中文'.repeat(6000));
     }
-    expect(output[2]).not.toContain('termdock://cli-agent');
+    expect(output[2]).not.toContain('veymux://cli-agent');
   }
 }, 15_000);

@@ -9,7 +9,7 @@ import { TerminalInputTargetChangedError } from './terminalInput.js';
 import { CollaborationStore } from './collaborationStore.js';
 let dir: string;
 const sessionsToClose: IntegrationSessions[] = [];
-beforeEach(() => { dir = fs.mkdtempSync(path.join(tmpdir(), 'td-cold-retry-')); });
+beforeEach(() => { dir = fs.mkdtempSync(path.join(tmpdir(), 'veymux-cold-retry-')); });
 afterEach(() => { for (const s of sessionsToClose.splice(0)) s.close(); fs.rmSync(dir, { recursive: true, force: true }); });
 async function fixture() {
   const executable = path.join(dir, 'wrapper'); fs.writeFileSync(executable, '#!/bin/sh\nexit 1\n', { mode: 0o700 });

@@ -232,7 +232,7 @@ describe('DiffReview click anchoring', () => {
         activePane
       />,
     );
-    const scroller = container.querySelector('.termdock-diff-stream-scroller') as HTMLElement;
+    const scroller = container.querySelector('.veymux-diff-stream-scroller') as HTMLElement;
     const scrollTo = (top: number) => {
       scroller.scrollTop = top;
       scroller.dispatchEvent(new Event('scroll'));
@@ -300,7 +300,7 @@ describe('DiffReview click anchoring', () => {
         activePane
       />,
     );
-    const scroller = container.querySelector('.termdock-diff-stream-scroller') as HTMLElement;
+    const scroller = container.querySelector('.veymux-diff-stream-scroller') as HTMLElement;
 
     act(() => {
       scroller.scrollTop = 208;
@@ -335,7 +335,7 @@ describe('DiffReview click anchoring', () => {
       renderStreamBadge: () => null, mobile: true, backLabel: 'Back', wrap: true, activePane: true,
     };
     const { container, rerender } = render(<DiffReview {...props} />);
-    const scroller = container.querySelector('.termdock-diff-stream-scroller') as HTMLElement;
+    const scroller = container.querySelector('.veymux-diff-stream-scroller') as HTMLElement;
     const targetTop = () => Number.parseFloat((container.querySelector(`[data-diff-canvas-slot="${target}"]`) as HTMLElement).style.top);
     expect(scroller.scrollTop).toBe(targetTop());
     expect(localFiles.map((file) => streamItems.get(file.key)?.visible)).toEqual([false, false, true]);
@@ -375,7 +375,7 @@ describe('DiffReview click anchoring', () => {
     vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(600);
     // Switching layout triggers viewport measurement, as ResizeObserver does.
     rerender(<DiffReview {...props} mobile={false} />);
-    const scroller = container.querySelector('.termdock-diff-stream-scroller') as HTMLElement;
+    const scroller = container.querySelector('.veymux-diff-stream-scroller') as HTMLElement;
     expect(scroller.scrollTop).toBe(79 * 104);
   });
 

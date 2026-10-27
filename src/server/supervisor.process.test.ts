@@ -86,15 +86,15 @@ class SupervisorHarness {
   }
 
   static async start(occupiedPort?: number): Promise<SupervisorHarness> {
-    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'termdock-supervisor-'));
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-supervisor-'));
     const port = occupiedPort ?? await reservePort();
     const preloadPath = path.join(home, 'preload.mjs');
     // 把 homedir 指到临时目录：supervisor 写的 supervisor.json / crash.log 全落在那里，
-    // 既不碰真实 ~/.termdock，也让测试能按 pid 精确地杀——**不能猜 pid**。
+    // 既不碰真实 ~/.veymux，也让测试能按 pid 精确地杀——**不能猜 pid**。
     fs.writeFileSync(
       preloadPath,
       "import os from 'node:os'; import { syncBuiltinESMExports } from 'node:module';"
-      + 'os.homedir = () => process.env.TERMDOCK_SUPERVISOR_TEST_HOME; syncBuiltinESMExports();',
+      + 'os.homedir = () => process.env.VEYMUX_SUPERVISOR_TEST_HOME; syncBuiltinESMExports();',
     );
 
     const supervisor = spawn(process.execPath, [
@@ -112,8 +112,8 @@ class SupervisorHarness {
       env: {
         ...process.env,
         NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ''} --import tsx`,
-        TERMDOCK_SUPERVISOR_TEST_HOME: home,
-        TERMDOCK_SUPERVISOR_TIMING: JSON.stringify(FAST_TIMING),
+        VEYMUX_SUPERVISOR_TEST_HOME: home,
+        VEYMUX_SUPERVISOR_TIMING: JSON.stringify(FAST_TIMING),
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -126,11 +126,11 @@ class SupervisorHarness {
   }
 
   get statePath(): string {
-    return path.join(this.home, '.termdock', 'supervisor.json');
+    return path.join(this.home, '.veymux', 'supervisor.json');
   }
 
   get crashLogPath(): string {
-    return path.join(this.home, '.termdock', 'crash.log');
+    return path.join(this.home, '.veymux', 'crash.log');
   }
 
   readState(): SupervisorState | null {
@@ -288,13 +288,13 @@ describe('supervisor 端到端', () => {
 
       const gaveUp = await harness.waitForIncident('gave-up', 20_000);
       expect(gaveUp.detail).toContain('consecutive failures');
-      expect(gaveUp.restartCommand).toBe('npm i -g termdock@9.9.9-test');
+      expect(gaveUp.restartCommand).toBe('npm i -g veymux@9.9.9-test');
 
       const crashes = harness.readCrashLog().filter((entry) => entry.event === 'startup-failure');
       expect(crashes).toHaveLength(FAST_TIMING.maxConsecutiveCrashes);
       expect(crashes.at(-1)?.consecutiveCrashes).toBe(FAST_TIMING.maxConsecutiveCrashes);
 
-      // supervisor 自己也退了，且状态停在 gave-up（`td --status` 要能报出来）。
+      // supervisor 自己也退了，且状态停在 gave-up（`veymux --status` 要能报出来）。
       await harness.waitFor(() => harness.exitCode === 1, 'supervisor 以 1 退出');
       expect(harness.readState()?.phase).toBe('gave-up');
     } finally {

@@ -22,7 +22,7 @@ export function buildErrorDiagnostic(
   const errorName = error?.name || 'Error';
   const errorMessage = error?.message || 'Unexpected error';
   return [
-    'Termdock error report',
+    'Veymux error report',
     `Time: ${context.capturedAt}`,
     `URL: ${context.url}`,
     `User agent: ${context.userAgent}`,

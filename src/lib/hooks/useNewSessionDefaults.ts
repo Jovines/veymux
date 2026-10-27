@@ -1,6 +1,6 @@
 import React from 'react';
 
-const SETTINGS_STORAGE_KEY = 'termdock-settings';
+const SETTINGS_STORAGE_KEY = 'veymux-settings';
 
 export type NewSessionMode = 'shell' | 'tmux';
 

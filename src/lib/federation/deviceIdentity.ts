@@ -1,9 +1,11 @@
+import { waitForBrandMigration } from '../utils/brandMigration';
 import { createIdentity, importIdentity, exportIdentity, type Identity } from '../../server/federation/secureProtocol';
 let identityPromise: Promise<Identity> | undefined;
 export async function getIdentity(): Promise<Identity> {
   if (!identityPromise) identityPromise = (async () => {
+    await waitForBrandMigration();
     const database = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open('termdock-device-identity', 1);
+      const request = indexedDB.open('veymux-device-identity', 1);
       request.onupgradeneeded = () => request.result.createObjectStore('keys');
       request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
     });

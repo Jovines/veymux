@@ -12,7 +12,7 @@ const expected = 'KNOWN中文←→';
 // the client's locale-dependent terminal encoding).
 describe.skipIf(!supported)('tmux UTF-8 client output', () => {
   it.each(['C', 'utf8'])('preserves non-ASCII output with %s launcher locale', async (locale) => {
-    const socket = `td-utf8-${process.pid}-${Date.now()}-${locale}`;
+    const socket = `veymux-utf8-${process.pid}-${Date.now()}-${locale}`;
     const environment: NodeJS.ProcessEnv = { ...process.env, TERM: 'xterm-256color' };
     delete environment.TMUX; delete environment.TMUX_PANE;
     const utf8 = process.platform === 'darwin' ? 'en_US.UTF-8' : 'C.UTF-8';

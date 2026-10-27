@@ -11,7 +11,7 @@ describe('authoritative collaboration membership HTTP API', () => {
   let directory: string; let store: CollaborationStore; let server: Server; let url: string;
   let sessions: Array<{ sessionId: string; agent: { slug: string; displayName: string } | null }>;
   beforeEach(async () => {
-    directory = fs.mkdtempSync(path.join(os.tmpdir(), 'td-groups-'));
+    directory = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-groups-'));
     store = new CollaborationStore(path.join(directory, 'groups.json'));
     sessions = [{ sessionId: 'custom', agent: { slug: 'customagent-status', displayName: 'CustomAgent' } }, { sessionId: 'shell', agent: null }];
     const app = express(); app.use(express.json()); app.use(collaborationGroupRoutes({ store, sessions: () => sessions }));
@@ -96,7 +96,7 @@ describe('authoritative collaboration membership HTTP API', () => {
     const renamed = await save({ id: original.id, name: 'New', sessionIds: original.sessionIds,
       members: [{ sessionId: 'custom', name: '新名字' }], expectedUpdatedAt: original.updatedAt });
     expect(renamed).toMatchObject({ status: 400, body: { code: 'INVALID_GROUP' } });
-    expect((renamed as { body: { error: string } }).body.error).toContain('td collab rename');
+    expect((renamed as { body: { error: string } }).body.error).toContain('veymux collab rename');
     expect(store.getGroup(original.id)?.name).toBe('Original');
     store.remove(original.id);
   });

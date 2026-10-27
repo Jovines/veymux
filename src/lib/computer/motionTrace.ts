@@ -7,11 +7,11 @@ export interface ComputerMotionTrace {
 }
 
 /** Opt in for one browser session, then reopen the computer tab to collect.
- * sessionStorage['termdock:computer-motion-trace'] = '1'
+ * sessionStorage['veymux:computer-motion-trace'] = '1'
  * Disabled sessions create no observers, per-frame records, or uploads. */
 export function createComputerMotionTraceIfEnabled(): ComputerMotionTrace | undefined {
   try {
-    if (sessionStorage.getItem('termdock:computer-motion-trace') === '1') return createComputerMotionTrace();
+    if (sessionStorage.getItem('veymux:computer-motion-trace') === '1') return createComputerMotionTrace();
   } catch { /* Diagnostics remain off when storage is unavailable. */ }
   return undefined;
 }

@@ -38,7 +38,7 @@ interface Plan {
     lock: string;
 }
 async function install(plan: Plan) {
-    if (!Number.isSafeInteger(plan.parentPid) || plan.parentPid <= 1 || !path.isAbsolute(plan.root) || !path.basename(plan.root).startsWith('termdock-rust-update-') || path.basename(plan.target) !== 'Termdock.app' || plan.staged !== path.join(plan.root, 'Termdock.app') || plan.receipt !== path.join(plan.root, 'receipt.json') || plan.ready !== path.join(plan.root, 'ready.json'))
+    if (!Number.isSafeInteger(plan.parentPid) || plan.parentPid <= 1 || !path.isAbsolute(plan.root) || !path.basename(plan.root).startsWith('veymux-rust-update-') || path.basename(plan.target) !== 'Veymux.app' || plan.staged !== path.join(plan.root, 'Veymux.app') || plan.receipt !== path.join(plan.root, 'receipt.json') || plan.ready !== path.join(plan.root, 'ready.json'))
         throw Error('Invalid owned migration plan');
     // Copy onto the target volume before announcing readiness or asking the GUI
     // to quit. Permission/disk failures leave the running installation intact.
@@ -48,8 +48,8 @@ async function install(plan: Plan) {
     let sibling: string | undefined, rollback: string | undefined;
     let installed = false;
     try {
-        sibling = await fs.mkdtemp(path.join(path.dirname(plan.target), '.termdock-rust-update-'));
-        const staged = path.join(sibling, 'Termdock.app');
+        sibling = await fs.mkdtemp(path.join(path.dirname(plan.target), '.veymux-rust-update-'));
+        const staged = path.join(sibling, 'Veymux.app');
         rollback = path.join(sibling, 'previous.app');
         await execute('/usr/bin/ditto', [plan.staged, staged]);
         await execute('/usr/bin/codesign', ['--verify', '--deep', '--strict', staged]);

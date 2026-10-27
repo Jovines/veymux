@@ -8,7 +8,7 @@ describe('CollaborationStore', () => {
   let directory: string;
   let filePath: string;
   beforeEach(() => {
-    directory = fs.mkdtempSync(path.join(os.tmpdir(), 'termdock-collaboration-'));
+    directory = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-collaboration-'));
     filePath = path.join(directory, 'collaboration.json');
   });
   afterEach(() => fs.rmSync(directory, { recursive: true, force: true }));
@@ -203,7 +203,7 @@ describe('id prefix resolution against the live store', () => {
   let directory: string;
   let filePath: string;
   beforeEach(() => {
-    directory = fs.mkdtempSync(path.join(os.tmpdir(), 'termdock-collab-resolve-'));
+    directory = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-collab-resolve-'));
     filePath = path.join(directory, 'collaboration.json');
   });
   afterEach(() => fs.rmSync(directory, { recursive: true, force: true }));
@@ -247,7 +247,7 @@ describe('new ids are minted short and coexist with stored UUIDs', () => {
   let directory: string;
   let filePath: string;
   beforeEach(() => {
-    directory = fs.mkdtempSync(path.join(os.tmpdir(), 'termdock-collab-mint-'));
+    directory = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-collab-mint-'));
     filePath = path.join(directory, 'collaboration.json');
   });
   afterEach(() => fs.rmSync(directory, { recursive: true, force: true }));
@@ -323,7 +323,7 @@ describe('new ids are minted short and coexist with stored UUIDs', () => {
       expect(store.inbox(id)).toHaveLength(1);
       expect(store.inbox(id)[0]).toMatchObject({ fromSessionId: 'a', status: 'pending', instructions: first });
       expect(store.inbox(id)[0].content).toContain('群规已更新');
-      expect(store.inbox(id)[0].content).toContain(`td collab rules get ${group.id} --text`);
+      expect(store.inbox(id)[0].content).toContain(`veymux collab rules get ${group.id} --text`);
       expect(store.inbox(id)[0].content).toContain('无需回复');
     }
     const restored = new CollaborationStore(filePath);
@@ -358,7 +358,7 @@ describe('new ids are minted short and coexist with stored UUIDs', () => {
 
 describe('federation persistence', () => {
   it('deduplicates retried deliveries, advances receipts without changing content, and retains deletion across restarts', () => {
-    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'termdock-federation-'));
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-federation-'));
     try {
       const file = path.join(directory, 'groups.json');
       const store = new CollaborationStore(file);

@@ -30,7 +30,7 @@ function edit(name = '名称草稿', rules = '群规草稿') {
   fireEvent.change(nameInput(), { target: { value: name } });
   fireEvent.change(rulesInput(), { target: { value: rules } });
 }
-const draftKey = (group: CollaborationGroup) => `termdock-group-settings:${location.origin}:${group.id}`;
+const draftKey = (group: CollaborationGroup) => `veymux-group-settings:${location.origin}:${group.id}`;
 function failDraftStorage(method: 'setItem' | 'removeItem' | 'getItem', group: CollaborationGroup) {
   const original = Storage.prototype[method];
   return vi.spyOn(Storage.prototype, method).mockImplementation(function (this: Storage, key: string, value?: string) {
@@ -170,7 +170,7 @@ it('does not let Escape close a parent during a save and updates the cached draf
   expect(screen.getByRole('region', { name: '协作组设置' })).toBeTruthy();
   view.rerender(<Harness group={beta} />);
   finish({ group: { ...alpha, name: '名称草稿', updatedAt: 2 } });
-  await waitFor(() => expect(sessionStorage.getItem(`termdock-group-settings:${location.origin}:${alpha.id}`)).toContain('"updatedAt":2'));
+  await waitFor(() => expect(sessionStorage.getItem(`veymux-group-settings:${location.origin}:${alpha.id}`)).toContain('"updatedAt":2'));
   view.rerender(<Harness />); open();
   expect(nameInput().value).toBe('名称草稿'); expect(rulesInput().value).toBe('群规草稿');
   expect(within(screen.getByRole('region', { name: '协作组设置' })).getByRole('button', { name: '保存名称' }).hasAttribute('disabled')).toBe(true);

@@ -4,13 +4,13 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { TerminalFileDropStatus } from './TerminalFileDropStatus';
 afterEach(()=>{cleanup();document.body.replaceChildren();});
 it('shows reading, real upload progress, cancellation and completion at the target',async()=>{
- const zone=document.createElement('div');zone.dataset.termdockTerminalDropzone='one';document.body.append(zone);
+ const zone=document.createElement('div');zone.dataset.veymuxTerminalDropzone='one';document.body.append(zone);
  const target={current:zone};render(<TerminalFileDropStatus target={target}/>,{container:zone});
  zone.dataset.nativeFileDropState='preparing';zone.dataset.nativeFileDropCancellable='true';
  expect(await screen.findByText('正在读取文件…')).toBeTruthy();
  zone.dataset.nativeFileDropState='uploading';zone.dataset.nativeFileDropProgress='42';
  await waitFor(()=>expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('42'));
- const cancel=vi.fn();zone.addEventListener('termdock:file-drop-cancel',cancel);
+ const cancel=vi.fn();zone.addEventListener('veymux:file-drop-cancel',cancel);
  fireEvent.click(screen.getByRole('button',{name:'取消文件处理'}));expect(cancel).toHaveBeenCalledOnce();
  zone.dataset.nativeFileDropState='cancelled';delete zone.dataset.nativeFileDropCancellable;
  expect(await screen.findByText('已取消')).toBeTruthy();

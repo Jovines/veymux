@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../federation/browserIntegration', () => ({
   savedConnection: mocks.selected, currentSecureClient: mocks.active,
   openAuthorizedServiceClient: mocks.open, readPinnedCollaborationDescriptor: mocks.read,
-  SECURE_STATE_EVENT: 'termdock:secure-state',
+  SECURE_STATE_EVENT: 'veymux:secure-state',
 }));
 vi.mock('../services/serviceDirectory', () => ({ listServiceConnections: mocks.list, observeServiceConnections: mocks.observe }));
 
@@ -16,7 +16,7 @@ const a = { serviceId: 'A', origin: 'https://a.internal' };
 const b = { serviceId: 'B', origin: 'https://b.internal' };
 const bookmark = (node: typeof a) => ({ id: node.serviceId, targetPeerId: node.serviceId, url: node.origin, label: node.serviceId });
 beforeEach(() => { vi.useFakeTimers(); vi.clearAllMocks(); });
-afterEach(() => { window.dispatchEvent(new Event('pagehide')); delete window.termdockDesktop; vi.useRealTimers(); });
+afterEach(() => { window.dispatchEvent(new Event('pagehide')); delete window.veymuxDesktop; vi.useRealTimers(); });
 
 function fixture(onlyLocal = false) {
   const own = onlyLocal ? a : b;
@@ -30,7 +30,7 @@ function fixture(onlyLocal = false) {
   mocks.read.mockRejectedValue(new TypeError('This service window has no route to that origin'));
   mocks.open.mockRejectedValue(new Error('Other window has its own authorization'));
   const remember = vi.fn(async (node: typeof a) => { shared[node.serviceId] = node; });
-  Object.assign(window, { termdockDesktop: { platform: 'darwin', collaborationDescriptors: async () => shared, rememberCollaborationDescriptor: remember } });
+  Object.assign(window, { veymuxDesktop: { platform: 'darwin', collaborationDescriptors: async () => shared, rememberCollaborationDescriptor: remember } });
   const posts = () => fetch.mock.calls.filter(([, options]) => options?.method === 'POST');
   return { client, shared, remember, posts, changed: () => changed() };
 }
@@ -70,7 +70,7 @@ it('rejects metadata with a different pinned identity', async () => {
 });
 
 it('preserves encrypted discovery for clients without native public metadata support', async () => {
-  const f = fixture(); delete window.termdockDesktop;
+  const f = fixture(); delete window.veymuxDesktop;
   mocks.read.mockResolvedValue(a); installCollaborationEnrollment();
   await vi.advanceTimersByTimeAsync(100);
   expect(mocks.read).toHaveBeenCalledOnce();

@@ -175,7 +175,7 @@ describe('FederationAccess invitation flow', () => {
   });
 
   it('shows the current service once and separates device management from switching services', async () => {
-    localStorage.setItem('termdock.federation.connections.v1', JSON.stringify([{ url: 'https://c.example', targetPeerId: serviceId, serviceName: '工作电脑' }]));
+    localStorage.setItem('veymux.federation.connections.v1', JSON.stringify([{ url: 'https://c.example', targetPeerId: serviceId, serviceName: '工作电脑' }]));
     render(<FederationAccess paired currentServiceId={serviceId} currentServiceName="工作电脑" currentIdentity="this-phone" onConnect={() => {}} onClose={() => {}} grants={[
       { id: 'mine', subjectId: 'this-phone', scope: { kind: 'service' }, actions: ['service:*'] },
       { id: 'old', subjectId: 'test-old', label: '旧测试设备', scope: { kind: 'service' }, actions: ['session.view'], revokedAt: 1 },
@@ -254,7 +254,7 @@ describe('FederationAccess invitation flow', () => {
     fireEvent.click(await screen.findByRole('button', { name: '输入新的邀请链接' }));
     fireEvent.change(screen.getByRole('textbox', { name: '新的邀请链接' }), { target: { value: '不完整的链接' } });
     fireEvent.click(screen.getByRole('button', { name: '接受新邀请' }));
-    expect(await screen.findByText('请输入完整的 Termdock 邀请链接。')).toBeTruthy();
+    expect(await screen.findByText('请输入完整的 Veymux 邀请链接。')).toBeTruthy();
     expect(onConnect).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole('button', { name: '返回邀请' }));
     expect(screen.getByRole('heading', { name: '邀请已过期' })).toBeTruthy();
@@ -286,7 +286,7 @@ describe('FederationAccess invitation flow', () => {
     fireEvent.click(screen.getByRole('button', { name: '继续' }));
     await waitFor(() => expect(onConnect).toHaveBeenCalledWith({ targetPeerId: serviceId, pairingCode: code, url: 'https://c.example', serviceOrigin: 'https://c.example', serviceName: '工作电脑' }));
     await waitFor(() => expect(screen.getByRole('status').textContent).toContain('已连接'));
-    const saved = localStorage.getItem('termdock.federation.connections.v1');
+    const saved = localStorage.getItem('veymux.federation.connections.v1');
     expect(saved || '').not.toContain(code); expect(saved || '').not.toContain('pairingCode');
   });
   it('does not save failed invitations or echo errors containing secrets', async () => {
@@ -295,7 +295,7 @@ describe('FederationAccess invitation flow', () => {
     fireEvent.click(screen.getByRole('button', { name: '继续' }));
     await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('无法连接'));
     expect(screen.getByRole('alert').textContent).not.toContain(code);
-    expect(localStorage.getItem('termdock.federation.connections.v1')).toBeNull();
+    expect(localStorage.getItem('veymux.federation.connections.v1')).toBeNull();
   });
   it('generates read-only invitations with no device identity entry', async () => {
     const onCreateInvite = vi.fn().mockResolvedValue({ url: inviteUrl, expiresAt: Date.now() + 600000 });
@@ -306,7 +306,7 @@ describe('FederationAccess invitation flow', () => {
     fireEvent.click(screen.getByText('生成并复制链接'));
     await waitFor(() => expect(onCreateInvite).toHaveBeenCalledWith({ viewMode: 'chat', scope: { kind: 'service' }, actions: ['session.view'] }));
     await waitFor(() => expect(screen.getByText('复制邀请链接')).toBeTruthy());
-    expect(localStorage.getItem('termdock.federation.connections.v1')).toBeNull();
+    expect(localStorage.getItem('veymux.federation.connections.v1')).toBeNull();
   });
   it('selects actual named Sessions and keeps termination out of normal write access', async () => {
     const onCreateInvite = vi.fn().mockResolvedValue({ url: inviteUrl, expiresAt: Date.now() + 600000 });
@@ -338,7 +338,7 @@ describe('FederationAccess invitation flow', () => {
   });
   it('lets the inviter pick an accessible IP entry address for the invitation', async () => {
     const onCreateInvite = vi.fn().mockResolvedValue({ url: inviteUrl, expiresAt: Date.now() + 600000 });
-    render(<FederationAccess paired currentServiceOrigin="https://dv4d.termdock.local:9834" onConnect={() => {}} onClose={() => {}} onCreateInvite={onCreateInvite} inviteAddresses={[{ url: 'https://192.168.1.23:9834', label: 'Wi-Fi' }]} />);
+    render(<FederationAccess paired currentServiceOrigin="https://dv4d.veymux.local:9834" onConnect={() => {}} onClose={() => {}} onCreateInvite={onCreateInvite} inviteAddresses={[{ url: 'https://192.168.1.23:9834', label: 'Wi-Fi' }]} />);
     fireEvent.click(screen.getByText('邀请设备'));
 
     expect(screen.getByRole('combobox', { name: '接入地址' })).toBeTruthy();
@@ -350,12 +350,12 @@ describe('FederationAccess invitation flow', () => {
   it('defaults local-client invitations to the supplied IP while keeping mDNS available as an explicit choice', async () => {
     const onCreateInvite = vi.fn().mockResolvedValue({ url: inviteUrl, expiresAt: Date.now() + 600000 });
     render(<FederationAccess paired currentServiceOrigin="https://127.0.0.1:9834" onConnect={() => {}} onClose={() => {}} onCreateInvite={onCreateInvite} inviteAddresses={[
-      { url: 'https://dv4d.termdock.local:9834', label: '服务域名' },
+      { url: 'https://dv4d.veymux.local:9834', label: '服务域名' },
       { url: 'https://192.168.1.23:9834', label: 'Wi-Fi' },
     ]} />);
     fireEvent.click(screen.getByText('邀请设备'));
     expect((screen.getByLabelText('接入地址') as HTMLSelectElement).value).toBe('https://192.168.1.23:9834');
-    expect(screen.getByRole('option', { name: /dv4d.termdock.local/ })).toBeTruthy();
+    expect(screen.getByRole('option', { name: /dv4d.veymux.local/ })).toBeTruthy();
     allWhenEmpty();
     fireEvent.click(screen.getByText('生成并复制链接'));
     await waitFor(() => expect(onCreateInvite).toHaveBeenCalledWith(expect.objectContaining({ entryAddress: 'https://192.168.1.23:9834' })));

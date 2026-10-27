@@ -12,10 +12,10 @@ const listeners: EventListener[] = [];
 function receive(handler: (detail: any) => void) {
   const listener: EventListener = event => handler((event as CustomEvent).detail);
   listeners.push(listener);
-  window.addEventListener('termdock-insert-reference', listener);
+  window.addEventListener('veymux-insert-reference', listener);
 }
-function ack(nonce: string, ok: boolean) { window.dispatchEvent(new CustomEvent('termdock-insert-reference-ack', { detail: { nonce, ok } })); }
-afterEach(() => { cleanup(); listeners.splice(0).forEach(listener => window.removeEventListener('termdock-insert-reference', listener)); vi.useRealTimers(); });
+function ack(nonce: string, ok: boolean) { window.dispatchEvent(new CustomEvent('veymux-insert-reference-ack', { detail: { nonce, ok } })); }
+afterEach(() => { cleanup(); listeners.splice(0).forEach(listener => window.removeEventListener('veymux-insert-reference', listener)); vi.useRealTimers(); });
 
 describe('draft delivery through the component, nonce ACK and real sequence encoder', () => {
   it.each(['first\nsecond', 'first\rsecond', 'first\r\nsecond\n', 'first\n', 'first\n\x1b[201~second'])('inserts %j entirely inside bracketed paste, without a trailing submit', async draft => {

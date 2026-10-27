@@ -3,8 +3,8 @@ import {
   buildInteractiveColorEnvironment,
   buildTmuxColorEnvironmentCommands,
   ensureTmuxColorCapabilities,
-  TERMDOCK_TRUECOLOR_FEATURE_SLOT,
-  TERMDOCK_TRUECOLOR_OVERRIDE_SLOT,
+  VEYMUX_TRUECOLOR_FEATURE_SLOT,
+  VEYMUX_TRUECOLOR_OVERRIDE_SLOT,
 } from './terminalColorEnvironment.js';
 
 describe('interactive terminal color environment', () => {
@@ -18,8 +18,8 @@ describe('interactive terminal color environment', () => {
     expect(source).toEqual({ PATH: '/bin', NO_COLOR: '1', FORCE_COLOR: '0' });
   });
 
-  it('uses explicit Termdock force-color mode when requested', () => {
-    expect(buildInteractiveColorEnvironment({ NO_COLOR: '1', TERMDOCK_FORCE_COLOR: '1' }))
+  it('uses explicit Veymux force-color mode when requested', () => {
+    expect(buildInteractiveColorEnvironment({ NO_COLOR: '1', VEYMUX_FORCE_COLOR: '1' }))
       .toMatchObject({ COLORTERM: 'truecolor', FORCE_COLOR: '1' });
   });
 
@@ -36,7 +36,7 @@ describe('interactive terminal color environment', () => {
     }, 'wt-test', 'tmux-256color');
 
     expect(commands).toEqual([
-      ['set-option', '-s', TERMDOCK_TRUECOLOR_FEATURE_SLOT, 'xterm-256color:RGB'],
+      ['set-option', '-s', VEYMUX_TRUECOLOR_FEATURE_SLOT, 'xterm-256color:RGB'],
       ['set-option', '-t', 'wt-test', 'default-terminal', 'tmux-256color'],
       ['set-environment', '-t', 'wt-test', 'TERM', 'tmux-256color'],
     ]);
@@ -46,14 +46,14 @@ describe('interactive terminal color environment', () => {
     const commands: string[][] = [];
     await ensureTmuxColorCapabilities(async (args) => {
       commands.push(args);
-      if (args.includes(TERMDOCK_TRUECOLOR_FEATURE_SLOT)) {
+      if (args.includes(VEYMUX_TRUECOLOR_FEATURE_SLOT)) {
         throw new Error('unknown option: terminal-features');
       }
     });
 
     expect(commands).toEqual([
-      ['set-option', '-s', TERMDOCK_TRUECOLOR_FEATURE_SLOT, 'xterm-256color:RGB'],
-      ['set-option', '-s', TERMDOCK_TRUECOLOR_OVERRIDE_SLOT, 'xterm-256color:Tc'],
+      ['set-option', '-s', VEYMUX_TRUECOLOR_FEATURE_SLOT, 'xterm-256color:RGB'],
+      ['set-option', '-s', VEYMUX_TRUECOLOR_OVERRIDE_SLOT, 'xterm-256color:Tc'],
     ]);
   });
 });

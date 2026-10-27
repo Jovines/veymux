@@ -3,7 +3,7 @@ export const TOUCH_WORKSPACE_LIMIT = 3;
 export const DESKTOP_WORKSPACE_LIMIT = Infinity;
 export const MAX_FINITE_WORKSPACE_LIMIT = 10;
 // Shared by service documents; the secure prefix bypasses service-local scoping.
-export const WORKSPACE_LIMIT_KEY = 'termdock-secure-workspace-limit';
+export const WORKSPACE_LIMIT_KEY = 'veymux-secure-workspace-limit';
 
 export function isWorkspaceLimit(value: number): boolean {
   return value === Infinity || (Number.isInteger(value) && value >= 3 && value <= MAX_FINITE_WORKSPACE_LIMIT);

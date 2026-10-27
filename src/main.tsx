@@ -36,7 +36,7 @@ if (!new URLSearchParams(location.search).has('dag-playground') && !new URLSearc
 }
 
 try {
-  const storedTheme = JSON.parse(window.localStorage.getItem('termdock-color-theme') || 'null') as unknown;
+  const storedTheme = JSON.parse(window.localStorage.getItem('veymux-color-theme') || 'null') as unknown;
   if (storedTheme === 'dark' || storedTheme === 'light') {
     document.documentElement.dataset.theme = storedTheme;
     syncThemeColorMeta(storedTheme);

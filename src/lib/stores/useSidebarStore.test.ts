@@ -100,7 +100,7 @@ describe('useSidebarStore right tab persistence', () => {
   });
 
   it('does not reuse the legacy global tab cache for a fresh workspace', () => {
-    window.localStorage.setItem('termdock:right-sidebar:tab:v1', JSON.stringify('git'));
+    window.localStorage.setItem('veymux:right-sidebar:tab:v1', JSON.stringify('git'));
 
     useSidebarStore.getState().setRootPath('/workspace/fresh');
 
@@ -399,7 +399,7 @@ describe('useSidebarStore session-scoped right sidebar state', () => {
         '/workspace/shared': [{ path: '/workspace/shared/docs', kind: 'directory' }],
       },
     });
-    window.localStorage.setItem('termdock:right-sidebar:pinned-explorer-roots:v1', JSON.stringify({
+    window.localStorage.setItem('veymux:right-sidebar:pinned-explorer-roots:v1', JSON.stringify({
       '/workspace/local': [{ path: '/workspace/local/tmp', kind: 'directory' }],
     }));
     useSidebarStore.setState({ pinnedExplorerRootsHydrated: false });
@@ -410,7 +410,7 @@ describe('useSidebarStore session-scoped right sidebar state', () => {
       '/workspace/shared': [{ path: '/workspace/shared/docs', kind: 'directory' }],
     });
     expect(useSidebarStore.getState().pinnedExplorerRootsHydrated).toBe(true);
-    expect(window.localStorage.getItem('termdock:right-sidebar:pinned-explorer-roots:v1')).toBeNull();
+    expect(window.localStorage.getItem('veymux:right-sidebar:pinned-explorer-roots:v1')).toBeNull();
   });
 
   it('migrates legacy browser pins when the server has no pin list yet', async () => {
@@ -447,14 +447,14 @@ describe('useSidebarStore desktop sidebar visibility', () => {
   it('preserves an explicit collapsed choice', () => {
     useSidebarStore.getState().setDesktopSidebarOpen('left', false);
 
-    expect(window.localStorage.getItem('termdock:desktop-sidebar-open:v1:left')).toBe('0');
+    expect(window.localStorage.getItem('veymux:desktop-sidebar-open:v1:left')).toBe('0');
     expect(readDesktopSidebarOpen('left')).toBe(false);
   });
 
   it('preserves an explicit expanded choice', () => {
     useSidebarStore.getState().setDesktopSidebarOpen('left', true);
 
-    expect(window.localStorage.getItem('termdock:desktop-sidebar-open:v1:left')).toBe('1');
+    expect(window.localStorage.getItem('veymux:desktop-sidebar-open:v1:left')).toBe('1');
     expect(readDesktopSidebarOpen('left')).toBe(true);
   });
 });
@@ -473,7 +473,7 @@ describe('useSidebarStore right sidebar width', () => {
   });
 
   it('preserves a user-resized narrow width for responsive sidebar layout', () => {
-    window.localStorage.setItem('termdock-right-sidebar-width', '520');
+    window.localStorage.setItem('veymux-right-sidebar-width', '520');
     expect(readRightSidebarWidth()).toBe(520);
   });
 });
@@ -495,7 +495,7 @@ describe('useSidebarStore right sidebar layout preference', () => {
     useSidebarStore.getState().setRightSidebarLayoutPreference('narrow');
 
     expect(readRightSidebarLayoutPreference()).toBe('narrow');
-    expect(window.localStorage.getItem('termdock-right-sidebar-layout-preference')).toBe('narrow');
+    expect(window.localStorage.getItem('veymux-right-sidebar-layout-preference')).toBe('narrow');
   });
 
   it('only overrides the width breakpoint for pinned desktop sidebars', () => {
@@ -661,7 +661,7 @@ describe('useSidebarStore active git repository', () => {
 
     expect(useSidebarStore.getState().activeGitRepos).toEqual({ '/workspace/one': '/workspace/one/nested' });
     expect(useSidebarStore.getState().activeGitReposHydrated).toBe(true);
-    expect(JSON.parse(window.localStorage.getItem('termdock:right-sidebar:active-git-repo:v2') ?? '{}'))
+    expect(JSON.parse(window.localStorage.getItem('veymux:right-sidebar:active-git-repo:v2') ?? '{}'))
       .toEqual({ '/workspace/one': '/workspace/one/nested' });
     expect(updateSettingsMock).not.toHaveBeenCalled();
   });
@@ -705,7 +705,7 @@ describe('useSidebarStore active git repository', () => {
       activeGitRepo: { contextKey: '/workspace/four', repoRoot: null },
     });
     expect(useSidebarStore.getState().activeGitRepos).toEqual({});
-    expect(JSON.parse(window.localStorage.getItem('termdock:right-sidebar:active-git-repo:v2') ?? '{}')).toEqual({});
+    expect(JSON.parse(window.localStorage.getItem('veymux:right-sidebar:active-git-repo:v2') ?? '{}')).toEqual({});
   });
 
   it('does not write when the selection is unchanged', () => {

@@ -18,7 +18,7 @@ export function resolveCollaborationSpawnMode(input: {
 /**
  * Shell command line that boots a collaboration member agent. Spawned agents
  * have no human at the keyboard, yet their delivery shells instruct them to
- * run `td collab …` — without pre-authorization every such call stops at the
+ * run `veymux collab …` — without pre-authorization every such call stops at the
  * agent's permission dialog and the collaboration loop stalls. Agents whose
  * CLI flags are known get a scoped allowlist (collab surface only; the server
  * guards every collab action anyway). Unsupported agents launch plain — the
@@ -27,7 +27,7 @@ export function resolveCollaborationSpawnMode(input: {
 export function buildCollaborationSpawnCommand(input: { slug: string; command: string }): string {
   const { slug, command } = input;
   if (slug === 'claude') {
-    return `${command} --allowedTools "Bash(td collab *)"`;
+    return `${command} --allowedTools "Bash(veymux collab *)"`;
   }
   return command;
 }

@@ -55,12 +55,12 @@ test('a working tmux never starts an installer', () => {
 });
 
 test('resolves executable user directories even with a restricted PATH', t => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'termdock tool paths '));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux tool paths '));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   fs.mkdirSync(path.join(root, '.local/bin'), { recursive: true });
-  const tool = path.join(root, '.local/bin/unique-termdock-tool');
+  const tool = path.join(root, '.local/bin/unique-veymux-tool');
   fs.writeFileSync(tool, '#!/bin/sh\n', { mode: 0o700 });
-  assert.equal(findExecutable('unique-termdock-tool', { env: { PATH: '/missing' }, home: root }), tool);
+  assert.equal(findExecutable('unique-veymux-tool', { env: { PATH: '/missing' }, home: root }), tool);
   fs.chmodSync(tool, 0o600);
-  assert.equal(findExecutable('unique-termdock-tool', { env: { PATH: '/missing' }, home: root }), null);
+  assert.equal(findExecutable('unique-veymux-tool', { env: { PATH: '/missing' }, home: root }), null);
 });

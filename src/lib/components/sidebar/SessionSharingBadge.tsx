@@ -15,7 +15,7 @@ export function useSessionSharingStatus(enabled: boolean) {
       setItems(previous => JSON.stringify(previous) === JSON.stringify(next) ? previous : next);
     } catch { /* Unavailable metadata never grants access or presents an invented count. */ }
   }, []);
-  useEffect(() => { if (!enabled) return; void refresh(); const timer = setInterval(() => void refresh(), 5000); window.addEventListener('termdock:sharing-changed', refresh); window.addEventListener('focus', refresh); return () => { clearInterval(timer); window.removeEventListener('termdock:sharing-changed', refresh); window.removeEventListener('focus', refresh); }; }, [enabled, refresh]);
+  useEffect(() => { if (!enabled) return; void refresh(); const timer = setInterval(() => void refresh(), 5000); window.addEventListener('veymux:sharing-changed', refresh); window.addEventListener('focus', refresh); return () => { clearInterval(timer); window.removeEventListener('veymux:sharing-changed', refresh); window.removeEventListener('focus', refresh); }; }, [enabled, refresh]);
   return { items, refresh };
 }
 export function SessionSharingBadge({ status, onChanged }: { status?: SessionSharingStatus; onChanged: () => void }) {

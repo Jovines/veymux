@@ -13,7 +13,7 @@ import { TerminalViewport, type TerminalController } from './TerminalViewport';
 import { TerminalView } from '../views/TerminalView';
 import { getActiveKeyboardLayer, useKeyboardLayer, useKeyboardLayerOpen } from '../../hooks/useKeyboardLayer';
 
-vi.mock('../../terminal/factory', () => ({ createTermdockAPI: () => ({}) }));
+vi.mock('../../terminal/factory', () => ({ createVeymuxAPI: () => ({}) }));
 
 declare module 'vitest/browser' {
   interface BrowserCommands {

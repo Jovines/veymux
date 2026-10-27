@@ -361,7 +361,7 @@ export default function ComputerControlView({ active = true }: { active?: boolea
     else { releaseTouchpad.current(); setPanel(value => value === next ? null : next); }
   };
   const keyboardCommand = (keys: ComputerKey[]) => {
-    keyboardInputRef.current?.dispatchEvent(new Event('termdock:computer-input-reset'));
+    keyboardInputRef.current?.dispatchEvent(new Event('veymux:computer-input-reset'));
     const combined = [...keyboardModifiers, ...keys].filter(([key], index, all) => all.findIndex(([other]) => other === key) === index);
     if (combined.some(([key]) => key === shortcuts.copy[0][0]) && combined.some(([key]) => key === 0x63 || key === 0x78)) screen.dispatchEvent(new Event(COMPUTER_COPY_REQUEST_EVENT));
     setKeyboardModifiers([]); sendKeys(combined);
@@ -530,7 +530,7 @@ export default function ComputerControlView({ active = true }: { active?: boolea
         </div>
       </div>}
       <div ref={mountRef} data-sidebar-gesture-ignore="" className={`relative z-10 min-h-0 flex-1 overflow-hidden bg-[var(--chrome-bg)] ${showDesktop ? '' : 'hidden'}`}
-        onPointerDownCapture={() => keyboardInputRef.current?.dispatchEvent(new Event('termdock:computer-input-reset'))}
+        onPointerDownCapture={() => keyboardInputRef.current?.dispatchEvent(new Event('veymux:computer-input-reset'))}
         onMouseDownCapture={event => { if (panel === 'keyboard') event.preventDefault(); }}
         style={{ touchAction: connected ? 'none' : undefined }} aria-label={t('computer.remoteTitle')}>
         {!connected && showDesktop && <div role="status" className="absolute inset-0 z-20 flex items-center justify-center gap-2 bg-surface text-xs text-muted-foreground"><Loader2 size={16} className="animate-spin" />{t('computer.connecting')}</div>}

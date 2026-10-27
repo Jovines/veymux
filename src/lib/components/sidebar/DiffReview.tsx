@@ -743,7 +743,7 @@ export function DiffReview({
     <div
       data-diff-stream-content
       data-diff-stream-canvas
-      className="termdock-diff-stream relative overflow-clip bg-surface will-change-transform"
+      className="veymux-diff-stream relative overflow-clip bg-surface will-change-transform"
       // Leave enough tail room to top-align even the last short file. Without
       // it native scroll clamping lands on an earlier file and steals priority.
       style={{ height: Math.max(
@@ -771,7 +771,7 @@ export function DiffReview({
   const detail = (
     <div
       ref={detailScrollerRef}
-      className="termdock-diff-stream termdock-diff-stream-scroller h-full max-h-full min-h-0 overflow-y-auto overscroll-contain bg-surface [overflow-anchor:none]"
+      className="veymux-diff-stream veymux-diff-stream-scroller h-full max-h-full min-h-0 overflow-y-auto overscroll-contain bg-surface [overflow-anchor:none]"
       onScroll={(event) => handleDetailScroll(event.currentTarget)}
     >
       {detailBody}

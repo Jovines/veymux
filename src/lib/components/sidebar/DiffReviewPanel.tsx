@@ -65,7 +65,7 @@ interface UniversalDiffReviewProps {
 
 type ViewMode = 'list' | 'tree';
 type ReviewMode = ViewMode | 'ai';
-const DIFF_CHANGE_LIST_MODE_STORAGE_KEY = 'termdock:right-sidebar:diff-change-list-mode:v1';
+const DIFF_CHANGE_LIST_MODE_STORAGE_KEY = 'veymux:right-sidebar:diff-change-list-mode:v1';
 
 function isViewMode(value: unknown): value is ViewMode {
   return value === 'list' || value === 'tree';
@@ -510,7 +510,7 @@ export function UniversalDiffReview({
       renderMobileDetailHeader={mobileDetailHeader}
       externalSwiperRef={externalSwiperRef}
       onMobileSlideChange={onMobileSlideChange}
-      detailContainerClassName={mobile ? 'termdock-native-select termdock-diff-stream-scroller min-h-0' : undefined}
+      detailContainerClassName={mobile ? 'veymux-native-select veymux-diff-stream-scroller min-h-0' : undefined}
       initialDetailScrollTop={initialDetailScrollTop}
       scrollToKey={scrollToKey ?? navigationScrollRequest.key}
       scrollToKeyNonce={scrollToKey === undefined || scrollToKey === null ? navigationScrollRequest.nonce : scrollToKeyNonce}

@@ -69,16 +69,16 @@ it('times out without a controller, revokes the intent, and ignores a late ACK',
   vi.useFakeTimers(); render(<Layer />);
   let detail: ReturnType<typeof createOwnedTerminalPasteRequest> = null;
   const listener = (event: Event) => { detail = (event as CustomEvent).detail; };
-  window.addEventListener('termdock-insert-reference', listener);
+  window.addEventListener('veymux-insert-reference', listener);
   try {
     const result = requestReferenceInsertion('one\ntwo', 'alpha', () => true, screen.getByRole('button', { name: 'Parent action' }));
     expect(authorizeOwnedTerminalPaste(detail!, 'alpha')).not.toBeNull();
     await act(() => vi.advanceTimersByTimeAsync(1500));
     await expect(result).resolves.toBe(false);
     expect(authorizeOwnedTerminalPaste(detail!, 'alpha')).toBeNull();
-    window.dispatchEvent(new CustomEvent('termdock-insert-reference-ack', { detail: { nonce: detail!.nonce, ok: true } }));
+    window.dispatchEvent(new CustomEvent('veymux-insert-reference-ack', { detail: { nonce: detail!.nonce, ok: true } }));
     await expect(result).resolves.toBe(false);
-  } finally { window.removeEventListener('termdock-insert-reference', listener); }
+  } finally { window.removeEventListener('veymux-insert-reference', listener); }
 });
 
 it('never downgrades a detached explicit source to an unowned background request', async () => {

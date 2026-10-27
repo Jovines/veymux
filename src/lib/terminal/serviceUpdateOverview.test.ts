@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { summarizeServiceUpdates } from './serviceUpdateOverview';
-import type { TermdockUpdateState } from './api';
+import type { VeymuxUpdateState } from './api';
 import type { ServiceUpdatePlan } from './serviceUpdatePlan';
 
 const plan: ServiceUpdatePlan = { targetId: 'work', interfaceId: 'linux', relayId: 'linux', nodes: [
   { intent: { targetPeerId: 'work', url: 'https://work.example' }, label: '工作电脑', role: 'target' },
   { intent: { targetPeerId: 'linux', url: 'https://linux.example' }, label: 'Linux', role: 'relay' },
 ] };
-const state = (currentVersion: string, status: TermdockUpdateState['status'] = 'current', latestVersion = currentVersion): TermdockUpdateState => ({ currentVersion, latestVersion, status, checkedAt: 1, source: 'official', error: null });
-const overview = (work = state('1.0.1'), linux: TermdockUpdateState | undefined = state('1.0.1'), retry = false) => summarizeServiceUpdates(plan, { work: { state: work }, linux: { state: linux } }, true, retry);
+const state = (currentVersion: string, status: VeymuxUpdateState['status'] = 'current', latestVersion = currentVersion): VeymuxUpdateState => ({ currentVersion, latestVersion, status, checkedAt: 1, source: 'official', error: null });
+const overview = (work = state('1.0.1'), linux: VeymuxUpdateState | undefined = state('1.0.1'), retry = false) => summarizeServiceUpdates(plan, { work: { state: work }, linux: { state: linux } }, true, retry);
 
 describe('service updates from the user perspective', () => {
   it('does not invent an update just because another service provides the interface', () => {

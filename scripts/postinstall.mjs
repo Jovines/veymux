@@ -10,6 +10,7 @@ import path from 'path';
 import { fileURLToPath } from 'node:url';
 
 const require_ = createRequire(import.meta.url);
+require_('./migrate-user-data.cjs').migrateUserData();
 const pkgRoot = fileURLToPath(new URL('..', import.meta.url));
 
 const { checkTmux, probeNodePty, clearPtyModuleCache } = require_('./install-utils.cjs');
@@ -67,10 +68,10 @@ if (testPty()) {
 console.log('\n=== Checking tmux ===');
 const tmux = checkTmux();
 if (tmux.ok) console.log(`  ✓ ${tmux.version}${tmux.installed ? ' (just installed)' : ''}`);
-else console.log(`  ⚠ ${tmux.error}\n  Shell mode will be used; Termdock retries on the next start.`);
+else console.log(`  ⚠ ${tmux.error}\n  Shell mode will be used; Veymux retries on the next start.`);
 
 // Diagnostic marker only: CLI revalidates dependencies even after installation.
-const markerDir = path.join(os.homedir(), '.termdock');
+const markerDir = path.join(os.homedir(), '.veymux');
 const markerFile = path.join(markerDir, '.boot-check-ok');
 if (tmux.ok) {
   try {
@@ -85,7 +86,7 @@ if (tmux.ok) {
   } catch { /* non-critical */ }
 } else {
   console.log('  ℹ Boot check marker not written (some checks failed).');
-  console.log('  Termdock will re-check on first CLI start.');
+  console.log('  Veymux will re-check on first CLI start.');
 }
 
-console.log('\n✓ Termdock postinstall complete\n');
+console.log('\n✓ Veymux postinstall complete\n');

@@ -137,7 +137,7 @@ async function reportUpdateError(error: unknown): Promise<void> {
   await showMessageBox({
     type: 'error',
     title: installing ? '桌面版更新未完成' : '检查桌面版更新失败',
-    message: installing ? 'Termdock Desktop 未能退出并安装更新' : '暂时无法检查 Termdock Desktop 更新',
+    message: installing ? 'Veymux Desktop 未能退出并安装更新' : '暂时无法检查 Veymux Desktop 更新',
     detail: message,
   }).catch((dialogError) => console.error('[desktop-updater] error dialog failed', dialogError));
 }
@@ -158,7 +158,7 @@ function configureUpdaterEvents(): void {
     void showMessageBox({
       type: 'info',
       title: '发现新的桌面版本',
-      message: 'Termdock Desktop 正在后台下载更新',
+      message: 'Veymux Desktop 正在后台下载更新',
       detail: '下载完成后可以在设置中重启安装，也可以使用随后出现的系统提示。',
     });
   });
@@ -184,7 +184,7 @@ function configureUpdaterEvents(): void {
       const notes = typeof releaseNotes === 'string' ? releaseNotes.trim() : '';
       void showMessageBox({
         type: 'info',
-        title: 'Termdock Desktop 更新已下载',
+        title: 'Veymux Desktop 更新已下载',
         message: `${releaseName || '新版本'} 已准备好安装`,
         detail: notes ? `${notes}\n\n重启后会自动安装更新。` : '重启后会自动安装更新。',
         buttons: ['重启并安装', '稍后'],
@@ -215,10 +215,10 @@ function reportCurrentVersion(): DesktopAppUpdateState {
   if (requiredMacOS) minimumOSDialogShown = true;
   void showMessageBox({
     type: 'info',
-    title: requiredMacOS ? '新版 Termdock 需要升级 macOS' : '桌面版已是最新版本',
+    title: requiredMacOS ? '新版 Veymux 需要升级 macOS' : '桌面版已是最新版本',
     message: requiredMacOS
-      ? `新版 Termdock 需要 macOS ${requiredMacOS} 或更新版本。当前客户端可以继续使用；升级系统后再检查更新。`
-      : `当前 Termdock Desktop ${app.getVersion()} 已是最新版本。`,
+      ? `新版 Veymux 需要 macOS ${requiredMacOS} 或更新版本。当前客户端可以继续使用；升级系统后再检查更新。`
+      : `当前 Veymux Desktop ${app.getVersion()} 已是最新版本。`,
   });
   return state;
 }
@@ -249,7 +249,7 @@ export async function checkForDesktopUpdates(options: {
       await showMessageBox({
         type: 'info',
         title: '开发版本不检查桌面更新',
-        message: '桌面版更新只在签名安装的 Termdock.app 中启用。',
+        message: '桌面版更新只在签名安装的 Veymux.app 中启用。',
       });
     }
     return state;
@@ -309,7 +309,7 @@ export async function checkForDesktopUpdates(options: {
           finishPendingCheck(publishUpdateState({status:'ready',checkedAt:Date.now(),error:null}));
           nativeCheckDialogPending = false;
           if (showMessageBox) void showMessageBox({
-            type:'info', title:'迁移到 Termdock Rust 正式版', message:`Termdock ${metadata.version} 已下载并通过签名与公证校验`,
+            type:'info', title:'迁移到 Veymux Rust 正式版', message:`Veymux ${metadata.version} 已下载并通过签名与公证校验`,
             detail:'将备份当前应用、安装 Rust 正式版并重新打开。连接与偏好会迁移；服务和终端会话继续运行。',
             buttons:['退出并安装正式版','稍后'],defaultId:0,cancelId:1,
           }).then(answer=>{if(answer.response===0&&updateState.status==='ready')installDownloadedDesktopUpdate();})

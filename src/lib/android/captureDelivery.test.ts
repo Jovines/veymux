@@ -7,12 +7,12 @@ it('waits for the matching terminal acknowledgement, reports negative acknowledg
     const detail = (event as CustomEvent).detail;
     expect(detail.sessionId).toBe('target');
     expect(detail.paste).toBe(true);
-    window.dispatchEvent(new CustomEvent('termdock-insert-reference-ack', { detail: { nonce: 'unrelated', ok: true } }));
-    window.dispatchEvent(new CustomEvent('termdock-insert-reference-ack', { detail: { nonce: detail.nonce, ok: false } }));
+    window.dispatchEvent(new CustomEvent('veymux-insert-reference-ack', { detail: { nonce: 'unrelated', ok: true } }));
+    window.dispatchEvent(new CustomEvent('veymux-insert-reference-ack', { detail: { nonce: detail.nonce, ok: false } }));
   };
-  window.addEventListener('termdock-insert-reference', receive);
+  window.addEventListener('veymux-insert-reference', receive);
   try { await expect(insertAndroidText('text', 'target')).rejects.toThrow('尚未插入'); }
-  finally { window.removeEventListener('termdock-insert-reference', receive); }
+  finally { window.removeEventListener('veymux-insert-reference', receive); }
 });
 it('does not claim successful delivery when the terminal is absent', async () => {
   vi.useFakeTimers();

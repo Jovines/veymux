@@ -20,7 +20,7 @@ function signPackagedApp(buildPath, _electronVersion, platform, _arch, callback)
     if (platform === 'darwin') {
       const appPath = buildPath.endsWith('.app')
         ? buildPath
-        : path.join(buildPath, 'Termdock.app');
+        : path.join(buildPath, 'Veymux.app');
       const args = ['--force', '--deep', '--sign', signingIdentity];
       if (signingIdentity === '-') args.push('--timestamp=none');
       else args.push('--options', 'runtime', '--timestamp');
@@ -38,23 +38,23 @@ function signPackagedApp(buildPath, _electronVersion, platform, _arch, callback)
 
 module.exports = {
   packagerConfig: {
-    name: 'Termdock',
-    executableName: 'Termdock',
-    appBundleId: 'com.jovines.termdock',
+    name: 'Veymux',
+    executableName: 'Veymux',
+    appBundleId: 'com.jovines.veymux',
     appCategoryType: 'public.app-category.developer-tools',
-    icon: path.resolve(__dirname, 'desktop/assets/Termdock.icns'),
+    icon: path.resolve(__dirname, 'desktop/assets/Veymux.icns'),
     extendInfo: {
       LSMinimumSystemVersion: macosDeploymentTarget,
       NSUserNotificationAlertStyle: 'banner',
       NSLocalNetworkUsageDescription:
-        'Termdock 需要访问本地网络，以连接你在本机或局域网其他设备上运行的 Termdock 服务。',
+        'Veymux 需要访问本地网络，以连接你在本机或局域网其他设备上运行的 Veymux 服务。',
       NSAppTransportSecurity: {
         NSAllowsLocalNetworking: true,
       },
     },
     extendHelperInfo: {
       NSLocalNetworkUsageDescription:
-        'Termdock 需要访问本地网络，以连接你在本机或局域网其他设备上运行的 Termdock 服务。',
+        'Veymux 需要访问本地网络，以连接你在本机或局域网其他设备上运行的 Veymux 服务。',
       NSAppTransportSecurity: {
         NSAllowsLocalNetworking: true,
       },
@@ -104,7 +104,7 @@ module.exports = {
     {
       name: '@electron-forge/maker-dmg',
       config: {
-        name: 'Termdock',
+        name: 'Veymux',
         format: 'ULFO',
       },
     },

@@ -11,8 +11,8 @@ import { TmuxPaneOutputObserver } from '../utils/tmuxPaneOutput.js';
 const exec = promisify(execFile);
 
 it.skipIf(process.platform === 'win32').each([{ echo: true, placeholder: false }, { echo: true, placeholder: true }, { echo: false, placeholder: false }, { echo: false, placeholder: true }])('checks a real tmux editor (echo=$echo, placeholder=$placeholder) without submitting or falsely starting processing', async ({ echo, placeholder }) => {
-  const dir = await mkdtemp(join(tmpdir(), 'td-readiness-'));
-  const socket = `td-readiness-${process.pid}-${Date.now()}-${Number(echo)}`;
+  const dir = await mkdtemp(join(tmpdir(), 'veymux-readiness-'));
+  const socket = `veymux-readiness-${process.pid}-${Date.now()}-${Number(echo)}`;
   const run = async (args: string[]) => (await exec('tmux', ['-L', socket, ...args], { timeout: 5000 })).stdout;
   const stdin = (args: string[], text: string) => new Promise<string>((resolve, reject) => {
     const child = execFile('tmux', ['-L', socket, ...args], { timeout: 5000 }, (error, stdout) => error ? reject(error) : resolve(stdout)); child.stdin!.end(text);
@@ -68,7 +68,7 @@ while True:
       await new Promise(resolve => setTimeout(resolve, 100));
       expect((await readFile(log, 'utf8')).match(/\r/g)).toHaveLength(1);
     }
-    expect(await run(['list-buffers'])).not.toContain('termdock-input-check-');
+    expect(await run(['list-buffers'])).not.toContain('veymux-input-check-');
   } finally {
     observer.dispose(); activity.dispose();
     await run(['kill-server']).catch(() => {}); await rm(dir, { recursive: true, force: true });

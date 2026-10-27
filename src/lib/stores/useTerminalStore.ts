@@ -11,7 +11,7 @@ import {
 import { getStoredPwaAiNotificationsEnabled, showPwaNotification } from '../utils/pwaNotifications';
 
 function getStoredLocale(): string {
-  try { return localStorage.getItem('termdock:locale') || 'en'; } catch { return 'en'; }
+  try { return localStorage.getItem('veymux:locale') || 'en'; } catch { return 'en'; }
 }
 
 function getAgentNotificationText(locale: string, agentName: string) {
@@ -142,7 +142,7 @@ function createEmptySessionState(sessionId: string): TerminalSessionState {
 // Shell-title localStorage cache: persists the last-known OSC 2 title per session
 // so that on page refresh the sidebar shows the real title immediately instead of
 // the default session name, before the WebSocket reconnects and delivers the live title.
-const SHELL_TITLE_CACHE_KEY = 'termdock-shell-titles-v1';
+const SHELL_TITLE_CACHE_KEY = 'veymux-shell-titles-v1';
 
 function readCachedShellTitles(): Record<string, string> {
   if (typeof window === 'undefined') return {};
@@ -184,7 +184,7 @@ function removeCachedShellTitle(sessionId: string): void {
 
 // Agent identity localStorage cache: persists the last-known agent identity per
 // session so the sidebar icon (AgentBrandAvatar) renders immediately on page refresh.
-const AGENT_CACHE_KEY = 'termdock-agent-cache-v1';
+const AGENT_CACHE_KEY = 'veymux-agent-cache-v1';
 
 function readCachedAgents(): Record<string, import('../terminal/types').AgentIdentity> {
   if (typeof window === 'undefined') return {};

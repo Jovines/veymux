@@ -23,7 +23,7 @@ let root: Root | undefined;
 afterEach(() => { root?.unmount(); root = undefined; clearChatSnapshots(); sessionStorage.clear(); vi.unstubAllGlobals(); document.body.replaceChildren(); fixtures.directoryFailure = false; });
 const composer = () => document.querySelector('[data-chat-composer] [role="textbox"]') as HTMLElement;
 async function mount() {
-  localStorage.setItem('termdock:locale', 'zh');
+  localStorage.setItem('veymux:locale', 'zh');
   const messages: ChatMessage[] = [], posts: string[] = [];
   let failure = true;
   vi.stubGlobal('fetch', vi.fn(async (_url, init?: RequestInit) => {

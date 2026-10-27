@@ -23,21 +23,21 @@ describe('terminal clipboard video', () => {
   });
 
   it.each([
-    '无法读取剪贴板文件或视频：execution error: Error: TERMDOCK_CLIPBOARD_VIDEO_ERROR: 复制来源未提供可读取的视频数据 (-2700)',
+    '无法读取剪贴板文件或视频：execution error: Error: VEYMUX_CLIPBOARD_VIDEO_ERROR: 复制来源未提供可读取的视频数据 (-2700)',
     'Error invoking remote method: script source; execution error: Error: 无法读取剪贴板视频 (-2700)',
   ])('preserves recognized native video failures for the paste handler: %s', async message => {
-    vi.stubGlobal('termdockDesktop', { readClipboardFiles: vi.fn().mockRejectedValue(new Error(message)) });
+    vi.stubGlobal('veymuxDesktop', { readClipboardFiles: vi.fn().mockRejectedValue(new Error(message)) });
     await expect(readTerminalClipboardFiles()).rejects.toBeInstanceOf(TerminalClipboardVideoError);
   });
 
   it('keeps a legacy framework failure eligible for text and image fallback', async () => {
     const error = new Error("source: throw new Error('无法读取剪贴板视频'); execution error: Error: nothing found to import (-2700)");
-    vi.stubGlobal('termdockDesktop', { readClipboardFiles: vi.fn().mockRejectedValue(error) });
+    vi.stubGlobal('veymuxDesktop', { readClipboardFiles: vi.fn().mockRejectedValue(error) });
     await expect(readTerminalClipboardFiles()).rejects.toBe(error);
   });
 
   it('rejects empty movie data returned by an older native reader', async () => {
-    vi.stubGlobal('termdockDesktop', { readClipboardFiles: vi.fn().mockResolvedValue([
+    vi.stubGlobal('veymuxDesktop', { readClipboardFiles: vi.fn().mockResolvedValue([
       { name: 'empty.mp4', type: 'video/mp4', bytes: new ArrayBuffer(0) },
     ]) });
     await expect(readTerminalClipboardFiles()).rejects.toBeInstanceOf(TerminalClipboardVideoError);
@@ -46,14 +46,14 @@ describe('terminal clipboard video', () => {
   it('passes the actual target peer to native verification when reusing a local path', async () => {
     saveSelectedTarget({ url: 'http://localhost:9834', targetPeerId: 'actual-target-peer' });
     const read = vi.fn().mockResolvedValue([{ name: 'movie.mp4', path: '/original/movie.mp4' }]);
-    vi.stubGlobal('termdockDesktop', { readClipboardFiles: read });
+    vi.stubGlobal('veymuxDesktop', { readClipboardFiles: read });
     await expect(readTerminalClipboardFiles()).resolves.toEqual({ files: [], paths: ['/original/movie.mp4'] });
     expect(read).toHaveBeenCalledWith({ localServiceId: 'actual-target-peer' });
   });
 
   it('does not insert a file after the user switches target during native reading', async () => {
     saveSelectedTarget({ url: 'http://localhost:9834', targetPeerId: 'first-peer' });
-    vi.stubGlobal('termdockDesktop', { readClipboardFiles: vi.fn(async () => {
+    vi.stubGlobal('veymuxDesktop', { readClipboardFiles: vi.fn(async () => {
       saveSelectedTarget({ url: 'http://remote:9834', targetPeerId: 'second-peer' });
       return [{ name: 'movie.mp4', path: '/original/movie.mp4' }];
     }) });
@@ -67,7 +67,7 @@ describe('terminal clipboard image', () => {
     const nativeRead = vi.fn().mockResolvedValue(png);
     const legacy = vi.fn();
     const browserRead = vi.fn().mockRejectedValue(new Error('Clipboard permission denied'));
-    vi.stubGlobal('termdockDesktop', { readClipboardImage: nativeRead, pasteClipboardImage: legacy });
+    vi.stubGlobal('veymuxDesktop', { readClipboardImage: nativeRead, pasteClipboardImage: legacy });
     const image = await readTerminalClipboardImage({ read: browserRead });
     expect(image?.size).toBe(4);
     expect(image?.type).toBe('image/png');
@@ -77,7 +77,7 @@ describe('terminal clipboard image', () => {
   });
 
   it('leaves native text clipboards alone without requesting browser image access', async () => {
-    vi.stubGlobal('termdockDesktop', { readClipboardImage: vi.fn().mockResolvedValue(null) });
+    vi.stubGlobal('veymuxDesktop', { readClipboardImage: vi.fn().mockResolvedValue(null) });
     const read = vi.fn();
     await expect(readTerminalClipboardImage({ read })).resolves.toBeNull();
     expect(read).not.toHaveBeenCalled();
@@ -85,7 +85,7 @@ describe('terminal clipboard image', () => {
 
   it('surfaces native clipboard failures without invoking the legacy uploader', async () => {
     const legacy = vi.fn();
-    vi.stubGlobal('termdockDesktop', {
+    vi.stubGlobal('veymuxDesktop', {
       readClipboardImage: vi.fn().mockRejectedValue(new Error('Native clipboard unavailable')),
       pasteClipboardImage: legacy,
     });
@@ -95,7 +95,7 @@ describe('terminal clipboard image', () => {
 
   it('reads image bytes and uploads through renderer encrypted fetch, never the native desktop uploader', async () => {
     const legacy = vi.fn(() => { throw new Error('Unencrypted preload request'); });
-    vi.stubGlobal('termdockDesktop', { pasteClipboardImage: legacy });
+    vi.stubGlobal('veymuxDesktop', { pasteClipboardImage: legacy });
     const blob = new Blob(['image bytes'], { type: 'image/png' });
     const image = await readTerminalClipboardImage({ read: vi.fn().mockResolvedValue([
       { types: ['text/html', 'image/png'], getType: vi.fn().mockResolvedValue(blob) },
@@ -111,7 +111,7 @@ describe('terminal clipboard image', () => {
     expect(image?.size).toBe(blob.size);
     await expect(uploadTerminalClipboardImage(image!)).resolves.toBe('/tmp/collision-safe.png');
     const uploaded = (requests[0].body as FormData).get('files') as File;
-    expect(uploaded.name).toMatch(/^termdock-clipboard-.*\.png$/);
+    expect(uploaded.name).toMatch(/^veymux-clipboard-.*\.png$/);
     expect(uploaded.size).toBe(image?.size);
     expect(uploaded.type).toBe('image/png');
     await uploadTerminalClipboardImage(image!);

@@ -4,7 +4,7 @@
  * Keep those nodes selectable while the existing button/nonselectable rules
  * in index.css continue to protect controls and gestures.
  */
-.termdock-native-select :where(
+.veymux-native-select :where(
   div,
   a,
   strong,
@@ -22,7 +22,7 @@
   user-select: text;
 }
 
-.termdock-native-select :where(
+.veymux-native-select :where(
   button,
   button *,
   svg,
@@ -41,7 +41,7 @@
    whole rendered block. Selection uses the primary accent (same family as
    the Insert pill) so it can never be confused with the neutral hover/rail
    grays. */
-.termdock-native-select [data-md-ref-start][data-selected='true'] {
+.veymux-native-select [data-md-ref-start][data-selected='true'] {
   background: color-mix(in srgb, var(--primary) 16%, transparent);
   color: var(--foreground);
   border-radius: 0.25rem;
@@ -54,7 +54,7 @@
  * mobile Safari can size or wrap the pre to its contents and leave the long
  * line clipped by the surrounding card instead of creating an inner x-scroll.
  */
-.termdock-native-select pre.termdock-file-preview-horizontal-scroll {
+.veymux-native-select pre.veymux-file-preview-horizontal-scroll {
   width: 100%;
   min-width: 0;
   max-width: 100%;

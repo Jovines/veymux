@@ -41,7 +41,7 @@ export class SecureSocket extends EventTarget {
   readonly CONNECTING = 0; readonly OPEN = 1; readonly CLOSING = 2; readonly CLOSED = 3;
   readonly binaryType = 'arraybuffer';
   get bufferedAmount(): number { return this.pendingBytes(); }
-  readonly protocol = 'termdock-e2ee-v1'; readonly extensions = '';
+  readonly protocol = 'veymux-e2ee-v1'; readonly extensions = '';
   getConnectionDiagnostics?: () => ConnectionDiagnostics | undefined;
   readonly createdAt = performance.now();
   openedAfterMs?: number;
@@ -375,7 +375,7 @@ export class SecureClient {
     return socket;
   }
   async fetch(input: RequestInfo | URL, init?: RequestInit & { onUploadProgress?: (uploadedBytes: number) => void }): Promise<Response> {
-    const base = typeof location === 'undefined' ? 'https://termdock.invalid' : location.origin;
+    const base = typeof location === 'undefined' ? 'https://veymux.invalid' : location.origin;
     const original = input instanceof Request ? input : null;
     const url = new URL(original?.url ?? String(input), base);
     // The origin is only a local addressing aid, never an arbitrary proxy destination.

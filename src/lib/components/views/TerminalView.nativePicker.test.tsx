@@ -4,7 +4,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import React from 'react';
 
 vi.mock('../../i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }));
-vi.mock('../../terminal/factory', () => ({ createTermdockAPI: () => ({}) }));
+vi.mock('../../terminal/factory', () => ({ createVeymuxAPI: () => ({}) }));
 vi.mock('../terminal/MobileKeyboard', async original => ({
   ...await original<typeof import('../terminal/MobileKeyboard')>(),
   // Connection setup is outside this regression; expose the real view's action

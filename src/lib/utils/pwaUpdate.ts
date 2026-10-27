@@ -10,7 +10,7 @@ const listeners = new Set<() => void>();
 /** Flush every retained workspace, not just the iframe initiating the update. */
 export function flushApplicationDrafts(view: Window = window): void {
   const event = view.document.createEvent('Event');
-  event.initEvent('termdock:before-update', false, false);
+  event.initEvent('veymux:before-update', false, false);
   view.dispatchEvent(event);
   for (const frame of view.document.querySelectorAll('iframe[data-workspace-key]')) {
     const child = (frame as HTMLIFrameElement).contentWindow;
@@ -67,7 +67,7 @@ export function usePwaUpdateAvailable(): boolean {
 
 export function applyPwaUpdate(): void {
   // Synchronous draft flush hooks run before activation or a manual reload.
-  window.dispatchEvent(new Event('termdock:before-update'));
+  window.dispatchEvent(new Event('veymux:before-update'));
   accepted = true;
   if (waitingRegistration?.waiting) {
     waitingRegistration.waiting.postMessage({ type: 'SKIP_WAITING' });

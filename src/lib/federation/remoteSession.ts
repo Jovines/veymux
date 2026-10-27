@@ -13,8 +13,8 @@ export function remoteSessionAddress(value: string): { origin: string; sessionId
 export async function openRemoteSession(value: string): Promise<void> {
   const address = remoteSessionAddress(value);
   if (!address) throw new Error('远端会话标识无效');
-  if (window.termdockDesktop?.collaborationFocus) {
-    try { if (await window.termdockDesktop.collaborationFocus(value)) return; } catch { /* fall through to verified service access */ }
+  if (window.veymuxDesktop?.collaborationFocus) {
+    try { if (await window.veymuxDesktop.collaborationFocus(value)) return; } catch { /* fall through to verified service access */ }
   }
-  window.dispatchEvent(new CustomEvent('termdock:open-remote-session', { detail: address }));
+  window.dispatchEvent(new CustomEvent('veymux:open-remote-session', { detail: address }));
 }

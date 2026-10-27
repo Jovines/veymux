@@ -1,16 +1,16 @@
 #!/usr/bin/env node
 /**
- * termdock agent-hook emitter — the agent-side half of the rich status channel.
+ * veymux agent-hook emitter — the agent-side half of the rich status channel.
  * （设计移植自 tty7 core/agent_hooks.rs，Apache-2.0；TypeScript/Node 重写）
  *
  * Invoked by agent hooks as: `node agentHook.js <agent> <event>`.
  * Reads the hook's JSON payload from stdin, builds one sentinel OSC 777
- * sequence, and writes it to the controlling terminal, where the termdock
+ * sequence, and writes it to the controlling terminal, where the veymux
  * server sniffs it out of the PTY stream and folds it into the pane's
  * session state.
  *
- * Emission is gated on the TERMDOCK environment variable (injected into every
- * shell termdock spawns / every managed tmux session), so hooks installed
+ * Emission is gated on the VEYMUX environment variable (injected into every
+ * shell veymux spawns / every managed tmux session), so hooks installed
  * globally stay silent when an agent runs in another terminal.
  *
  * Always exits 0 quietly — a hook that fails must never break the agent's
@@ -24,13 +24,13 @@ import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { buildHookSequence } from './agent/session.js';
 
-/** The env var termdock sets in every spawned shell; the emitter refuses to
- *  write escape sequences into terminals that aren't termdock's. */
-const TERMDOCK_ENV_MARKER = 'TERMDOCK';
+/** The env var veymux sets in every spawned shell; the emitter refuses to
+ *  write escape sequences into terminals that aren't veymux's. */
+const VEYMUX_ENV_MARKER = 'VEYMUX';
 
 /** Env var Grok Build's hook runner injects into every hook process it spawns.
  *  Its presence identifies *who ran us* — grok also scans ~/.claude/settings.json
- *  for hooks (its Claude-compat layer), so a termdock Claude Code integration
+ *  for hooks (its Claude-compat layer), so a veymux Claude Code integration
  *  also fires inside grok panes and must be relabeled to the agent that
  *  actually ran it. */
 const GROK_HOOK_ENV = 'GROK_HOOK_EVENT';
@@ -137,7 +137,7 @@ function ancestorTtyDevice(): string | null {
 
 /**
  * tmux passthrough is version/configuration sensitive and, more importantly,
- * only works while tmux considers the escape sequence pane output. Termdock
+ * only works while tmux considers the escape sequence pane output. Veymux
  * itself is an attached tmux client, so write the sentinel to that client's
  * tty directly when possible. This also works for detached hook subprocesses
  * whose own `/dev/tty` is unavailable.
@@ -155,12 +155,12 @@ function tmuxClientTtyDevices(): string[] {
       const [device, pid] = line.trim().split('\t');
       if (!/^\/dev\/(?:pts\/\d+|tty[^/]*)$/.test(device ?? '')) return [];
       // On Linux the environment gives us an exact ownership marker. An
-      // ordinary `tmux attach` must not steal a Termdock sentinel merely
+      // ordinary `tmux attach` must not steal a Veymux sentinel merely
       // because tmux listed that client first.
       const environ = pid && /^\d+$/.test(pid) ? `/proc/${pid}/environ` : null;
       if (environ && fs.existsSync(environ)) {
         try {
-          if (!fs.readFileSync(environ).toString().split('\0').includes('TERMDOCK=1')) return [];
+          if (!fs.readFileSync(environ).toString().split('\0').includes('VEYMUX=1')) return [];
         } catch {
           return [];
         }
@@ -181,8 +181,8 @@ function tmuxClientTtyDevices(): string[] {
  * Inside tmux the pane's tty is tmux's own PTY slave: a bare OSC would be
  * consumed by tmux and never reach the attached client. When $TMUX is set we
  * wrap the sequence in a DCS passthrough, which tmux (with allow-passthrough
- * enabled, as termdock sets on managed sessions) forwards to its client —
- * the termdock server — as the plain inner OSC.
+ * enabled, as veymux sets on managed sessions) forwards to its client —
+ * the veymux server — as the plain inner OSC.
  */
 async function writeToControllingTty(sequence: string, inTmuxPane: boolean): Promise<boolean> {
   if (inTmuxPane) {
@@ -206,13 +206,13 @@ async function writeToControllingTty(sequence: string, inTmuxPane: boolean): Pro
 
 async function main(): Promise<void> {
   try {
-    // Gate: emit when (a) inside a termdock-spawned shell (TERMDOCK env), or
+    // Gate: emit when (a) inside a veymux-spawned shell (VEYMUX env), or
     // (b) inside any tmux pane (TMUX+TMUX_PANE) — there the passthrough wrap
-    // self-gates: sessions without allow-passthrough (anything termdock
+    // self-gates: sessions without allow-passthrough (anything veymux
     // doesn't manage) swallow the sequence harmlessly. Anything else: stay
     // silent, so globally-installed hooks don't leak into other terminals.
     const inTmuxPane = !!(process.env.TMUX && process.env.TMUX_PANE);
-    if (!process.env[TERMDOCK_ENV_MARKER] && !inTmuxPane) return;
+    if (!process.env[VEYMUX_ENV_MARKER] && !inTmuxPane) return;
 
     // Command line: `agentHook.js agent-hook <agent> <event>` — the literal
     // `agent-hook <slug>` token doubles as the installer's ownership marker.

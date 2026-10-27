@@ -59,7 +59,7 @@ impl DownloadWrites {
         }
         let parent = destination.parent().unwrap();
         let file = tempfile::Builder::new()
-            .prefix(".termdock-download-")
+            .prefix(".veymux-download-")
             .tempfile_in(parent)
             .map_err(|e| e.to_string())?;
         let token = uuid::Uuid::new_v4().to_string();

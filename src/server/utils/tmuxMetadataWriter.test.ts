@@ -17,7 +17,7 @@ it('writes one batch per session for 25 callers and one heartbeat after 30 secon
   await vi.advanceTimersByTimeAsync(30_000);
   await Promise.all(Array.from({ length: 25 }, () => writer.sync('same', metadata)));
   expect(write).toHaveBeenCalledTimes(2);
-  expect(Object.keys(write.mock.calls[1][1])).toEqual(['@termdock-last-active-at']);
+  expect(Object.keys(write.mock.calls[1][1])).toEqual(['@veymux-last-active-at']);
   await writer.sync('other', metadata);
   expect(write).toHaveBeenCalledTimes(3);
 });
@@ -34,7 +34,7 @@ it('coalesces newer metadata behind a pending write without overwriting it out o
   releases.shift()!();
   await Promise.resolve();
   expect(write).toHaveBeenCalledTimes(2);
-  expect(write.mock.calls[1][1]['@termdock-cwd']).toBe('/third');
+  expect(write.mock.calls[1][1]['@veymux-cwd']).toBe('/third');
   releases.shift()!(); await Promise.all([first, second, third]);
 });
 

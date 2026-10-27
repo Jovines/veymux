@@ -8,12 +8,12 @@ import { resolveCollaborationBackend } from './sessionBindingRecovery.js';
 const pane: CollaborationPaneCandidate = { serverPid: 12, sessionId: '$1', paneId: '%1', panePid: 123,
   agentSlug: 'customagent', nativeSessionId: 'native', cwd: '/repo' };
 const binding: CollaborationBinding = { sessionId: 'peer', backendSessionId: 'backend', mode: 'tmux',
-  tmuxSessionName: 'td-peer', agentSlug: 'customagent', nativeSessionId: 'native', pane: null };
+  tmuxSessionName: 'veymux-peer', agentSlug: 'customagent', nativeSessionId: 'native', pane: null };
 
 describe('authoritative collaboration routing', () => {
   let directory: string;
   let file: string;
-  beforeEach(() => { directory = fs.mkdtempSync(path.join(os.tmpdir(), 'td-collab-routing-')); file = path.join(directory, 'routes.json'); });
+  beforeEach(() => { directory = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-collab-routing-')); file = path.join(directory, 'routes.json'); });
   afterEach(() => { vi.restoreAllMocks(); fs.rmSync(directory, { recursive: true, force: true }); });
 
   it('persists runtime bindings independently of stale UI state or search index eviction', () => {
@@ -42,7 +42,7 @@ describe('authoritative collaboration routing', () => {
     const store = new CollaborationRoutingStore(file);
     store.bind(binding);
     const restored = new CollaborationRoutingStore(file);
-    const backend = { mode: 'tmux', tmuxSessionName: 'td-peer', agent: { slug: 'customagent' }, agentSession: { sessionId: 'native' } };
+    const backend = { mode: 'tmux', tmuxSessionName: 'veymux-peer', agent: { slug: 'customagent' }, agentSession: { sessionId: 'native' } };
     const live = new Map([['backend', backend], ['wrong', { ...backend, tmuxSessionName: 'other' }]]);
     for (const backendSessionId of [null, 'wrong']) {
       const record = { sessionId: 'peer', backendSessionId, mode: 'tmux', tmuxSessionName: null };

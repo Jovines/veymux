@@ -31,12 +31,12 @@ import { pauseConnectionAccess, resumeConnectionAccess, retryConnectionAccess, c
 
 // Keep the invitation in memory and remove its secret from browser history immediately.
 const initialInvitation = (() => {
-  if (!location.hash.startsWith('#termdock-invite=')) return undefined;
-  try { return parseInviteLink(location.href, { httpTransport: location.protocol === 'http:' && !window.termdockDesktop?.openServiceConnection }); }
+  if (!location.hash.startsWith('#veymux-invite=')) return undefined;
+  try { return parseInviteLink(location.href, { httpTransport: location.protocol === 'http:' && !window.veymuxDesktop?.openServiceConnection }); }
   catch { return undefined; }
   finally { history.replaceState(null, '', location.pathname + location.search); }
 })();
-const OPEN_SESSION_KEY = 'termdock-secure-open-session';
+const OPEN_SESSION_KEY = 'veymux-secure-open-session';
 const initialDesktopInvitation = takeDesktopInvitation(savedConnection()?.targetPeerId ?? 'unpaired');
 let localPairing: Promise<unknown> | undefined;
 function pendingSession(): string | undefined {
@@ -45,7 +45,7 @@ function pendingSession(): string | undefined {
 
 export function SecureAccessGate({ children }: { children: ReactNode }) {
   const { t } = useI18n();
-  const nativeConnectionRef = useRef<ReturnType<NonNullable<NonNullable<Window['termdockDesktop']>['getServiceConnection']>>>();
+  const nativeConnectionRef = useRef<ReturnType<NonNullable<NonNullable<Window['veymuxDesktop']>['getServiceConnection']>>>();
   const pageGeneration = useRef(0);
   const restoringNativeWindow = useRef(false);
   useEffect(() => { const expire=()=>{pageGeneration.current++;};window.addEventListener('pagehide',expire);return()=>{expire();window.removeEventListener('pagehide',expire);}; }, []);
@@ -83,7 +83,7 @@ export function SecureAccessGate({ children }: { children: ReactNode }) {
   const restoreNativeWindow = (native: ServiceConnection | null | undefined): boolean => {
     if (restoringNativeWindow.current) return true;
     const selected = savedConnection(), owner = parseSavedService(native);
-    if (!window.termdockDesktop || !owner?.targetPeerId || !selected || selected.targetPeerId === owner.targetPeerId) return false;
+    if (!window.veymuxDesktop || !owner?.targetPeerId || !selected || selected.targetPeerId === owner.targetPeerId) return false;
     // A previous page switched targets inside this native window. Repair its
     // selection, then reload so stores and BOOT_SERVICE_ID use the owner's scope.
     // This restores routing only; the next document still verifies authorization.
@@ -99,7 +99,7 @@ export function SecureAccessGate({ children }: { children: ReactNode }) {
     return true;
   };
   useEffect(() => {
-    const desktop = window.termdockDesktop;
+    const desktop = window.veymuxDesktop;
     if (!desktop?.getServiceConnection) return;
     let stopped = false;
     const check = async () => {
@@ -153,7 +153,7 @@ export function SecureAccessGate({ children }: { children: ReactNode }) {
         if (!service) { setOpen(true); return; }
         // A desktop service window cannot borrow another window's public or
         // encrypted routes. Select the existing window by its saved peer pin.
-        const desktop=window.termdockDesktop;
+        const desktop=window.veymuxDesktop;
         if(desktop?.collaborationFocus){
           const id=`remote:${encodeURIComponent(origin)}:${encodeURIComponent(sessionId)}`;
           if(await desktop.collaborationFocus(id,service.targetPeerId))return;
@@ -174,8 +174,8 @@ export function SecureAccessGate({ children }: { children: ReactNode }) {
         setAccessError(failure instanceof Error ? failure.message : '暂时无法打开远程会话'); setOpen(true);
       });
     };
-    window.addEventListener('termdock:open-remote-session', handler);
-    return () => { stopped = true; window.removeEventListener('termdock:open-remote-session', handler); };
+    window.addEventListener('veymux:open-remote-session', handler);
+    return () => { stopped = true; window.removeEventListener('veymux:open-remote-session', handler); };
   }, []);
   const readPermissions = async (timeoutMs = 5000) => {
     const generation=pageGeneration.current,selection=savedConnection();
@@ -198,7 +198,7 @@ export function SecureAccessGate({ children }: { children: ReactNode }) {
     } else {
       setDesktopInvitation(previous => previous && previous.targetPeerId === client.targetPeerId && reusableInvitationGrant(previous, permissions.grants) ? previous : undefined);
     }
-    const acknowledge=window.termdockDesktop?.acknowledgeServiceInvitation,stamp=nativeConnectionRef.current;
+    const acknowledge=window.veymuxDesktop?.acknowledgeServiceInvitation,stamp=nativeConnectionRef.current;
     if(acknowledge&&stamp){
       const native=await stamp;
       const current=()=>generation===pageGeneration.current&&stamp===nativeConnectionRef.current&&client===currentSecureClient()&&!client.closed&&selection===savedConnection()&&selection?.targetPeerId===client.targetPeerId&&native?.targetPeerId===client.targetPeerId;
@@ -251,7 +251,7 @@ export function SecureAccessGate({ children }: { children: ReactNode }) {
         if (IS_WORKSPACE_DOCUMENT && !savedConnection()) throw new Error('工作区的服务记录已移除，请重新添加服务。');
         const selectionKey = () => { const c = savedConnection(); return c ? JSON.stringify([c.targetPeerId, c.url, c.serviceOrigin]) : undefined; };
         const selectionBefore = selectionKey();
-        nativeConnectionRef.current ??= window.termdockDesktop?.getServiceConnection?.();
+        nativeConnectionRef.current ??= window.veymuxDesktop?.getServiceConnection?.();
         const native = await nativeConnectionRef.current;
         if (stopped || restoringNativeWindow.current) return;
         // Native metadata only affects display. A newer selected target wins;
@@ -277,7 +277,7 @@ export function SecureAccessGate({ children }: { children: ReactNode }) {
         await readPermissions(previous?.canSwitchTransport ? 2500 : 5000);
         if (accessPaused) { accessPaused = undefined; setAccessFailure(undefined); }
         failures = 0;
-        performance.measure('termdock:connection-ready', { start: started, end: performance.now() });
+        performance.measure('veymux:connection-ready', { start: started, end: performance.now() });
       } catch (failure) {
         if (stopped || invitationPending.current || connectInFlight.current || failure instanceof Error && failure.message === 'SERVICE_SELECTION_CHANGED') return;
         const access = connectionAccessError(failure, { targetServiceId: savedConnection()?.targetPeerId });
@@ -422,7 +422,7 @@ export function SecureAccessGate({ children }: { children: ReactNode }) {
     return () => { canceled = true; };
   }, [open, canManage, displayOrigin]);
   const openOtherDesktopService = async (intent: ConnectionIntent): Promise<boolean> => {
-    const desktop = window.termdockDesktop;
+    const desktop = window.veymuxDesktop;
     if (!desktop?.openServiceConnection || !intent.targetPeerId) return false;
     const generation = pageGeneration.current;
     nativeConnectionRef.current ??= desktop.getServiceConnection?.();
@@ -439,14 +439,14 @@ export function SecureAccessGate({ children }: { children: ReactNode }) {
     setOpen(false);
     return true;
   };
-  useEffect(() => window.termdockDesktop?.onIncomingInvitation?.(invitation => {
+  useEffect(() => window.veymuxDesktop?.onIncomingInvitation?.(invitation => {
     try {
       const intent = parseInviteLink(invitation);
       // A permission read started before this handoff must not dismiss or
       // acknowledge a new invitation using the window's existing grant.
       pageGeneration.current++;
       invitationPending.current = true;
-      nativeConnectionRef.current = window.termdockDesktop?.getServiceConnection?.();
+      nativeConnectionRef.current = window.veymuxDesktop?.getServiceConnection?.();
       setIncomingInvitation(intent); setDesktopInvitation(undefined); setOpen(true); setError(false);
     } catch { setAccessError('邀请链接无效，请重新复制。'); setOpen(true); }
   }), []);
@@ -462,8 +462,8 @@ export function SecureAccessGate({ children }: { children: ReactNode }) {
     }
     await connectDevice(intent);
     setSharedLayout(intent.viewLayout);
-    try { sessionStorage.setItem(`termdock:shared-layout:${intent.targetPeerId}`, intent.viewLayout || 'single'); } catch { /* Optional layout preference. */ }
-    if (intent.viewMode) try { sessionStorage.setItem(`termdock:shared-view:${intent.targetPeerId}`, intent.viewMode); } catch { /* optional display preference */ }
+    try { sessionStorage.setItem(`veymux:shared-layout:${intent.targetPeerId}`, intent.viewLayout || 'single'); } catch { /* Optional layout preference. */ }
+    if (intent.viewMode) try { sessionStorage.setItem(`veymux:shared-view:${intent.targetPeerId}`, intent.viewMode); } catch { /* optional display preference */ }
     setRemoteSession(undefined); sessionStorage.removeItem(OPEN_SESSION_KEY);
     setServiceName(intent.serviceName ?? new URL(intent.url).hostname);
     const permissions = await readPermissions();
@@ -480,7 +480,7 @@ export function SecureAccessGate({ children }: { children: ReactNode }) {
     setOpen(false);
   };
   const openService = async (service: ServiceConnection) => {
-    const desktop = window.termdockDesktop;
+    const desktop = window.veymuxDesktop;
     if (desktop?.openServiceConnection) {
       nativeConnectionRef.current ??= desktop.getServiceConnection?.();
       const native = await nativeConnectionRef.current;
@@ -503,11 +503,11 @@ export function SecureAccessGate({ children }: { children: ReactNode }) {
     return () => window.removeEventListener(OPEN_SAVED_SERVICE_EVENT, openSaved);
   });
   const addService = async (input: string, password?: string) => {
-    if (window.termdockDesktop?.openServiceConnection) {
-      await addDesktopService(window.termdockDesktop, input);
+    if (window.veymuxDesktop?.openServiceConnection) {
+      await addDesktopService(window.veymuxDesktop, input);
       setOpen(false); return;
     }
-    if (input.includes('#termdock-invite=')) {
+    if (input.includes('#veymux-invite=')) {
       if (new URL(input).protocol === 'http:' && new URL(input).origin !== location.origin) {
         location.assign(input); return;
       }
@@ -550,7 +550,7 @@ export function SecureAccessGate({ children }: { children: ReactNode }) {
     }
     const result = await client.request({ type: 'invite-create', ...grantInput });
     if (typeof result.code !== 'string' || typeof result.expiresAt !== 'number' && result.expiresAt !== null) throw new Error('暂时无法生成邀请。');
-    window.dispatchEvent(new Event('termdock:sharing-changed'));
+    window.dispatchEvent(new Event('veymux:sharing-changed'));
     await refresh();
     let url = createInviteLink({ showAccessGuide, viewMode, viewLayout, v: 1, serviceId: client.targetPeerId, code: result.code, entryUrl: backup?.url || targetUrl, serviceUrl: targetUrl, name: serviceName, entryServiceId: backup?.targetPeerId, routeCode: backup?.routeCode });
     const hostname = new URL(targetUrl).hostname;
@@ -601,7 +601,7 @@ export function SecureAccessGate({ children }: { children: ReactNode }) {
     {accessFailure && <AccessRecoveryScreen key={JSON.stringify([accessFailure.code, accessFailure.context])} failure={accessFailure} target={savedConnection()} settingsOpen={open} onRecovered={() => recoverAccess(accessFailure.context.targetServiceId)} onSettings={() => setOpen(true)} />}
     {open && <FederationAccess initialShareSessionId={shareRequest?.inviteSessionId} initialShareSessionIds={shareRequest?.inviteSessionIds} initialViewLayout={shareRequest?.viewLayout} initialViewMode={shareRequest?.viewMode} onConnect={connect} onClose={() => {
       if (incomingInvitation) {
-        void window.termdockDesktop?.dismissServiceInvitation?.().catch(() => {});
+        void window.veymuxDesktop?.dismissServiceInvitation?.().catch(() => {});
         if (nativeConnectionRef.current) nativeConnectionRef.current = nativeConnectionRef.current.then(value => value ? { ...value, invitation: undefined } : value);
         setIncomingInvitation(undefined);
       }

@@ -17,7 +17,7 @@
 - 加新手势需要理解 4 层间的隐式优先级链，容易引入 bug
 - 调试困难：事件被哪一层吃掉了不直观
 - 现在连优先级都是靠"模块 import 时机"和"React child-first mount"保证的，脆弱
-- 跨子系统协调靠 CustomEvent（`termdock:gesture-lock`），无法统一管理状态
+- 跨子系统协调靠 CustomEvent（`veymux:gesture-lock`），无法统一管理状态
 
 ## 2. 设计目标
 
@@ -336,7 +336,7 @@ const normalScrollRecognizer: GestureRecognizer = {
 
 ## 8. gesture-lock 替代方案
 
-当前用 `termdock:gesture-lock` CustomEvent 协调 edge-swipe/long-press 和 Swiper。
+当前用 `veymux:gesture-lock` CustomEvent 协调 edge-swipe/long-press 和 Swiper。
 
 新方案：GestureManager 提供状态查询和事件回调：
 
@@ -353,7 +353,7 @@ interface GestureManager {
 `MultiTerminalView` 监听这个回调，替代 CustomEvent：
 
 ```typescript
-// 之前：document.addEventListener('termdock:gesture-lock', ...)
+// 之前：document.addEventListener('veymux:gesture-lock', ...)
 // 之后：manager.onGestureStateChange((active) => {
 //   swiperRef.current.allowTouchMove = !active;
 // });
@@ -382,7 +382,7 @@ src/lib/gesture/
 | 4 | 迁移 `TmuxScrollRecognizer`，替换 TerminalViewport 对应 useEffect | 中 |
 | 5 | 迁移 `LongPressRecognizer`，替换 TerminalViewport 对应 useEffect | 中 |
 | 6 | 去掉 `useEdgeSwipe` module-level 注册，改为 GestureManager 入口 | 低 |
-| 7 | 用 `onGestureStateChange` 替代 `termdock:gesture-lock` CustomEvent | 低 |
+| 7 | 用 `onGestureStateChange` 替代 `veymux:gesture-lock` CustomEvent | 低 |
 | 8 | 清理死代码 + 删掉已被替代的 useEffect | 低 |
 
 每个步骤可独立提交验证，不影响其他子系统。

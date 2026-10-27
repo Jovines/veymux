@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 
-const SETTINGS_STORAGE_KEY = 'termdock-settings';
+const SETTINGS_STORAGE_KEY = 'veymux-settings';
 const DEFAULT_DESKTOP_FONT_SIZE = 13;
 const DEFAULT_MOBILE_FONT_SIZE = 10;
 const DEFAULT_FONT_SIZE = DEFAULT_DESKTOP_FONT_SIZE;  // 桌面端默认字体大小（像素）

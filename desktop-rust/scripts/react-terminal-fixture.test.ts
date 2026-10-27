@@ -138,9 +138,9 @@ test('three native inputs retain backend ownership through first and second sess
   assert.equal(added.inputRouting,true);
   assert.deepEqual(added.inventory.clientSessions.map((session:any)=>session.backendSessionId),[model.inspect().backend,added.extraBackend,added.thirdBackend]);
   const records=[
-   {frontend:added.frontend,backend:model.inspect().backend,socket:new LogicalProbe(),marker:'termdock-input-first'},
-   {frontend:added.extraFrontend,backend:added.extraBackend,socket:new LogicalProbe(),marker:'termdock-input-second'},
-   {frontend:added.thirdFrontend,backend:added.thirdBackend,socket:new LogicalProbe(),marker:'termdock-input-third'},
+   {frontend:added.frontend,backend:model.inspect().backend,socket:new LogicalProbe(),marker:'veymux-input-first'},
+   {frontend:added.extraFrontend,backend:added.extraBackend,socket:new LogicalProbe(),marker:'veymux-input-second'},
+   {frontend:added.thirdFrontend,backend:added.thirdBackend,socket:new LogicalProbe(),marker:'veymux-input-third'},
   ];
   for(const record of records){model.terminal(record.socket.socket(),record.backend,'owned',{});await Promise.resolve();}
   for(const record of records){
@@ -157,14 +157,14 @@ test('three native inputs retain backend ownership through first and second sess
    return response.json();
   };
   let remaining=await remove(records[0]);assert.deepEqual(remaining.clientSessions.map((session:any)=>session.backendSessionId),[records[1].backend,records[2].backend]);
-  records[0].socket.input({type:'input',data:'termdock-stale-first'});
+  records[0].socket.input({type:'input',data:'veymux-stale-first'});
   remaining=await remove(records[1]);assert.deepEqual(remaining.clientSessions.map((session:any)=>session.backendSessionId),[records[2].backend]);
-  records[1].socket.input({type:'input',data:'termdock-stale-second'});
+  records[1].socket.input({type:'input',data:'veymux-stale-second'});
   const eventOffset=model.inspect().events.length;
-  records[2].socket.input({type:'input',data:'termdock-input-third-after-removal'});
+  records[2].socket.input({type:'input',data:'veymux-input-third-after-removal'});
   const events=model.inspect().events,tail=events.slice(eventOffset),third=tail.filter(event=>event.type==='input');
   assert.equal(records[2].socket.readyState,1);
-  assert.deepEqual(third.map(event=>[event.backend,event.frontend,event.data,event.bytes,event.receipt]),[[records[2].backend,records[2].frontend,'termdock-input-third-after-removal',Buffer.byteLength('termdock-input-third-after-removal'),'controlled-terminal-input-v1']]);
+  assert.deepEqual(third.map(event=>[event.backend,event.frontend,event.data,event.bytes,event.receipt]),[[records[2].backend,records[2].frontend,'veymux-input-third-after-removal',Buffer.byteLength('veymux-input-third-after-removal'),'controlled-terminal-input-v1']]);
   assert.deepEqual(events.filter(event=>event.type==='stale-client-message'&&event.messageType==='input').map(event=>event.backend),[records[0].backend,records[1].backend]);
   assert.equal(createReactTerminalFixture().inspect().nativeFeedback,false);
  }finally{server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));}

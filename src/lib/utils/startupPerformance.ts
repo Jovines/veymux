@@ -1,4 +1,4 @@
-const STARTUP_MARK_PREFIX = 'termdock:startup:';
+const STARTUP_MARK_PREFIX = 'veymux:startup:';
 
 export function markStartupMilestone(name: string): void {
   if (typeof performance === 'undefined' || typeof performance.mark !== 'function') return;

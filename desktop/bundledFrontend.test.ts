@@ -23,7 +23,7 @@ it('switches the document on reload while retaining old lazy assets', async () =
   const fs = await import('node:fs/promises');
   const os = await import('node:os');
   const path = await import('node:path');
-  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'termdock-frontend-update-'));
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'veymux-frontend-update-'));
   try {
     const old = path.join(directory, 'old'), next = path.join(directory, 'new');
     for (const root of [old, next]) await fs.mkdir(path.join(root, 'assets'), { recursive: true });

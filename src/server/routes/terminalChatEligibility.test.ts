@@ -36,7 +36,7 @@ async function fixture() {
   vm.runInContext(ts.transpileModule(`globalThis.eligibility = ${call.arguments[2].getText(ast)}`, {
     compilerOptions: { target: ts.ScriptTarget.ES2022 },
   }).outputText, context);
-  const dir = mkdtempSync(join(tmpdir(), 'td-plugin-chat-')); clean.push(() => rmSync(dir, { recursive: true, force: true }));
+  const dir = mkdtempSync(join(tmpdir(), 'veymux-plugin-chat-')); clean.push(() => rmSync(dir, { recursive: true, force: true }));
   const app = express();
   app.use((req, _res, next) => { if (req.headers['test-owner']) markEncryptedRequest(req, 'owner'); next(); });
   app.use(sessionViewModeRoutes(new SessionViewModeStore(join(dir, 'modes.json')), id => id === 'stable' ? id : null,

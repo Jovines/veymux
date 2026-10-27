@@ -4,8 +4,9 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { LOCAL_ACCESS } from '../config.js';
+import { watchAtomicFile } from './watchAtomicFile.js';
 
-const SETTINGS_DIR = path.join(os.homedir(), '.termdock');
+const SETTINGS_DIR = path.join(os.homedir(), '.veymux');
 const SETTINGS_FILE = path.join(SETTINGS_DIR, 'settings.json');
 const SETTINGS_BACKUP_FILE = `${SETTINGS_FILE}.bak`;
 
@@ -69,7 +70,7 @@ export interface SettingsDoc {
   locale: string;
   /** 上下文草稿坞手动拖出的输入框高度（px），手机/桌面分别存。 */
   contextDraftHeight: { mobile: number | null; desktop: number | null };
-  /** Agent slugs whose completed turns may automatically update the Termdock tab title. */
+  /** Agent slugs whose completed turns may automatically update the Veymux tab title. */
   autoRenameAgents: string[];
   /** `auto` follows the active session when its CLI is supported. */
   autoRenameNamer: string;
@@ -77,7 +78,7 @@ export interface SettingsDoc {
   autoRenameModels: Record<string, string>;
   /** Minimum delay before an existing automatic title may be reconsidered. */
   autoRenameIntervalMinutes: number;
-  /** Optional user preferences appended to Termdock's built-in title prompt. */
+  /** Optional user preferences appended to Veymux's built-in title prompt. */
   autoRenamePromptPreference: string;
   /** Total characters of raw prompt-submit payloads retained for title generation. */
   autoRenamePromptPayloadChars: number;
@@ -329,7 +330,7 @@ function normalizeSettings(value: unknown): SettingsDoc {
       .filter((slug) => /^[a-z0-9][a-z0-9-]{0,63}$/.test(slug)))]
     : [];
   return {
-    // Keep fields introduced by a newer Termdock binary. During a rolling
+    // Keep fields introduced by a newer Veymux binary. During a rolling
     // restart an older process must not erase settings it does not know yet.
     ...raw,
     version: 1,
@@ -870,7 +871,7 @@ export function setPinnedExplorerRootSetting(
 
 /**
  * Watch the settings file through its parent directory because atomic saves
- * replace the file inode. This lets sibling Termdock server processes sharing
+ * replace the file inode. This lets sibling Veymux server processes sharing
  * the same home directory relay pin changes to their own connected clients.
  */
 export function watchPinnedExplorerRootsSetting(
@@ -879,11 +880,7 @@ export function watchPinnedExplorerRootsSetting(
 ): () => void {
   const initial = loadSettingsFile(settingsFile);
   let previous = JSON.stringify(initial.pinnedExplorerRoots);
-  let timer: NodeJS.Timeout | null = null;
-  let closed = false;
   const refresh = (): void => {
-    timer = null;
-    if (closed) return;
     try {
       const roots = loadSettingsFile(settingsFile).pinnedExplorerRoots;
       const serialized = JSON.stringify(roots);
@@ -894,24 +891,10 @@ export function watchPinnedExplorerRootsSetting(
       console.warn('[settings] failed to refresh pinned explorer roots:', error);
     }
   };
-  let watcher: fs.FSWatcher;
-  try {
-    watcher = fs.watch(path.dirname(settingsFile), (_eventType, filename) => {
-      if (filename && filename.toString() !== path.basename(settingsFile)) return;
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(refresh, 40);
-      timer.unref?.();
-    });
-    watcher.unref();
-  } catch (error) {
-    console.warn('[settings] failed to watch pinned explorer roots:', error);
-    return () => undefined;
-  }
-  return () => {
-    closed = true;
-    if (timer) clearTimeout(timer);
-    watcher.close();
-  };
+  const watcher = watchAtomicFile(settingsFile, refresh, {
+    onFallback: error => console.warn('[settings] Native watch unavailable; polling pinned explorer roots:', error),
+  });
+  return () => watcher.close();
 }
 
 export function normalizeCollaborationPanels(value: unknown, depth = 0): Record<string, CollaborationPanelState> {

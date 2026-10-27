@@ -177,9 +177,9 @@ describe('AndroidMirrorView 截图/录屏插入', () => {
     const receive = (event: Event) => {
       const detail = (event as CustomEvent).detail;
       references.push(detail);
-      window.dispatchEvent(new CustomEvent('termdock-insert-reference-ack', { detail: { nonce: detail.nonce, ok: true } }));
+      window.dispatchEvent(new CustomEvent('veymux-insert-reference-ack', { detail: { nonce: detail.nonce, ok: true } }));
     };
-    window.addEventListener('termdock-insert-reference', receive);
+    window.addEventListener('veymux-insert-reference', receive);
     try {
       render(<AndroidMirrorDock sessionId="different-active-terminal" />);
       const screenshot = await screen.findByLabelText('Screenshot and insert');
@@ -200,7 +200,7 @@ describe('AndroidMirrorView 截图/录屏插入', () => {
       expect(references[1].text).toContain('/server/recording.mp4');
     } finally {
       cleanup();
-      window.removeEventListener('termdock-insert-reference', receive);
+      window.removeEventListener('veymux-insert-reference', receive);
       useCollaborationPanelDock.setState({ docks: {}, hosts: {}, activePaneId: null });
       useAndroidRecordingDelivery.setState({ pending: [] });
       host.remove();
@@ -208,7 +208,7 @@ describe('AndroidMirrorView 截图/录屏插入', () => {
   });
 
   it('录制及按住操作期间不断流调码率，分辨率和连接保持不变', async () => {
-    localStorage.removeItem('termdock:android:quality:v1');
+    localStorage.removeItem('veymux:android:quality:v1');
     let now = 0;
     vi.spyOn(performance, 'now').mockImplementation(() => now);
     await streamingView(async () => {});
@@ -246,7 +246,7 @@ describe('AndroidMirrorView 截图/录屏插入', () => {
     now = 30000;
     act(() => oldConnection.callbacks.onStats({ adaptation: { rttMs: 1000 } }));
     expect(connection().quality.id).toBe('high');
-    localStorage.removeItem('termdock:android:quality:v1');
+    localStorage.removeItem('veymux:android:quality:v1');
   });
 
   it('截图把 PNG 文件交给插入回调', async () => {

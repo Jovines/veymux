@@ -49,8 +49,8 @@ const checked = new Set();
 function ensureNodePty(ptyRoot = path.dirname(require.resolve('node-pty/package.json'))) {
   if (process.platform !== 'darwin' || checked.has(ptyRoot)) return;
   const sourcePath = path.join(ptyRoot, 'src/unix/pty.cc');
-  const backupPath = path.join(ptyRoot, 'src/unix/pty.cc.termdock-original');
-  const markerPath = path.join(ptyRoot, '.termdock-fd-fix.json');
+  const backupPath = path.join(ptyRoot, 'src/unix/pty.cc.veymux-original');
+  const markerPath = path.join(ptyRoot, '.veymux-fd-fix.json');
   const binaryPath = path.join(ptyRoot, 'build/Release/pty.node');
   const helperPath = path.join(ptyRoot, 'build/Release/spawn-helper');
   const original = fs.readFileSync(fs.existsSync(backupPath) ? backupPath : sourcePath, 'utf8');
@@ -72,7 +72,7 @@ function ensureNodePty(ptyRoot = path.dirname(require.resolve('node-pty/package.
   // Prevent the native loader from silently falling back to a leaking prebuild.
   fs.rmSync(path.join(ptyRoot, 'prebuilds', `darwin-${process.arch}`), { recursive: true, force: true });
   fs.rmSync(path.join(ptyRoot, 'build/Debug'), { recursive: true, force: true });
-  console.log('Rebuilding node-pty with the Termdock macOS FD cleanup fix...');
+  console.log('Rebuilding node-pty with the Veymux macOS FD cleanup fix...');
   rebuildNodePty(ptyRoot, { patched: true });
   fs.chmodSync(helperPath, fs.statSync(helperPath).mode | 0o111);
   fs.writeFileSync(markerPath, JSON.stringify({ source: sourceHash, binary: hash(fs.readFileSync(binaryPath)) }));

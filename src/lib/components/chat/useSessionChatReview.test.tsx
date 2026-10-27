@@ -6,8 +6,8 @@ import { useSessionChatReview } from './useSessionChatReview';
 import { useTerminalStore } from '../../stores/useTerminalStore';
 const state = vi.hoisted(() => ({ acknowledge: vi.fn(), workspaceActive: true, desktop: false }));
 vi.mock('../../terminal/api', () => ({ sendAgentReviewAck: state.acknowledge }));
-vi.mock('../../services/workspaceHost', () => ({ isWorkspaceActive: () => state.workspaceActive, WORKSPACE_VISIBILITY_EVENT: 'termdock:workspace-visibility' }));
-vi.mock('../../desktop/nativeBridge', () => ({ getTermdockDesktopBridge: () => state.desktop ? {} : null }));
+vi.mock('../../services/workspaceHost', () => ({ isWorkspaceActive: () => state.workspaceActive, WORKSPACE_VISIBILITY_EVENT: 'veymux:workspace-visibility' }));
+vi.mock('../../desktop/nativeBridge', () => ({ getVeymuxDesktopBridge: () => state.desktop ? {} : null }));
 function Chat({ active = true, ready = true, hidden = false }) {
   const ref = useRef<HTMLElement>(null);
   useSessionChatReview('chat-review', active && ready, ref);
@@ -48,7 +48,7 @@ it('retains attention in a background document until it becomes visible', () => 
 it('retains attention in a retained service workspace until activation', () => {
   state.workspaceActive = false; completion(); render(<Chat />);
   expect(state.acknowledge).not.toHaveBeenCalled();
-  state.workspaceActive = true; act(() => window.dispatchEvent(new Event('termdock:workspace-visibility')));
+  state.workspaceActive = true; act(() => window.dispatchEvent(new Event('veymux:workspace-visibility')));
   expect(session().agentNeedsReview).toBe(false);
 });
 it('does not acknowledge hidden chat DOM or an unfocused desktop window', () => {

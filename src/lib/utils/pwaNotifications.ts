@@ -1,13 +1,13 @@
 import { connectionAddresses, connectionRoutes, savedConnection } from '../federation/browserIntegration';
 import { saveBackgroundTarget, removeBackgroundTarget } from '../federation/backgroundState';
-const PWA_NOTIFICATIONS_ENABLED_KEY = 'termdock-pwa-notifications-enabled';
-const PWA_AI_NOTIFICATIONS_ENABLED_KEY = 'termdock-pwa-ai-notifications-enabled';
-const PWA_EXIT_NOTIFICATIONS_ENABLED_KEY = 'termdock-pwa-exit-notifications-enabled';
-const PWA_NOTIFICATION_ALERT_STYLE_KEY = 'termdock-pwa-notification-alert-style';
-const NOTIFICATION_DEDUPE_STORAGE_PREFIX = 'termdock-notification-claim:';
+const PWA_NOTIFICATIONS_ENABLED_KEY = 'veymux-pwa-notifications-enabled';
+const PWA_AI_NOTIFICATIONS_ENABLED_KEY = 'veymux-pwa-ai-notifications-enabled';
+const PWA_EXIT_NOTIFICATIONS_ENABLED_KEY = 'veymux-pwa-exit-notifications-enabled';
+const PWA_NOTIFICATION_ALERT_STYLE_KEY = 'veymux-pwa-notification-alert-style';
+const NOTIFICATION_DEDUPE_STORAGE_PREFIX = 'veymux-notification-claim:';
 const NOTIFICATION_DEDUPE_TTL_MS = 5000;
 const SW_READY_TIMEOUT_MS = 1500;
-const PUSH_SYNC_STORAGE_KEY = 'termdock-push-last-sync';
+const PUSH_SYNC_STORAGE_KEY = 'veymux-push-last-sync';
 const PUSH_SYNC_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const PUSH_RENEWAL_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -44,7 +44,7 @@ type BrowserNotificationOptions = NotificationOptions & {
 const notificationClaims = new Map<string, number>();
 
 export function isPwaNotificationSupported(): boolean {
-  if (getTermdockDesktopBridge()) return true;
+  if (getVeymuxDesktopBridge()) return true;
   return typeof window !== 'undefined'
     && typeof Notification !== 'undefined'
     && 'serviceWorker' in navigator
@@ -78,7 +78,7 @@ export function isPwaStandalone(): boolean {
  * tells you whether showPwaNotification() will actually produce a notification.
  */
 export function isPwaNotificationEffective(): boolean {
-  if (getTermdockDesktopBridge()) return true;
+  if (getVeymuxDesktopBridge()) return true;
   if (!isPwaNotificationSupported()) return false;
   // iOS Safari only delivers notifications in standalone PWA mode (iOS 16.4+).
   if (isIOSSafari() && !isPwaStandalone()) return false;
@@ -88,7 +88,7 @@ export function isPwaNotificationEffective(): boolean {
 
 
 export function getPwaNotificationPermission(): NotificationPermission | 'unsupported' {
-  if (getTermdockDesktopBridge()) return 'granted';
+  if (getVeymuxDesktopBridge()) return 'granted';
   if (typeof Notification === 'undefined') return 'unsupported';
   return Notification.permission;
 }
@@ -170,7 +170,7 @@ export function setStoredPwaNotificationAlertStyle(style: PwaNotificationAlertSt
 }
 
 export async function requestPwaNotificationPermission(): Promise<NotificationPermission | 'unsupported'> {
-  if (getTermdockDesktopBridge()) return 'granted';
+  if (getVeymuxDesktopBridge()) return 'granted';
   if (!isPwaNotificationSupported()) return 'unsupported';
 
   if (Notification.permission === 'default') {
@@ -287,7 +287,7 @@ async function notificationMutation(path: string, body: unknown): Promise<Respon
  * Called on launch, foreground resume, and periodically while the app is open.
  */
 export async function syncPwaPushSubscription(force = false, allowCreate = false): Promise<boolean> {
-  if (getTermdockDesktopBridge()) return true;
+  if (getVeymuxDesktopBridge()) return true;
   if (!getStoredPwaNotificationsEnabled() || !isPwaNotificationEffective()) return false;
   if (Notification.permission !== 'granted') return false;
   const registration = await getNotificationRegistration();
@@ -356,7 +356,7 @@ export async function syncPwaPushSubscription(force = false, allowCreate = false
 }
 
 export async function unsubscribePwaPush(): Promise<void> {
-  if (getTermdockDesktopBridge()) return;
+  if (getVeymuxDesktopBridge()) return;
   const registration = await getNotificationRegistration();
   const subscription = await registration?.pushManager?.getSubscription();
   try {
@@ -374,7 +374,7 @@ export async function unsubscribePwaPush(): Promise<void> {
 }
 
 export async function syncPwaPushPreferences(): Promise<void> {
-  if (getTermdockDesktopBridge()) return;
+  if (getVeymuxDesktopBridge()) return;
   if (!getStoredPwaNotificationsEnabled()) return;
   const response = await notificationMutation('preferences', {
     aiEnabled: getStoredPwaAiNotificationsEnabled(),
@@ -390,7 +390,7 @@ export async function syncPwaPushPreferences(): Promise<void> {
  * foreground — the user can see the sessions now, so the count is stale.
  */
 export async function clearPwaAppBadge(): Promise<void> {
-  if (getTermdockDesktopBridge()) return;
+  if (getVeymuxDesktopBridge()) return;
   try {
     const nav = navigator as Navigator & { clearAppBadge?: () => Promise<void> };
     if (typeof nav.clearAppBadge === 'function') await nav.clearAppBadge();
@@ -404,7 +404,7 @@ export async function clearPwaAppBadge(): Promise<void> {
  * re-sync the badge to whatever remains.
  */
 export async function dismissPwaNotificationsForSession(sessionId: string): Promise<void> {
-  if (getTermdockDesktopBridge()) return;
+  if (getVeymuxDesktopBridge()) return;
   try {
     const registration = await getNotificationRegistration();
     if (!registration || typeof registration.getNotifications !== 'function') return;
@@ -424,7 +424,7 @@ export async function showPwaNotification(payload: PwaNotificationPayload): Prom
   if (!getStoredPwaNotificationsEnabled()) return false;
   if (!isPwaNotificationSupported()) return false;
   if (payload.requireHidden !== false && isClientFocused()) return true;
-  const desktopBridge = getTermdockDesktopBridge();
+  const desktopBridge = getVeymuxDesktopBridge();
   if (desktopBridge) {
     const alertStyle = payload.alertStyle ?? getStoredPwaNotificationAlertStyle();
     const delivered = await desktopBridge.showNotification({
@@ -516,4 +516,4 @@ export async function showPwaNotification(payload: PwaNotificationPayload): Prom
     return false;
   }
 }
-import { getTermdockDesktopBridge } from '../desktop/nativeBridge';
+import { getVeymuxDesktopBridge } from '../desktop/nativeBridge';

@@ -2,23 +2,23 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { AutomationSchedule } from './automationStore.js';
 
-export const AUTOMATION_HELP = `td automation — manage scheduled tasks on the local Termdock service
+export const AUTOMATION_HELP = `veymux automation — manage scheduled tasks on the local Veymux service
   list
   create --name <name> (--every <minutes> | --at HH:MM [--weekdays 0,1,...,6])
     (--self | --session <full-session-id> | --command <launch-command>)
     [--prompt <text> | --file <path> | --stdin] [--cwd <path>] [--mode shell|tmux] [--disabled]
   show|run|pause|resume|delete <automation-id>
   --json (default) | --text
---self resolves this Termdock session, including surviving tmux panes after restart.
+--self resolves this Veymux session, including surviving tmux panes after restart.
 --session targets an existing local session; --command without a target opens a new one.
 Targeted tasks require a running Agent when due. Daily times use the server timezone;
 weekdays: 0=Sunday, 1=Monday, ..., 6=Saturday (default: every day).
 Intervals are whole minutes, 1–43200. Tasks repeat while enabled and the service runs.
 run dispatches immediately; success means delivered, not Agent work completed.
 Examples:
-  td automation create --name '进度复查' --every 30 --self --prompt '检查协作组进度并继续推进'
-  td automation create --name '每日巡检' --at 09:00 --weekdays 1,2,3,4,5 --command claude --file task.txt
-  td automation pause <automation-id>
+  veymux automation create --name '进度复查' --every 30 --self --prompt '检查协作组进度并继续推进'
+  veymux automation create --name '每日巡检' --at 09:00 --weekdays 1,2,3,4,5 --command claude --file task.txt
+  veymux automation pause <automation-id>
 Exit codes: 0 success; 1 invalid arguments, unavailable session/service, or request failure.`;
 
 export interface AutomationCommand {
@@ -47,7 +47,7 @@ export function parseAutomationCommand(argv: string[]): AutomationCommand {
     } else throw new Error(`Unknown automation option: --${key}`);
   }
   const action = (options.help ? 'help' : positional.shift() ?? 'help') as AutomationCommand['action'];
-  if (!['help', 'list', 'create', 'show', 'run', 'pause', 'resume', 'delete'].includes(action)) throw new Error('Unknown command; see td automation --help');
+  if (!['help', 'list', 'create', 'show', 'run', 'pause', 'resume', 'delete'].includes(action)) throw new Error('Unknown command; see veymux automation --help');
   if (options.json && options.text) throw new Error('Choose --json or --text');
   const command: AutomationCommand = { action, options };
   if (action === 'help') return command;

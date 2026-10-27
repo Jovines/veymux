@@ -75,7 +75,7 @@ export function collaborationMessageAnchorTokens(messages: CollaborationMessage[
 
 /** A single delivered message: `来自:X · kind · id` over a fenced body. The
  *  message id rides the source line — it is the one place a recipient can
- *  look up how to reply (`td collab --help`, taught on first delivery) without a
+ *  look up how to reply (`veymux collab --help`, taught on first delivery) without a
  *  per-message command template. A fan-out dispatch (message.fanOutIds
  *  present) is flagged `· 群发` and names the sibling recipients on their own
  *  line, so a broadcast is never mistaken for a one-to-one assignment — raw
@@ -133,15 +133,15 @@ export function formatCollaborationDelivery(input: {
     // carry --session explicitly; local members keep the short form.
     const sessionPrefix = input.targetSessionId.startsWith('remote:') ? `--session ${input.targetSessionId} ` : '';
     const body = bytes > MAX_INLINE_BODY_BYTES
-      ? `大消息已完整保存（${bytes} 字节）。先执行 td collab ${sessionPrefix}message get ${token} --text 查看完整正文；不要把这条提示当作消息正文。`
+      ? `大消息已完整保存（${bytes} 字节）。先执行 veymux collab ${sessionPrefix}message get ${token} --text 查看完整正文；不要把这条提示当作消息正文。`
       : message.content;
     const fence = '`'.repeat(Math.max(3, ...Array.from(body.matchAll(/`+/g), (match) => match[0].length + 1)));
     const fannedNames = (message.fanOutIds ?? [])
       .map((sessionId) => sanitizeCollaborationName(sessionsById.get(sessionId)?.name ?? sessionId));
     blocks.push(formatCollaborationMessage({ ...message, content: body }, source, fannedNames, fence, token));
-    if (message.integrationOrigin?.source === 'session-chat') blocks.push(`此消息来自用户的普通对话界面。用 td collab --session ${input.targetSessionId} reply ${token} \"答复正文\" --response-kind result --idempotency-key <稳定唯一key> --text 写回对话，勿仅打印到终端。普通回复直接写 Markdown，--file 原样读取，不包 JSON；交互界面用 JSON + --metadata，格式见 td collab ui --text。可用卡片、表格、图表、表单、图片、文件预览和链接，自行选择表达方式；有选项时优先交互并保留自由输入，勿重复提问。`);
-    else if (message.integrationOrigin) blocks.push(`此消息来自后台程序，使用原消息 id 回复：td collab --session ${input.targetSessionId} reply ${token} "答复正文" --response-kind result --idempotency-key <稳定唯一key> --text\n需要时用 --response-kind ack|progress 明确回复收到或进展；result 提交结果。回复持久保存为 stored 并主动推送给后台，不创建看板任务，不代表用户验收。此回复不会进入普通对话界面，不要使用普通对话的结构化展示协议。`);
-    if (message.integrationOrigin?.source === 'session-chat' && message.content.includes('```termdock-context\n')) blocks.push(`正文末尾的 termdock-context 保存附件和协作提及：attachments 中的 path 是当前服务上的文件路径，reference 对应正文里的附件编号标签（如【图片1】）；mentions 中的 sessionId 是用户选择的会话，groupId 非空时附带协作组上下文。按用户正文决定是否联系，组内使用 td collab --session ${input.targetSessionId} send <sessionId> "消息内容" --group <groupId> --text；groupId 为空时省略 --group，直接联系该会话，不加入协作组。提及仅提供目标信息，不代表已经发送、投递或收到回复。`);
+    if (message.integrationOrigin?.source === 'session-chat') blocks.push(`此消息来自用户的普通对话界面。用 veymux collab --session ${input.targetSessionId} reply ${token} \"答复正文\" --response-kind result --idempotency-key <稳定唯一key> --text 写回对话，勿仅打印到终端。普通回复直接写 Markdown，--file 原样读取，不包 JSON；交互界面用 JSON + --metadata，格式见 veymux collab ui --text。可用卡片、表格、图表、表单、图片、文件预览和链接，自行选择表达方式；有选项时优先交互并保留自由输入，勿重复提问。`);
+    else if (message.integrationOrigin) blocks.push(`此消息来自后台程序，使用原消息 id 回复：veymux collab --session ${input.targetSessionId} reply ${token} "答复正文" --response-kind result --idempotency-key <稳定唯一key> --text\n需要时用 --response-kind ack|progress 明确回复收到或进展；result 提交结果。回复持久保存为 stored 并主动推送给后台，不创建看板任务，不代表用户验收。此回复不会进入普通对话界面，不要使用普通对话的结构化展示协议。`);
+    if (message.integrationOrigin?.source === 'session-chat' && message.content.includes('```veymux-context\n')) blocks.push(`正文末尾的 veymux-context 保存附件和协作提及：attachments 中的 path 是当前服务上的文件路径，reference 对应正文里的附件编号标签（如【图片1】）；mentions 中的 sessionId 是用户选择的会话，groupId 非空时附带协作组上下文。按用户正文决定是否联系，组内使用 veymux collab --session ${input.targetSessionId} send <sessionId> "消息内容" --group <groupId> --text；groupId 为空时省略 --group，直接联系该会话，不加入协作组。提及仅提供目标信息，不代表已经发送、投递或收到回复。`);
   }
 
   // The shell header names the group only when every block belongs to one;
@@ -160,14 +160,14 @@ export function formatCollaborationDelivery(input: {
   const educated = input.showRoutingHelp !== false;
   const education: string[] = [];
   if (educated) {
-    education.push('优先联系协作组内成员；用户明确提及或任务确有必要时，可用 td collab send <会话ID> "消息内容" --text 联系本服务或已认证远端服务的组外会话。跨服务直接联系需双方服务均支持。直接联系不授予成员列表、终端查看或控制权限；不要无必要地联系组外会话。');
+    education.push('优先联系协作组内成员；用户明确提及或任务确有必要时，可用 veymux collab send <会话ID> "消息内容" --text 联系本服务或已认证远端服务的组外会话。跨服务直接联系需双方服务均支持。直接联系不授予成员列表、终端查看或控制权限；不要无必要地联系组外会话。');
     const rules = singleGroup?.instructions ?? input.messages.find((message) => message.instructions)?.instructions;
     if (rules?.text) {
       const age = collaborationRulesAge(rules.updatedAt, now);
       const inline = Array.from(rules.text).length <= 200 && rules.text.split(/\r\n?|\n/).length <= 4;
       education.push(inline
         ? `群规[${age}]:${rules.text}`
-        : `查看群规[${age}]:td collab rules get ${singleGroup?.id ?? input.messages[0]!.groupId} --text`);
+        : `查看群规[${age}]:veymux collab rules get ${singleGroup?.id ?? input.messages[0]!.groupId} --text`);
     }
     const peerIds = Array.from(new Set(input.groups.flatMap((group) => group.sessionIds)))
       .filter((sessionId) => sessionId !== input.targetSessionId);
@@ -175,17 +175,17 @@ export function formatCollaborationDelivery(input: {
     const sourceIds = new Set(input.messages.map((message) => message.fromSessionId));
     const peers = peerIds.filter((id) => !sourceIds.has(id)).map((sessionId) => {
       const session = sessionsById.get(sessionId);
-      return `- ${session ? sanitizeCollaborationName(session.name) : '离线会话'}：\`td collab send ${sessionId} "消息内容" --text\``;
+      return `- ${session ? sanitizeCollaborationName(session.name) : '离线会话'}：\`veymux collab send ${sessionId} "消息内容" --text\``;
     });
     if (peers.length) education.push('联系其他成员：', ...peers);
-    const captureHelp = '查看屏幕：`td collab capture <会话ID> --text`（只读，不打断对方；仅同组本机 tmux，远端用 send 询问）。ID：`td collab status --text`。快照不代表完成，勿循环轮询。';
+    const captureHelp = '查看屏幕：`veymux collab capture <会话ID> --text`（只读，不打断对方；仅同组本机 tmux，远端用 send 询问）。ID：`veymux collab status --text`。快照不代表完成，勿循环轮询。';
     education.push(captureHelp);
     if (peerIds.some((id) => id.startsWith('remote:'))) {
-      education.push('跨服务通信使用 td collab；已登记节点由服务后台直接投递，使用 message get 查看送达回执与重试原因。');
+      education.push('跨服务通信使用 veymux collab；已登记节点由服务后台直接投递，使用 message get 查看送达回执与重试原因。');
       // A cross-service member runs the CLI against its own service, where
       // identity detection usually fails — every copied command needs an
       // explicit --session or it dies with SESSION_NOT_FOUND.
-      education.push('跨服务节点执行 td collab 命令需显式带 --session <你的会话id>（status --text 查看），否则报 SESSION_NOT_FOUND。');
+      education.push('跨服务节点执行 veymux collab 命令需显式带 --session <你的会话id>（status --text 查看），否则报 SESSION_NOT_FOUND。');
     }
   }
 
@@ -198,7 +198,7 @@ export function formatCollaborationDelivery(input: {
     const session = sessionsById.get(id);
     return `注意：${session ? sanitizeCollaborationName(session.name) : id} 服务不可达，消息无法送达；仅可排队等待重连。`;
   });
-  const notes = [...education, ...dynamicNotices, ...(educated ? ['帮助:td collab --help'] : [])];
+  const notes = [...education, ...dynamicNotices, ...(educated ? ['帮助:veymux collab --help'] : [])];
 
   if (!blocks.length) return notes.join('\n');
   // Recipient identity rides the shell under the header so the recipient

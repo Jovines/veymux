@@ -9,7 +9,7 @@ export function exitWithStartupFailure(reason: string, detail: string): void {
     process.exit(1);
   };
   try {
-    process.send({ type: 'termdock-startup-failed', reason, detail } satisfies StartupFailedMessage, finish);
+    process.send({ type: 'veymux-startup-failed', reason, detail } satisfies StartupFailedMessage, finish);
   } catch {
     finish();
   }

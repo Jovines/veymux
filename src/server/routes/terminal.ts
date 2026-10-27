@@ -1,3 +1,4 @@
+import { watchAtomicFile } from '../utils/watchAtomicFile.js';
 import { prepareCodexThread, codexColdLaunchArgv, codexPreparedResumeCommand } from '../agent/codexLaunchPreparation.js';
 import { validateSharedChatTarget } from '../agent/sharedChatTarget.js';
 import { normalizeAgentLaunchAttempt, replayAgentLaunchAttempt, type AgentLaunchAttempt } from '../agent/agentLaunchAttempt.js';
@@ -37,6 +38,7 @@ import { ensureNodePty } from '../utils/ensureNodePty.js';
 import { PtySpawnBackoff, PtySpawnDeferredError } from '../utils/ptySpawnBackoff.js';
 import { collaborationGroupRoutes } from '../agent/collaborationGroupRoutes.js';
 import { TerminalClientAttachment } from '../utils/terminalClientAttachment.js';
+import { filterTerminalVersionReplies, TerminalVersionReplies } from '../utils/terminalVersionReplies.js';
 import { TerminalPasteBuffer } from '../utils/terminalPasteBuffer.js';
 import { SharedSessionSampler, SharedSnapshotCache, type SampleEvent } from '../utils/sharedSampling.js';
 import { batchTmuxOptions, TmuxMetadataWriter } from '../utils/tmuxMetadataWriter.js';
@@ -164,7 +166,7 @@ import { completedExecution, ExecutionArchiveStore } from '../agent/executionArc
 import { archiveTaskWorkspace, restoreTaskWorkspace, snapshotTaskWorkspace } from '../agent/collaborationTaskWorkspace.js';
 import { isTmuxRecoveryCandidate } from '../utils/tmuxRecoveryCandidate.js';
 import { configuredTmuxRecoveryConcurrency, TmuxRecoveryOperationStore, type TmuxRecoveryOperation, type TmuxRecoveryScope } from '../utils/tmuxRecoveryOperations.js';
-import { assessAgentResourceBudget, collectHostResourceSnapshot, configuredAgentResourceBudget, getTermdockOwnedAgentSessionIds } from '../utils/hostResources.js';
+import { assessAgentResourceBudget, collectHostResourceSnapshot, configuredAgentResourceBudget, getVeymuxOwnedAgentSessionIds } from '../utils/hostResources.js';
 import { AutomationStore, normalizeAutomationSchedule, type AgentAutomation } from '../agent/automationStore.js';
 import { writeBracketedPrompt, canDeliverPromptToAgent } from '../agent/promptDelivery.js';
 import { buildBracketedPasteBytes } from '../agent/promptDelivery.js';
@@ -246,7 +248,7 @@ import {
   startQuotaManager,
 } from '../quota/QuotaManager.js';
 import type { QuotaStatusWirePayload } from '../quota/types.js';
-import { TermdockAutoUpdateManager, TermdockUpdateStateChangedError } from '../utils/autoUpdate.js';
+import { VeymuxAutoUpdateManager, VeymuxUpdateStateChangedError } from '../utils/autoUpdate.js';
 import {
   AUTO_TITLE_LONG_RUNNING_DELAY_MS,
   AUTO_TITLE_MIN_CONTEXT_CHARS,
@@ -269,13 +271,13 @@ import type { CollaborationService } from '../agent/collaborationService.js';
 
 const router: express.Router = express.Router();
 const execFileAsync = promisify(execFile);
-const TERMDOCK_DIR = `${os.homedir()}/.termdock`;
-const sessionViewModes = new SessionViewModeStore(`${TERMDOCK_DIR}/session-view-modes.json`);
-const automationStore = new AutomationStore(`${TERMDOCK_DIR}/automations.json`);
-const todoStore = new TodoStore(`${TERMDOCK_DIR}/todos.json`);
-export const collaborationTaskStore = new CollaborationTaskStore(`${TERMDOCK_DIR}/collaboration-tasks.json`);
-export const collaborationStore = new CollaborationStore(`${TERMDOCK_DIR}/collaboration-groups.json`);
-const collaborationRouting = new CollaborationRoutingStore(`${TERMDOCK_DIR}/collaboration-routing.json`);
+const VEYMUX_DIR = `${os.homedir()}/.veymux`;
+const sessionViewModes = new SessionViewModeStore(`${VEYMUX_DIR}/session-view-modes.json`);
+const automationStore = new AutomationStore(`${VEYMUX_DIR}/automations.json`);
+const todoStore = new TodoStore(`${VEYMUX_DIR}/todos.json`);
+export const collaborationTaskStore = new CollaborationTaskStore(`${VEYMUX_DIR}/collaboration-tasks.json`);
+export const collaborationStore = new CollaborationStore(`${VEYMUX_DIR}/collaboration-groups.json`);
+const collaborationRouting = new CollaborationRoutingStore(`${VEYMUX_DIR}/collaboration-routing.json`);
 let sharedChatAccessCheck: ((subjectId: string, sessionId: string) => boolean) | undefined;
 export function configureSharedChatAccess(check: typeof sharedChatAccessCheck): void { sharedChatAccessCheck = check; }
 function sharedChatMessageAllowed(message: CollaborationMessage): boolean | undefined {
@@ -289,8 +291,8 @@ const collaborationDeliveryWorker = new CollaborationDeliveryWorker({
   authorizeMessage: sharedChatMessageAllowed,
   onError: (error) => console.warn('[collaboration] background delivery failed:', getErrorMessage(error)),
 });
-const sessionSearchStore = new SessionSearchStore(`${TERMDOCK_DIR}/session-search`);
-const nativeSessionSearch = new NativeSessionSearch(`${TERMDOCK_DIR}/session-search/native`);
+const sessionSearchStore = new SessionSearchStore(`${VEYMUX_DIR}/session-search`);
+const nativeSessionSearch = new NativeSessionSearch(`${VEYMUX_DIR}/session-search/native`);
 let atomicJsonWriteSequence = 0;
 
 async function readJsonFileIfExists<T>(filePath: string): Promise<T | null> {
@@ -321,10 +323,10 @@ async function writeJsonFile(filePath: string, value: unknown): Promise<void> {
   }
 }
 
-// Termdock metadata constants used to populate tmux user options
-// (`@termdock-*`) so external tools (e.g. `termdock --tls`) can identify
-// and describe termdock-managed tmux sessions without contacting the server.
-const TERMDOCK_VERSION: string = (() => {
+// Veymux metadata constants used to populate tmux user options
+// (`@veymux-*`) so external tools (e.g. `veymux --tls`) can identify
+// and describe veymux-managed tmux sessions without contacting the server.
+const VEYMUX_VERSION: string = (() => {
   try {
     const require_ = createRequire(import.meta.url);
     // dist/server/routes/terminal.js → ../../../package.json
@@ -338,10 +340,10 @@ const TERMDOCK_VERSION: string = (() => {
   } catch { /* ignore */ }
   return '0.0.0';
 })();
-const TERMDOCK_HOST = os.hostname();
-const TERMDOCK_PID = String(process.pid);
-const TERMDOCK_GUI_DETACHED_AT_OPTION = '@termdock-gui-detached-at';
-const TERMDOCK_FRONTEND_SESSION_ID_OPTION = '@termdock-frontend-session-id';
+const VEYMUX_HOST = os.hostname();
+const VEYMUX_PID = String(process.pid);
+const VEYMUX_GUI_DETACHED_AT_OPTION = '@veymux-gui-detached-at';
+const VEYMUX_FRONTEND_SESSION_ID_OPTION = '@veymux-frontend-session-id';
 
 // WebSocket clients per session (separate from SSE clients).
 const wsClients = new Map<string, Map<string, WebSocket>>();
@@ -472,7 +474,7 @@ interface PersistedClientSession {
   sessionId: string;
   name: string;
   customName?: boolean;
-  /** Present only when customName was produced by Termdock, so later turns may refresh it. */
+  /** Present only when customName was produced by Veymux, so later turns may refresh it. */
   autoTitle?: { agentSlug: string; contentHash: string; updatedAt: number } | null;
   backendSessionId: string | null;
   mode: TerminalMode;
@@ -619,13 +621,13 @@ function generateFrontendSessionId(): string {
   }
 }
 // ── 持久化 globalSessionState 到磁盘，防止服务重启后丢失 ──
-const GLOBAL_SESSION_STATE_FILE = `${TERMDOCK_DIR}/global-session-state.json`;
-const CLIENT_STATES_FILE = `${TERMDOCK_DIR}/client-states.json`; // 保留用于迁移
-const agentResumeHistory = new AgentResumeHistoryStore(`${TERMDOCK_DIR}/agent-resume-history.json`);
-const executionArchives = new ExecutionArchiveStore(`${TERMDOCK_DIR}/execution-archives.json`);
+const GLOBAL_SESSION_STATE_FILE = `${VEYMUX_DIR}/global-session-state.json`;
+const CLIENT_STATES_FILE = `${VEYMUX_DIR}/client-states.json`; // 保留用于迁移
+const agentResumeHistory = new AgentResumeHistoryStore(`${VEYMUX_DIR}/agent-resume-history.json`);
+const executionArchives = new ExecutionArchiveStore(`${VEYMUX_DIR}/execution-archives.json`);
 let executionArchiveMutation = Promise.resolve();
-const TMUX_RECOVERY_STATE_FILE = `${TERMDOCK_DIR}/tmux-recovery-state.json`;
-const TMUX_RECOVERY_OPERATIONS_FILE = `${TERMDOCK_DIR}/tmux-recovery-operations.json`;
+const TMUX_RECOVERY_STATE_FILE = `${VEYMUX_DIR}/tmux-recovery-state.json`;
+const TMUX_RECOVERY_OPERATIONS_FILE = `${VEYMUX_DIR}/tmux-recovery-operations.json`;
 const tmuxLifecycle = new TmuxLifecycleCoordinator();
 const tmuxRecoveryConcurrencyLimit = configuredTmuxRecoveryConcurrency();
 const tmuxRecoveryOperations = new TmuxRecoveryOperationStore(
@@ -642,8 +644,7 @@ let tmuxRecoveryState: {
   runtimeLostSessionIds?: string[];
 } = { lastServerPid: null, incident: null, dismissedSessionIds: [] };
 let persistGlobalStateTimer: ReturnType<typeof setTimeout> | null = null;
-let globalSessionStateWatcher: fs.FSWatcher | null = null;
-let globalSessionStateReloadTimer: ReturnType<typeof setTimeout> | null = null;
+let globalSessionStateWatcher: { close(): void } | null = null;
 
 // ── Control WebSocket: pushes the canonical client-state to every connected
 // browser in real time. Each client gets a fresh snapshot on connect, then
@@ -767,8 +768,8 @@ function broadcastControlEvent(payload: unknown): void {
 }
 
 // Atomic settings writes replace the inode, so the utility watches the parent
-// directory. Besides this process's own writes, it observes sibling Termdock
-// server processes that share ~/.termdock and relays their pin list here.
+// directory. Besides this process's own writes, it observes sibling Veymux
+// server processes that share ~/.veymux and relays their pin list here.
 watchPinnedExplorerRootsSetting((pinnedExplorerRoots) => {
   broadcastControlEvent({
     type: 'pinned-explorer-roots',
@@ -783,13 +784,13 @@ let serverRestartScheduled = false;
 /**
  * supervision 通道是否真的还在。
  *
- * `TERMDOCK_SUPERVISED` 只说明"出生时有人管"，`process.connected` 才是"此刻还管得着"——
+ * `VEYMUX_SUPERVISED` 只说明"出生时有人管"，`process.connected` 才是"此刻还管得着"——
  * supervisor 自己崩掉之后子进程是被故意留下来继续服务的（丢监督好过丢服务），
  * 那种情况下如果还按受管路径走，就会变成"报告完意图就自杀，而没人接盘"，
  * 比旧 bridge 还糟。所以两个条件必须同时成立。
  */
 function supervisionChannelOpen(): boolean {
-  return process.env.TERMDOCK_SUPERVISED === '1' && process.connected === true;
+  return process.env.VEYMUX_SUPERVISED === '1' && process.connected === true;
 }
 
 function requestServerRestartAfterUpdate(): void {
@@ -801,7 +802,7 @@ function requestServerRestartAfterUpdate(): void {
     // 全是 supervisor 的事，而它每次都用 realpath 后的 entry 重新读盘。
     // 用 IPC 而不是标记文件，是因为意图会随进程死亡一起消失，不可能过期后被误读。
     try {
-      process.send?.({ type: 'termdock-intent', intent: 'restart-after-update' });
+      process.send?.({ type: 'veymux-intent', intent: 'restart-after-update' });
     } catch {
       // 通道刚好断了：照样退，supervisor 会把这次退出当成崩溃重启，
       // 结果同样是"服务带着新版本回来"，只是 crash.log 里的事件名不同。
@@ -819,7 +820,7 @@ function requestServerRestartAfterUpdate(): void {
   // 但它不再是默认路径——受管启动会走上面的分支。
   //
   // The bridge is detached before this process exits. It waits for the old
-  // PID to release the port, then resolves `termdock` from PATH again so an
+  // PID to release the port, then resolves `veymux` from PATH again so an
   // npm-replaced global binary is used instead of the old loaded file.
   const bridgeSource = String.raw`
 const fs = require('node:fs');
@@ -829,7 +830,7 @@ const alive = () => { try { process.kill(payload.parentPid, 0); return true; } c
 const launch = () => {
   let fd;
   try { fd = fs.openSync(payload.logFile, 'a'); } catch { fd = 'ignore'; }
-  const command = process.platform === 'win32' ? 'termdock.cmd' : 'termdock';
+  const command = process.platform === 'win32' ? 'veymux.cmd' : 'veymux';
   const child = spawn(command, payload.args, {
     detached: true,
     stdio: ['ignore', fd, fd],
@@ -848,7 +849,7 @@ const timer = setInterval(() => {
   const payload = JSON.stringify({
     parentPid: process.pid,
     args: process.argv.slice(2),
-    logFile: path.join(TERMDOCK_DIR, 'server.log'),
+    logFile: path.join(VEYMUX_DIR, 'server.log'),
   });
   const bridge = spawn(process.execPath, ['-e', bridgeSource, payload], {
     detached: true,
@@ -863,9 +864,9 @@ const timer = setInterval(() => {
   exitTimer.unref?.();
 }
 
-const npmAutoUpdateManager = new TermdockAutoUpdateManager({
-  currentVersion: TERMDOCK_VERSION,
-  stateFilePath: path.join(TERMDOCK_DIR, 'update-state.json'),
+const npmAutoUpdateManager = new VeymuxAutoUpdateManager({
+  currentVersion: VEYMUX_VERSION,
+  stateFilePath: path.join(VEYMUX_DIR, 'update-state.json'),
   broadcast: (state) => broadcastControlEvent({ type: 'update-state', state }),
   requestRestart: requestServerRestartAfterUpdate,
   log: (message) => console.warn(message),
@@ -1039,17 +1040,6 @@ async function reloadGlobalSessionStateFromDisk(source: 'watch' | 'manual'): Pro
   }
 }
 
-function scheduleReloadGlobalSessionState(): void {
-  if (globalSessionStateReloadTimer) {
-    clearTimeout(globalSessionStateReloadTimer);
-  }
-  globalSessionStateReloadTimer = setTimeout(() => {
-    globalSessionStateReloadTimer = null;
-    void reloadGlobalSessionStateFromDisk('watch');
-  }, 120);
-  globalSessionStateReloadTimer.unref?.();
-}
-
 async function watchGlobalSessionStateFile(): Promise<void> {
   const reportFailure = (message: string, error: unknown) => {
     console.warn(message, getErrorMessage(error));
@@ -1062,15 +1052,11 @@ async function watchGlobalSessionStateFile(): Promise<void> {
     const dir = path.dirname(GLOBAL_SESSION_STATE_FILE);
     await fs.promises.mkdir(dir, { recursive: true });
     globalSessionStateWatcher?.close();
-    globalSessionStateWatcher = fs.watch(dir, (_eventType, filename) => {
-      if (filename !== path.basename(GLOBAL_SESSION_STATE_FILE)) {
-        return;
-      }
-      scheduleReloadGlobalSessionState();
-    });
-    globalSessionStateWatcher.on('error', (error) => {
-      reportFailure('[session-persist] Global state watcher failed:', error);
-    });
+    globalSessionStateWatcher = watchAtomicFile(GLOBAL_SESSION_STATE_FILE,
+      () => { void reloadGlobalSessionStateFromDisk('watch'); }, {
+        debounceMs: 120,
+        onFallback: error => reportFailure('[session-persist] Native watch unavailable; polling global state:', error),
+      });
   } catch (error) {
     reportFailure('[session-persist] Failed to watch global state file:', error);
   }
@@ -1122,7 +1108,7 @@ function flushPersistAndExit(): void {
     persistGlobalStateTimer = null;
   }
   try {
-    fs.mkdirSync(TERMDOCK_DIR, { recursive: true });
+    fs.mkdirSync(VEYMUX_DIR, { recursive: true });
     fs.writeFileSync(GLOBAL_SESSION_STATE_FILE, JSON.stringify(globalSessionState, null, 2), 'utf-8');
     fs.writeFileSync(TMUX_RECOVERY_STATE_FILE, JSON.stringify(tmuxRecoveryState, null, 2), 'utf-8');
   } catch { /* best effort */ }
@@ -1148,7 +1134,7 @@ void (async () => {
   await tmuxClientReaper.startMaintenance(async () => {
     const persisted = new Set(globalSessionState.sessions.flatMap(session => session.tmuxSessionName ? [session.tmuxSessionName] : []));
     try {
-      const rows = await runTmux(['list-sessions', '-F', '#{session_id}\t#{session_name}\t#{@termdock-version}']);
+      const rows = await runTmux(['list-sessions', '-F', '#{session_id}\t#{session_name}\t#{@veymux-version}']);
       const targets = new Set<string>();
       for (const row of rows.trim().split('\n')) {
         const [id, name, version] = row.split('\t');
@@ -1223,9 +1209,9 @@ function pruneOrphanSessions(): void {
   broadcastClientState();
 }
 
-// On boot, backfill termdock metadata onto every tmux session referenced by
-// the persisted client states. Lets `termdock --tls` work the first time
-// after upgrading from a version that didn't write `@termdock-*`.
+// On boot, backfill veymux metadata onto every tmux session referenced by
+// the persisted client states. Lets `veymux --tls` work the first time
+// after upgrading from a version that didn't write `@veymux-*`.
 // Dynamic fields (label/program/cwd/last-active-at) are intentionally left
 // for the per-session polling to fill in lazily.
 async function backfillPersistedTmuxMetadata(): Promise<void> {
@@ -1238,45 +1224,45 @@ async function backfillPersistedTmuxMetadata(): Promise<void> {
       if (!(await tmuxSessionExists(s.tmuxSessionName))) continue;
 
       const baseOptions: Record<string, string> = {
-        '@termdock-version': TERMDOCK_VERSION,
-        '@termdock-host': TERMDOCK_HOST,
-        '@termdock-pid': TERMDOCK_PID,
-        [TERMDOCK_FRONTEND_SESSION_ID_OPTION]: s.sessionId,
+        '@veymux-version': VEYMUX_VERSION,
+        '@veymux-host': VEYMUX_HOST,
+        '@veymux-pid': VEYMUX_PID,
+        [VEYMUX_FRONTEND_SESSION_ID_OPTION]: s.sessionId,
         // Agent-hook plumbing (see ensureManagedTmuxSessionReady): backfilled
         // at startup so sessions created before this feature get it too.
         'allow-passthrough': 'on',
       };
       const viewMode = sessionViewModes.get(s.sessionId)?.mode;
       if (viewMode) baseOptions[TMUX_VIEW_MODE_OPTION] = viewMode;
-      const existingCreatedAt = await getTmuxOption(s.tmuxSessionName, '@termdock-created-at');
+      const existingCreatedAt = await getTmuxOption(s.tmuxSessionName, '@veymux-created-at');
       if (!existingCreatedAt) {
-        baseOptions['@termdock-created-at'] = String(Date.now());
+        baseOptions['@veymux-created-at'] = String(Date.now());
       }
       await setTmuxOptions(s.tmuxSessionName, baseOptions);
       try {
-        await runTmux(['set-environment', '-t', s.tmuxSessionName, 'TERMDOCK', '1']);
+        await runTmux(['set-environment', '-t', s.tmuxSessionName, 'VEYMUX', '1']);
       } catch { /* best effort */ }
 
       if (s.customName === true && typeof s.name === 'string' && s.name.trim().length > 0) {
-        await setTmuxOption(s.tmuxSessionName, '@termdock-friendly-name', s.name);
+        await setTmuxOption(s.tmuxSessionName, '@veymux-friendly-name', s.name);
       }
 
       // label/program/cwd 是动态值，正常由在线轮询维护；这里只在缺失时补——
       // 用持久化记录里的 last-known 计算,保证 server 重启后、首个客户端连上前,
-      // CLI(td --tls / tmux show)已经能看到名字。已有值不覆盖(可能更新鲜)。
-      const existingLabel = await getTmuxOption(s.tmuxSessionName, '@termdock-label');
+      // CLI(veymux --tls / tmux show)已经能看到名字。已有值不覆盖(可能更新鲜)。
+      const existingLabel = await getTmuxOption(s.tmuxSessionName, '@veymux-label');
       if (!existingLabel) {
         const program = normalizeMetadataProgram(s.activeProgram ?? null);
-        const label = buildTermdockLabel({
+        const label = buildVeymuxLabel({
           friendlyName: s.customName === true && s.name.trim().length > 0 ? s.name : null,
           program,
           cwd: s.cwd ?? null,
           sessionName: s.tmuxSessionName,
         });
         await setTmuxOptions(s.tmuxSessionName, {
-          '@termdock-label': label,
-          '@termdock-program': program ?? '',
-          '@termdock-cwd': s.cwd ?? '',
+          '@veymux-label': label,
+          '@veymux-program': program ?? '',
+          '@veymux-cwd': s.cwd ?? '',
         });
       }
     } catch (error) {
@@ -1290,12 +1276,12 @@ async function backfillPersistedTmuxMetadata(): Promise<void> {
 // ── end persistence ──
 
 // ── Toolbar presets persistence (shared across all clients) ──
-// Stored as a single JSON document at ~/.termdock/toolbar-presets.json.
+// Stored as a single JSON document at ~/.veymux/toolbar-presets.json.
 // The schema is intentionally opaque to the server: it just round-trips
 // `presets` (array) and `version` (number) so the client owns all merge /
 // upgrade logic. The whole document is global (not keyed by clientId) so
 // every browser pointing at this server sees the same toolbar config.
-const TOOLBAR_PRESETS_FILE = `${TERMDOCK_DIR}/toolbar-presets.json`;
+const TOOLBAR_PRESETS_FILE = `${VEYMUX_DIR}/toolbar-presets.json`;
 interface ToolbarPresetsDoc {
   version: number;
   presets: unknown[];
@@ -1347,7 +1333,7 @@ const TMUX_LAYOUT_CACHE_TTL_MS = Math.max(TMUX_POLL_INTERVAL, 1000);
 const PROCESS_SNAPSHOT_CACHE_TTL_MS = Math.max(ACTIVE_PROGRAM_POLL_INTERVAL, 2500);
 const FLOW_CONTROL_PAUSE_LEASE_MS = TERMINAL.flowControlPauseLeaseMs;
 const TMUX_DELIMITER = '\x1f';
-const TERMDOCK_TMUX_HISTORY_LIMIT = TMUX.historyLimit;
+const VEYMUX_TMUX_HISTORY_LIMIT = TMUX.historyLimit;
 // 输出历史缓冲区（限制大小）
 const MAX_HISTORY_SIZE = 100 * 1024; // 100KB per session
 // 给每个 chunk 加单调递增 seq，用于短线重连时按需补发增量。
@@ -1519,7 +1505,7 @@ interface TmuxRuntimeMetadata {
   rawArgs: string | null;
 }
 
-function isTermdockManagedTmuxSession(session: TmuxInventoryMeta): boolean {
+function isVeymuxManagedTmuxSession(session: TmuxInventoryMeta): boolean {
   return !!(session.version || session.host || session.pid || session.createdAt || session.lastActiveAt || session.label || session.program || session.cwd || session.guiDetachedAt || session.sourceFrontendSessionId);
 }
 
@@ -1541,7 +1527,7 @@ function buildRuntimeTmuxMetadata(input: {
   const program = normalizeMetadataProgram(input.program);
   const cwd = input.cwd ?? null;
   const friendlyName = findFriendlyNameForTmuxSession(input.tmuxSessionName);
-  const label = buildTermdockLabel({
+  const label = buildVeymuxLabel({
     friendlyName,
     program,
     cwd,
@@ -1732,7 +1718,7 @@ async function markAllPersistedTmuxSessionsDetached(): Promise<void> {
   try {
     const liveTmuxSessions = await listLiveTmuxInventorySessions();
     for (const tmux of liveTmuxSessions) {
-      if (isTermdockManagedTmuxSession(tmux)) {
+      if (isVeymuxManagedTmuxSession(tmux)) {
         tmuxSessionNames.add(tmux.name);
       }
     }
@@ -1755,7 +1741,7 @@ async function markTmuxSessionClosed(name: string, closedAt = String(Date.now())
     const record = globalSessionState.sessions.find(session => session.mode === 'tmux' && session.tmuxSessionName === name);
     const mode = record && sessionViewModes.get(record.sessionId)?.mode;
     if (mode) await runTmux(['set-option', '-t', name, TMUX_VIEW_MODE_OPTION, mode]);
-    await runTmux(['set-option', '-t', name, TERMDOCK_GUI_DETACHED_AT_OPTION, closedAt]);
+    await runTmux(['set-option', '-t', name, VEYMUX_GUI_DETACHED_AT_OPTION, closedAt]);
   } catch (error) {
     const message = getErrorMessage(error);
     if (!isTmuxSessionMissingMessage(message) && !isTmuxServerMissingMessage(message)) throw error;
@@ -1796,7 +1782,7 @@ async function ensureBackendSessionForRecord(
   }
 
   if (record.mode === 'tmux' && record.tmuxSessionName) {
-    await unsetTmuxOption(record.tmuxSessionName, TERMDOCK_GUI_DETACHED_AT_OPTION);
+    await unsetTmuxOption(record.tmuxSessionName, VEYMUX_GUI_DETACHED_AT_OPTION);
     const existingTmuxBackend = findBackendSessionForTmux(record.tmuxSessionName);
     if (existingTmuxBackend) {
       const [backendSessionId, session] = existingTmuxBackend;
@@ -2008,10 +1994,10 @@ async function openInventorySession(
 
   if (savedRecord.mode === 'tmux' && savedRecord.tmuxSessionName) {
     void setTmuxOptions(savedRecord.tmuxSessionName, {
-      '@termdock-version': TERMDOCK_VERSION,
-      '@termdock-host': TERMDOCK_HOST,
-      '@termdock-pid': TERMDOCK_PID,
-      [TERMDOCK_FRONTEND_SESSION_ID_OPTION]: savedRecord.sessionId,
+      '@veymux-version': VEYMUX_VERSION,
+      '@veymux-host': VEYMUX_HOST,
+      '@veymux-pid': VEYMUX_PID,
+      [VEYMUX_FRONTEND_SESSION_ID_OPTION]: savedRecord.sessionId,
     });
   }
 
@@ -2732,7 +2718,7 @@ async function spawnCollaborationAgentSession(
     fromSessionId: sourceSessionId,
     toSessionIds: [frontendSessionId],
     kind: 'handoff',
-    content: requestedTask || `你已创建并加入协作组“${updatedGroup.name}”。请运行 td collab status 查看成员，并准备参与协作。`,
+    content: requestedTask || `你已创建并加入协作组“${updatedGroup.name}”。请运行 veymux collab status 查看成员，并准备参与协作。`,
   });
   setTimeout(() => {
     deliverCollaborationInboxWhenAgentReady(frontendSessionId);
@@ -2793,7 +2779,7 @@ function integrationTerminalRecord(record: IntegrationSession) {
   return terminal;
 }
 async function integrationRecoveryOwnership(record: IntegrationSession) {
-  const root = `${TERMDOCK_DIR}/integration-state`;
+  const root = `${VEYMUX_DIR}/integration-state`;
   const directories = await fs.promises.readdir(root, { withFileTypes: true }).catch(() => []);
   const descriptorOwners: Array<{ sessionId: string; groupId: string; principalId: string }> = [];
   const principalOwners: Array<{ groupId: string; principalId: string; revoked: boolean }> = [];
@@ -2905,7 +2891,7 @@ export const integrationSessionAdapter: IntegrationSessionAdapter = {
     const terminal = integrationTerminalRecord(record);
     if (!terminal) return; // Metadata survives released/closed; never recreate a runtime.
     if (!record.name) integrationError('INVALID_NAME', 'Missing persistent display name');
-    if (await integrationTmuxPresent(record)) await setTmuxOption(terminal.tmuxSessionName!, '@termdock-friendly-name', record.name);
+    if (await integrationTmuxPresent(record)) await setTmuxOption(terminal.tmuxSessionName!, '@veymux-friendly-name', record.name);
     upsertGlobalSessionRecord({ ...terminal, name: record.name, customName: true, autoTitle: null });
     await persistGlobalStateNow(true); await getSessionInventorySnapshot({ refresh: true }); broadcastClientState();
   },
@@ -2957,7 +2943,7 @@ export const integrationSessionAdapter: IntegrationSessionAdapter = {
   async resumeConfiguration(record) {
     await listDetectedAgentLaunchers();
     const agent = agentBySlug(record.agent_slug);
-    const command = agent && buildResumeCommand(agent, 'td-fingerprint-native-id', null);
+    const command = agent && buildResumeCommand(agent, 'veymux-fingerprint-native-id', null);
     if (!agent || !command) integrationError('EXACT_RESUME_UNSUPPORTED', 'Agent must support exact native recovery', 409);
     return { version: 1, slug: agent.slug, aliases: agent.aliases, capabilities: agent.capabilities ?? [],
       resume: getPluginResumeConfig(agent.slug) ?? command, nativeIdentity: integrationNativeIdentity(record) ?? getPluginNativeIdentityConfig(agent.slug) ?? null };
@@ -3420,14 +3406,14 @@ async function configureTmuxWheelBindingsIndividually(runTmux: (args: string[]) 
   await runTmux(['bind-key', '-n', 'WheelDownPane', downCmd]);
   await runTmux([
     'bind-key', '-n', 'MouseDown1Pane',
-    "select-pane -t= ; set-option -p -F @termdock-mouse-down-x '#{mouse_x}' ; set-option -p -F @termdock-mouse-down-y '#{mouse_y}' ; if-shell -F '#{||:#{pane_in_mode},#{mouse_any_flag}}' 'send-keys -M'",
+    "select-pane -t= ; set-option -p -F @veymux-mouse-down-x '#{mouse_x}' ; set-option -p -F @veymux-mouse-down-y '#{mouse_y}' ; if-shell -F '#{||:#{pane_in_mode},#{mouse_any_flag}}' 'send-keys -M'",
   ]);
   await runTmux([
     'bind-key', '-n', 'MouseDrag1Pane',
     // xterm reports button-motion in character cells. A one-cell movement is
     // common mouse jitter during an ordinary click, so require two cells before
     // treating the gesture as an intentional text-selection drag.
-    "if-shell -F '#{||:#{pane_in_mode},#{mouse_any_flag}}' 'send-keys -M' 'if-shell -F \"#{||:#{||:#{e|>=:#{e|-:#{mouse_x},#{@termdock-mouse-down-x}},2},#{e|>=:#{e|-:#{@termdock-mouse-down-x},#{mouse_x}},2}},#{||:#{e|>=:#{e|-:#{mouse_y},#{@termdock-mouse-down-y}},2},#{e|>=:#{e|-:#{@termdock-mouse-down-y},#{mouse_y}},2}}}\" \"copy-mode -M\"'",
+    "if-shell -F '#{||:#{pane_in_mode},#{mouse_any_flag}}' 'send-keys -M' 'if-shell -F \"#{||:#{||:#{e|>=:#{e|-:#{mouse_x},#{@veymux-mouse-down-x}},2},#{e|>=:#{e|-:#{@veymux-mouse-down-x},#{mouse_x}},2}},#{||:#{e|>=:#{e|-:#{mouse_y},#{@veymux-mouse-down-y}},2},#{e|>=:#{e|-:#{@veymux-mouse-down-y},#{mouse_y}},2}}}\" \"copy-mode -M\"'",
   ]);
   await runTmux([
     'bind-key', '-n', 'DoubleClick1Pane',
@@ -3440,7 +3426,7 @@ async function configureTmuxWheelBindingsIndividually(runTmux: (args: string[]) 
 
   // tmux defaults mouse selection shortcuts to copy-pipe-and-cancel:
   // selecting text with the mouse copies successfully, then immediately exits
-  // copy-mode on release/double-click. Termdock keeps copy-mode open so users
+  // copy-mode on release/double-click. Veymux keeps copy-mode open so users
   // can continue inspecting scrollback after one selection.
   for (const table of ['copy-mode', 'copy-mode-vi']) {
     try {
@@ -3470,12 +3456,12 @@ async function configureTmuxWheelBindingsIndividually(runTmux: (args: string[]) 
 
 async function applyTmuxScrollbackProfile(sessionName?: string): Promise<void> {
   const commands: string[][] = [
-    ['set-option', '-g', 'history-limit', String(TERMDOCK_TMUX_HISTORY_LIMIT)],
+    ['set-option', '-g', 'history-limit', String(VEYMUX_TMUX_HISTORY_LIMIT)],
     ['set-option', '-gw', 'scroll-on-clear', 'off'],
   ];
   if (sessionName) {
     commands.push(
-      ['set-option', '-t', sessionName, 'history-limit', String(TERMDOCK_TMUX_HISTORY_LIMIT)],
+      ['set-option', '-t', sessionName, 'history-limit', String(VEYMUX_TMUX_HISTORY_LIMIT)],
     );
   }
 
@@ -3525,9 +3511,9 @@ async function disableTmuxStatus(sessionName: string): Promise<void> {
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
-// ── tmux user-option helpers (`@termdock-*`) ──
+// ── tmux user-option helpers (`@veymux-*`) ──
 //
-// We use tmux user options to attach termdock metadata (program/cwd/label/
+// We use tmux user options to attach veymux metadata (program/cwd/label/
 // friendly-name/client-count/etc.) to each managed session. They live with the
 // session, propagate across attaches, and never affect session-name addressing.
 // Failures are non-fatal — we only warn once per call site so a transient tmux
@@ -3598,7 +3584,7 @@ async function tmuxSessionExists(sessionName: string): Promise<boolean> {
 }
 
 async function ensureTmuxColorEnvironment(sessionName?: string): Promise<void> {
-  const forceColor = process.env.TERMDOCK_FORCE_COLOR === '1';
+  const forceColor = process.env.VEYMUX_FORCE_COLOR === '1';
   await batchTmuxConfiguration(runTmux, async run => {
     for (const args of buildTmuxColorEnvironmentCommands(sessionName, forceColor)) await run(args);
   });
@@ -3614,18 +3600,18 @@ async function listLiveTmuxInventorySessions(): Promise<TmuxInventoryMeta[]> {
     '#{session_name}',
     '#{session_windows}',
     '#{session_attached}',
-    '#{@termdock-friendly-name}',
-    '#{@termdock-program}',
-    '#{@termdock-cwd}',
-    '#{@termdock-label}',
-    '#{@termdock-client-count}',
-    '#{@termdock-host}',
-    '#{@termdock-pid}',
-    '#{@termdock-version}',
-    '#{@termdock-created-at}',
-    '#{@termdock-last-active-at}',
-    `#{${TERMDOCK_GUI_DETACHED_AT_OPTION}}`,
-    `#{${TERMDOCK_FRONTEND_SESSION_ID_OPTION}}`,
+    '#{@veymux-friendly-name}',
+    '#{@veymux-program}',
+    '#{@veymux-cwd}',
+    '#{@veymux-label}',
+    '#{@veymux-client-count}',
+    '#{@veymux-host}',
+    '#{@veymux-pid}',
+    '#{@veymux-version}',
+    '#{@veymux-created-at}',
+    '#{@veymux-last-active-at}',
+    `#{${VEYMUX_GUI_DETACHED_AT_OPTION}}`,
+    `#{${VEYMUX_FRONTEND_SESSION_ID_OPTION}}`,
   ].join(TMUX_DELIMITER);
 
   try {
@@ -3810,7 +3796,7 @@ async function observeTmuxServerGeneration(liveTmuxSessions: TmuxInventoryMeta[]
     tmuxRecoveryState.runtimeLostSessionIds = retainedLosses; changed = true;
   }
   if (changed) await persistTmuxRecoveryState();
-  if (process.env.TD_TMUX_AUTO_RECOVERY === '1'
+  if (process.env.VEYMUX_TMUX_AUTO_RECOVERY === '1'
     && shouldAutomaticallyRecoverTmuxIncident(incident, tmuxRecoveryOperations.all().map(operation => operation.incidentId))) {
     // Leave this inventory build before the worker broadcasts progress. The
     // durable key coalesces concurrent observations and prevents replay.
@@ -3840,7 +3826,7 @@ async function buildSessionInventory(): Promise<SessionInventory> {
     }
   }
   const refreshedTmuxSessions = await Promise.all(liveTmuxSessions.map(async (tmux): Promise<TmuxInventoryMeta> => {
-    if (!isTermdockManagedTmuxSession(tmux)) {
+    if (!isVeymuxManagedTmuxSession(tmux)) {
       return tmux;
     }
 
@@ -3879,7 +3865,7 @@ async function buildSessionInventory(): Promise<SessionInventory> {
     sessions: globalSessionState.sessions.map((session) => {
       let next = session;
 
-      // CLI 侧改了 @termdock-friendly-name → 反向同步进持久化记录（tmux 限定）。
+      // CLI 侧改了 @veymux-friendly-name → 反向同步进持久化记录（tmux 限定）。
       if (next.mode === 'tmux' && next.tmuxSessionName) {
         const friendlyName = liveTmuxByName.get(next.tmuxSessionName)?.friendlyName?.trim();
         if (friendlyName && !(next.customName === true && next.name === friendlyName)) {
@@ -4011,7 +3997,7 @@ async function buildSessionInventory(): Promise<SessionInventory> {
       live: true,
       restorable: bound?.restorable === true,
       recoveryCandidate: isTmuxRecoveryCandidate({
-        managedByTermdock: isTermdockManagedTmuxSession(tmux),
+        managedByVeymux: isVeymuxManagedTmuxSession(tmux),
         sourceFrontendSessionId: tmux.sourceFrontendSessionId,
         guiDetachedAt: tmux.guiDetachedAt,
         boundFrontendSessionId: bound?.sessionId ?? null,
@@ -4302,7 +4288,7 @@ function sniffOsc(buf: string, home: string): OscSniffResult {
         notification = oscData;
       }
     } else if (oscNum === '777') {
-      // OSC 777 notification: `notify;<title>;<body>`. termdock's agent hooks
+      // OSC 777 notification: `notify;<title>;<body>`. veymux's agent hooks
       // use the sentinel title carrying a JSON event; anything else is an
       // opaque notification from an agent without hooks installed.
       const event = parseAgentEvent(`777;${oscData}`);
@@ -4456,7 +4442,7 @@ function clearAutoTitleForNewAgentSession(sessionId: string, session: TerminalSe
   session.autoTitleTerminal.reset();
   session.autoTitlePromptPayloads = [];
   if (next.mode === 'tmux' && next.tmuxSessionName) {
-    void unsetTmuxOption(next.tmuxSessionName, '@termdock-friendly-name');
+    void unsetTmuxOption(next.tmuxSessionName, '@veymux-friendly-name');
   }
   schedulePersistGlobalState();
   broadcastClientState();
@@ -4536,7 +4522,7 @@ async function maybeAutoRenameSession(
       autoTitle: { agentSlug: agent.slug, contentHash, updatedAt: Date.now() },
     };
     if (next.mode === 'tmux' && next.tmuxSessionName) {
-      await setTmuxOption(next.tmuxSessionName, '@termdock-friendly-name', title);
+      await setTmuxOption(next.tmuxSessionName, '@veymux-friendly-name', title);
     }
     upsertGlobalSessionRecord(next);
     await persistGlobalStateNow();
@@ -5106,9 +5092,9 @@ async function findExternalCodexWriter(target: AgentResumeTarget): Promise<numbe
  * and extract a meaningful label from its full command line.
  */
 
-// ── Program detection config (persisted to ~/.termdock/program-detection.json) ──
+// ── Program detection config (persisted to ~/.veymux/program-detection.json) ──
 
-const PROGRAM_DETECTION_FILE = `${TERMDOCK_DIR}/program-detection.json`;
+const PROGRAM_DETECTION_FILE = `${VEYMUX_DIR}/program-detection.json`;
 
 interface ProgramDetectionConfig {
   genericProgramNames: string[];
@@ -5171,7 +5157,7 @@ async function saveProgramDetectionToDisk(config: ProgramDetectionConfig): Promi
 // Initialize on startup
 void loadProgramDetectionFromDisk().then(applyProgramDetectionConfig);
 
-// Startup keeper: rewrite hook integrations that point at a stale termdock
+// Startup keeper: rewrite hook integrations that point at a stale veymux
 // (package moved/updated) so they keep firing into the right emitter.
 try {
   refreshStaleHooksAtLaunch();
@@ -5413,8 +5399,8 @@ async function resolveLiveTmuxMetadata(tmuxSessionName: string, cached = false, 
 
 // ── label builder (mirrors the frontend `getSessionDisplayLines` semantics) ──
 //
-// Used to populate the `@termdock-label` tmux user option so external tools
-// (e.g. `termdock --tls`) can show a meaningful one-line summary that matches
+// Used to populate the `@veymux-label` tmux user option so external tools
+// (e.g. `veymux --tls`) can show a meaningful one-line summary that matches
 // what the user sees on the tab in the browser.
 
 function getCwdLeafBackend(cwd: string | null | undefined): string | null {
@@ -5429,7 +5415,7 @@ function getCwdLeafBackend(cwd: string | null | undefined): string | null {
   return leaf && leaf.length > 0 ? leaf : trimmed;
 }
 
-function buildTermdockLabel(input: {
+function buildVeymuxLabel(input: {
   friendlyName: string | null;
   program: string | null;
   cwd: string | null;
@@ -5704,7 +5690,7 @@ async function ensureTmuxSessionExists(sessionName: string, cwd?: string): Promi
     '-e', 'COLORTERM=truecolor',
     '-e', `TERM=${innerTerm}`,
   ];
-  if (process.env.TERMDOCK_FORCE_COLOR === '1') {
+  if (process.env.VEYMUX_FORCE_COLOR === '1') {
     args.push('-e', 'FORCE_COLOR=1');
   }
   if (cwd) {
@@ -5747,7 +5733,7 @@ async function injectTmuxShellIntegration(sessionName: string): Promise<void> {
     // Create a temporary ZDOTDIR for tmux's inner zsh.
     // Use session name in the dir to avoid collisions between sessions.
     const safeName = sessionName.replace(/[^a-zA-Z0-9_-]/g, '_');
-    const zdotdir = '/tmp/termdock-zsh-tmux-' + safeName;
+    const zdotdir = '/tmp/veymux-zsh-tmux-' + safeName;
     try {
       await fs.promises.mkdir(zdotdir, { recursive: true });
       await fs.promises.writeFile(zdotdir + '/.zshenv',
@@ -5755,20 +5741,20 @@ async function injectTmuxShellIntegration(sessionName: string): Promise<void> {
       await fs.promises.writeFile(zdotdir + '/.zshrc',
         'ZDOTDIR=\n' +
         '[[ -f "' + home + '/.zshrc" ]] && source "' + home + '/.zshrc"\n' +
-        'source "' + integrationDir + '/termdock.zsh"\n');
+        'source "' + integrationDir + '/veymux.zsh"\n');
       await runTmux(['set-environment', '-t', sessionName, 'ZDOTDIR', zdotdir]);
     } catch {
       // If we can't create the ZDOTDIR, skip integration
     }
   } else if (shellType === 'bash') {
-    const scriptPath = path.join(integrationDir, 'termdock.bash');
+    const scriptPath = path.join(integrationDir, 'veymux.bash');
     await runTmux(['set-environment', '-t', sessionName, 'BASH_ENV', scriptPath]);
     // Also set a bootstrap PROMPT_COMMAND for interactive bash
     const bootstrap = 'source "' + scriptPath + '" 2>/dev/null';
-    await runTmux(['set-environment', '-t', sessionName, 'TERMDOCK_BASH_BOOTSTRAP', bootstrap]);
+    await runTmux(['set-environment', '-t', sessionName, 'VEYMUX_BASH_BOOTSTRAP', bootstrap]);
   } else if (shellType === 'fish') {
-    const scriptPath = path.join(integrationDir, 'termdock.fish');
-    await runTmux(['set-environment', '-t', sessionName, 'TERMDOCK_FISH_INTEGRATION', scriptPath]);
+    const scriptPath = path.join(integrationDir, 'veymux.fish');
+    await runTmux(['set-environment', '-t', sessionName, 'VEYMUX_FISH_INTEGRATION', scriptPath]);
   }
 
 }
@@ -5779,7 +5765,7 @@ async function disableTmuxFocusEventsForSafety(): Promise<void> {
   // tmux/tmux#5022: a queued focus event can dereference a NULL client
   // session during teardown and crash the shared tmux server. Until tmux
   // ships a confirmed fix, losing pane focus notifications is preferable to
-  // losing every Termdock session and Agent on that server.
+  // losing every Veymux session and Agent on that server.
   await runTmux(['set-option', '-g', 'focus-events', 'off']);
   console.log('[tmux-focus] disabled global focus-events for crash safety');
 }
@@ -5809,13 +5795,13 @@ async function ensureSharedTmuxServerReady(): Promise<void> {
 
 async function tmuxSessionStamp(sessionName: string): Promise<Record<string, string>> {
   const baseOptions: Record<string, string> = {
-    '@termdock-version': TERMDOCK_VERSION,
-    '@termdock-host': TERMDOCK_HOST,
-    '@termdock-pid': TERMDOCK_PID,
+    '@veymux-version': VEYMUX_VERSION,
+    '@veymux-host': VEYMUX_HOST,
+    '@veymux-pid': VEYMUX_PID,
   };
-  const existingCreatedAt = await getTmuxOption(sessionName, '@termdock-created-at');
+  const existingCreatedAt = await getTmuxOption(sessionName, '@veymux-created-at');
   if (!existingCreatedAt) {
-    baseOptions['@termdock-created-at'] = String(Date.now());
+    baseOptions['@veymux-created-at'] = String(Date.now());
   }
   return baseOptions;
 }
@@ -5852,14 +5838,14 @@ async function ensureManagedTmuxSessionReady(sessionName: string): Promise<void>
   await applyTmuxScrollbackProfile(sessionName);
   await stampTmuxMetadata(sessionName);
 
-  // Agent-hook plumbing for panes in this session: TERMDOCK marks panes
+  // Agent-hook plumbing for panes in this session: VEYMUX marks panes
   // spawned here as ours (the emitter's gate), and allow-passthrough lets
   // hooks' DCS-wrapped sentinel OSC reach us through tmux. Set here (not in
   // the shell-integration path, which early-returns) so every managed
   // session gets them regardless of shell type.
   try {
     await batchTmuxConfiguration(runTmux, async run => {
-      await run(['set-environment', '-t', sessionName, 'TERMDOCK', '1']);
+      await run(['set-environment', '-t', sessionName, 'VEYMUX', '1']);
       await run(['set-option', '-t', sessionName, 'allow-passthrough', 'on']);
     });
   } catch (error) {
@@ -5878,14 +5864,14 @@ async function configureManagedTmuxSessionBatch(sessionName: string): Promise<vo
   // overhead without trusting a success cache after external edits or restart.
   const commands: string[][] = [
     ...(focusEvents === 'off' ? [] : [['set-option', '-g', 'focus-events', 'off']]),
-    ...buildTmuxColorEnvironmentCommands(sessionName, process.env.TERMDOCK_FORCE_COLOR === '1'),
+    ...buildTmuxColorEnvironmentCommands(sessionName, process.env.VEYMUX_FORCE_COLOR === '1'),
   ];
   const collect = async (args: string[]) => { commands.push(args); };
   await ensureTmuxColorCapabilities(collect, sessionName, innerTerm);
   commands.push(
-    ['set-option', '-g', 'history-limit', String(TERMDOCK_TMUX_HISTORY_LIMIT)],
+    ['set-option', '-g', 'history-limit', String(VEYMUX_TMUX_HISTORY_LIMIT)],
     ['set-option', '-gw', 'scroll-on-clear', 'off'],
-    ['set-option', '-t', sessionName, 'history-limit', String(TERMDOCK_TMUX_HISTORY_LIMIT)],
+    ['set-option', '-t', sessionName, 'history-limit', String(VEYMUX_TMUX_HISTORY_LIMIT)],
     ...(extendedKeys === 'on' ? [] : [['set-option', '-g', 'extended-keys', 'on']]),
   );
   await configureTmuxWheelBindingsIndividually(collect);
@@ -5895,7 +5881,7 @@ async function configureManagedTmuxSessionBatch(sessionName: string): Promise<vo
     ...windowsRaw.split('\n').map(value => value.trim()).filter(Boolean)
       .map(id => ['set-option', '-w', '-t', id, 'scroll-on-clear', 'off']),
     ...Object.entries(stamp).map(([key, value]) => ['set-option', '-t', sessionName, key, value]),
-    ['set-environment', '-t', sessionName, 'TERMDOCK', '1'],
+    ['set-environment', '-t', sessionName, 'VEYMUX', '1'],
     ['set-option', '-t', sessionName, 'allow-passthrough', 'on'],
   );
   await runTmux(batchTmuxCommands(commands));
@@ -6032,13 +6018,13 @@ function getTotalClients(sessionId: string): number {
 }
 
 // Mirror the current SSE+WS client count onto the session's tmux user
-// option `@termdock-client-count`. No-op for shell sessions.
+// option `@veymux-client-count`. No-op for shell sessions.
 function syncClientCountToTmux(sessionId: string): void {
   const session = terminalSessions.get(sessionId);
   if (!session || session.mode !== 'tmux' || !session.tmuxSessionName) return;
   void setTmuxOption(
     session.tmuxSessionName,
-    '@termdock-client-count',
+    '@veymux-client-count',
     String(getTotalClients(sessionId)),
   );
 }
@@ -6533,7 +6519,10 @@ function startTmuxPaneOutputActivity(sessionId: string, session: TerminalSession
 
 function setupPtyHandlers(sessionId: string, session: TerminalSession): void {
   if (session.mode === 'tmux' && !session.paneOutputObserver) startTmuxPaneOutputActivity(sessionId, session);
+  const versionReplies = session.mode === 'tmux'
+    ? new TerminalVersionReplies(data => session.ptyProcess.write(data)) : null;
   session.dataDisposable = session.ptyProcess.onData((data: string) => {
+    versionReplies?.observe(data);
     processSessionOutput(sessionId, session, data, { broadcast: true });
   });
 
@@ -6587,14 +6576,14 @@ function wrapPtySpawnError(error: unknown): Error {
 
 /**
  * Shell-mode persistence via the pty-host daemon: shells live in a detached
- * host process and survive server restarts. Set TERMDOCK_PTY_HOST=off to
+ * host process and survive server restarts. Set VEYMUX_PTY_HOST=off to
  * fall back to in-process PTYs (Windows always uses the in-process path).
  */
 function ptyHostShellModeEnabled(): boolean {
   // The host daemon always uses node-pty; under a Bun runtime that's the
   // backend with known issues, so keep the in-process path there.
   const isBun = typeof (globalThis as { Bun?: unknown }).Bun !== 'undefined';
-  return process.platform !== 'win32' && !isBun && process.env.TERMDOCK_PTY_HOST !== 'off';
+  return process.platform !== 'win32' && !isBun && process.env.VEYMUX_PTY_HOST !== 'off';
 }
 
 interface SpawnTerminalInput {
@@ -6673,11 +6662,11 @@ async function spawnTerminalSessionUnlocked(req: express.Request, input: SpawnTe
     TERM: termValue,
     COLORTERM: 'truecolor',
     // Gates the agent-hook emitter: hooks installed globally stay silent
-    // unless the agent runs inside a termdock-spawned shell.
-    TERMDOCK: '1',
-    // Lets `td collab` address this exact Termdock conversation without the
+    // unless the agent runs inside a veymux-spawned shell.
+    VEYMUX: '1',
+    // Lets `veymux collab` address this exact Veymux conversation without the
     // user or Agent having to copy a session id.
-    TERMDOCK_BACKEND_SESSION_ID: sessionId,
+    VEYMUX_BACKEND_SESSION_ID: sessionId,
   };
 
   let ptyProcess: PtyProcess | null = null;
@@ -6929,7 +6918,7 @@ async function resolveShellIntegrationDir(): Promise<string | null> {
   ];
   for (const dir of candidates) {
     try {
-      await fs.promises.access(path.join(dir, 'termdock.zsh'), fs.constants.R_OK);
+      await fs.promises.access(path.join(dir, 'veymux.zsh'), fs.constants.R_OK);
       cachedIntegrationDir = dir;
       return dir;
     } catch { /* access 抛错跳过这个候选 */ }
@@ -6938,7 +6927,7 @@ async function resolveShellIntegrationDir(): Promise<string | null> {
 }
 
 /**
- * Inject termdock shell integration via environment variables.
+ * Inject veymux shell integration via environment variables.
  *
  * This replaces the old injectShellTitleHooks with full shell
  * integration that emits OSC 133 (prompt marks), OSC 2 (title), and OSC 7 (cwd).
@@ -6963,7 +6952,7 @@ async function injectShellIntegration(shellPath: string, baseEnv: Record<string,
   if (shellType === 'zsh') {
     // Create a temporary ZDOTDIR that sources user's zshenv/zshrc then
     // sources our integration script. This preserves the user shell configuration.
-    const zdotdir = '/tmp/termdock-zsh-' + String(process.pid);
+    const zdotdir = '/tmp/veymux-zsh-' + String(process.pid);
     try {
       await fs.promises.mkdir(zdotdir, { recursive: true });
       await fs.promises.writeFile(zdotdir + '/.zshenv',
@@ -6971,7 +6960,7 @@ async function injectShellIntegration(shellPath: string, baseEnv: Record<string,
       await fs.promises.writeFile(zdotdir + '/.zshrc',
         'ZDOTDIR=\n' +
         '[[ -f "' + home + '/.zshrc" ]] && source "' + home + '/.zshrc"\n' +
-        'source "' + integrationDir + '/termdock.zsh"\n');
+        'source "' + integrationDir + '/veymux.zsh"\n');
       env.ZDOTDIR = zdotdir;
     } catch {
       // Fallback: no ZDOTDIR, integration won't load
@@ -6981,14 +6970,14 @@ async function injectShellIntegration(shellPath: string, baseEnv: Record<string,
     // for non-interactive bash, but since our script checks $- for interactive,
     // it's safe. For interactive shells, bash sources .bashrc which we can't
     // easily prepend to. Instead, use PROMPT_COMMAND as a bootstrap.
-    const scriptPath = path.join(integrationDir, 'termdock.bash');
+    const scriptPath = path.join(integrationDir, 'veymux.bash');
     // Use ENV alias trick: set BASH_ENV for non-interactive, and for interactive
     // bash, we prepend a source command via PROMPT_COMMAND bootstrap.
     // The script itself checks $- and returns early for non-interactive.
     env.BASH_ENV = scriptPath;
     // Bootstrap: source our integration on first prompt if not already loaded.
     // This is a one-shot that self-removes from PROMPT_COMMAND.
-    if (!env.PROMPT_COMMAND || !env.PROMPT_COMMAND.includes('__termdock_hook')) {
+    if (!env.PROMPT_COMMAND || !env.PROMPT_COMMAND.includes('__veymux_hook')) {
       const existing = env.PROMPT_COMMAND || '';
       env.PROMPT_COMMAND = 'source "' + scriptPath + '" 2>/dev/null' + (existing ? '; ' + existing : '');
     }
@@ -6998,14 +6987,14 @@ async function injectShellIntegration(shellPath: string, baseEnv: Record<string,
     // __fish_config_dir to point to a dir that includes our script.
     // Simpler: just set an env var that the user's fish config can source,
     // or use fish's XDG_DATA_DIRS to include our vendor conf.
-    const scriptPath = path.join(integrationDir, 'termdock.fish');
+    const scriptPath = path.join(integrationDir, 'veymux.fish');
     // Fish doesn't have a clean env-based injection. We set a variable
     // that the startup can use, but for now, rely on the user's fish
     // config or fish's native title support. The OSC 133 marks won't
     // be emitted without explicit sourcing.
     // TODO: For fish, we could create a temporary XDG_CONFIG_HOME/fish/conf.d/
     // But that's risky. Leave fish to use its native fish_title for now.
-    env.TERMDOCK_FISH_INTEGRATION = scriptPath;
+    env.VEYMUX_FISH_INTEGRATION = scriptPath;
   }
 
   return env;
@@ -7013,7 +7002,7 @@ async function injectShellIntegration(shellPath: string, baseEnv: Record<string,
 
 function buildPowerShellCwdHookArgs(): string[] {
   const script = `
-$script:__TermdockOriginalPrompt = if (Test-Path Function:\\prompt) {
+$script:__VeymuxOriginalPrompt = if (Test-Path Function:\\prompt) {
   (Get-Command prompt -CommandType Function).ScriptBlock
 } else {
   { "PS $($executionContext.SessionState.Path.CurrentLocation)$('>' * ($nestedPromptLevel + 1)) " }
@@ -7024,7 +7013,7 @@ function global:prompt {
     $path = if ($location.Provider.Name -eq 'FileSystem') { $location.ProviderPath } else { $location.Path }
     [Console]::Write("$([char]27)]0;$path$([char]7)")
   } catch {}
-  & $script:__TermdockOriginalPrompt
+  & $script:__VeymuxOriginalPrompt
 }
 `.trim();
 
@@ -7042,7 +7031,7 @@ let ptyProviderPromise: Promise<PtyProvider> | null = null;
 
 /**
  * Resolve the requested termType to the TERM value used by PTY processes.
- * Termdock now exposes only the xterm.js terminal engine, so every path uses
+ * Veymux now exposes only the xterm.js terminal engine, so every path uses
  * the portable xterm-256color terminfo. Older clients may still send a stale
  * value; keep accepting the field but do not pass custom TERM names through.
  */
@@ -7232,7 +7221,7 @@ async function resolveTmuxRecoveryScope(scope: TmuxRecoveryScope, incident: Tmux
     if (!group || group.deleted) throw Object.assign(new Error('Collaboration group was not found'), { code: 'RECOVERY_GROUP_NOT_FOUND' });
     return candidates.filter(id => group.sessionIds.includes(id));
   }
-  const integrationRoot = `${TERMDOCK_DIR}/integration-state`;
+  const integrationRoot = `${VEYMUX_DIR}/integration-state`;
   const portDirectories = await fs.promises.readdir(integrationRoot, { withFileTypes: true }).catch(() => []);
   const memberIds = new Set<string>();
   for (const directory of portDirectories.filter(item => item.isDirectory())) {
@@ -7258,7 +7247,7 @@ tmuxRecoveryOperations.setAdmission(async (_operationId, sessionId) => {
     const managedSessions = globalSessionState.sessions.filter(item => item.mode === 'tmux' && item.tmuxSessionName);
     const liveSessions = await listLiveTmuxInventorySessions();
     const activeRecoverySessionIds = tmuxRecoveryOperations.runningSessionIds();
-    const ownedAgentSessionIds = getTermdockOwnedAgentSessionIds({ managedSessions,
+    const ownedAgentSessionIds = getVeymuxOwnedAgentSessionIds({ managedSessions,
       liveAgentSessions: liveSessions.filter(item => item.program && agentBySlug(item.program)).map(item => ({ name: item.name, sourceFrontendSessionId: item.sourceFrontendSessionId })),
       activeRecoverySessionIds });
     const group = collaborationStore.list().find(item => item.sessionIds.includes(sessionId));
@@ -7271,7 +7260,7 @@ tmuxRecoveryOperations.setAdmission(async (_operationId, sessionId) => {
   }
 });
 
-const TMUX_RECOVERY_HEALTH_FILE = `${TERMDOCK_DIR}/tmux-recovery-health.json`;
+const TMUX_RECOVERY_HEALTH_FILE = `${VEYMUX_DIR}/tmux-recovery-health.json`;
 let latestTmuxRecoveryHealth: Record<string, unknown> | null = null;
 let tmuxRecoveryHealthSampling = false;
 async function sampleTmuxRecoveryHealth(): Promise<void> {
@@ -7281,7 +7270,7 @@ async function sampleTmuxRecoveryHealth(): Promise<void> {
     const [snapshot, liveSessions] = await Promise.all([collectHostResourceSnapshot(), listLiveTmuxInventorySessions()]);
     const managedSessions = globalSessionState.sessions.filter(item => item.mode === 'tmux' && item.tmuxSessionName);
     const activeRecoverySessionIds = tmuxRecoveryOperations.runningSessionIds();
-    const tdOwnedAgentSessionIds = getTermdockOwnedAgentSessionIds({ managedSessions,
+    const tdOwnedAgentSessionIds = getVeymuxOwnedAgentSessionIds({ managedSessions,
       liveAgentSessions: liveSessions.filter(item => item.program && agentBySlug(item.program)).map(item => ({ name: item.name, sourceFrontendSessionId: item.sourceFrontendSessionId })),
       activeRecoverySessionIds });
     const diagnostics = {
@@ -7616,7 +7605,7 @@ const todoRuntime: TodoRuntime = {
   collectionSessions: todoCollectionSessions,
   callerSession(context) {
     const id = resolveFrontendSessionId(context);
-    if (!id) throw new TodoError('无法确认调用会话，请在有效的 Termdock 会话中重试', 403);
+    if (!id) throw new TodoError('无法确认调用会话，请在有效的 Veymux 会话中重试', 403);
     return id;
   },
   async claimTarget(input) {
@@ -7807,7 +7796,7 @@ router.use(sessionViewModeRoutes(sessionViewModes, resolveStableFederationSessio
     await setTmuxOption(record.tmuxSessionName, TMUX_VIEW_MODE_OPTION, mode);
   }
 }));
-router.use(sessionAttachmentRoutes(`${TERMDOCK_DIR}/chat-attachments`, resolveStableFederationSessionId));
+router.use(sessionAttachmentRoutes(`${VEYMUX_DIR}/chat-attachments`, resolveStableFederationSessionId));
 
 router.use(sessionChatRoutes({ store: collaborationStore, resolve: id => {
   const stable = resolveStableFederationSessionId(id);
@@ -7970,7 +7959,7 @@ router.post('/operations/orchestration/members', async (req, res) => {
   const action = req.body?.action === 'remove' ? 'remove' : req.body?.action === 'add' ? 'add' : null;
   const { group, ambiguous } = resolveGroupParam(groupId);
   if (ambiguous) return ambiguousGroupResponse(res, ambiguous);
-  if (!sourceSessionId) return res.status(400).json({ error: '无法识别当前会话；请从 Termdock 会话内运行 td collab' });
+  if (!sourceSessionId) return res.status(400).json({ error: '无法识别当前会话；请从 Veymux 会话内运行 veymux collab' });
   if (!group || !group.sessionIds.includes(sourceSessionId)) return res.status(403).json({ error: '当前会话不在该协作组中' });
   if (!action) return res.status(400).json({ error: '成员操作无效' });
   const service = req.app.locals.collaborationService;
@@ -7998,7 +7987,7 @@ router.post('/operations/orchestration/spawn', async (req, res) => {
   const groupId = typeof req.body?.groupId === 'string' ? req.body.groupId.trim() : '';
   const { group, ambiguous } = resolveGroupParam(groupId);
   if (ambiguous) return ambiguousGroupResponse(res, ambiguous);
-  if (!sourceSessionId) return res.status(400).json({ error: '无法识别当前会话；请从 Termdock 会话内运行 td collab' });
+  if (!sourceSessionId) return res.status(400).json({ error: '无法识别当前会话；请从 Veymux 会话内运行 veymux collab' });
   if (!group || !group.sessionIds.includes(sourceSessionId)) return res.status(403).json({ error: '当前会话不在该协作组中' });
   try {
     res.json({ ok: true, ...await spawnCollaborationAgentSession(req, group, sourceSessionId, req.body ?? {}) });
@@ -8025,7 +8014,7 @@ router.post('/operations/orchestration/spawn', async (req, res) => {
  */
 router.post('/operations/orchestration/cleanup', async (req, res) => {
   const sourceSessionId = resolveFrontendSessionId(req.body ?? {});
-  if (!sourceSessionId) return res.status(400).json({ error: '无法识别当前会话；请从 Termdock 会话内运行 td collab' });
+  if (!sourceSessionId) return res.status(400).json({ error: '无法识别当前会话；请从 Veymux 会话内运行 veymux collab' });
   const requested: string[] = Array.isArray(req.body?.sessionIds)
     ? [...new Set((req.body.sessionIds as unknown[]).filter((id): id is string => typeof id === 'string' && id.trim().length > 0))]
     : [];
@@ -8073,7 +8062,7 @@ router.post('/operations/orchestration/cleanup', async (req, res) => {
   if (req.body?.confirmed !== true) {
     return res.json({ ok: false, code: 'CLEANUP_CONFIRM_REQUIRED',
       error: '不可恢复的风险操作：执行前必须先获得用户（人类）的明确同意',
-      instruction: `将清理计划告知用户并取得明确同意后重跑：td collab cleanup ${requested.join(' ')} --confirm`,
+      instruction: `将清理计划告知用户并取得明确同意后重跑：veymux collab cleanup ${requested.join(' ')} --confirm`,
       plan });
   }
 
@@ -8116,7 +8105,7 @@ router.post('/operations/orchestration/cleanup', async (req, res) => {
 const DRIVE_KEYS = new Set<CollaborationPaneKey>(['enter', 'escape', 'space', 'left', 'right', 'up', 'down']);
 router.post('/operations/orchestration/drive', async (req, res) => {
   const sourceSessionId = resolveFrontendSessionId(req.body ?? {});
-  if (!sourceSessionId) return res.status(400).json({ error: '无法识别当前会话；请从 Termdock 会话内运行 td collab' });
+  if (!sourceSessionId) return res.status(400).json({ error: '无法识别当前会话；请从 Veymux 会话内运行 veymux collab' });
   const target = typeof req.body?.session === 'string' ? req.body.session.trim() : '';
   const action = typeof req.body?.action === 'string' ? req.body.action.trim() : '';
   if (!target || !action) return res.status(400).json({ error: 'drive 需要目标会话 id 与动作（approve|enter|escape|space|left|right|up|down|capture|run）' });
@@ -8171,7 +8160,7 @@ router.post('/operations/orchestration/drive', async (req, res) => {
     if (action === 'run') {
       const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
       if (!text) return res.status(400).json({ error: 'run 需要一行文本（放在请求的 text 字段）' });
-      if (text.length > 10_000) return res.status(400).json({ error: 'run 文本过长（上限 10000 字符）；需要更多内容请走 td collab send 投递' });
+      if (text.length > 10_000) return res.status(400).json({ error: 'run 文本过长（上限 10000 字符）；需要更多内容请走 veymux collab send 投递' });
       // Same bracketed-paste write path deliveries use: one line, one submit,
       // embedded newlines stay inside the recipient's editor.
       await writeCollaborationTmuxPane(runTmux, pane, text, runTmuxStdin, assertCurrent);
@@ -8202,7 +8191,7 @@ router.use('/operations/orchestration', collaborationRoutes({ store: collaborati
   },
   // Same semantics as the inventory PATCH rename: a display name that wins
   // over auto-titles (customName=true clears autoTitle) and is pushed into
-  // the tmux @termdock-friendly-name option. Names arrive pre-cleaned from
+  // the tmux @veymux-friendly-name option. Names arrive pre-cleaned from
   // the collaboration route.
   renameSession: async (frontendSessionId, name) => {
     const index = globalSessionState.sessions.findIndex((session) => session.sessionId === frontendSessionId);
@@ -8211,7 +8200,7 @@ router.use('/operations/orchestration', collaborationRoutes({ store: collaborati
       name, customName: true, autoTitle: null };
     if (next.mode === 'tmux' && next.tmuxSessionName) {
       try {
-        await setTmuxOption(next.tmuxSessionName, '@termdock-friendly-name', name);
+        await setTmuxOption(next.tmuxSessionName, '@veymux-friendly-name', name);
       } catch (error) {
         console.warn(`[collab] failed to set friendly name on ${next.tmuxSessionName}: ${getErrorMessage(error)}`);
       }
@@ -8273,7 +8262,7 @@ router.get('/operations/session-search', async (req, res) => {
   const storedByNative = new Map(storedSessions.slice().sort((a, b) => a.updatedAt - b.updatedAt)
     .map(entry => [`${entry.agentSlug}:${entry.agentNativeSessionId}`, entry]));
   try {
-    // Preserve the names users see in Termdock as searchable aliases, including
+    // Preserve the names users see in Veymux as searchable aliases, including
     // custom titles for conversations that have already been closed.
     const titles = [
       ...storedSessions.slice().sort((a, b) => a.updatedAt - b.updatedAt).flatMap(entry => entry.titleSource !== 'default' && !/^(?:tmux:|remote:|wt-)/i.test(entry.title) && entry.agentSlug && entry.agentNativeSessionId ? [{ agentSlug: entry.agentSlug, agentNativeSessionId: entry.agentNativeSessionId, title: entry.title }] : []),
@@ -8572,9 +8561,9 @@ router.patch('/session-inventory/sessions/:frontendSessionId', async (req, res) 
 
   if (next.mode === 'tmux' && next.tmuxSessionName) {
     if (next.customName === true && next.name.trim().length > 0) {
-      await setTmuxOption(next.tmuxSessionName, '@termdock-friendly-name', next.name);
+      await setTmuxOption(next.tmuxSessionName, '@veymux-friendly-name', next.name);
     } else if (previous.customName === true) {
-      await unsetTmuxOption(next.tmuxSessionName, '@termdock-friendly-name');
+      await unsetTmuxOption(next.tmuxSessionName, '@veymux-friendly-name');
     }
   }
   upsertGlobalSessionRecord(next);
@@ -8773,7 +8762,7 @@ router.post('/update/restart', async (req, res) => {
   } catch (error) {
     res.status(409).json({
       error: error instanceof Error ? error.message : String(error),
-      code: error instanceof TermdockUpdateStateChangedError ? 'UPDATE_STATE_CHANGED' : 'UPDATE_RESTART_FAILED',
+      code: error instanceof VeymuxUpdateStateChangedError ? 'UPDATE_STATE_CHANGED' : 'UPDATE_RESTART_FAILED',
       state: npmAutoUpdateManager.getState(),
     });
   }
@@ -9063,7 +9052,7 @@ router.put('/settings', async (req, res) => {
 });
 
 // ── Context draft (cross-device realtime sync) ────────────────────────
-// 草稿内容存服务端（~/.termdock/context-draft.json），PUT 后通过 control
+// 草稿内容存服务端（~/.veymux/context-draft.json），PUT 后通过 control
 // WebSocket 广播给其它客户端；携带 origin 让发送方忽略自己的回声。
 
 router.get('/context-draft', (_req, res) => {
@@ -9373,7 +9362,7 @@ router.post('/agent-plugins', async (req, res) => {
       res.status(409).json({ error: `Plugin "${existing.manifest.slug}" already exists` });
       return;
     }
-    const validation = validateManifest(manifest, path.join(os.homedir(), '.termdock', 'agent-plugins', 'pending'));
+    const validation = validateManifest(manifest, path.join(os.homedir(), '.veymux', 'agent-plugins', 'pending'));
     if ('error' in validation) {
       res.status(400).json({
         error: validation.error.errors.join('\n'),
@@ -9885,7 +9874,10 @@ router.post('/:sessionId/input', express.text({ type: '*/*' }), async (req, res)
     const parts = paste.complete(data);
     await serializeTerminalInput(session.ptyProcess, async () => {
       if (terminalSessions.get(sessionId) !== session) throw new Error('TERMINAL_INPUT_TARGET_CHANGED');
-      for (const part of parts) session.ptyProcess.write(part);
+      for (const part of parts) {
+        const input = session.mode === 'tmux' ? filterTerminalVersionReplies(part) : part;
+        if (input) session.ptyProcess.write(input);
+      }
     });
     session.lastActivity = Date.now();
     res.json({ success: true });
@@ -10601,7 +10593,10 @@ export function handleTerminalWebSocket(
     if (terminalSessions.get(sessionId) !== session) throw new Error('TERMINAL_INPUT_TARGET_CHANGED');
     session.lastActivity = Date.now();
     if (attachment) attachment.write(data);
-    else if (session.mode === 'tmux') return enqueueTmuxIo(session, async () => { session.ptyProcess.write(data); });
+    else if (session.mode === 'tmux') return enqueueTmuxIo(session, async () => {
+      const input = filterTerminalVersionReplies(data);
+      if (input) session.ptyProcess.write(input);
+    });
     else session.ptyProcess.write(data);
   }), error => {
     if (ws.readyState !== ws.OPEN) return;
@@ -10985,7 +10980,7 @@ async function reconcileClientStateOnce(): Promise<void> {
         }
       }
     } else if (entry.mode === 'tmux' && entry.tmuxSessionName) {
-      // Tmux entry: the tmux daemon (independent of termdock) must still
+      // Tmux entry: the tmux daemon (independent of veymux) must still
       // own this session name. We deliberately do NOT require a live
       // terminal wrapper here — detaching from the wrapper doesn't kill
       // the tmux session.

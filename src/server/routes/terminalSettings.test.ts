@@ -27,11 +27,11 @@ function settingsPayload(localAccess: Record<string, unknown>, qr: ReturnType<ty
 
 describe('settings interface invitations', () => {
   it.each([
-    ['http://test.termdock.local:18700', '192.168.1.20', 'http://192.168.1.20:18700'],
-    ['https://test.termdock.local:18701', '192.168.1.20', 'https://192.168.1.20:18701'],
-    ['https://test.termdock.local', '192.168.1.20', 'https://192.168.1.20'],
-    ['http://test.termdock.local', '2001:db8::20', 'http://[2001:db8::20]'],
-    ['https://test.termdock.local:9834', '192.168.1.20', 'https://192.168.1.20:9834'],
+    ['http://test.veymux.local:18700', '192.168.1.20', 'http://192.168.1.20:18700'],
+    ['https://test.veymux.local:18701', '192.168.1.20', 'https://192.168.1.20:18701'],
+    ['https://test.veymux.local', '192.168.1.20', 'https://192.168.1.20'],
+    ['http://test.veymux.local', '2001:db8::20', 'http://[2001:db8::20]'],
+    ['https://test.veymux.local:9834', '192.168.1.20', 'https://192.168.1.20:9834'],
   ])('encodes the same origin in the QR and copy URL for %s', async (url, address, expected) => {
     const qr = vi.fn().mockResolvedValue('data:qr');
     const result = await settingsPayload({ url, status: 'active', interfaces: [{ address }] }, qr);
@@ -40,13 +40,13 @@ describe('settings interface invitations', () => {
   });
 
   it('keeps the copyable address when QR creation fails', async () => {
-    const result = await settingsPayload({ url: 'http://test.termdock.local:18700', status: 'active', interfaces: [{ address: '10.1.1.20' }] }, vi.fn().mockRejectedValue(new Error('QR failed')));
+    const result = await settingsPayload({ url: 'http://test.veymux.local:18700', status: 'active', interfaces: [{ address: '10.1.1.20' }] }, vi.fn().mockRejectedValue(new Error('QR failed')));
     expect(result.localAccess.interfaces[0]).toMatchObject({ url: 'http://10.1.1.20:18700', qrDataUrl: null });
   });
 
   it('does not offer a LAN certificate address for a loopback-only listener', async () => {
     const qr = vi.fn();
-    const result = await settingsPayload({ url: 'https://test.termdock.local:18700', status: 'loopback-only', interfaces: [] }, qr);
+    const result = await settingsPayload({ url: 'https://test.veymux.local:18700', status: 'loopback-only', interfaces: [] }, qr);
     expect(result.localAccess.onboardingUrl).toBeNull();
     expect(result.localAccess.interfaces).toHaveLength(0);
     expect(qr).not.toHaveBeenCalled();

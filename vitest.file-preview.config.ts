@@ -23,7 +23,7 @@ export default defineConfig({
               ...response.headers(),
               'content-security-policy': policy === 'desktop'
                 ? "frame-ancestors 'self'; object-src 'none'; base-uri 'self'"
-                : "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline' 'wasm-unsafe-eval' blob: https: http:; style-src 'unsafe-inline' blob: https:; img-src blob: data: https:; font-src blob: data: https:; media-src blob: data: https:; connect-src blob: https: wss:; worker-src blob:; frame-src 'none'; frame-ancestors 'self'; object-src 'none'; base-uri https://termdock-preview.invalid; form-action 'none'",
+                : "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline' 'wasm-unsafe-eval' blob: https: http:; style-src 'unsafe-inline' blob: https:; img-src blob: data: https:; font-src blob: data: https:; media-src blob: data: https:; connect-src blob: https: wss:; worker-src blob:; frame-src 'none'; frame-ancestors 'self'; object-src 'none'; base-uri https://veymux-preview.invalid; form-action 'none'",
             } });
           });
         },

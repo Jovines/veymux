@@ -10,7 +10,7 @@ import { remoteSession, type CollaborationNode, type CollaborationPeerTransport,
 const cleanup: Array<() => void> = [];
 afterEach(() => { cleanup.splice(0).reverse().forEach(close => close()); vi.restoreAllMocks(); });
 async function fixture(scoped = false, old = false) {
-  const dir = mkdtempSync(join(tmpdir(), 'td-direct-services-')); cleanup.push(() => rmSync(dir, { force: true, recursive: true }));
+  const dir = mkdtempSync(join(tmpdir(), 'veymux-direct-services-')); cleanup.push(() => rmSync(dir, { force: true, recursive: true }));
   const identities = await Promise.all([createIdentity(), createIdentity(), createIdentity(), createIdentity()]);
   const nodes: CollaborationNode[] = identities.slice(0, 3).map((id, index) => ({ serviceId: id.peerId, origin: `https://node${index}.test` }));
   const stores = nodes.map((_, index) => new CollaborationStore(join(dir, `store${index}.json`)));

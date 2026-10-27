@@ -34,7 +34,7 @@ return (
 );
 ```
 
-`getKeyboardPanelStyles` 在 iOS 返回无 rootStyle 的原生路径，contentStyle 使用实际页面位移；桌面禁用时不添加样式，非 iOS 的兼容路径保留成对平移/上边距。导航 chrome 放在内容面板外，用 `data-termdock-window-header` 标记。
+`getKeyboardPanelStyles` 在 iOS 返回无 rootStyle 的原生路径，contentStyle 使用实际页面位移；桌面禁用时不添加样式，非 iOS 的兼容路径保留成对平移/上边距。导航 chrome 放在内容面板外，用 `data-veymux-window-header` 标记。
 
 聚焦使用 `focusKeyboardInput`：iOS 不传 preventScroll，不把真实编辑器暂时设为 opacity:0。旧的 `useKeyboardFocusGuard` 仅保留给兼容路径，原生路径显式禁用，否则系统无法完成自己的聚焦避让。
 

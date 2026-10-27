@@ -1,3 +1,4 @@
+import './utils/brandMigration.js';
 import { IntegrationRuntime, integrationSocketPath } from './agent/integrationServer.js';
 import { CollaborationService } from './agent/collaborationService.js';
 import { X509Certificate } from 'node:crypto';
@@ -66,7 +67,7 @@ import { serverCleanup } from './utils/serverCleanup.js';
 import { startOnboardingServer, stopOnboardingServer, getOnboardingServerUrl } from './onboardingServer.js';
 import { CertificateWatcher } from './certificateWatcher.js';
 import {
-  startTermdockLogMaintenance,
+  startVeymuxLogMaintenance,
   writeDiffTraceLog,
   writeErrorLog,
   writeJsonLog,
@@ -76,14 +77,14 @@ import { indexRetainedClientModules, pinBundledRuntimeClientDist, resolveRetaine
 import { startGeneratedStorageMaintenance } from './utils/storageMaintenance.js';
 import { installCrashForensics } from './utils/crashForensics.js';
 import {
-  getTermdockVersion,
-  TERMDOCK_CAPABILITIES,
-  TERMDOCK_PROTOCOL_VERSION,
+  getVeymuxVersion,
+  VEYMUX_CAPABILITIES,
+  VEYMUX_PROTOCOL_VERSION,
 } from './utils/version.js';
 
 import { PORT, DEFAULT_HOST } from './config.js';
 
-const CLIENT_STATE_COOKIE = 'termdock-client';
+const CLIENT_STATE_COOKIE = 'veymux-client';
 export const DEFAULT_PORT = PORT.backend;
 
 const CLIENT_LOG_DEDUP_WINDOW_MS = 5_000;
@@ -325,15 +326,15 @@ export function createApp(options: AppOptions = {}): express.Express {
   });
 
   // Public, non-sensitive capability handshake used by desktop clients before
-  // navigating to a local or remote Termdock service. Keep this endpoint
+  // navigating to a local or remote Veymux service. Keep this endpoint
   // backwards-compatible: older desktops only require /health, while newer
   // clients can use protocolVersion/capabilities for feature gating.
   app.get('/api/meta', (_req, res) => {
     res.json({
-      product: 'termdock',
-      version: getTermdockVersion(),
-      protocolVersion: TERMDOCK_PROTOCOL_VERSION,
-      capabilities: TERMDOCK_CAPABILITIES,
+      product: 'veymux',
+      version: getVeymuxVersion(),
+      protocolVersion: VEYMUX_PROTOCOL_VERSION,
+      capabilities: VEYMUX_CAPABILITIES,
     });
   });
 
@@ -523,21 +524,21 @@ function reloadHttpsCertificate(server: HttpServer, options: ServerOptions): boo
 
 export function startServer(options: ServerOptions = {}): StartServerResult {
   assertPublicSecurity();
-  const stopLogMaintenance = startTermdockLogMaintenance();
+  const stopLogMaintenance = startVeymuxLogMaintenance();
   // 装上之后，"运行中挂了"至少留得下一条能说清原因的记录（谁重启它是 supervisor 的事）。
   const crashForensics = installCrashForensics({
     role: 'server',
-    version: getTermdockVersion(),
+    version: getVeymuxVersion(),
     startedAt: Date.now(),
   });
   const port = options.port ?? Number(process.env.PORT || DEFAULT_PORT);
   const host = options.host ?? (process.env.HOST || DEFAULT_HOST);
-  if (process.env.TERMDOCK_PUBLIC_ORIGIN && !(options.httpsCertPath && options.httpsKeyPath) && !['127.0.0.1', '::1', 'localhost'].includes(host)) {
+  if (process.env.VEYMUX_PUBLIC_ORIGIN && !(options.httpsCertPath && options.httpsKeyPath) && !['127.0.0.1', '::1', 'localhost'].includes(host)) {
     throw new Error('Public access requires HTTPS certificates, or a loopback-only listener behind a TLS proxy.');
   }
   const runtimeMonitor = new RuntimeMonitor({
-    stateDirectory: path.join(homedir(), '.termdock'),
-    historyPath: path.join(homedir(), '.termdock', 'runtime-metrics.log'),
+    stateDirectory: path.join(homedir(), '.veymux'),
+    historyPath: path.join(homedir(), '.veymux', 'runtime-metrics.log'),
   });
   runtimeMonitor.start();
   const app = createApp({
@@ -550,7 +551,7 @@ export function startServer(options: ServerOptions = {}): StartServerResult {
   const { server, scheme } = createServerForApp(app, options);
   const onServerClose = serverCleanup(server);
   if (typeof app.locals.runtimeClientPath === 'string') onServerClose(startGeneratedStorageMaintenance({
-    stateDirectory: path.join(homedir(), '.termdock'), clientDirectory: app.locals.runtimeClientPath,
+    stateDirectory: path.join(homedir(), '.veymux'), clientDirectory: app.locals.runtimeClientPath,
   }));
   let webTransport: Awaited<ReturnType<typeof startWebTransportServer>> | undefined;
   const webTransportDescriptor = (): WebTransportDescriptor | undefined => webTransport?.descriptor();
@@ -564,7 +565,7 @@ export function startServer(options: ServerOptions = {}): StartServerResult {
   let federationServiceId = '';
   let activeRouteIds = (): string[] => [];
   const desktopTargets = () => desktopServiceTargets(homedir(), federationServiceId);
-  const routeAccess = new RouteAccess(path.join(homedir(), '.termdock', 'federation', 'routes.json'), Date.now,
+  const routeAccess = new RouteAccess(path.join(homedir(), '.veymux', 'federation', 'routes.json'), Date.now,
     (subjectId, targetServiceId) => routeInvitations?.allows(subjectId, targetServiceId) === true || collaborationTransport?.canRoute(subjectId, targetServiceId) === true || collaborationService?.canRoute(subjectId, targetServiceId) === true,
     desktopTargets, () => activeRouteIds());
   const relayRouter = new RelayRouter<RoutePrincipal>({
@@ -575,7 +576,7 @@ export function startServer(options: ServerOptions = {}): StartServerResult {
     allowRoute: (principal, serviceId) => routeAccess.allowRoute(principal, serviceId),
   });
   activeRouteIds = () => relayRouter.registeredRouteIds();
-  const directTargetRegistry = new DirectTargetRegistry(relayRouter, path.join(homedir(), '.termdock', 'federation'));
+  const directTargetRegistry = new DirectTargetRegistry(relayRouter, path.join(homedir(), '.veymux', 'federation'));
   const refreshDirectTargets = () => {
     directTargetRegistry.refresh(routeAccess.configuredDirectTargets().filter(target => target.serviceId !== federationServiceId));
   };
@@ -585,11 +586,11 @@ export function startServer(options: ServerOptions = {}): StartServerResult {
   onServerClose(() => relayRouter.close());
   onServerClose(() => { void stopAllScrcpySessions(); void androidRecordings.stopAll(); });
   onServerClose(stopComputerBridges);
-  const federation = createFederationRuntime(app, path.join(homedir(), '.termdock', 'federation'), {
+  const federation = createFederationRuntime(app, path.join(homedir(), '.veymux', 'federation'), {
     terminal: handleTerminalWebSocket, control: handleControlWebSocket, android: handleAndroidWebSocket, computer: handleComputerWebSocket,
   }, {
     webTransport: webTransportDescriptor,
-    sessionAttachmentDirectory: path.join(homedir(), '.termdock', 'chat-attachments'),
+    sessionAttachmentDirectory: path.join(homedir(), '.veymux', 'chat-attachments'),
     restoreSharedSession: restoreSharedFederationSession,
     resolveSessionId: resolveStableFederationSessionId,
     sessionAccess: () => app.locals.integrationRuntime?.sessionAccess,
@@ -669,7 +670,7 @@ export function startServer(options: ServerOptions = {}): StartServerResult {
     };
     const peerEndpoint = <T>(peer: import('./agent/collaborationPeerTransport.js').CollaborationNode,
       connect: (node: import('./agent/collaborationPeerTransport.js').CollaborationNode, ca?: Buffer, certificateFingerprint256?: string) => Promise<T>) =>
-      withPeerEndpoint(peer, routeAccess.configuredDirectTargets(), path.join(homedir(), '.termdock', 'federation'), connect);
+      withPeerEndpoint(peer, routeAccess.configuredDirectTargets(), path.join(homedir(), '.veymux', 'federation'), connect);
     const connectPeer = (peer: import('./agent/collaborationPeerTransport.js').CollaborationNode) => peerEndpoint(peer,
       (node, ca, pin) => connectCollaborationRpc(runtime.identity, node, undefined, packet => receiveCollaboration(peer.serviceId, packet), ca, pin));
     const connectVia = async (peer: import('./agent/collaborationPeerTransport.js').CollaborationNode, via: import('./agent/collaborationPeerTransport.js').CollaborationNode) => {
@@ -687,7 +688,7 @@ export function startServer(options: ServerOptions = {}): StartServerResult {
     };
     collaborationTransport = new CollaborationPeerTransport({
       reverse: reverseCollaboration,
-      file: path.join(homedir(), '.termdock', 'federation', 'collaboration-peers.json'), serviceId: runtime.serviceId,
+      file: path.join(homedir(), '.veymux', 'federation', 'collaboration-peers.json'), serviceId: runtime.serviceId,
       store: collaborationStore, deliver: deliverPeerCollaboration, activity: collaborationLocalActivity,
       scopeFor: serviceId => collaborationService?.effectiveScope(serviceId),
       connect: async (peer, via) => {
@@ -699,7 +700,7 @@ export function startServer(options: ServerOptions = {}): StartServerResult {
     let caFingerprint256: string | undefined;
     if (options.httpsCaPath) try { caFingerprint256 = new X509Certificate(fs.readFileSync(options.httpsCaPath)).fingerprint256; } catch { /* System TLS trust remains required. */ }
     app.locals.collaborationNode = { serviceId: runtime.serviceId, ...(caFingerprint256 ? { caFingerprint256 } : {}) };
-    collaborationService = new CollaborationService({ file: path.join(homedir(), '.termdock', 'federation', 'collaboration-services.json'),
+    collaborationService = new CollaborationService({ file: path.join(homedir(), '.veymux', 'federation', 'collaboration-services.json'),
       store: collaborationStore, transport: collaborationTransport, node: () => app.locals.collaborationNode,
       sessions: collaborationDirectorySessions, deliver: deliverPeerCollaboration, reverse: reverseCollaboration,
       connect: async peer => {
@@ -729,7 +730,7 @@ export function startServer(options: ServerOptions = {}): StartServerResult {
       let integration: IntegrationRuntime | undefined;
       try {
         const port = options.port ?? DEFAULT_PORT;
-        integration = new IntegrationRuntime({ directory: path.join(homedir(), '.termdock', 'integration-state', String(port)), socketPath: integrationSocketPath(port), adminToken: options.localApiToken,
+        integration = new IntegrationRuntime({ directory: path.join(homedir(), '.veymux', 'integration-state', String(port)), socketPath: integrationSocketPath(port), adminToken: options.localApiToken,
           serviceId:federationServiceId,
           messages: collaborationStore, taskStore: collaborationTaskStore, tasks: collaborationTasks, peers: collaborationService, sessions: integrationSessionAdapter });
         await integration.listen(); app.locals.integrationRuntime = integration;
@@ -744,7 +745,7 @@ export function startServer(options: ServerOptions = {}): StartServerResult {
     onServerClose(() => collaborationTransport?.close());
     entrySubjectAllowed = subjectId => runtime.store.authorize({ subjectId, serviceId: runtime.serviceId, action: 'authorization.manage' }).allowed;
     routeInvitations = new RouteInvitationStore({
-      filePath: path.join(homedir(), '.termdock', 'federation', 'route-invitations.json'), serviceId: runtime.serviceId,
+      filePath: path.join(homedir(), '.veymux', 'federation', 'route-invitations.json'), serviceId: runtime.serviceId,
       issuerAllowed: subjectId => entrySubjectAllowed(subjectId),
       targetAvailable: serviceId => routeAccess.hasConfiguredTarget(serviceId) && relayRouter.hasRoute(serviceId),
     });
@@ -753,8 +754,8 @@ export function startServer(options: ServerOptions = {}): StartServerResult {
     const localHostname = ['0.0.0.0', '::'].includes(host) ? 'localhost' : host;
     const localAuthority = localHostname.includes(':') && !localHostname.startsWith('[') ? `[${localHostname}]` : localHostname;
     const selfRelay = new DesktopSelfRelay({
-      desktopFile: path.join(homedir(), '.termdock', 'desktop.json'),
-      targets: () => routeAccess.configuredDirectTargets(), baseDir: path.join(homedir(), '.termdock', 'federation'), identity: runtime.identity, serviceId: runtime.serviceId,
+      desktopFile: path.join(homedir(), '.veymux', 'desktop.json'),
+      targets: () => routeAccess.configuredDirectTargets(), baseDir: path.join(homedir(), '.veymux', 'federation'), identity: runtime.identity, serviceId: runtime.serviceId,
       localOrigin: () => {
         const address = server.address();
         if (!address || typeof address === 'string') throw new Error('Local service is not listening');
@@ -879,14 +880,14 @@ export function startServer(options: ServerOptions = {}): StartServerResult {
     const listeningPort = listeningAddress && typeof listeningAddress !== 'string' ? listeningAddress.port : port;
     const listeningHost = listeningAddress && typeof listeningAddress !== 'string' ? listeningAddress.address : host;
     const displayHost = host === '0.0.0.0' ? 'localhost' : host;
-    console.log(`Termdock server running at ${scheme}://${displayHost}:${listeningPort}`);
+    console.log(`Veymux server running at ${scheme}://${displayHost}:${listeningPort}`);
     console.log(`Health check: ${scheme}://${displayHost}:${listeningPort}/health`);
-    if ((options.quic ?? process.env.TERMDOCK_QUIC !== '0') && (scheme === 'https' || process.env.TERMDOCK_PUBLIC_ORIGIN?.startsWith('https://'))) {
-      const quicPort = process.env.TERMDOCK_QUIC_PORT === undefined ? listeningPort : Number(process.env.TERMDOCK_QUIC_PORT);
+    if ((options.quic ?? process.env.VEYMUX_QUIC !== '0') && (scheme === 'https' || process.env.VEYMUX_PUBLIC_ORIGIN?.startsWith('https://'))) {
+      const quicPort = process.env.VEYMUX_QUIC_PORT === undefined ? listeningPort : Number(process.env.VEYMUX_QUIC_PORT);
       void federation.then(async runtime => {
-        if (!Number.isSafeInteger(quicPort) || quicPort < 1 || quicPort > 65535) throw new Error('Invalid TERMDOCK_QUIC_PORT');
+        if (!Number.isSafeInteger(quicPort) || quicPort < 1 || quicPort > 65535) throw new Error('Invalid VEYMUX_QUIC_PORT');
         const transport = await startWebTransportServer({
-          directory: path.join(homedir(), '.termdock', 'federation'), host: listeningHost, port: quicPort,
+          directory: path.join(homedir(), '.veymux', 'federation'), host: listeningHost, port: quicPort,
           hostAllowed: isAllowedHost,
           originAllowed: (origin, authority) => secureChannelOriginAllowed(origin, () => isUpgradeOriginAllowed(origin, authority)),
           openAccessAllowed: (origin, authority) => !!origin && isUpgradeOriginAllowed(origin, authority),

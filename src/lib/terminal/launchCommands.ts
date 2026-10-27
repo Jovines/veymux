@@ -1,9 +1,9 @@
 import { useSyncExternalStore } from 'react';
 import { chatProgramName } from '../../server/shared/chatProgramPolicy';
 
-const KEY = 'termdock:agent-command-presets:v1';
-export const LEGACY_COMMANDS_KEY = 'termdock:new-session-commands:v1';
-const CHANGED = 'termdock:launch-commands-changed';
+const KEY = 'veymux:agent-command-presets:v1';
+export const LEGACY_COMMANDS_KEY = 'veymux:new-session-commands:v1';
+const CHANGED = 'veymux:launch-commands-changed';
 export interface AgentCommandPreset { id: string; name: string; command: string }
 interface AgentCommands { presets: AgentCommandPreset[]; selectedId: string | null }
 type Commands = Record<string, AgentCommands>;

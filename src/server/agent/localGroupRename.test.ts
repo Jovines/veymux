@@ -5,7 +5,7 @@ import os from 'node:os';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { CollaborationStore } from './collaborationStore.js';
 let dir: string, file: string;
-beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'td-group-rename-')); file = path.join(dir, 'groups.json'); });
+beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-group-rename-')); file = path.join(dir, 'groups.json'); });
 afterEach(() => { vi.restoreAllMocks(); fs.rmSync(dir, { recursive: true, force: true }); });
 const metadata = (group: { id: string; name: string; updatedAt: number }) => ({ id: group.id, name: group.name, updatedAt: group.updatedAt });
 it('does not overwrite externally changed state when reconfirming an uncertain rename receipt', () => {

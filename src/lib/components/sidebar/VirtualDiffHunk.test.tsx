@@ -15,7 +15,7 @@ beforeEach(() => {
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
     const top = Number(this.dataset.top ?? 0);
-    const height = this.classList.contains('termdock-diff-stream-scroller') ? 600 : 200;
+    const height = this.classList.contains('veymux-diff-stream-scroller') ? 600 : 200;
     return { top, bottom: top + height, height, width: 500, left: 0, right: 500, x: 0, y: top, toJSON() {} };
   });
 });
@@ -28,7 +28,7 @@ function intersect(element: Element, isIntersecting: boolean) {
 describe('diff hunk window', () => {
   it('keeps distant code out of the DOM and retains measured height after scrolling away', () => {
     const activeRef = { current: true };
-    const view = render(<div className="termdock-diff-stream-scroller">
+    const view = render(<div className="veymux-diff-stream-scroller">
       <VirtualDiffHunk enabled activeRef={activeRef} estimatedHeight={150} data-top="2000">
         <button>hunk action</button><pre>highlighted code</pre>
       </VirtualDiffHunk>
@@ -44,7 +44,7 @@ describe('diff hunk window', () => {
 
   it('retains visible controls across rapid tab round trips', () => {
     const activeRef = { current: true };
-    const view = render(<div className="termdock-diff-stream-scroller">
+    const view = render(<div className="veymux-diff-stream-scroller">
       <VirtualDiffHunk enabled activeRef={activeRef} estimatedHeight={150}><input defaultValue="draft" /></VirtualDiffHunk>
     </div>);
     const hunk = view.container.querySelector('[data-diff-hunk-mounted]')!;
@@ -61,7 +61,7 @@ describe('diff hunk window', () => {
   });
 
   it('keeps a selected hunk mounted outside the window', () => {
-    const view = render(<div className="termdock-diff-stream-scroller">
+    const view = render(<div className="veymux-diff-stream-scroller">
       <VirtualDiffHunk enabled activeRef={{ current: true }} pinned estimatedHeight={150} data-top="2000"><pre>selection</pre></VirtualDiffHunk>
     </div>);
     expect(view.getByText('selection')).toBeTruthy();

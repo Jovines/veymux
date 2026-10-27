@@ -10,7 +10,7 @@ import { describeInvitationFailure } from '../../lib/federation/invitationFailur
 function connectionFailureMessage(failure: unknown): string | undefined {
   if (!(failure instanceof Error)) return;
   if (failure.name === 'TimeoutError' || /^(The operation timed out\.?|The operation was aborted due to timeout\.?|signal timed out|Secure handshake timed out|Secure connection timed out)$/i.test(failure.message)) {
-    return '连接超时。请确认分享电脑已唤醒、Termdock 正在运行，且当前设备能访问这个地址。';
+    return '连接超时。请确认分享电脑已唤醒、Veymux 正在运行，且当前设备能访问这个地址。';
   }
   if (['Secure transport unavailable', 'Failed to fetch', 'Load failed', 'NetworkError when attempting to fetch resource.'].includes(failure.message)) {
     return '未能建立安全连接。请先检查服务地址和网络；如果浏览器提示证书错误，再完成证书信任设置。';
@@ -46,10 +46,10 @@ export function ServiceManager({ current, renderRoutes, renderRelayServices, onO
   const { t } = useI18n();
   const validateInput = (input: string) => {
     try {
-      if (input.includes('#termdock-invite=')) parseInviteLink(input);
+      if (input.includes('#veymux-invite=')) parseInviteLink(input);
       else normalizeServiceAddress(input);
     } catch {
-      throw new Error(t(input.includes('#termdock-invite=') ? 'login.invalidInvitation' : 'login.invalidAddress'));
+      throw new Error(t(input.includes('#veymux-invite=') ? 'login.invalidInvitation' : 'login.invalidAddress'));
     }
   };
   const onValidate = (input: string) => {
@@ -162,7 +162,7 @@ export function ServiceManager({ current, renderRoutes, renderRelayServices, onO
     let result: { passwordRequired?: boolean; certificateReviewRequired?: boolean } | void;
     await perform(async () => {
       setConnectionHelp(undefined);
-      const invitation = input.includes('#termdock-invite=') ? parseInviteLink(input) : undefined;
+      const invitation = input.includes('#veymux-invite=') ? parseInviteLink(input) : undefined;
       const origin = invitation?.url || normalizeServiceAddress(input);
       try { result = await openWithCertificateReview(origin, () => onAdd(input, password), input); }
       catch (failure) {
@@ -242,7 +242,7 @@ function AddServiceForm({ onValidate, busy, onSubmit, onSave, onTargetChange, in
   return <form className="service-form" onSubmit={async event => { event.preventDefault(); if (busy || !validate()) return; const result = await onSubmit(input.trim(), needsPassword ? password : undefined); if (result?.passwordRequired) setNeedsPassword(true); setPassword(''); }}>
     <label className="service-field"><span>服务地址或邀请链接</span><input ref={inputRef} value={input} onChange={event => { onTargetChange(); setInput(event.target.value); setNeedsPassword(false); setPassword(''); }} disabled={busy} required autoComplete="off" autoCapitalize="none" spellCheck={false} placeholder="例如：电脑地址:9834 或 https://…" /></label>
     {needsPassword ? <label className="service-field"><span>服务密码</span><input type="password" value={password} onChange={event => setPassword(event.target.value)} disabled={busy} required autoFocus autoComplete="current-password" placeholder="输入这台服务的密码" /></label> : <p className="service-help">连接自己的服务，输入地址即可；收到邀请时，粘贴完整链接。</p>}
-    <button type="button" className="service-button service-secondary" disabled={busy || !input.trim() || input.includes("#termdock-invite=")} onClick={() => { if (validate()) void onSave(input.trim()); }}>仅保存，不连接</button>
+    <button type="button" className="service-button service-secondary" disabled={busy || !input.trim() || input.includes("#veymux-invite=")} onClick={() => { if (validate()) void onSave(input.trim()); }}>仅保存，不连接</button>
     <button type="submit" className="service-button service-primary" disabled={busy || !input.trim() || (needsPassword && !password)}>{busy ? <><Loader2 size={16} className="service-spinning" />正在连接…</> : needsPassword ? '登录并连接' : '继续'}</button>
   </form>;
 }

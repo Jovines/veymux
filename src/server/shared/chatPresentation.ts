@@ -20,7 +20,7 @@ export function chatReplyFormatError(content: string, metadata?: Record<string, 
     return undefined;
   }
   if (record(body) && typeof body.text === 'string' && Object.keys(body).every(key => key === 'text' || key === 'ui')) {
-    return '回复包含 text/ui JSON 包装，但未声明结构化格式。普通回复请直接发送 Markdown（--file 原样读取）；交互界面请按 td collab ui --text 添加 --metadata。若要展示 JSON 原文，请放入代码块。';
+    return '回复包含 text/ui JSON 包装，但未声明结构化格式。普通回复请直接发送 Markdown（--file 原样读取）；交互界面请按 veymux collab ui --text 添加 --metadata。若要展示 JSON 原文，请放入代码块。';
   }
   return undefined;
 }

@@ -2,7 +2,7 @@ import { readCache, writeCache } from '../../utils/localStorageCache';
 
 export type HtmlViewMode = 'preview' | 'source';
 
-const HTML_VIEW_MODE_BY_FILE_STORAGE_KEY = 'termdock:right-sidebar:html-view-mode-by-file:v1';
+const HTML_VIEW_MODE_BY_FILE_STORAGE_KEY = 'veymux:right-sidebar:html-view-mode-by-file:v1';
 
 type HtmlViewModeByFileCache = Record<string, HtmlViewMode>;
 

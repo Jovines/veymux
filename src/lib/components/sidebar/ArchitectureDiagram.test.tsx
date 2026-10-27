@@ -27,7 +27,7 @@ describe('interactive architecture SVG', () => {
     const component = render(<div data-architecture-content>{content}</div>);
     const node = await screen.findByRole('button', { name: 'Server' });
     const clip = component.container.querySelector<HTMLElement>('[data-architecture-content]')!;
-    const viewport = component.container.querySelector<HTMLElement>('.termdock-architecture-viewport')!;
+    const viewport = component.container.querySelector<HTMLElement>('.veymux-architecture-viewport')!;
     clip.scrollTop = 100;
     clip.getBoundingClientRect = () => new DOMRect(0, 150, 800, 450);
     viewport.getBoundingClientRect = () => new DOMRect(0, 200 - clip.scrollTop, 800, 300);
@@ -43,7 +43,7 @@ describe('interactive architecture SVG', () => {
     vi.stubGlobal('ResizeObserver', class { constructor(callback: () => void) { callbacks.push(callback); } observe() {} disconnect() {} });
     const component = render(<ArchitectureDiagram view={view} selectedId={null} onSelect={vi.fn()} referenceWidth={1200} />);
     const node = await screen.findByRole('button', { name: 'Server' });
-    const viewport = component.container.querySelector<HTMLElement>('.termdock-architecture-viewport')!;
+    const viewport = component.container.querySelector<HTMLElement>('.veymux-architecture-viewport')!;
     let width = 1100;
     Object.defineProperty(viewport, 'clientWidth', { configurable: true, get: () => width });
     viewport.getBoundingClientRect = () => new DOMRect(0, 200, width, 416);
@@ -62,7 +62,7 @@ describe('interactive architecture SVG', () => {
     await screen.findByRole('button', { name: 'Server' });
     fireEvent.click(screen.getByRole('button', { name: 'Open fullscreen diagram' }));
     const dialog = screen.getByRole('dialog');
-    const viewport = dialog.querySelector<HTMLElement>('.termdock-architecture-viewport')!;
+    const viewport = dialog.querySelector<HTMLElement>('.veymux-architecture-viewport')!;
     const node = screen.getByRole('button', { name: 'Server' });
     let height = 729;
     viewport.getBoundingClientRect = () => new DOMRect(0, 53, 402, height);
@@ -82,7 +82,7 @@ describe('interactive architecture SVG', () => {
     Object.defineProperty(SVGElement.prototype, 'getBBox', { configurable: true, value: () => ({ x: 0, y: 0, width: 2200, height: 1800 }) });
     const component = render(<ArchitectureDiagram view={view} selectedId={null} onSelect={vi.fn()} />);
     await screen.findByRole('button', { name: 'Server' });
-    const canvas = component.container.querySelector<HTMLElement>('.termdock-architecture-diagram')!;
+    const canvas = component.container.querySelector<HTMLElement>('.veymux-architecture-diagram')!;
     expect(parseFloat(canvas.style.width)).toBeGreaterThanOrEqual(2232);
     fireEvent.click(screen.getByRole('button', { name: 'Fit entire diagram' }));
     expect(parseFloat(canvas.style.width)).toBeLessThanOrEqual(320);
@@ -119,8 +119,8 @@ describe('interactive architecture SVG', () => {
     const select = vi.fn();
     const component = render(<ArchitectureDiagram view={view} selectedId={null} onSelect={select} />);
     const node = await screen.findByRole('button', { name: 'Server' });
-    const viewport = component.container.querySelector<HTMLElement>('.termdock-architecture-viewport')!;
-    const canvas = component.container.querySelector<HTMLElement>('.termdock-architecture-diagram')!;
+    const viewport = component.container.querySelector<HTMLElement>('.veymux-architecture-viewport')!;
+    const canvas = component.container.querySelector<HTMLElement>('.veymux-architecture-diagram')!;
     const pointer = (target: Element, type: string, id: number, x: number, y: number) => {
       const event = new MouseEvent(type, { bubbles: true, button: 0, clientX: x, clientY: y });
       Object.defineProperty(event, 'pointerId', { value: id }); fireEvent(target, event);
@@ -146,7 +146,7 @@ describe('interactive architecture SVG', () => {
     const select = vi.fn();
     const component = render(<ArchitectureDiagram view={view} selectedId={null} onSelect={select} />);
     const node = await screen.findByRole('button', { name: 'Server' });
-    expect(component.container.querySelector('.termdock-architecture-diagram svg')?.getAttribute('viewBox')).toBe('-6 4 232 152');
+    expect(component.container.querySelector('.veymux-architecture-diagram svg')?.getAttribute('viewBox')).toBe('-6 4 232 152');
     expect(component.container.querySelector('script')).toBeNull();
     expect(component.container.querySelector('text')?.textContent).toBe('Server');
     fireEvent.click(node);

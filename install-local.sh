@@ -39,23 +39,23 @@ npm install
 
 ensure_node_pty
 
-printf 'Building termdock...\n'
+printf 'Building veymux...\n'
 npm run build
 
-printf 'Installing termdock CLI globally from local source...\n'
+printf 'Installing veymux CLI globally from local source...\n'
 npm install -g .
 
-printf '\nDone. Termdock installed globally.\n'
+printf '\nDone. Veymux installed globally.\n'
 printf '\n'
 printf 'Quick start:\n'
-printf '  td                       Start server in background\n'
-printf '  td --foreground          Run in foreground (for debugging)\n'
-printf '  td --status              Show running server status\n'
-printf '  td --stop                Stop background server\n'
-printf '  td --help                Show all options\n'
-printf '  termdock --help          Legacy long command still works\n'
+printf '  veymux                       Start server in background\n'
+printf '  veymux --foreground          Run in foreground (for debugging)\n'
+printf '  veymux --status              Show running server status\n'
+printf '  veymux --stop                Stop background server\n'
+printf '  veymux --help                Show all options\n'
+printf '  veymux --help          Legacy long command still works\n'
 printf '\n'
 printf 'After starting, inspect URLs with:\n'
-printf '  td --status\n'
+printf '  veymux --status\n'
 printf '\n'
-printf 'Logs: ~/.termdock/server.log\n'
+printf 'Logs: ~/.veymux/server.log\n'

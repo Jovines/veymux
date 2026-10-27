@@ -14,7 +14,7 @@ const target = { url: 'https://devbox.example', targetPeerId: 'target', serviceN
 const route = { url: 'https://work.example', targetPeerId: 'entry' };
 beforeEach(() => {
   vi.clearAllMocks(); localStorage.clear();
-  localStorage.setItem('termdock.federation.connections.v1', JSON.stringify([{ id: 'entry', ...route, label: '工作' }]));
+  localStorage.setItem('veymux.federation.connections.v1', JSON.stringify([{ id: 'entry', ...route, label: '工作' }]));
   mocks.inspect.mockResolvedValue({ canManage: true, grants: [] }); mocks.authorize.mockResolvedValue(undefined); mocks.recovered.mockResolvedValue(undefined);
   mocks.access.mockResolvedValue('passwordRequired');
 });

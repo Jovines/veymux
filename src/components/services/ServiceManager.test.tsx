@@ -20,13 +20,13 @@ describe('shared service manager', () => {
     await saveServiceConnection({ ...service, routes: [{ targetPeerId: 'target', url: 'https://alternate.example' }] });
     expect(readBrowserServices()[0].routes).toEqual([{ targetPeerId: 'target', url: 'https://alternate.example' }]);
   });
-  it.each(['://', 'ftp://computer.example', 'https://computer.example?secret=value', 'https://computer.example/#termdock-invite=broken'])('keeps invalid input %s editable without attempting a connection or saving it', async input => {
+  it.each(['://', 'ftp://computer.example', 'https://computer.example?secret=value', 'https://computer.example/#veymux-invite=broken'])('keeps invalid input %s editable without attempting a connection or saving it', async input => {
     const onAdd = vi.fn(), onBusyChange = vi.fn();
     render(<ServiceManager onBusyChange={onBusyChange} initiallyAdding onAdd={onAdd} onOpen={async () => {}} />);
     fireEvent.change(screen.getByLabelText('服务地址或邀请链接'), { target: { value: input } });
     fireEvent.click(screen.getByRole('button', { name: '继续' }));
     const alert = await screen.findByRole('alert');
-    expect(alert.textContent).toContain(input.includes('#termdock-invite=') ? 'Copy the full invitation link' : 'Enter a valid HTTPS service address');
+    expect(alert.textContent).toContain(input.includes('#veymux-invite=') ? 'Copy the full invitation link' : 'Enter a valid HTTPS service address');
     expect((screen.getByLabelText('服务地址或邀请链接') as HTMLInputElement).value).toBe(input);
     expect(onAdd).not.toHaveBeenCalled(); expect(readBrowserServices()).toEqual([]);
     expect(document.activeElement).toBe(screen.getByLabelText('服务地址或邀请链接'));

@@ -17,7 +17,7 @@ use std::{
     process::Stdio,
     sync::{Arc, Mutex},
 };
-use termdock_preview::{config::Connection, local_files, proxy};
+use veymux_preview::{config::Connection, local_files, proxy};
 struct FileFixture {
     transfers: Mutex<local_files::Transfers>,
     owner: local_files::Owner,
@@ -179,12 +179,12 @@ async fn run(relay: bool, native_react: bool) {
     // Only native directory/device/status IPC is adapted. OPAQUE, identity, page
     // fetch, Noise, original authorization UI and bundle imports are all real.
     let script = format!(
-        r#"if(window===window.top) {{ window.__TD_PREVIEW_BOOT__={boot};
+        r#"if(window===window.top) {{ window.__VEYMUX_PREVIEW_BOOT__={boot};
 const nativeRead=window.fetch.bind(window);
-const initialDirectory=[window.__TD_PREVIEW_BOOT__.connection];
+const initialDirectory=[window.__VEYMUX_PREVIEW_BOOT__.connection];
 window.__TAURI_INTERNALS__={{invoke:async (_command,{{op,args}})=>{{
  if(['chooseFiles','fileChunk','releaseFiles'].includes(op)){{const response=await nativeRead({native_url:?},{{method:'POST',headers:{{'Content-Type':'application/json','X-Native-Test':{native_secret}}},body:JSON.stringify({{op,args}}),credentials:'omit'}});const data=await response.json();if(!response.ok)throw Error(data.error);return data;}}
- const key='termdock-secure-test-native-directory';const records=JSON.parse(localStorage.getItem(key)||JSON.stringify(initialDirectory));
+ const key='veymux-secure-test-native-directory';const records=JSON.parse(localStorage.getItem(key)||JSON.stringify(initialDirectory));
  if(op==='connections')return records;
  if(op==='saveConnection'||op==='importConnection'){{localStorage.setItem(key,JSON.stringify([args.connection]));return [args.connection];}}
  if(op==='deviceInfo')return {{system:'Linux',client:'Preview fixture',arch:'x64',mode:'desktop'}};
@@ -193,11 +193,11 @@ window.__TAURI_INTERNALS__={{invoke:async (_command,{{op,args}})=>{{
  throw new Error('OS callback outside this bundle test: '+op);
 }}}}; }}
 {}
-if(window===window.top && !sessionStorage.getItem('termdock-secure-test-first-load'))sessionStorage.setItem('termdock-secure-test-first-load',JSON.stringify({{worker:!!navigator.serviceWorker.controller}}));"#,
+if(window===window.top && !sessionStorage.getItem('veymux-secure-test-first-load'))sessionStorage.setItem('veymux-secure-test-first-load',JSON.stringify({{worker:!!navigator.serviceWorker.controller}}));"#,
         include_str!("../../renderer/bridge.js")
     );
     fs::write(&init, script).unwrap();
-    let session = format!("td-bundled-{}-{}-{}", std::process::id(), relay,native_react);
+    let session = format!("veymux-bundled-{}-{}-{}", std::process::id(), relay,native_react);
     let browser = |args: Vec<String>| {
         let mut command = Command::new("agent-browser");
         command.args(["--session", &session]).args(args);
@@ -276,7 +276,7 @@ if(window===window.top && !sessionStorage.getItem('termdock-secure-test-first-lo
     .output()
     .await
     .unwrap();
-    let first=browser(vec!["eval".into(),"JSON.stringify({worker:JSON.parse(sessionStorage.getItem('termdock-secure-test-first-load')).worker,controlledNow:!!navigator.serviceWorker.controller,selected:sessionStorage.getItem('termdock-secure-target-v1'),hook:window.termdockDesktop.passwordBootstrapOrigin(location.origin),passwordField:!!document.querySelector('input[type=password]'),targetName:document.body.innerText.includes('Existing service'),oldHtml:document.body.innerText.includes('OLD HTML')})".into()]).output().await.unwrap();
+    let first=browser(vec!["eval".into(),"JSON.stringify({worker:JSON.parse(sessionStorage.getItem('veymux-secure-test-first-load')).worker,controlledNow:!!navigator.serviceWorker.controller,selected:sessionStorage.getItem('veymux-secure-target-v1'),hook:window.veymuxDesktop.passwordBootstrapOrigin(location.origin),passwordField:!!document.querySelector('input[type=password]'),targetName:document.body.innerText.includes('Existing service'),oldHtml:document.body.innerText.includes('OLD HTML')})".into()]).output().await.unwrap();
     eprintln!(
         "first actual bundle: {}",
         String::from_utf8_lossy(&first.stdout)
@@ -378,10 +378,10 @@ if(window===window.top && !sessionStorage.getItem('termdock-secure-test-first-lo
         .await
         .unwrap();
     assert!(enter.status.success());
-    let logged=browser(vec!["wait".into(),"--fn".into(),"!document.querySelector('input[type=password]') && !!sessionStorage.getItem('termdock-secure-target-v1')".into(),"--timeout".into(),"15000".into()]).output().await.unwrap();
+    let logged=browser(vec!["wait".into(),"--fn".into(),"!document.querySelector('input[type=password]') && !!sessionStorage.getItem('veymux-secure-target-v1')".into(),"--timeout".into(),"15000".into()]).output().await.unwrap();
     let retained_name = browser(vec![
         "eval".into(),
-        "JSON.parse(sessionStorage.getItem('termdock-secure-target-v1')).serviceName".into(),
+        "JSON.parse(sessionStorage.getItem('veymux-secure-target-v1')).serviceName".into(),
     ])
     .output()
     .await
@@ -413,7 +413,7 @@ if(window===window.top && !sessionStorage.getItem('termdock-secure-test-first-lo
         child.stdin.as_mut().unwrap().write_all(b"done\n").await.unwrap();let server=output.next_line().await.unwrap().unwrap();eprintln!("controlled React terminal model final: {server}");assert_eq!(serde_json::from_str::<serde_json::Value>(&server).unwrap()["ok"],true);assert_eq!(serde_json::from_str::<serde_json::Value>(&server).unwrap()["ordinary"],0);let observed:serde_json::Value=serde_json::from_str(&server).unwrap();let events=observed["react"]["events"].as_array().unwrap();assert!(events.iter().filter(|event|event["type"]=="terminal-open").count()>=2);assert!(events.iter().any(|event|event["type"]=="output-ack"&&event["since"]==observed["react"]["sequence"]&&event["flowSeq"]==observed["react"]["sequence"]&&event["epoch"]==observed["react"]["epoch"]));
         assert!(child.wait().await.unwrap().success());let _=browser(vec!["close".into()]).output().await;file_server.abort();return;
     }
-    let upload=browser(vec!["eval".into(),r#"(async()=>{const files=await window.termdockDesktop.readLocalFiles();if(files.length!==1||files[0].path||files[0].bytes.byteLength!==2*1024*1024)throw Error('native read contract');const csrf=await fetch('/api/csrf-token').then(r=>r.json());const body=new FormData();body.append('files',new Blob([files[0].bytes]),files[0].name);const response=await fetch('/api/terminal/fs/upload?dir=%2Ftmp&fileCount=1',{method:'POST',headers:{'X-XSRF-TOKEN':csrf.csrfToken},body});if(!response.ok)throw Error('encrypted upload failed');return response.json()})()"#.into()]).output().await.unwrap();
+    let upload=browser(vec!["eval".into(),r#"(async()=>{const files=await window.veymuxDesktop.readLocalFiles();if(files.length!==1||files[0].path||files[0].bytes.byteLength!==2*1024*1024)throw Error('native read contract');const csrf=await fetch('/api/csrf-token').then(r=>r.json());const body=new FormData();body.append('files',new Blob([files[0].bytes]),files[0].name);const response=await fetch('/api/terminal/fs/upload?dir=%2Ftmp&fileCount=1',{method:'POST',headers:{'X-XSRF-TOKEN':csrf.csrfToken},body});if(!response.ok)throw Error('encrypted upload failed');return response.json()})()"#.into()]).output().await.unwrap();
     assert!(
         upload.status.success(),
         "real read/upload: {} {}",
@@ -436,7 +436,7 @@ if(window===window.top && !sessionStorage.getItem('termdock-secure-test-first-lo
     .output()
     .await
     .unwrap();
-    let preview = browser(vec!["eval".into(), r#"new Promise((resolve,reject)=>{const cap=crypto.randomUUID();const frame=document.createElement('iframe');frame.sandbox='allow-scripts';frame.src='/preview-shell.html#'+cap;const timeout=setTimeout(()=>reject(Error('HTML preview timed out')),5000);const handler=e=>{if(e.source!==frame.contentWindow)return;if(e.data?.type==='preview-ready'&&e.data.capability===cap)frame.contentWindow.postMessage({type:'preview-init',capability:cap,resources:[],html:'<p>Bundled preview loaded</p><script>let isolated=false;try{void parent.localStorage}catch{isolated=true}parent.postMessage({loaded:true,isolated,bridge:typeof window.termdockDesktop},"*");<\/script>'},'*');if(e.data?.loaded){clearTimeout(timeout);window.removeEventListener('message',handler);frame.remove();resolve(e.data)}};window.addEventListener('message',handler);document.body.append(frame)})"#.into()]).output().await.unwrap();
+    let preview = browser(vec!["eval".into(), r#"new Promise((resolve,reject)=>{const cap=crypto.randomUUID();const frame=document.createElement('iframe');frame.sandbox='allow-scripts';frame.src='/preview-shell.html#'+cap;const timeout=setTimeout(()=>reject(Error('HTML preview timed out')),5000);const handler=e=>{if(e.source!==frame.contentWindow)return;if(e.data?.type==='preview-ready'&&e.data.capability===cap)frame.contentWindow.postMessage({type:'preview-init',capability:cap,resources:[],html:'<p>Bundled preview loaded</p><script>let isolated=false;try{void parent.localStorage}catch{isolated=true}parent.postMessage({loaded:true,isolated,bridge:typeof window.veymuxDesktop},"*");<\/script>'},'*');if(e.data?.loaded){clearTimeout(timeout);window.removeEventListener('message',handler);frame.remove();resolve(e.data)}};window.addEventListener('message',handler);document.body.append(frame)})"#.into()]).output().await.unwrap();
     eprintln!(
         "actual bundled HTML preview: {}",
         String::from_utf8_lossy(&preview.stdout)
@@ -474,7 +474,7 @@ if(window===window.top && !sessionStorage.getItem('termdock-secure-test-first-lo
         true,
         "disconnected encrypted business must fail closed"
     );
-    let offline_upload=browser(vec!["eval".into(),r#"(async()=>{const files=await window.termdockDesktop.readLocalFiles();const body=new FormData();body.append('files',new Blob([files[0].bytes]),files[0].name);try{const response=await fetch('/api/terminal/fs/upload?dir=%2Ftmp&fileCount=1',{method:'POST',body});return {failed:!response.ok}}catch{return {failed:true}}})()"#.into()]).output().await.unwrap();
+    let offline_upload=browser(vec!["eval".into(),r#"(async()=>{const files=await window.veymuxDesktop.readLocalFiles();const body=new FormData();body.append('files',new Blob([files[0].bytes]),files[0].name);try{const response=await fetch('/api/terminal/fs/upload?dir=%2Ftmp&fileCount=1',{method:'POST',body});return {failed:!response.ok}}catch{return {failed:true}}})()"#.into()]).output().await.unwrap();
     assert!(offline_upload.status.success());
     assert_eq!(
         serde_json::from_slice::<serde_json::Value>(&offline_upload.stdout).unwrap()["failed"],
@@ -483,7 +483,7 @@ if(window===window.top && !sessionStorage.getItem('termdock-secure-test-first-lo
     assert_eq!(file_state.transfers.lock().unwrap().usage(), (0, 0));
     let _ = browser(vec![
         "screenshot".into(),
-        "/tmp/termdock-preview-bundled-auth.png".into(),
+        "/tmp/veymux-preview-bundled-auth.png".into(),
     ])
     .output()
     .await;

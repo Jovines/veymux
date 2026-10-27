@@ -64,7 +64,7 @@ function draftDevice(): DraftDevice {
 }
 
 function heightStorageKey(device: DraftDevice): string {
-  return `termdock:right-sidebar:context-draft-height:${device}:v1`;
+  return `veymux:right-sidebar:context-draft-height:${device}:v1`;
 }
 
 // localStorage 作为即时缓存（首帧不闪），服务端 settings 才是同步真源

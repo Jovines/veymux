@@ -9,7 +9,7 @@ import type { IntegrationPrincipal } from './integrationStore.js';
 const close: Array<() => void> = [];
 afterEach(() => { for (const dispose of close.splice(0).reverse()) dispose(); vi.useRealTimers(); });
 async function fixture() {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'td-observation-'));
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-observation-'));
   close.push(() => fs.rmSync(directory, { recursive: true, force: true }));
   let notify!: () => void;
   const inspect = vi.fn(async () => ({ exists: true, running: true, shell: false, agentSlug: 'fixture', nativeId: 'native' }));

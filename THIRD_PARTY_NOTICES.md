@@ -1,14 +1,14 @@
 # Third-party notices
 
-## Maple Mono / Termdock Maple
+## Maple Mono / Veymux Maple
 
 Terminal text uses Maple Mono 7.800 from `@fontsource/maple-mono` 5.3.0,
 https://github.com/subframe7536/maple-font. Copyright (c) 2022, subframe7536.
 The unmodified source faces and SIL Open Font License 1.1 ship under
 `public/fonts/MapleMono-*.woff2` and `public/fonts/MapleMono-OFL.txt`.
-Generated web subsets are renamed **Termdock Maple** in accordance with the
+Generated web subsets are renamed **Veymux Maple** in accordance with the
 reserved font name; glyph outlines and character advances are preserved.
-The compact **Termdock Prompt Icons** subsets derive from the existing
+The compact **Veymux Prompt Icons** subsets derive from the existing
 JetBrains Mono NL Nerd Font Mono sources, preserving their copyright/license
 metadata and glyph outlines, and supply first-frame shell prompt icons.
 
@@ -16,7 +16,7 @@ metadata and glyph outlines, and supply first-frame shell prompt icons.
 
 Architecture Mermaid diff utilities and scanner conventions derive from
 https://github.com/oh-my-mermaid/oh-my-mermaid, commit
-38ccdb69298adec949177c92c88d6e3ddfb5bab7. Adaptations use Termdock transport,
+38ccdb69298adec949177c92c88d6e3ddfb5bab7. Adaptations use Veymux transport,
 project boundaries, document validation and design tokens.
 
 MIT License

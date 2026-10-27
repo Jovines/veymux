@@ -46,8 +46,8 @@ export class TodoStore {
   private doc: Document = blank();
   private storage: JsonStorageBudget;
   constructor(file: string, options: JsonStorageOptions = {}) {
-    this.storage = new JsonStorageBudget(file, 'todos', 'TERMDOCK_TODO_STORAGE_MAX_BYTES', 32 * 1024 * 1024,
-      () => new TodoError('待办新增内容已达容量上限；可完成或释放已有工作，或调整 TERMDOCK_TODO_STORAGE_MAX_BYTES', 409), options);
+    this.storage = new JsonStorageBudget(file, 'todos', 'VEYMUX_TODO_STORAGE_MAX_BYTES', 32 * 1024 * 1024,
+      () => new TodoError('待办新增内容已达容量上限；可完成或释放已有工作，或调整 VEYMUX_TODO_STORAGE_MAX_BYTES', 409), options);
     try {
       const doc = JSON.parse(fs.readFileSync(file, 'utf8')) as Document;
       if (doc.version !== 1 || !Array.isArray(doc.todos) || !Array.isArray(doc.collectors) || !Array.isArray(doc.runs) || !doc.requests || !doc.defaults) throw new Error('无效的 Todo 数据文件');

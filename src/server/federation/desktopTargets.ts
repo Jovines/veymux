@@ -62,7 +62,7 @@ export function desktopServiceTargets(home: string, localServiceId: string, plat
   const nativeRoot = platform === 'darwin' ? join(home, 'Library', 'Application Support')
     : platform === 'win32' ? process.env.APPDATA || join(home, 'AppData', 'Roaming')
       : process.env.XDG_CONFIG_HOME || join(home, '.config');
-  const stableFile = join(nativeRoot, 'com.jovines.termdock', 'connections.json');
+  const stableFile = join(nativeRoot, 'com.jovines.veymux', 'connections.json');
   try {
     statSync(stableFile);
     return desktopDirectTargets(stableFile, localServiceId, 'rust');
@@ -71,7 +71,7 @@ export function desktopServiceTargets(home: string, localServiceId: string, plat
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return [];
   }
   const key = (target: DirectTargetConfig) => JSON.stringify([target.serviceId, target.url]);
-  const targets = new Map(desktopDirectTargets(join(home, '.termdock', 'desktop.json'), localServiceId).map(target => [key(target), target]));
-  for (const target of desktopDirectTargets(join(nativeRoot, 'com.jovines.termdock.preview', 'connections.json'), localServiceId, 'rust')) targets.set(key(target), target);
+  const targets = new Map(desktopDirectTargets(join(home, '.veymux', 'desktop.json'), localServiceId).map(target => [key(target), target]));
+  for (const target of desktopDirectTargets(join(nativeRoot, 'com.jovines.veymux.preview', 'connections.json'), localServiceId, 'rust')) targets.set(key(target), target);
   return [...targets.values()].slice(0, 64);
 }

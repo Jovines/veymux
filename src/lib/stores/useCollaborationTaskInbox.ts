@@ -48,6 +48,6 @@ export const useCollaborationTaskInbox = create<{ tasks: CollaborationTaskView[]
 });
 
 export function requestCollaborationTask(groupId: string, taskId: string) {
-  try { localStorage.setItem(`termdock:tasks:${location.origin}:${groupId}:open-task`, JSON.stringify(taskId)); } catch { /* Still works in an already open workspace. */ }
+  try { localStorage.setItem(`veymux:tasks:${location.origin}:${groupId}:open-task`, JSON.stringify(taskId)); } catch { /* Still works in an already open workspace. */ }
   window.dispatchEvent(new CustomEvent('open-collaboration-task', { detail: { groupId, taskId } }));
 }

@@ -104,7 +104,7 @@ async function writeTmuxPrompt(
   // is why the body must carry no ESC: escape bytes are exactly what it
   // rewrites, and an ESC-free body makes the pass a byte-for-byte no-op on
   // every tmux version.
-  const buffer = `termdock-collab-${process.pid}-${bufferSequence++}`;
+  const buffer = `veymux-collab-${process.pid}-${bufferSequence++}`;
   try {
     if (verifyEcho) await probeTerminalEcho({
       read: async () => {

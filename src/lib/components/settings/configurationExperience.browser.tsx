@@ -11,14 +11,14 @@ import type { AgentLauncherInfo } from '../../terminal/api';
 
 let root: Root;
 const agents: AgentLauncherInfo[] = ['Codex', 'Claude', 'Gemini'].map(name => ({ slug: name.toLowerCase(), displayName: name, command: name.toLowerCase(), accentColor: 'var(--primary)', icon: null }));
-const config = { agentSlug: 'codex', command: 'codex', cwd: '/projects/termdock', prompt: '' };
+const config = { agentSlug: 'codex', command: 'codex', cwd: '/projects/veymux', prompt: '' };
 const saved: unknown[][] = [];
 function mount(children: React.ReactNode) {
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
   flushSync(() => root.render(children));
 }
 afterEach(() => { flushSync(() => root?.unmount()); document.body.innerHTML = ''; saved.length = 0; });
-const props = { workspace: 'configuration-browser', config, agents, loading: false, service: '开发电脑', directories: ['/projects/termdock'], currentCwd: config.cwd, busy: false, onSave: (...args: unknown[]) => saved.push(args), onCancel: () => {} };
+const props = { workspace: 'configuration-browser', config, agents, loading: false, service: '开发电脑', directories: ['/projects/veymux'], currentCwd: config.cwd, busy: false, onSave: (...args: unknown[]) => saved.push(args), onCancel: () => {} };
 
 it.each([320, 390, 1280])('keeps settings navigation and controls usable at %i px', async width => {
   await page.viewport(width, 844);

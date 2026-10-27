@@ -52,7 +52,7 @@ export function SessionWorkspace({ sessionId, name, active, visible = active, te
       if (target?.closest('a, button, input[type="file"]') || window.getSelection()?.toString()) return;
       if (target instanceof HTMLTextAreaElement && target.selectionStart !== target.selectionEnd) return;
       event.preventDefault(); event.stopPropagation();
-      window.dispatchEvent(new CustomEvent('termdock:session-context-menu', { detail: { sessionId, x: event.clientX, y: event.clientY } }));
+      window.dispatchEvent(new CustomEvent('veymux:session-context-menu', { detail: { sessionId, x: event.clientX, y: event.clientY } }));
     }}>
     <TerminalModeHint sessionId={sessionId} active={active && mode === 'terminal'} ready={terminalReady && !terminalStartupPending} />
     <div ref={peek.attachNormal} aria-hidden={preparingTerminal || undefined} className={`min-h-0 flex-1 ${mode === 'terminal' ? '' : preparingTerminal ? 'pointer-events-none invisible absolute inset-0' : 'hidden'}`} />

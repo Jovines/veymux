@@ -5,7 +5,7 @@ import { resolveComputerHost } from './computerTarget.js';
 import { GuacamoleParser, guacamoleInstruction } from './guacamoleProtocol.js';
 import { observeLocalXrdpLogin } from './xrdpLogin.js';
 
-const guacdPort = () => Number(process.env.TERMDOCK_GUACD_PORT) || 4822;
+const guacdPort = () => Number(process.env.VEYMUX_GUACD_PORT) || 4822;
 const bridges = new Set<Socket>();
 export function stopRdpBridges(): void { for (const tcp of bridges) tcp.destroy(); bridges.clear(); }
 export function rdpBackendAvailable(): Promise<boolean> {

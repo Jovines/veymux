@@ -12,7 +12,7 @@ function apply(key: string, mode: SessionViewMode) {
   try { localStorage.setItem(key, mode); } catch { /* Retain the server-backed in-memory value. */ }
 }
 const scope = () => savedConnection()?.targetPeerId || location.origin;
-const modeKey = (sessionId: string) => `termdock:session-view:${scope()}:${sessionId}`;
+const modeKey = (sessionId: string) => `veymux:session-view:${scope()}:${sessionId}`;
 export function readSessionViewMode(sessionId: string): SessionViewMode {
   const key = modeKey(sessionId), stored = state.getState().modes[key];
   if (stored) return stored;
@@ -54,10 +54,10 @@ async function write(entry: Entry, mode: SessionViewMode) {
   } finally { entry.writing = false; if (entry.queued && entry.current()) void write(entry, entry.queued); else if (!entry.refs && entries.get(entry.key) === entry) entries.delete(entry.key); }
 }
 export function useSessionViewMode(sessionId: string, synchronize = true, defaultMode: SessionViewMode = 'terminal', preferDefault = false): [SessionViewMode, (mode: SessionViewMode) => void, string | undefined, () => void] {
-  const target = savedConnection()?.targetPeerId || location.origin, key = `termdock:session-view:${target}:${sessionId}`;
+  const target = savedConnection()?.targetPeerId || location.origin, key = `veymux:session-view:${target}:${sessionId}`;
   const stored = state(value => value.modes[key]), error = state(value => value.errors[key]);
   let cached: SessionViewMode | undefined, fallback = defaultMode;
-  try { const local = localStorage.getItem(key); if (valid(local)) cached = local; if (sessionStorage.getItem(`termdock:shared-view:${target}`) === 'chat') fallback = 'chat'; } catch { /* Optional local cache. */ }
+  try { const local = localStorage.getItem(key); if (valid(local)) cached = local; if (sessionStorage.getItem(`veymux:shared-view:${target}`) === 'chat') fallback = 'chat'; } catch { /* Optional local cache. */ }
   useEffect(() => {
     if (!sessionId || !synchronize) return;
     let entry = entries.get(key);

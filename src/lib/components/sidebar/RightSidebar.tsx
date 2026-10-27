@@ -114,23 +114,23 @@ interface RightSidebarProps {
   onCloseMarkdownImageLightbox?: () => void;
 }
 
-const FILE_TREE_SCROLL_STORAGE_KEY = 'termdock:right-sidebar:file-tree-scroll:v1';
-const FILE_PREVIEW_READING_STATE_STORAGE_KEY = 'termdock:right-sidebar:file-preview-reading-state:v1';
-const FILE_TREE_WIDTH_STORAGE_KEY = 'termdock:right-sidebar:file-tree-width:v1';
-const MARKDOWN_VIEW_MODE_STORAGE_KEY = 'termdock:right-sidebar:markdown-view-mode:v1';
-const DIFF_CHANGE_LIST_MODE_STORAGE_KEY = 'termdock:right-sidebar:diff-change-list-mode:v1';
-const DIFF_WRAP_STORAGE_KEY = 'termdock:right-sidebar:diff-wrap:v1';
-const DIFF_VIEW_TYPE_STORAGE_KEY = 'termdock:diff-viewer:view-type:v1';
-const FILE_SEARCH_MODE_STORAGE_KEY = 'termdock:right-sidebar:file-search-mode:v1';
-const COLLAPSED_GIT_REPO_GROUPS_STORAGE_KEY = 'termdock:right-sidebar:collapsed-git-repo-groups:v1';
-const COLLAPSED_DIFF_DIRECTORIES_STORAGE_KEY = 'termdock:right-sidebar:collapsed-diff-directories:v1';
-const BRANCH_AUDIT_MODULE_OPEN_STORAGE_KEY = 'termdock:right-sidebar:branch-audit-module-open:v1';
-const BRANCH_AUDIT_MODULE_STORAGE_KEY = 'termdock:right-sidebar:branch-audit-module:v1';
+const FILE_TREE_SCROLL_STORAGE_KEY = 'veymux:right-sidebar:file-tree-scroll:v1';
+const FILE_PREVIEW_READING_STATE_STORAGE_KEY = 'veymux:right-sidebar:file-preview-reading-state:v1';
+const FILE_TREE_WIDTH_STORAGE_KEY = 'veymux:right-sidebar:file-tree-width:v1';
+const MARKDOWN_VIEW_MODE_STORAGE_KEY = 'veymux:right-sidebar:markdown-view-mode:v1';
+const DIFF_CHANGE_LIST_MODE_STORAGE_KEY = 'veymux:right-sidebar:diff-change-list-mode:v1';
+const DIFF_WRAP_STORAGE_KEY = 'veymux:right-sidebar:diff-wrap:v1';
+const DIFF_VIEW_TYPE_STORAGE_KEY = 'veymux:diff-viewer:view-type:v1';
+const FILE_SEARCH_MODE_STORAGE_KEY = 'veymux:right-sidebar:file-search-mode:v1';
+const COLLAPSED_GIT_REPO_GROUPS_STORAGE_KEY = 'veymux:right-sidebar:collapsed-git-repo-groups:v1';
+const COLLAPSED_DIFF_DIRECTORIES_STORAGE_KEY = 'veymux:right-sidebar:collapsed-diff-directories:v1';
+const BRANCH_AUDIT_MODULE_OPEN_STORAGE_KEY = 'veymux:right-sidebar:branch-audit-module-open:v1';
+const BRANCH_AUDIT_MODULE_STORAGE_KEY = 'veymux:right-sidebar:branch-audit-module:v1';
 const BRANCH_AUDIT_MODULE_CACHE_WRITE_MS = 150;
-const CONTEXT_DRAFT_ENABLED_STORAGE_KEY = 'termdock:right-sidebar:context-draft-enabled:v1';
-const CONTEXT_DRAFT_COLLAPSED_STORAGE_KEY = 'termdock:right-sidebar:context-draft-collapsed:v1';
-const CONTEXT_DRAFT_AUTO_COLLAPSE_STORAGE_KEY = 'termdock:right-sidebar:context-draft-auto-collapse:v1';
-const CONTEXT_DRAFT_TEXT_STORAGE_KEY = 'termdock:right-sidebar:context-draft-text:v1';
+const CONTEXT_DRAFT_ENABLED_STORAGE_KEY = 'veymux:right-sidebar:context-draft-enabled:v1';
+const CONTEXT_DRAFT_COLLAPSED_STORAGE_KEY = 'veymux:right-sidebar:context-draft-collapsed:v1';
+const CONTEXT_DRAFT_AUTO_COLLAPSE_STORAGE_KEY = 'veymux:right-sidebar:context-draft-auto-collapse:v1';
+const CONTEXT_DRAFT_TEXT_STORAGE_KEY = 'veymux:right-sidebar:context-draft-text:v1';
 const CONTEXT_DRAFT_WRITE_MS = 300;
 const MAX_FILE_TREE_SCROLL_ROOTS = 20;
 const MAX_FILE_PREVIEW_READING_STATE_FILES = 120;
@@ -1316,12 +1316,12 @@ function canScrollVertically(element: HTMLElement): boolean {
 function findDiffStreamScroller(target: HTMLElement): HTMLElement | null {
   let current: HTMLElement | null = target;
   while (current) {
-    if (current.classList.contains('termdock-diff-stream-scroller') && canScrollVertically(current)) {
+    if (current.classList.contains('veymux-diff-stream-scroller') && canScrollVertically(current)) {
       return current;
     }
     current = current.parentElement;
   }
-  return target.closest<HTMLElement>('.termdock-diff-stream-scroller');
+  return target.closest<HTMLElement>('.veymux-diff-stream-scroller');
 }
 
 function isVisibleElement(element: HTMLElement): boolean {
@@ -1350,7 +1350,7 @@ function scrollDiffStreamItemIntoView(path: string): void {
     `[data-diff-selection-path="${escapedPath}"]`,
     `[data-diff-absolute-path="${escapedPath}"]`,
   ].join(',');
-  const scrollers = Array.from(document.querySelectorAll<HTMLElement>('.termdock-diff-stream-scroller'));
+  const scrollers = Array.from(document.querySelectorAll<HTMLElement>('.veymux-diff-stream-scroller'));
   let target: HTMLElement | null = null;
   for (const scroller of scrollers) {
     if (!isVisibleElement(scroller)) continue;
@@ -1400,7 +1400,7 @@ function scrollDiffAnchorIntoView(anchor: ChangeWalkthroughAnchor): void {
       : null,
     `[data-diff-file-path="${escapedPath}"]`,
   ].filter((selector): selector is string => Boolean(selector));
-  const scrollers = Array.from(document.querySelectorAll<HTMLElement>('.termdock-diff-stream-scroller'));
+  const scrollers = Array.from(document.querySelectorAll<HTMLElement>('.veymux-diff-stream-scroller'));
   let target: HTMLElement | null = null;
   for (const scroller of scrollers) {
     if (!isVisibleElement(scroller)) continue;
@@ -2646,7 +2646,7 @@ export function FilePreview({
       ) : showMarkdownPreview ? (
         <div
           ref={scrollerRef}
-          className="termdock-native-select relative min-h-0 flex-1 overflow-auto bg-surface"
+          className="veymux-native-select relative min-h-0 flex-1 overflow-auto bg-surface"
           data-markdown-preview-scroller
           onScroll={handleMarkdownPreviewScroll}
           style={{ touchAction: 'pan-x pan-y' }}
@@ -2700,7 +2700,7 @@ export function FilePreview({
         <div
           ref={scrollerRef}
           onScroll={handleSourcePreviewScroll}
-          className={`${FILE_PREVIEW_HORIZONTAL_SCROLL_CLASS} termdock-native-select termdock-code relative min-h-0 flex-1 overflow-auto rounded-none bg-surface p-2 font-mono text-[11px] leading-relaxed text-foreground`}
+          className={`${FILE_PREVIEW_HORIZONTAL_SCROLL_CLASS} veymux-native-select veymux-code relative min-h-0 flex-1 overflow-auto rounded-none bg-surface p-2 font-mono text-[11px] leading-relaxed text-foreground`}
         >
           {lines.length > 0 ? (
             <div className="min-w-full">
@@ -4337,7 +4337,7 @@ export function RightSidebar(
     });
   }, [hydratePinnedExplorerRoots, syncPinnedExplorerRoots]);
 
-  // 草稿内容跨设备实时同步：服务端为真源（~/.termdock/context-draft.json），
+  // 草稿内容跨设备实时同步：服务端为真源（~/.veymux/context-draft.json），
   // control WebSocket 推送其它客户端的变更；本端改动防抖 500ms 上传。
   // lastSyncedDraftRef 记录「与服务端一致的文本」，用于跳过回声和自己的上传。
   const draftSyncClientIdRef = useRef<string>(crypto.randomUUID?.() ?? `draft-${Math.random().toString(36).slice(2)}`);
@@ -5738,7 +5738,7 @@ export function RightSidebar(
     if (isMobile) return;
     const handles: number[] = [];
     const syncInitial = () => {
-      const scroller = document.querySelector<HTMLDivElement>('.termdock-diff-stream-scroller');
+      const scroller = document.querySelector<HTMLDivElement>('.veymux-diff-stream-scroller');
       if (scroller) {
         const synced = syncSelectionFromDiffStream(scroller);
         if (synced) return;
@@ -5783,13 +5783,13 @@ export function RightSidebar(
       }).join('\n')
       : `- ${rootPath ? '.' : ''}`;
     const exportCommands = targetRepos.length > 0
-      ? targetRepos.map((repo) => `   td audit-export ${quoteShellArg(repo.root)}`).join('\n')
-      : '   td audit-export';
+      ? targetRepos.map((repo) => `   veymux audit-export ${quoteShellArg(repo.root)}`).join('\n')
+      : '   veymux audit-export';
     const payloadCommand = targetRepos.length > 0
-      ? '   td audit ~/.termdock/change-audit/payload-<repo>.json'
-      : '   td audit ~/.termdock/change-audit/payload.json';
+      ? '   veymux audit ~/.veymux/change-audit/payload-<repo>.json'
+      : '   veymux audit ~/.veymux/change-audit/payload.json';
     return [
-      '任务：为目标仓库的 Git diff hunk 生成自包含审计解释，并通过 Termdock CLI 注入。',
+      '任务：为目标仓库的 Git diff hunk 生成自包含审计解释，并通过 Veymux CLI 注入。',
       '',
       `当前工作区：${rootPath ?? ''}`,
       '目标仓库：',
@@ -5800,16 +5800,16 @@ export function RightSidebar(
       exportCommands,
       '2. 先检查 audit-export 输出的 coverage[]：确认 untrackedFiles 是否为空、未跟踪文件是否已经出现在 hunks[].filePath 中；如果 coverage 显示存在未跟踪文件但 hunks[] 未包含对应文件，必须汇报导出异常，不要假装已解释。',
       '3. 读取 audit-export 输出的全部 hunks[].diff，包含 tracked 与 untracked hunks；先理解整批改动的业务目标、行为变化、文件分工和跨 hunk 依赖。',
-      '4. 以 audit-export 内置 diff 为分析依据。仅在单个 hunk 信息不足时执行：td audit-show <hunkId> <对应仓库绝对路径>',
-      '5. 在 ~/.termdock/change-audit/ 生成批量 payload JSON。',
-      '   mkdir -p ~/.termdock/change-audit',
+      '4. 以 audit-export 内置 diff 为分析依据。仅在单个 hunk 信息不足时执行：veymux audit-show <hunkId> <对应仓库绝对路径>',
+      '5. 在 ~/.veymux/change-audit/ 生成批量 payload JSON。',
+      '   mkdir -p ~/.veymux/change-audit',
       '6. payload 顶层字段：workspaceRoot、repoRoot、generatedBy、walkthrough、records[]。',
       '7. walkthrough 必须先生成，用三层结构说明整批改动：highlights[] 面向不了解代码的人讲“改了什么/带来什么效果”；nodes[]/edges[] 表达关键链路；risks[]/checks[] 写真实风险和验证。节点可带 anchor，点击后会跳到对应 diff。',
       '8. records[] 必须覆盖每个 hunk 内的多个 section，而不是只写 hunk 总结；从 audit-export hunk 原样复制 filePath、oldPath、newPath、hunkHeader、hunkIndex、fingerprint；如果解释的是 section，额外填写 sectionIndex 和 sectionFingerprint；补充 summary、explanation。',
       '9. 写入 payload 后批量注入：',
       payloadCommand,
-      '10. 少量 hunk 或临时补单条时使用：printf "%s\\n" "这里写该 hunk 的改动意义" | td audit-explain <hunkId> <对应仓库绝对路径>',
-      '11. 注入成功后清理本次 payload：rm -f ~/.termdock/change-audit/payload*.json',
+      '10. 少量 hunk 或临时补单条时使用：printf "%s\\n" "这里写该 hunk 的改动意义" | veymux audit-explain <hunkId> <对应仓库绝对路径>',
+      '11. 注入成功后清理本次 payload：rm -f ~/.veymux/change-audit/payload*.json',
       '',
       'payload.walkthrough 示例字段：',
       '{',
@@ -5852,7 +5852,7 @@ export function RightSidebar(
       rootPath,
       activeGitRepoRoots: changeAuditTargetRepoRoots,
       mode,
-      hasAuditListCommand: promptText.includes('td audit-list'),
+      hasAuditListCommand: promptText.includes('veymux audit-list'),
       promptLength: promptText.length,
     });
     const accepted = await insertContextText(t('rightSidebar.insertChangeAuditPrompt'), promptText, `${changeAuditPromptKey}:${mode}`, source);
@@ -6082,13 +6082,13 @@ export function RightSidebar(
         const switchLine = targetBranch ? `   git -C ${quoteShellArg(repo.root)} switch ${quoteShellArg(targetBranch)}` : `   # ${repo.label}: keep current branch`;
         return [
           switchLine,
-          '   mkdir -p ~/.termdock/branch-audit',
-          `   td branch-audit-export ${quoteShellArg(baseBranch)} ${quoteShellArg(repo.root)} > ~/.termdock/branch-audit/branch-audit-export-${safeName}.json`,
+          '   mkdir -p ~/.veymux/branch-audit',
+          `   veymux branch-audit-export ${quoteShellArg(baseBranch)} ${quoteShellArg(repo.root)} > ~/.veymux/branch-audit/branch-audit-export-${safeName}.json`,
         ].join('\n');
       }).join('\n')
-      : '   td branch-audit-export <base-branch>';
+      : '   veymux branch-audit-export <base-branch>';
     return [
-      '解释目标仓库当前分支相对于基线分支的改动，并把解释写回 Termdock。',
+      '解释目标仓库当前分支相对于基线分支的改动，并把解释写回 Veymux。',
       '',
       `当前工作区：${rootPath ?? ''}`,
       '每个仓库分别遵循下面列出的本地未提交更改选项。',
@@ -6098,12 +6098,12 @@ export function RightSidebar(
       '操作指令：',
       '1. 只针对上面列出的目标仓库导出分支 hunk，按各仓库所选目标分支与基线对比。本地未提交更改标记为是的仓库纳入 staged/unstaged/untracked 改动；标记为否的仓库只解释提交改动，忽略导出中混入的本地改动。嵌套子仓或软链接子仓使用括号内的仓库绝对路径。示例：',
       exportCommands,
-      '2. 读取导出的 ~/.termdock/branch-audit/branch-audit-export*.json 中的 hunks[]，不要把临时 JSON 放到业务仓目录，也不要把整份 JSON 粘贴回输入框。导出工具使用 base...HEAD（三点）生成 diff，只表示当前分支独有改动；提交列表使用 base..HEAD（两点）。',
+      '2. 读取导出的 ~/.veymux/branch-audit/branch-audit-export*.json 中的 hunks[]，不要把临时 JSON 放到业务仓目录，也不要把整份 JSON 粘贴回输入框。导出工具使用 base...HEAD（三点）生成 diff，只表示当前分支独有改动；提交列表使用 base..HEAD（两点）。',
       '3. 先生成 walkthrough，用 highlights[] 说明整批分支改动目的和影响，用 nodes[]/edges[] 画出主链路、分支链路和验证链路；节点可带 anchor，点击后会跳到对应 diff。',
       '4. 逐个 hunk 写解释。解释要说明该 hunk 的意图、解决的问题、影响、风险，以及它和其它 hunk 的关系；不要逐行复述 diff。',
-      '5. 每个仓库分别生成 ~/.termdock/branch-audit/payload-<repo>.json，payload 必须包含 workspaceRoot、repoRoot、baseRef、branchName、headRef、diffFingerprint、walkthrough 和 records[]；records[] 每条 record 对应一个 hunk，diff 字段必须从 hunk.diff 原样复制。',
-      '6. 把解释写入 payload 后执行：td branch-audit ~/.termdock/branch-audit/payload-<repo>.json',
-      '7. 注入成功后删除本次生成的临时 JSON：rm -f ~/.termdock/branch-audit/branch-audit-export-*.json ~/.termdock/branch-audit/payload-*.json',
+      '5. 每个仓库分别生成 ~/.veymux/branch-audit/payload-<repo>.json，payload 必须包含 workspaceRoot、repoRoot、baseRef、branchName、headRef、diffFingerprint、walkthrough 和 records[]；records[] 每条 record 对应一个 hunk，diff 字段必须从 hunk.diff 原样复制。',
+      '6. 把解释写入 payload 后执行：veymux branch-audit ~/.veymux/branch-audit/payload-<repo>.json',
+      '7. 注入成功后删除本次生成的临时 JSON：rm -f ~/.veymux/branch-audit/branch-audit-export-*.json ~/.veymux/branch-audit/payload-*.json',
       '',
       'payload 示例：',
       '```json',
@@ -6114,7 +6114,7 @@ export function RightSidebar(
         branchName: '<from export currentBranch>',
         headRef: '<from export headRef>',
         diffFingerprint: '<from export diffFingerprint>',
-        generatedBy: 'termdock-branch-audit',
+        generatedBy: 'veymux-branch-audit',
         walkthrough: {
           title: '<one-line branch change title>',
           summary: '<branch change goal and effect>',
@@ -8772,7 +8772,7 @@ export function RightSidebar(
                     const file = changedFileBySelectionPath.get(navigatorFile.key);
                     return file ? renderChangeNavigatorSubtitle(file) : null;
                   }}
-                  listContainerClassName="termdock-native-select min-h-0 px-2 pb-[calc(env(safe-area-inset-bottom)+4.5rem)]"
+                  listContainerClassName="veymux-native-select min-h-0 px-2 pb-[calc(env(safe-area-inset-bottom)+4.5rem)]"
                   renderListHeader={(modeToggle) => rootPath && (
                     <div className="px-0 py-0">
                       {gitSummaryChips && (
@@ -8853,7 +8853,7 @@ export function RightSidebar(
                       </div>
                     </div>
                   )}
-                  detailContainerClassName="termdock-native-select termdock-diff-stream-scroller min-h-0"
+                  detailContainerClassName="veymux-native-select veymux-diff-stream-scroller min-h-0"
                   files={diffReviewFiles}
                   activePane={diffPaneActive}
                   wrap={diffWrap}

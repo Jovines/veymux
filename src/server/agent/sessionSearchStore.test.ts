@@ -6,7 +6,7 @@ import { SessionSearchStore } from './sessionSearchStore.js';
 
 describe('SessionSearchStore', () => {
   let directory: string;
-  beforeEach(() => { directory = fs.mkdtempSync(path.join(os.tmpdir(), 'termdock-session-search-')); });
+  beforeEach(() => { directory = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-session-search-')); });
   afterEach(() => fs.rmSync(directory, { recursive: true, force: true }));
 
   it('indexes terminal output and restores metadata after restart', () => {
@@ -103,7 +103,7 @@ describe('SessionSearchStore', () => {
 });
 
 it('retains closed names independently of the terminal output budget and beyond fifty sessions', () => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'td-history-retention-'));
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-history-retention-'));
   try {
     const store = new SessionSearchStore(directory, { maxTotalBytes: 0 });
     for (let index = 0; index < 70; index++) store.append({ sessionId: `closed-${index}`, backendSessionId: null,
@@ -119,7 +119,7 @@ it('retains closed names independently of the terminal output budget and beyond 
 });
 
 it('projects legacy internal names through the shared presentation rule', () => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'td-history-names-'));
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-history-names-'));
   try {
     fs.writeFileSync(path.join(directory, 'sessions.json'), JSON.stringify({ sessions: [{ sessionId: 'old',
       backendSessionId: null, title: 'tmux:wt-old', cwd: '/work/my-project', agentSlug: null,

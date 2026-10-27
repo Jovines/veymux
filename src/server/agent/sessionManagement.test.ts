@@ -8,7 +8,7 @@ import { closeSessionRuntime, processStartIdentity, type SessionCloseTarget } fr
 import type { IntegrationPrincipal } from './integrationStore.js';
 let dir: string;
 const instances: IntegrationSessions[] = [];
-beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'td-management-')); });
+beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-management-')); });
 afterEach(() => { instances.splice(0).forEach(s => s.close()); fs.rmSync(dir, { recursive: true, force: true }); });
 async function fixture(native = 'native-original') {
   const file = path.join(dir, 'sessions.json');

@@ -14,7 +14,7 @@ const file = {
 
 function renderNavigator(onSelectFile: () => void) {
   return render(
-    <div className="termdock-native-select">
+    <div className="veymux-native-select">
       <DiffFileNavigator
         groups={[{ key: '/repo', root: '/repo', label: 'repo', files: [file] }]}
         selectedKey={null}

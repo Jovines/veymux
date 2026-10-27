@@ -42,7 +42,7 @@ export interface DesktopAppUpdateState {
   error: string | null;
 }
 
-export interface TermdockDesktopBridge extends ServiceDirectoryBridge {
+export interface VeymuxDesktopBridge extends ServiceDirectoryBridge {
   /** Workspace requests are reviewed by the trusted bundled connection center. */
   reviewServiceConnection?(connection: import('../services/serviceDirectory').ServiceConnection, invitation?: string): Promise<void>;
   takeServiceConnectionReview?(): Promise<import('../services/desktopServiceConnection').ServiceConnectionReview | null>;
@@ -122,22 +122,22 @@ export interface NativeFileDropPayload {
 
 declare global {
   interface Window {
-    termdockDesktop?: TermdockDesktopBridge;
+    veymuxDesktop?: VeymuxDesktopBridge;
   }
 }
 
-export function getTermdockDesktopBridge(): TermdockDesktopBridge | null {
+export function getVeymuxDesktopBridge(): VeymuxDesktopBridge | null {
   if (typeof window === 'undefined') return null;
-  return window.termdockDesktop ?? null;
+  return window.veymuxDesktop ?? null;
 }
 
-export type DesktopServiceActivityBridge = TermdockDesktopBridge & Required<Pick<
-  TermdockDesktopBridge,
+export type DesktopServiceActivityBridge = VeymuxDesktopBridge & Required<Pick<
+  VeymuxDesktopBridge,
   'reportServiceActivity' | 'focusService' | 'onServiceActivity'
 >>;
 
 export function supportsDesktopServiceActivity(
-  bridge: TermdockDesktopBridge | null,
+  bridge: VeymuxDesktopBridge | null,
 ): bridge is DesktopServiceActivityBridge {
   return typeof bridge?.reportServiceActivity === 'function'
     && typeof bridge.focusService === 'function'
@@ -150,7 +150,7 @@ let nativeFileDropBridgeInstalled = false;
 export function subscribeNativeFileDrops(
   listener: (payload: NativeFileDropPayload) => void,
 ): () => void {
-  const bridge = getTermdockDesktopBridge();
+  const bridge = getVeymuxDesktopBridge();
   nativeFileDropListeners.add(listener);
   if (!nativeFileDropBridgeInstalled) {
     const deliver = (payload: NativeFileDropPayload) => {

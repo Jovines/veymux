@@ -5,8 +5,8 @@ import fs from 'node:fs';
 import { verifyPublication, publicationReport } from '../.github/scripts/verify-npm-publication.mjs';
 
 const bytes = Buffer.from('verified CI package');
-const pack = { name: 'termdock', version: '1.4.339', integrity: `sha512-${crypto.createHash('sha512').update(bytes).digest('base64')}` };
-const tarball = 'https://registry.npmjs.org/termdock/-/termdock-1.4.339.tgz';
+const pack = { name: 'veymux', version: '1.4.339', integrity: `sha512-${crypto.createHash('sha512').update(bytes).digest('base64')}` };
+const tarball = 'https://registry.npmjs.org/veymux/-/veymux-1.4.339.tgz';
 function json(value) { return new Response(JSON.stringify(value)); }
 function published(url) {
   if (url === tarball) return new Response(bytes);
@@ -75,7 +75,7 @@ test('keeps public tarball corruption fatal', async () => {
 
 test('only the post-upload step can accept pending; publication and build failures stay fatal', () => {
   const workflow = fs.readFileSync(new URL('../.github/workflows/npm-publish.yml', import.meta.url), 'utf8');
-  assert.match(workflow, /run: npm publish "\.\/npm-package\/termdock-\$\{EXPECTED_VERSION\}\.tgz" --access public/);
+  assert.match(workflow, /run: npm publish "\.\/npm-package\/veymux-\$\{EXPECTED_VERSION\}\.tgz" --access public/);
   assert.match(workflow, /run: node \.github\/scripts\/verify-npm-publication\.mjs npm-package\/pack\.json --upload-accepted/);
   assert.doesNotMatch(workflow, /continue-on-error/);
 });

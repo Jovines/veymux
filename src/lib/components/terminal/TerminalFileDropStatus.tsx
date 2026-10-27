@@ -35,7 +35,7 @@ export function TerminalFileDropStatus({ target }: { target: RefObject<HTMLEleme
       <span role="status" aria-live="polite" className="min-w-0 break-words">{text}</span>
       {state.phase === 'uploading' && <span role="progressbar" aria-label="文件上传进度" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress} className="sr-only" />}
       {busy && state.cancellable && <button type="button" aria-label="取消文件处理" className="inline-flex min-h-8 shrink-0 items-center gap-1 rounded px-2 text-muted-foreground hover:bg-surface-elevated hover:text-foreground"
-        onClick={() => target.current?.dispatchEvent(new CustomEvent('termdock:file-drop-cancel', { bubbles: true }))}><X size={13} />取消</button>}
+        onClick={() => target.current?.dispatchEvent(new CustomEvent('veymux:file-drop-cancel', { bubbles: true }))}><X size={13} />取消</button>}
     </div>
   </div>;
 }

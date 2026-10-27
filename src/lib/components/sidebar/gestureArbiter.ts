@@ -59,7 +59,7 @@ export interface ManagedScrollerGesture {
 }
 
 const SWIPER_CONTAINER_CLASS = 'swiper';
-const MANAGED_MARKDOWN_SCROLLER_SELECTOR = 'pre.termdock-file-preview-horizontal-scroll, [data-markdown-native-scroll]';
+const MANAGED_MARKDOWN_SCROLLER_SELECTOR = 'pre.veymux-file-preview-horizontal-scroll, [data-markdown-native-scroll]';
 
 /**
  * 手势密集的内层控件（视频进度条、3D 画布等）需要同时排除两类外层横向手势：

@@ -161,7 +161,7 @@ export class CollaborationTaskService {
       const queued = this.messages.send({ groupId: group.id, fromSessionId: null, toSessionIds: [recipient.sessionId],
         kind: packet.kind === 'task' ? 'task' : 'message', content: String(packet.content ?? ''), threadId: attempt?.threadId ?? task.id,
         idempotencyKey: `task:${peer.serviceId}:${String(packet.outboxId)}`,
-        metadata: { taskOutboxId: packet.outboxId, termdockTask: { taskId: task.id, attemptId: attempt?.id ?? null, ownerServiceId: peer.serviceId, replyToEventId: task.events.find(e => e.deliveryId === packet.outboxId && e.attemptId === attempt?.id && e.kind === 'comment')?.id } } });
+        metadata: { taskOutboxId: packet.outboxId, veymuxTask: { taskId: task.id, attemptId: attempt?.id ?? null, ownerServiceId: peer.serviceId, replyToEventId: task.events.find(e => e.deliveryId === packet.outboxId && e.attemptId === attempt?.id && e.kind === 'comment')?.id } } });
       this.deliver(recipient.sessionId);
       return { receipt: this.receipt(queued[0].id) };
     }
@@ -264,7 +264,7 @@ export class CollaborationTaskService {
             }
             const queued = this.messages.send({ groupId: task.groupId, fromSessionId: null, toSessionIds: [outbox.target.sessionId],
               kind: outbox.kind, content: outbox.content, threadId: outbox.threadId, idempotencyKey: `task:${this.self}:${outbox.id}`,
-              metadata: { termdockTask: { taskId: task.id, attemptId: outbox.attemptId, ownerServiceId: this.self, replyToEventId: outbox.replyToEventId } } });
+              metadata: { veymuxTask: { taskId: task.id, attemptId: outbox.attemptId, ownerServiceId: this.self, replyToEventId: outbox.replyToEventId } } });
             this.deliver(outbox.target.sessionId); this.tasks.delivered(outbox.id, this.receipt(queued[0].id));
           } else {
             const result = await this.peers.requestTasks(outbox.target.serviceId, { op: 'deliver', task, target: outbox.target.sessionId,

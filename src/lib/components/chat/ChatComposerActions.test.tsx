@@ -49,13 +49,13 @@ it('copies the observed directory through the shared clipboard helper and report
   await waitFor(() => expect(useFeedbackStore.getState().items.some(item => item.tone === 'error' && item.message.includes('未插入'))).toBe(true));
 });
 it('shares only the current chat Session with the existing share action', () => {
-  const share = vi.fn(); window.addEventListener('termdock:open-services', share);
+  const share = vi.fn(); window.addEventListener('veymux:open-services', share);
   try {
     mount(); fireEvent.click(screen.getByRole('button', { name: '更多会话操作' }), { detail: 1 });
     fireEvent.click(screen.getByRole('menuitem', { name: '分享这个会话' }));
     expect((share.mock.calls[0][0] as CustomEvent).detail).toEqual({ inviteSessionId: 'target', viewMode: 'chat' });
     expect(screen.queryByRole('menu')).toBeNull();
-  } finally { window.removeEventListener('termdock:open-services', share); }
+  } finally { window.removeEventListener('veymux:open-services', share); }
 });
 it.each([false, true])('does not inherit owner actions from shared input permission (writable %s)', writable => {
   render(<SessionCapabilitiesContext.Provider value={sharedSessionCapabilities({ canWrite: writable })}><ChatComposerActions sessionId="target" active canWrite={writable} /></SessionCapabilitiesContext.Provider>);

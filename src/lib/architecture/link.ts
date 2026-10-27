@@ -9,7 +9,7 @@ export function parseArchitectureLink(search: string): ArchitectureLink | null {
     return { root: value.root, file: value.file, ...(value.peerId ? { peerId: value.peerId } : {}), ...(typeof value.serviceName === 'string' ? { serviceName: value.serviceName.slice(0, 200) } : {}) };
   } catch { return null; }
 }
-const pendingKey = (peerId: string) => `termdock-secure-architecture-link:${peerId}`;
+const pendingKey = (peerId: string) => `veymux-secure-architecture-link:${peerId}`;
 export function queueArchitectureLink(link: ArchitectureLink): void {
   if (!link.peerId) return;
   sessionStorage.setItem(pendingKey(link.peerId), JSON.stringify({ link, at: Date.now() }));

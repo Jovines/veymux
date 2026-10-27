@@ -46,7 +46,7 @@ describe('standalone boot recovery', () => {
     expect(page.setTimeout).not.toHaveBeenCalled();
     page.fail();
     page.document.getElementById('root')!.innerHTML = '<main>Connected</main>';
-    page.document.getElementById('termdock-startup')!.hidden = true;
+    page.document.getElementById('veymux-startup')!.hidden = true;
     page.setTimeout.mock.calls[0][0]();
     expect(page.reload).not.toHaveBeenCalled();
   });
@@ -55,6 +55,6 @@ describe('standalone boot recovery', () => {
     page.document.getElementById('root')!.innerHTML = '<main>Restoring</main>';
     page.fail();
     expect(page.document.querySelector('main')?.textContent).toBe('Restoring');
-    expect(page.document.getElementById('termdock-startup')?.textContent).toContain('启动资源加载失败');
+    expect(page.document.getElementById('veymux-startup')?.textContent).toContain('启动资源加载失败');
   });
 });

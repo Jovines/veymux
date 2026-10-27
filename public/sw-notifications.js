@@ -3,7 +3,7 @@ self.addEventListener('push', (event) => {
   try {
     payload = event.data ? event.data.json() : {};
   } catch {
-    payload = { title: 'Termdock', body: event.data ? event.data.text() : '' };
+    payload = { title: 'Veymux', body: event.data ? event.data.text() : '' };
   }
   const alertStyle = payload.alertStyle || 'normal';
   const notificationOptions = {
@@ -27,13 +27,13 @@ self.addEventListener('push', (event) => {
     // the SW always shows it; open windows only get the postMessage so the
     // app could react in place (click focus goes through notificationclick).
     try {
-      await self.registration.showNotification(payload.title || 'Termdock', notificationOptions);
+      await self.registration.showNotification(payload.title || 'Veymux', notificationOptions);
     } catch (error) {
       // Safari throws NotSupportedError when renotify:true but no prior
       // notification with the same tag exists.  Retry without renotify —
       // tag-based replacement still works regardless.
       if (error.name === 'NotSupportedError' && notificationOptions.renotify) {
-        await self.registration.showNotification(payload.title || 'Termdock', {
+        await self.registration.showNotification(payload.title || 'Veymux', {
           ...notificationOptions,
           renotify: false,
         });
@@ -44,7 +44,7 @@ self.addEventListener('push', (event) => {
     const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     for (const client of windows) {
       if (client.visibilityState === 'visible') {
-        client.postMessage({ type: 'termdock:push-received', payload });
+        client.postMessage({ type: 'veymux:push-received', payload });
       }
     }
     if ('setAppBadge' in self.navigator) {
@@ -65,24 +65,24 @@ self.addEventListener('pushsubscriptionchange', (event) => {
       if (!subscription && event.oldSubscription?.options) {
         subscription = await self.registration.pushManager.subscribe(event.oldSubscription.options);
       }
-      if (subscription) await self.termdockBackground?.renewSubscriptions(subscription.toJSON());
+      if (subscription) await self.veymuxBackground?.renewSubscriptions(subscription.toJSON());
     } catch (error) {
       console.warn('Background encrypted subscription sync failed', error);
     }
     const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     for (const client of windows) {
-      client.postMessage({ type: 'termdock:push-subscription-changed' });
+      client.postMessage({ type: 'veymux:push-subscription-changed' });
     }
   })());
 });
 
 async function reportNotificationClick(stage, traceId, data = {}) {
-  try { await self.termdockBackground?.reportClick(stage, traceId, data); }
+  try { await self.veymuxBackground?.reportClick(stage, traceId, data); }
   catch { console.debug(`PWA_NOTIFICATION_CLICK ${stage}`, { traceId, ...data }); }
 }
 
-const NOTIFICATION_TARGET_CACHE = 'termdock-notification-target-v1';
-const NOTIFICATION_TARGET_KEY = '/__termdock-notification-target';
+const NOTIFICATION_TARGET_CACHE = 'veymux-notification-target-v1';
+const NOTIFICATION_TARGET_KEY = '/__veymux-notification-target';
 
 async function storeNotificationTarget(sessionId, traceId, targetPeerId) {
   if (!sessionId || typeof caches === 'undefined') return false;
@@ -123,11 +123,11 @@ function requestFocusAcknowledgement(client, sessionId, targetPeerId) {
     };
     const timeout = setTimeout(() => finish(false), 1000);
     channel.port1.onmessage = (messageEvent) => {
-      finish(messageEvent.data?.type === 'termdock:focus-session-ack');
+      finish(messageEvent.data?.type === 'veymux:focus-session-ack');
     };
     try {
       client.postMessage(
-        { type: 'termdock:focus-session', sessionId, targetPeerId },
+        { type: 'veymux:focus-session', sessionId, targetPeerId },
         [channel.port2],
       );
     } catch {
@@ -224,5 +224,5 @@ self.addEventListener('notificationclick', (event) => {
         resultUrl: openedClient?.url || null,
       });
     }
-  })().finally(() => self.termdockBackground?.flushLogs().catch(() => {})));
+  })().finally(() => self.veymuxBackground?.flushLogs().catch(() => {})));
 });

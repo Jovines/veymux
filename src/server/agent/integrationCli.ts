@@ -5,9 +5,9 @@ import { INTEGRATION_PROTOCOL } from './integrationStore.js';
 import { integrationSocketPath } from './integrationServer.js';
 import { CollaborationError } from './collaborationProtocol.js';
 import { COLLAB_HELP, executeCollaborationCommand, duration, type CollaborationCommand } from './collaborationCli.js';
-import { getTermdockVersion } from '../utils/version.js';
+import { getVeymuxVersion } from '../utils/version.js';
 
-export const INTEGRATION_HELP = `td integration — local scoped integration administration
+export const INTEGRATION_HELP = `veymux integration — local scoped integration administration
   groups | list
   storage (read event capacity, warnings and metadata usage; local administrator only)
   consumers (read confirmation watermarks, lag and retirement state)
@@ -108,12 +108,12 @@ export const INTEGRATION_HELP = `td integration — local scoped integration adm
     never shell argv/output. A timed-out launch does not automatically retry.
   revoke <principal-id>
 Credentials are saved as a private file and never printed. Workers set
-TERMDOCK_INTEGRATION_CREDENTIAL_FILE, then use td collab --principal <id> …
+VEYMUX_INTEGRATION_CREDENTIAL_FILE, then use veymux collab --principal <id> …
 Session owners: grant session.rename / session.close independently (minimum CLI/service 1.4.315).
-Use td collab --principal <id> session rename|close --help for lifecycle constraints.
+Use veymux collab --principal <id> session rename|close --help for lifecycle constraints.
 An empty administrator terminal is not required once a live local group is provisioned.
 Ordinary messages: permissions message.send, message.read, events.read;
-td collab --principal <id> --help lists send/reply/history and event examples.
+veymux collab --principal <id> --help lists send/reply/history and event examples.
 No task or user acceptance is required for a message-driven integration.
 Only the local administrator can provision/revoke grants. See docs/integrations.md.`;
 export interface IntegrationCredential { id: string; token: string; protocol: number }
@@ -125,10 +125,10 @@ export function readIntegrationCredential(file: string, principalId: string): In
   return credential;
 }
 function headers(credential?: IntegrationCredential, adminToken?: string): Record<string, string> {
-  return { 'Content-Type': 'application/json', 'x-termdock-integration-protocol': String(INTEGRATION_PROTOCOL),
-    'x-termdock-cli-version': getTermdockVersion(),
-    ...(credential ? { 'x-termdock-integration-id': credential.id, authorization: `Bearer ${credential.token}` } : {}),
-    ...(adminToken ? { 'x-termdock-local-token': adminToken } : {}) };
+  return { 'Content-Type': 'application/json', 'x-veymux-integration-protocol': String(INTEGRATION_PROTOCOL),
+    'x-veymux-cli-version': getVeymuxVersion(),
+    ...(credential ? { 'x-veymux-integration-id': credential.id, authorization: `Bearer ${credential.token}` } : {}),
+    ...(adminToken ? { 'x-veymux-local-token': adminToken } : {}) };
 }
 function request(socketPath: string, method: string, route: string, body: unknown, requestHeaders: Record<string, string>, timeout = 30000): Promise<{ statusCode: number; body: string }> {
   return new Promise((resolve, reject) => {
@@ -154,13 +154,13 @@ export async function runIntegrationAdmin(argv: string[], port: number, adminTok
     if (action === 'help' || argv.includes('--help')) { write(INTEGRATION_HELP); return 0; }
     const socketPath = integrationSocketPath(port);
     if (action === 'storage' || action === 'consumers') {
-      if (argv.length !== 1) throw new Error('Usage: td integration storage | consumers');
+      if (argv.length !== 1) throw new Error('Usage: veymux integration storage | consumers');
       write(JSON.stringify(parsed(await request(socketPath, 'GET', `/admin/${action}`, undefined, headers(undefined, adminToken)))));
       return 0;
     }
     if (action === 'consumer') {
       const args: Record<string, string> = {};
-      if (argv[1] !== 'retire') throw new Error('Usage: td integration consumer retire --principal <id> --consumer <name> --expected-sequence <N> --idempotency-key <key>');
+      if (argv[1] !== 'retire') throw new Error('Usage: veymux integration consumer retire --principal <id> --consumer <name> --expected-sequence <N> --idempotency-key <key>');
       for (let index = 2; index < argv.length; index += 2) {
         if (!['--principal', '--consumer', '--expected-sequence', '--idempotency-key'].includes(argv[index]) || !argv[index + 1] || Object.hasOwn(args, argv[index])) throw new Error('Invalid consumer retirement arguments');
         args[argv[index]] = argv[index + 1];
@@ -173,7 +173,7 @@ export async function runIntegrationAdmin(argv: string[], port: number, adminTok
     }
     if (action === 'group' && ['get', 'rename', 'archive', 'unarchive'].includes(argv[1])) {
       const operation = argv[1], id = argv[2], args: Record<string, string> = {};
-      const usage = 'Usage: td integration group get <exact-id> | group rename <exact-id> --name <name> --expected-updated-at <N> --idempotency-key <key> | group archive|unarchive <exact-id> --expected-updated-at <N> --idempotency-key <key>';
+      const usage = 'Usage: veymux integration group get <exact-id> | group rename <exact-id> --name <name> --expected-updated-at <N> --idempotency-key <key> | group archive|unarchive <exact-id> --expected-updated-at <N> --idempotency-key <key>';
       if (!id || !/^[a-zA-Z0-9._-]{1,80}$/.test(id)) throw new CollaborationError('INVALID_GROUP_ID', usage, 400);
       if (operation === 'get' && argv.length !== 3) throw new CollaborationError('INVALID_GROUP_RENAME_REQUEST', usage, 400);
       if (operation !== 'get') {
@@ -196,7 +196,7 @@ export async function runIntegrationAdmin(argv: string[], port: number, adminTok
     }
     if (action === 'group') {
       const args: Record<string, string> = {};
-      const usage = 'Usage: td integration group create --name <name> --idempotency-key <key>';
+      const usage = 'Usage: veymux integration group create --name <name> --idempotency-key <key>';
       if (argv[1] !== 'create') throw new CollaborationError('INVALID_GROUP_CREATE_REQUEST', usage, 400);
       for (let i = 2; i < argv.length; i += 2) {
         if (!['--name', '--idempotency-key'].includes(argv[i]) || !argv[i + 1] || Object.hasOwn(args, argv[i])) throw new CollaborationError('INVALID_GROUP_CREATE_REQUEST', usage, 400);
@@ -212,7 +212,7 @@ export async function runIntegrationAdmin(argv: string[], port: number, adminTok
       const id = argv[1];
       if (argv.length !== 4 || !id || !/^[a-zA-Z0-9._-]{1,80}$/.test(id) || argv[2] !== '--generation'
         || !/^[1-9][0-9]*$/.test(argv[3]) || !Number.isSafeInteger(Number(argv[3]))) {
-        throw new Error('Usage: td integration clear-startup-input <TD-session-id> --generation <positive integer>');
+        throw new Error('Usage: veymux integration clear-startup-input <TD-session-id> --generation <positive integer>');
       }
       const capabilities = parsed(await request(socketPath, 'GET', '/admin/capabilities', undefined, headers(undefined, adminToken)));
       if (capabilities.session_startup_input_clear !== true) throw new CollaborationError('SESSION_STARTUP_INPUT_CLEAR_UNSUPPORTED', 'CLI and running service must be at least 1.4.310', 409);
@@ -250,7 +250,7 @@ export async function runIntegrationAdmin(argv: string[], port: number, adminTok
       const flag = argv[index]; if (!['--file', '--credential-file'].includes(flag) || !argv[index + 1] || options[flag]) throw new Error('Invalid integration arguments'); options[flag] = argv[index + 1];
     }
     if (action === 'groups' || action === 'list') {
-      if (action === 'list' && argv.length !== 1 || action === 'groups' && argv.length > 2 || action === 'groups' && argv.length === 2 && argv[1] !== '--include-archived') throw new Error('Usage: td integration groups [--include-archived] | list');
+      if (action === 'list' && argv.length !== 1 || action === 'groups' && argv.length > 2 || action === 'groups' && argv.length === 2 && argv[1] !== '--include-archived') throw new Error('Usage: veymux integration groups [--include-archived] | list');
       if (action === 'groups' && argv[1] === '--include-archived') {
         const capabilities = parsed(await request(socketPath, 'GET', '/admin/capabilities', undefined, headers(undefined, adminToken)));
         if (capabilities.admin_local_group_archive !== true) throw new CollaborationError('ADMIN_LOCAL_GROUP_ARCHIVE_UNSUPPORTED', 'CLI and running service must support archived group discovery (minimum 1.4.323)', 409);
@@ -294,12 +294,12 @@ export async function revokeIntegration(id: string, port: number, adminToken: st
 export async function runIntegrationCollab(command: CollaborationCommand, port: number, io: { write(line: string): void; stdin(): Promise<string> }): Promise<number> {
   try {
     if (command.action === 'help') { io.write(COLLAB_HELP); return 0; }
-    const principalId = String(command.options.principal), file = process.env.TERMDOCK_INTEGRATION_CREDENTIAL_FILE;
-    if (!file) throw new CollaborationError('INTEGRATION_CREDENTIAL_REQUIRED', 'Set TERMDOCK_INTEGRATION_CREDENTIAL_FILE to a private credential file', 401);
+    const principalId = String(command.options.principal), file = process.env.VEYMUX_INTEGRATION_CREDENTIAL_FILE;
+    if (!file) throw new CollaborationError('INTEGRATION_CREDENTIAL_REQUIRED', 'Set VEYMUX_INTEGRATION_CREDENTIAL_FILE to a private credential file', 401);
     const credential = readIntegrationCredential(file, principalId), socketPath = integrationSocketPath(port);
     const capability = parsed(await request(socketPath, 'GET', '/capabilities', undefined, headers(credential)));
     if (capability.integration_protocol !== INTEGRATION_PROTOCOL) throw new CollaborationError('INCOMPATIBLE_INTEGRATION_PROTOCOL', 'CLI/service protocols are incompatible', 409);
-    if (command.action === 'capabilities') { io.write(JSON.stringify({ ...capability, cli_version: getTermdockVersion() })); return 0; }
+    if (command.action === 'capabilities') { io.write(JSON.stringify({ ...capability, cli_version: getVeymuxVersion() })); return 0; }
     if (command.action === 'events') {
       const consumer = String(command.options.consumer ?? 'default');
       if (command.operation === 'ack') { io.write(JSON.stringify(parsed(await request(socketPath, 'POST', '/events/ack', { consumer, cursor: command.target }, headers(credential))))); return 0; }
@@ -319,7 +319,7 @@ export async function runIntegrationCollab(command: CollaborationCommand, port: 
     const messageCapability = command.action === 'send' ? 'integration_message_send' : command.action === 'reply' ? 'integration_message_reply'
       : command.action === 'message' && command.operation === 'list' ? 'integration_message_history' : null;
     if (messageCapability && capability[messageCapability] !== true) throw new CollaborationError('INTEGRATION_MESSAGING_UNSUPPORTED', 'CLI and running service must support integration messaging (minimum 1.4.308); upgrade both and read capabilities', 409);
-    if (!['task', 'message', 'send', 'reply'].includes(command.action) || command.action === 'message' && !['get', 'list'].includes(command.operation!)) throw new CollaborationError('INTEGRATION_OPERATION_DENIED', 'Command is not exposed to integration identities; see td collab --principal <id> --help', 403);
+    if (!['task', 'message', 'send', 'reply'].includes(command.action) || command.action === 'message' && !['get', 'list'].includes(command.operation!)) throw new CollaborationError('INTEGRATION_OPERATION_DENIED', 'Command is not exposed to integration identities; see veymux collab --principal <id> --help', 403);
     return executeCollaborationCommand(command, {}, { ...io, request: async (method, endpoint, body, timeout) => {
       const origin = { source: command.options.source, externalActor: command.options['external-actor'] ? JSON.parse(String(command.options['external-actor'])) : undefined,
         externalMessageId: command.options['external-message-id'], metadata: command.options.metadata ? JSON.parse(String(command.options.metadata)) : undefined };

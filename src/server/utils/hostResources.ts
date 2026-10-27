@@ -43,7 +43,7 @@ export interface AgentResourceBudget {
   maxMemoryPressureFullAvg10: number;
 }
 
-export function getTermdockOwnedAgentSessionIds(input: {
+export function getVeymuxOwnedAgentSessionIds(input: {
   managedSessions: Array<{ sessionId: string; tmuxSessionName?: string | null }>;
   liveAgentSessions: Array<{ name: string; sourceFrontendSessionId?: string | null }>;
   activeRecoverySessionIds?: string[];
@@ -160,12 +160,12 @@ export function configuredAgentResourceBudget(env: NodeJS.ProcessEnv = process.e
     return value;
   };
   return {
-    minAvailableBytes: readMb('TD_AGENT_MIN_AVAILABLE_MB', 2048, 256, 131072),
-    estimatedRssBytes: readMb('TD_AGENT_ESTIMATED_RSS_MB', 512, 64, 32768),
-    maxResidentAgents: readCount('TD_MAX_RESIDENT_AGENTS', 48, 10000),
-    maxAgentsPerGroup: readCount('TD_MAX_AGENTS_PER_GROUP', 32, 1000),
-    maxMemoryPressureSomeAvg10: readPressure('TD_AGENT_MAX_MEMORY_PSI_SOME_AVG10', 10),
-    maxMemoryPressureFullAvg10: readPressure('TD_AGENT_MAX_MEMORY_PSI_FULL_AVG10', 1),
+    minAvailableBytes: readMb('VEYMUX_AGENT_MIN_AVAILABLE_MB', 2048, 256, 131072),
+    estimatedRssBytes: readMb('VEYMUX_AGENT_ESTIMATED_RSS_MB', 512, 64, 32768),
+    maxResidentAgents: readCount('VEYMUX_MAX_RESIDENT_AGENTS', 48, 10000),
+    maxAgentsPerGroup: readCount('VEYMUX_MAX_AGENTS_PER_GROUP', 32, 1000),
+    maxMemoryPressureSomeAvg10: readPressure('VEYMUX_AGENT_MAX_MEMORY_PSI_SOME_AVG10', 10),
+    maxMemoryPressureFullAvg10: readPressure('VEYMUX_AGENT_MAX_MEMORY_PSI_FULL_AVG10', 1),
   };
 }
 

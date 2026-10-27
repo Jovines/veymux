@@ -111,7 +111,7 @@ it('reports browser anchor handoff as started rather than claiming the download 
 
 it('uses the Preview host writer and reports saved only after its completed receipt', async () => {
   const save = vi.fn().mockResolvedValue('saved');
-  vi.stubGlobal('termdockDesktop', { saveDownloadBlob: save });
+  vi.stubGlobal('veymuxDesktop', { saveDownloadBlob: save });
   expect(await saveDownloadBlob(new Blob(['bytes']), 'A')).toBe('saved');
   expect(save).toHaveBeenCalledOnce();
   expect(save.mock.calls[0][1]).toBe('A');
@@ -132,14 +132,14 @@ it('does not navigate or start an anchor fallback when canceled while preparing 
   const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
   const controller = new AbortController();
   const saving = saveDownloadBlob(new Blob(['bytes']), 'A', controller.signal);
-  controller.abort(); attachment.resolve('https://localhost/__termdock-download/123');
+  controller.abort(); attachment.resolve('https://localhost/__veymux-download/123');
   expect(await saving).toBe('canceled'); expect(click).not.toHaveBeenCalled();
 });
 
 it('streams large Preview responses without materializing a Blob', async () => {
   const stream=new ReadableStream<Uint8Array>({start(controller){controller.enqueue(new Uint8Array([1,2,3]));controller.close();}});
   const body=vi.fn(),save=vi.fn().mockResolvedValue('saved');
-  vi.stubGlobal('termdockDesktop',{saveDownloadStream:save});
+  vi.stubGlobal('veymuxDesktop',{saveDownloadStream:save});
   vi.stubGlobal('fetch',vi.fn().mockResolvedValue({ok:true,body:stream,headers:new Headers({'Content-Length':String(129*1024*1024),'Content-Disposition':'attachment; filename="large.bin"'}),blob:body}));
   expect(await downloadFile('/large.bin')).toBe('saved');expect(body).not.toHaveBeenCalled();
   expect(save).toHaveBeenCalledWith(stream,'large.bin',{signal:undefined,expectedBytes:129*1024*1024});
@@ -147,13 +147,13 @@ it('streams large Preview responses without materializing a Blob', async () => {
 });
 it('passes unknown lengths to the stream writer and retains an older Blob-only bridge',async()=>{
   const stream=new ReadableStream<Uint8Array>({start(c){c.close();}}),save=vi.fn().mockResolvedValue('saved'),blob=vi.fn().mockResolvedValue(new Blob(['old']));
-  vi.stubGlobal('termdockDesktop',{saveDownloadStream:save});vi.stubGlobal('fetch',vi.fn().mockResolvedValue({ok:true,body:stream,headers:new Headers(),blob}));
+  vi.stubGlobal('veymuxDesktop',{saveDownloadStream:save});vi.stubGlobal('fetch',vi.fn().mockResolvedValue({ok:true,body:stream,headers:new Headers(),blob}));
   expect(await downloadFile('/empty')).toBe('saved');expect(save.mock.calls[0][2].expectedBytes).toBeUndefined();expect(blob).not.toHaveBeenCalled();
-  const legacySave=vi.fn().mockResolvedValue('saved');vi.stubGlobal('termdockDesktop',{saveDownloadBlob:legacySave});
+  const legacySave=vi.fn().mockResolvedValue('saved');vi.stubGlobal('veymuxDesktop',{saveDownloadBlob:legacySave});
   expect(await downloadFile('/legacy')).toBe('saved');expect(blob).toHaveBeenCalledOnce();expect(legacySave).toHaveBeenCalledOnce();
 });
 it('does not fall back to Blob or ordinary HTTP after a Preview stream fails',async()=>{
-  const stream=new ReadableStream<Uint8Array>(),blob=vi.fn();vi.stubGlobal('termdockDesktop',{saveDownloadStream:vi.fn().mockRejectedValue(new Error('disconnected'))});
+  const stream=new ReadableStream<Uint8Array>(),blob=vi.fn();vi.stubGlobal('veymuxDesktop',{saveDownloadStream:vi.fn().mockRejectedValue(new Error('disconnected'))});
   vi.stubGlobal('fetch',vi.fn().mockResolvedValue({ok:true,body:stream,headers:new Headers(),blob}));
   await expect(downloadFile('/private')).rejects.toThrow('disconnected');expect(blob).not.toHaveBeenCalled();expect(fetch).toHaveBeenCalledOnce();
 });

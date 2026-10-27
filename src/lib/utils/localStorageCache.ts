@@ -103,6 +103,6 @@ export function shallowJsonEqual(a: unknown, b: unknown): boolean {
 if (typeof window !== 'undefined') {
   const flushPending = () => { for (const key of pendingValues.keys()) flushCacheThrottled(key); };
   window.addEventListener('pagehide', flushPending);
-  window.addEventListener('termdock:before-update', flushPending);
+  window.addEventListener('veymux:before-update', flushPending);
   document.addEventListener('visibilitychange', () => { if (document.hidden) flushPending(); });
 }

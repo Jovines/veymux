@@ -7,7 +7,7 @@ import { TodoRunner, todoPrompt, type TodoRuntime } from './routes.js';
 import type { TodoLaunchConfig } from './types.js';
 let directory: string, file: string, store: TodoStore;
 const config: TodoLaunchConfig = { agentSlug: 'fixture', command: 'fixture', cwd: '/tmp', prompt: '按用户要求处理' };
-beforeEach(() => { directory = fs.mkdtempSync(path.join(os.tmpdir(), 'td-todos-')); file = path.join(directory, 'todos.json'); store = new TodoStore(file); });
+beforeEach(() => { directory = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-todos-')); file = path.join(directory, 'todos.json'); store = new TodoStore(file); });
 afterEach(() => { fs.rmSync(directory, { recursive: true, force: true }); vi.useRealTimers(); });
 it('deduplicates injection durably by source/external ID, rejects mismatched request replay and unsafe links', () => {
   const a = store.create({ title: '检查项目依赖', source: '项目巡检', externalId: 'deps', idempotencyKey: 'one' });
@@ -123,7 +123,7 @@ it('runs multiple scheduled directions independently, advances schedules and inj
   expect(store.snapshot().runs.map(r => r.collectorId)).toEqual([a.id, b.id]);
   expect(store.due()).toHaveLength(0);
   const prompt = todoPrompt(store, store.snapshot().runs[0]);
-  expect(prompt).toContain(`--collector ${a.id}`); expect(prompt).toContain('td todo add'); expect(prompt).toContain('本轮不执行');
+  expect(prompt).toContain(`--collector ${a.id}`); expect(prompt).toContain('veymux todo add'); expect(prompt).toContain('本轮不执行');
   const injected = store.create({ title: '巡检结果', collectorId: a.id, externalId: 'stable' });
   expect(injected.source).toBe('项目巡检');
 });

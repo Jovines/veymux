@@ -33,8 +33,8 @@ export function PwaStatusBarSurface() {
         screen: { width: window.screen.width, height: window.screen.height },
       });
     };
-    window.addEventListener('termdock:initial-viewport-presented', report, { once: true });
-    return () => window.removeEventListener('termdock:initial-viewport-presented', report);
+    window.addEventListener('veymux:initial-viewport-presented', report, { once: true });
+    return () => window.removeEventListener('veymux:initial-viewport-presented', report);
   }, [enabled]);
 
   if (!enabled) return null;

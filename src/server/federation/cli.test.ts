@@ -22,7 +22,7 @@ describe('CLI pairing invitation links', () => {
     const link = new URL(pairingInviteUrl('service-C', 'x'.repeat(43), 'https://c.example:9834'));
     expect(link.search).toBe('');
     expect(link.pathname).toBe('/');
-    expect(JSON.parse(Buffer.from(link.hash.slice('#termdock-invite='.length), 'base64url').toString())).toEqual({ v: 1, serviceId: 'service-C', code: 'x'.repeat(43), entryUrl: 'https://c.example:9834', serviceUrl: 'https://c.example:9834' });
+    expect(JSON.parse(Buffer.from(link.hash.slice('#veymux-invite='.length), 'base64url').toString())).toEqual({ v: 1, serviceId: 'service-C', code: 'x'.repeat(43), entryUrl: 'https://c.example:9834', serviceUrl: 'https://c.example:9834' });
   });
   it('rejects embedded credentials, queries, and non-TLS remote invitations', () => {
     for (const url of ['https://user:secret@c.example', 'https://c.example?code=x', 'http://c.example', 'https://c.example/other']) expect(() => pairingInviteUrl('C', 'x'.repeat(43), url)).toThrow();

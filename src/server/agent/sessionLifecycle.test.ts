@@ -12,7 +12,7 @@ import { INTEGRATION_HELP } from './integrationCli.js';
 
 let dir: string;
 const closers: Array<() => void> = [];
-beforeEach(() => { dir = fs.mkdtempSync(path.join(tmpdir(), 'td-lifecycle-')); });
+beforeEach(() => { dir = fs.mkdtempSync(path.join(tmpdir(), 'veymux-lifecycle-')); });
 afterEach(() => { vi.restoreAllMocks(); for (const close of closers.splice(0)) close(); fs.rmSync(dir, { recursive: true, force: true }); });
 async function fixture() {
   const executable = path.join(dir, 'wrapper'); fs.writeFileSync(executable, '#!/bin/sh\nexit 0\n', { mode: 0o700 });

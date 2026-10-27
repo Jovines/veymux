@@ -43,7 +43,7 @@ const HEARTBEAT_INTERVAL_MS = 15_000;
 const HEARTBEAT_MISS_LIMIT = 2;
 
 function hostSocketDir(): string {
-  return path.join(os.homedir(), '.termdock', 'pty-hosts');
+  return path.join(os.homedir(), '.veymux', 'pty-hosts');
 }
 
 /**
@@ -51,7 +51,7 @@ function hostSocketDir(): string {
  * (and separate session sets) by keying the socket on the server port.
  */
 export function ptyHostSocketPath(): string {
-  const key = process.env.TERMDOCK_PTY_HOST_KEY ?? `port-${process.env.PORT ?? '9834'}`;
+  const key = process.env.VEYMUX_PTY_HOST_KEY ?? `port-${process.env.PORT ?? '9834'}`;
   return path.join(hostSocketDir(), `${key}.sock`);
 }
 

@@ -2,7 +2,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { showPwaNotification } from './pwaNotifications';
-import type { TermdockDesktopBridge } from '../desktop/nativeBridge';
+import type { VeymuxDesktopBridge } from '../desktop/nativeBridge';
 
 describe('showPwaNotification foreground suppression', () => {
   const showNotification = vi.fn(async () => true);
@@ -10,20 +10,20 @@ describe('showPwaNotification foreground suppression', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     window.localStorage.clear();
-    window.localStorage.setItem('termdock-pwa-notifications-enabled', 'true');
+    window.localStorage.setItem('veymux-pwa-notifications-enabled', 'true');
     Object.defineProperty(document, 'visibilityState', {
       configurable: true,
       value: 'visible',
     });
     vi.spyOn(document, 'hasFocus').mockReturnValue(true);
-    window.termdockDesktop = {
+    window.veymuxDesktop = {
       platform: 'darwin',
       notificationDeliveryConfirmation: true,
       showNotification,
-    } as unknown as TermdockDesktopBridge;
+    } as unknown as VeymuxDesktopBridge;
   });
 
-  it('does not send an automatic native notification while Termdock is focused', async () => {
+  it('does not send an automatic native notification while Veymux is focused', async () => {
     const handled = await showPwaNotification({
       title: 'Agent finished',
       body: 'Done',
@@ -36,9 +36,9 @@ describe('showPwaNotification foreground suppression', () => {
 
   it('keeps the explicit foreground override for the manual settings test', async () => {
     const delivered = await showPwaNotification({
-      title: 'Termdock',
+      title: 'Veymux',
       body: 'Test notification',
-      tag: 'termdock-notification-test',
+      tag: 'veymux-notification-test',
       requireHidden: false,
     });
 

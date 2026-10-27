@@ -10,11 +10,11 @@ export const SUPERVISOR_STATE_VERSION = 1;
 // —— 消息 ——
 
 export interface ReadyMessage {
-  type: 'termdock-ready';
+  type: 'veymux-ready';
 }
 
 export interface StartupFailedMessage {
-  type: 'termdock-startup-failed';
+  type: 'veymux-startup-failed';
   reason: string;
   detail?: string;
 }
@@ -22,7 +22,7 @@ export interface StartupFailedMessage {
 export type RestartIntent = 'restart-after-update' | 'stop';
 
 export interface ServerIntentMessage {
-  type: 'termdock-intent';
+  type: 'veymux-intent';
   intent: RestartIntent;
   /** restart-after-update：试图离开的版本 */
   from?: string;
@@ -33,7 +33,7 @@ export interface ServerIntentMessage {
 export type ServerToSupervisorMessage = ReadyMessage | ServerIntentMessage | StartupFailedMessage;
 
 export function isStartupFailedMessage(value: unknown): value is StartupFailedMessage {
-  return isRecord(value) && value.type === 'termdock-startup-failed'
+  return isRecord(value) && value.type === 'veymux-startup-failed'
     && typeof value.reason === 'string'
     && (value.detail === undefined || typeof value.detail === 'string');
 }
@@ -44,11 +44,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 export function isReadyMessage(value: unknown): value is ReadyMessage {
-  return isRecord(value) && value.type === 'termdock-ready';
+  return isRecord(value) && value.type === 'veymux-ready';
 }
 
 export function isServerIntentMessage(value: unknown): value is ServerIntentMessage {
-  if (!isRecord(value) || value.type !== 'termdock-intent') return false;
+  if (!isRecord(value) || value.type !== 'veymux-intent') return false;
   return value.intent === 'restart-after-update' || value.intent === 'stop';
 }
 
@@ -104,9 +104,9 @@ export interface ExitObservation {
   signal: NodeJS.Signals | null;
   /** 这一世代是否曾经就绪过 */
   becameReady: boolean;
-  /** supervisor 自己收到停止信号（termdock --stop / 关机） */
+  /** supervisor 自己收到停止信号（veymux --stop / 关机） */
   supervisorStopRequested: boolean;
-  /** supervisor 自己收到 SIGHUP（termdock --restart，人在重启而不是更新在重启） */
+  /** supervisor 自己收到 SIGHUP（veymux --restart，人在重启而不是更新在重启） */
   restartRequested: boolean;
   /** 是 supervisor 判定卡死后主动杀的 */
   wedge: boolean;
@@ -140,7 +140,7 @@ function exitDetail(exitCode: number | null, signal: string | null): string {
  *   误读成"被外部终止"从而不重启。
  * - 更新重启优先于端口冲突/未就绪：更新重启的退出码可能是 0 也可能非 0。
  * - 手动重启排在更新重启之后：两者都是"我们让子进程重启"，但记录里要分得清
- *   是应用了更新还是人在敲 `td --restart`。
+ *   是应用了更新还是人在敲 `veymux --restart`。
  */
 export function classifyChildExit(observation: ExitObservation): ExitDecision {
   const {
@@ -181,7 +181,7 @@ export function classifyChildExit(observation: ExitObservation): ExitDecision {
   if (restartRequested) {
     return {
       event: 'manual-restart',
-      detail: 'restart requested by termdock --restart',
+      detail: 'restart requested by veymux --restart',
       restart: true,
       countAsCrash: false,
       resetBackoff: true,

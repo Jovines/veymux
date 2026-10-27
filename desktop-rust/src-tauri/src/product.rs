@@ -1,10 +1,10 @@
 //! Product identity is selected by the release build, never by a service page.
 pub fn is_preview() -> bool {
-    option_env!("TERMDOCK_DESKTOP_CHANNEL") == Some("preview")
+    option_env!("VEYMUX_DESKTOP_CHANNEL") == Some("preview")
 }
 pub fn name() -> &'static str {
-    if is_preview() { "Termdock Preview" } else { "Termdock" }
+    if is_preview() { "Veymux Preview" } else { "Veymux" }
 }
 pub fn identifier() -> &'static str {
-    if is_preview() { "com.jovines.termdock.preview" } else { "com.jovines.termdock" }
+    if is_preview() { "com.jovines.veymux.preview" } else { "com.jovines.veymux" }
 }

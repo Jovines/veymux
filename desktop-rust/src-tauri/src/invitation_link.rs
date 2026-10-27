@@ -13,10 +13,10 @@ pub fn parse_deep_invitation(value: &str, preview: bool) -> Result<InvitationRev
     let fail = || "邀请链接无效，请重新复制完整链接。".to_owned();
     if value.len() > 12000 { return Err(fail()); }
     let link = Url::parse(value).map_err(|_| fail())?;
-    let scheme = if preview { "termdock-preview" } else { "termdock" };
+    let scheme = if preview { "veymux-preview" } else { "veymux" };
     if link.scheme()!=scheme || link.host_str()!=Some("invite") || !["", "/"].contains(&link.path())
         || link.query().is_some() || link.port().is_some() || !link.username().is_empty() || link.password().is_some() { return Err(fail()); }
-    let encoded = link.fragment().and_then(|f|f.strip_prefix("termdock-invite=")).ok_or_else(fail)?;
+    let encoded = link.fragment().and_then(|f|f.strip_prefix("veymux-invite=")).ok_or_else(fail)?;
     if encoded.len() > 8192 { return Err(fail()); }
     let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(encoded).map_err(|_|fail())?;
     let mut data: Value = serde_json::from_slice(&bytes).map_err(|_|fail())?;
@@ -39,7 +39,7 @@ pub fn parse_deep_invitation(value: &str, preview: bool) -> Result<InvitationRev
     data["entryUrl"] = Value::String(entry.clone());
     data["serviceUrl"] = Value::String(service);
     let fragment = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(serde_json::to_vec(&data).map_err(|_|fail())?);
-    let invitation = format!("{entry}/#termdock-invite={fragment}");
+    let invitation = format!("{entry}/#veymux-invite={fragment}");
     connection.validate_invitation(&invitation)?;
     Ok(InvitationReview { connection, invitation })
 }
@@ -48,7 +48,7 @@ pub fn parse_deep_invitation(value: &str, preview: bool) -> Result<InvitationRev
 mod tests {
     use super::*;
     fn descriptor() -> Value { serde_json::json!({"v":1,"serviceId":format!("12D3KooW{}","a".repeat(44)),"entryUrl":"https://entry.example:9834","code":"c".repeat(43),"name":"共享构建会话","viewMode":"chat"}) }
-    fn link(value: &Value) -> String { format!("termdock://invite/#termdock-invite={}",base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(serde_json::to_vec(value).unwrap())) }
+    fn link(value: &Value) -> String { format!("veymux://invite/#veymux-invite={}",base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(serde_json::to_vec(value).unwrap())) }
     #[test]
     fn opens_a_pinned_invitation_without_persisting_credentials_in_the_bookmark() {
         let value=descriptor();let review=parse_deep_invitation(&link(&value),false).unwrap();
@@ -70,7 +70,7 @@ mod tests {
     #[test]
     fn rejects_malformed_or_overbroad_uri_shapes_before_discovery() {
         let good=link(&descriptor());
-        for value in [good.replace("termdock:","https:"),good.replace("invite/","attacker/"),good.replace("invite/","user@invite/"),good.replace("/#","/?secret=x#"),format!("termdock://invite/#termdock-invite={}","a".repeat(8193))] { assert!(parse_deep_invitation(&value,false).is_err()); }
+        for value in [good.replace("veymux:","https:"),good.replace("invite/","attacker/"),good.replace("invite/","user@invite/"),good.replace("/#","/?secret=x#"),format!("veymux://invite/#veymux-invite={}","a".repeat(8193))] { assert!(parse_deep_invitation(&value,false).is_err()); }
         for (key,value) in [("entryUrl",serde_json::json!("http://entry.example")),("serviceId",serde_json::json!("forged")),("code",serde_json::json!("bad")),("name",serde_json::json!("bad\nname")),("viewMode",serde_json::json!("shell"))] {
             let mut invalid=descriptor();invalid[key]=value;assert!(parse_deep_invitation(&link(&invalid),false).is_err());
         }

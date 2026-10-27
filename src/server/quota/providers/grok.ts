@@ -20,7 +20,7 @@ async function fetchWithAuth(token: string): Promise<GrokUsageResponse> {
     headers: {
       Authorization: `Bearer ${token}`,
       Accept: 'application/json',
-      'User-Agent': 'termdock/1.0',
+      'User-Agent': 'veymux/1.0',
     },
     signal: AbortSignal.timeout(10_000),
   });

@@ -33,30 +33,30 @@ export function clampPinnedRightSidebarWidth(
   return Math.min(maxWidth, Math.max(RIGHT_SIDEBAR_MIN_WIDTH_PX, requestedWidth));
 }
 
-const RIGHT_SIDEBAR_TABS_BY_CONTEXT_CACHE_KEY = 'termdock:right-sidebar:tabs-by-session:v2';
-const EXPLORER_ROOTS_CACHE_KEY = 'termdock:right-sidebar:explorer-roots-by-session:v2';
-const PINNED_EXPLORER_ROOTS_CACHE_KEY = 'termdock:right-sidebar:pinned-explorer-roots:v1';
-const SELECTED_FILE_PATHS_CACHE_KEY = 'termdock:right-sidebar:selected-files-by-session:v2';
-const SHOW_HIDDEN_FILES_CACHE_KEY = 'termdock:right-sidebar:show-hidden-files:v1';
-const FILE_SORT_MODES_CACHE_KEY = 'termdock:right-sidebar:file-sort-modes:v1';
-const NESTED_GIT_SCAN_ROOTS_CACHE_KEY = 'termdock:right-sidebar:nested-git-scan-roots:v1';
+const RIGHT_SIDEBAR_TABS_BY_CONTEXT_CACHE_KEY = 'veymux:right-sidebar:tabs-by-session:v2';
+const EXPLORER_ROOTS_CACHE_KEY = 'veymux:right-sidebar:explorer-roots-by-session:v2';
+const PINNED_EXPLORER_ROOTS_CACHE_KEY = 'veymux:right-sidebar:pinned-explorer-roots:v1';
+const SELECTED_FILE_PATHS_CACHE_KEY = 'veymux:right-sidebar:selected-files-by-session:v2';
+const SHOW_HIDDEN_FILES_CACHE_KEY = 'veymux:right-sidebar:show-hidden-files:v1';
+const FILE_SORT_MODES_CACHE_KEY = 'veymux:right-sidebar:file-sort-modes:v1';
+const NESTED_GIT_SCAN_ROOTS_CACHE_KEY = 'veymux:right-sidebar:nested-git-scan-roots:v1';
 // v1 sharded this by workspace root; the server copy is keyed by context key,
 // so the old entries are dropped rather than migrated.
-const ACTIVE_GIT_REPOS_CACHE_KEY = 'termdock:right-sidebar:active-git-repo:v2';
-const LEGACY_ACTIVE_GIT_REPO_CACHE_KEY = 'termdock:right-sidebar:active-git-repo:v1';
+const ACTIVE_GIT_REPOS_CACHE_KEY = 'veymux:right-sidebar:active-git-repo:v2';
+const LEGACY_ACTIVE_GIT_REPO_CACHE_KEY = 'veymux:right-sidebar:active-git-repo:v1';
 // 分组开关 / 折叠状态：复用 LeftSidebar 旧 localStorage key 以保留用户已有偏好。
 // 旧编码是裸 localStorage（'1' 与 JSON 数组），与 readCache 包装格式不兼容，
 // 因此这里用专用 reader/writer 沿用旧格式。
-const GROUP_BY_FOLDER_KEY = 'termdock-sidebar-group-by-folder';
-const COLLAPSED_GROUPS_KEY = 'termdock-sidebar-collapsed-folder-groups';
-const LEFT_PINNED_KEY = 'termdock-left-sidebar-pinned';
-const LEFT_SIDEBAR_WIDTH_KEY = 'termdock-left-sidebar-width';
-const RIGHT_PINNED_KEY = 'termdock-right-sidebar-pinned';
-const DESKTOP_SIDEBAR_OPEN_KEY = 'termdock:desktop-sidebar-open:v1';
-const RIGHT_SIDEBAR_WIDTH_KEY = 'termdock-right-sidebar-width';
-const RIGHT_SIDEBAR_WIDTHS_BY_CONTEXT_CACHE_KEY = 'termdock:right-sidebar:widths-by-session:v1';
-const SPLIT_SIDEBAR_STATE_INITIALIZED_CACHE_KEY = 'termdock:right-sidebar:split-state-initialized:v1';
-const RIGHT_SIDEBAR_LAYOUT_PREFERENCE_KEY = 'termdock-right-sidebar-layout-preference';
+const GROUP_BY_FOLDER_KEY = 'veymux-sidebar-group-by-folder';
+const COLLAPSED_GROUPS_KEY = 'veymux-sidebar-collapsed-folder-groups';
+const LEFT_PINNED_KEY = 'veymux-left-sidebar-pinned';
+const LEFT_SIDEBAR_WIDTH_KEY = 'veymux-left-sidebar-width';
+const RIGHT_PINNED_KEY = 'veymux-right-sidebar-pinned';
+const DESKTOP_SIDEBAR_OPEN_KEY = 'veymux:desktop-sidebar-open:v1';
+const RIGHT_SIDEBAR_WIDTH_KEY = 'veymux-right-sidebar-width';
+const RIGHT_SIDEBAR_WIDTHS_BY_CONTEXT_CACHE_KEY = 'veymux:right-sidebar:widths-by-session:v1';
+const SPLIT_SIDEBAR_STATE_INITIALIZED_CACHE_KEY = 'veymux:right-sidebar:split-state-initialized:v1';
+const RIGHT_SIDEBAR_LAYOUT_PREFERENCE_KEY = 'veymux-right-sidebar-layout-preference';
 
 /** Desktop visibility belongs to this browser, never to a session or a phone drawer. */
 export function readDesktopSidebarOpen(side: 'left' | 'right'): boolean {

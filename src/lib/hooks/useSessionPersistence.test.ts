@@ -65,7 +65,7 @@ function createdResult(sessionId: string, inventory = staleInventory): OpenSessi
 describe('useSessionPersistence deletion races', () => {
   beforeEach(() => {
     window.localStorage.clear();
-    window.localStorage.setItem('termdock-sessions-cache', JSON.stringify([cachedSession]));
+    window.localStorage.setItem('veymux-sessions-cache', JSON.stringify([cachedSession]));
     terminalMocks.removeSessionInventoryEntry.mockResolvedValue(undefined);
     clientStateMocks.subscribeClientState.mockImplementation(() => () => undefined);
   });
@@ -121,7 +121,7 @@ describe('useSessionPersistence deletion races', () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     expect(result.current.sessions).toEqual([]);
-    expect(JSON.parse(window.localStorage.getItem('termdock-sessions-cache') ?? 'null')).toEqual([]);
+    expect(JSON.parse(window.localStorage.getItem('veymux-sessions-cache') ?? 'null')).toEqual([]);
   });
 
   it('filters a stale control snapshot received after deletion', async () => {
@@ -150,8 +150,8 @@ describe('useSessionPersistence deletion races', () => {
       sessionId,
       name: `Session ${index + 1}`,
     }));
-    window.localStorage.setItem('termdock-sessions-cache', JSON.stringify(cachedSessions));
-    window.localStorage.setItem('termdock-active-session', 'frontend-2');
+    window.localStorage.setItem('veymux-sessions-cache', JSON.stringify(cachedSessions));
+    window.localStorage.setItem('veymux-active-session', 'frontend-2');
     terminalMocks.getSessionInventory.mockReturnValue(new Promise<SessionInventory>(() => undefined));
 
     const { result } = renderHook(() => useSessionPersistence());
@@ -162,7 +162,7 @@ describe('useSessionPersistence deletion races', () => {
     });
 
     expect(result.current.activeSessionId).toBe('frontend-1');
-    expect(window.localStorage.getItem('termdock-active-session')).toBe('frontend-1');
+    expect(window.localStorage.getItem('veymux-active-session')).toBe('frontend-1');
   });
 });
 
@@ -177,8 +177,8 @@ describe('useSessionPersistence creation races', () => {
 
   beforeEach(() => {
     window.localStorage.clear();
-    window.localStorage.setItem('termdock-sessions-cache', JSON.stringify([cachedSession, secondSession]));
-    window.localStorage.setItem('termdock-active-session', cachedSession.sessionId);
+    window.localStorage.setItem('veymux-sessions-cache', JSON.stringify([cachedSession, secondSession]));
+    window.localStorage.setItem('veymux-active-session', cachedSession.sessionId);
     terminalMocks.getSessionInventory.mockResolvedValue(initialInventory);
     terminalMocks.openSessionInventoryEntry.mockReset();
     terminalMocks.removeSessionInventoryEntry.mockResolvedValue(undefined);
@@ -208,7 +208,7 @@ describe('useSessionPersistence creation races', () => {
       await opening;
     });
     expect(result.current.activeSessionId).toBe('created');
-    expect(window.localStorage.getItem('termdock-active-session')).toBe('created');
+    expect(window.localStorage.getItem('veymux-active-session')).toBe('created');
   });
 
   it.each([false, true])('preserves an explicit selection during open (switch back: %s)', async (switchBack) => {
@@ -227,7 +227,7 @@ describe('useSessionPersistence creation races', () => {
     });
     const expectedActive = switchBack ? 'frontend-1' : 'frontend-2';
     expect(result.current.activeSessionId).toBe(expectedActive);
-    expect(window.localStorage.getItem('termdock-active-session')).toBe(expectedActive);
+    expect(window.localStorage.getItem('veymux-active-session')).toBe(expectedActive);
     expect(result.current.sessions.map((session) => session.sessionId)).toContain('created');
   });
 
@@ -358,7 +358,7 @@ describe('useSessionPersistence creation races', () => {
   function expectBinding(hook: ReturnType<typeof useSessionPersistence>, backend: string) {
     expect(hook.sessions.find(session => session.sessionId === 'frontend-1')?.backendSessionId).toBe(backend);
     expect(hook.inventory?.clientSessions.find(session => session.sessionId === 'frontend-1')?.backendSessionId).toBe(backend);
-    expect(JSON.parse(localStorage.getItem('termdock-sessions-cache')!).find((session: {sessionId: string}) => session.sessionId === 'frontend-1').backendSessionId).toBe(backend);
+    expect(JSON.parse(localStorage.getItem('veymux-sessions-cache')!).find((session: {sessionId: string}) => session.sessionId === 'frontend-1').backendSessionId).toBe(backend);
   }
 
   it.each(['rename restored', 'rename other', 'reorder', 'creation'])('keeps a rebuilt backend during %s without undoing newer UI intent', async (mutation) => {
@@ -462,7 +462,7 @@ describe('useSessionPersistence creation races', () => {
     await act(async () => { pending.resolve(reopenedResult()); settled = await opening; });
     expect(result.current.sessions.map(session => session.sessionId)).toEqual(['frontend-2']);
     expect(settled.discarded).toBe(true);
-    expect(JSON.parse(localStorage.getItem('termdock-sessions-cache')!).map((session: {sessionId: string}) => session.sessionId)).toEqual(['frontend-2']);
+    expect(JSON.parse(localStorage.getItem('veymux-sessions-cache')!).map((session: {sessionId: string}) => session.sessionId)).toEqual(['frontend-2']);
   });
 
 
@@ -538,7 +538,7 @@ describe('useSessionPersistence creation races', () => {
 
 describe('confirmed inventory ordering', () => {
  beforeEach(()=>{
-  vi.clearAllMocks();window.localStorage.clear();window.localStorage.setItem('termdock-sessions-cache',JSON.stringify([cachedSession]));
+  vi.clearAllMocks();window.localStorage.clear();window.localStorage.setItem('veymux-sessions-cache',JSON.stringify([cachedSession]));
   terminalMocks.getSessionInventory.mockResolvedValue(staleInventory);
   clientStateMocks.subscribeClientState.mockImplementation(()=>()=>{});
  });

@@ -7,7 +7,7 @@ import { RouteAccess } from './routeAccess.js';
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 function fixture() {
-  const root = mkdtempSync(join(tmpdir(), 'td-desktop-routes-')); roots.push(root);
+  const root = mkdtempSync(join(tmpdir(), 'veymux-desktop-routes-')); roots.push(root);
   const file = join(root, 'desktop.json');
   const fingerprint256 = Array(32).fill('AB').join(':');
   const data = { version: 1, connections: [{ id: 'local', targetPeerId: 'B', url: 'https://localhost:9834', label: 'Local npm' }, { id: 'remote', targetPeerId: 'C', url: 'https://c.internal:9834', label: '内网电脑' }], trustedCertificateAuthorities: [{ origin: 'https://c.internal:9834', fingerprint256, subject: 'Trusted', trustedAt: 1 }] };
@@ -17,7 +17,7 @@ function fixture() {
 describe('local Desktop relay directory', () => {
   function nativeFixture() {
     const { root, data } = fixture();
-    const directory = join(root, 'Library', 'Application Support', 'com.jovines.termdock');
+    const directory = join(root, 'Library', 'Application Support', 'com.jovines.veymux');
     mkdirSync(directory, { recursive: true });
     const file = join(directory, 'connections.json');
     const config = { version: 1, connections: data.connections, removedKeys: [] as string[], certificatePins: { 'https://c.internal:9834': 'cd'.repeat(32) } };
@@ -32,9 +32,9 @@ describe('local Desktop relay directory', () => {
   });
   it('uses the stable native directory as authority after migration, including trust and removals', () => {
     const { root, data, config, save } = nativeFixture();
-    mkdirSync(join(root, '.termdock'));
-    writeFileSync(join(root, '.termdock', 'desktop.json'), JSON.stringify(data));
-    const previewDir = join(root, 'Library', 'Application Support', 'com.jovines.termdock.preview');
+    mkdirSync(join(root, '.veymux'));
+    writeFileSync(join(root, '.veymux', 'desktop.json'), JSON.stringify(data));
+    const previewDir = join(root, 'Library', 'Application Support', 'com.jovines.veymux.preview');
     mkdirSync(previewDir);
     writeFileSync(join(previewDir, 'connections.json'), JSON.stringify({ ...config, certificatePins: { 'https://c.internal:9834': 'ab'.repeat(32) } }));
     expect(desktopServiceTargets(root, 'B', 'darwin')[0].certificateFingerprint256).toBe('CD'.repeat(32));
@@ -47,8 +47,8 @@ describe('local Desktop relay directory', () => {
   });
   it('does not revive legacy routes when the stable native configuration is invalid or lacks the local pin', () => {
     const { root, data, file, config, save } = nativeFixture();
-    mkdirSync(join(root, '.termdock'));
-    writeFileSync(join(root, '.termdock', 'desktop.json'), JSON.stringify(data));
+    mkdirSync(join(root, '.veymux'));
+    writeFileSync(join(root, '.veymux', 'desktop.json'), JSON.stringify(data));
     writeFileSync(file, 'broken');
     expect(desktopServiceTargets(root, 'B', 'darwin')).toEqual([]);
     save({ ...config, connections: config.connections.slice(1) });
@@ -57,10 +57,10 @@ describe('local Desktop relay directory', () => {
   function previewFixture() {
     const { root, file: old, data } = fixture();
     rmSync(old);
-    mkdirSync(join(root, '.termdock'));
-    const stable = join(root, '.termdock', 'desktop.json');
+    mkdirSync(join(root, '.veymux'));
+    const stable = join(root, '.veymux', 'desktop.json');
     const saveStable = (value: unknown = data) => writeFileSync(stable, JSON.stringify(value));
-    const dir = join(root, 'Library', 'Application Support', 'com.jovines.termdock.preview');
+    const dir = join(root, 'Library', 'Application Support', 'com.jovines.veymux.preview');
     mkdirSync(dir, { recursive: true });
     const file = join(dir, 'connections.json');
     const preview = { version: 1, connections: data.connections, removedKeys: [] as string[], certificatePins: { 'https://c.internal:9834': 'ab'.repeat(32) } };

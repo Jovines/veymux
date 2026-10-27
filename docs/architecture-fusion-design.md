@@ -1,10 +1,10 @@
-# Termdock 架构分析与图解体验融合设计
+# Veymux 架构分析与图解体验融合设计
 
 设计稿 · 2026 年 10 月 14 日
 
-Termdock 的架构功能应帮助用户理解一个项目、模块或具体功能：从问题和文件引用开始，得到有源码依据的解释，沿关键链路阅读，再针对局部继续提问和修订。此次设计吸收 Archify、Diagram Design、Fireworks Tech Graph 的不同优势，形成统一的原生体验。
+Veymux 的架构功能应帮助用户理解一个项目、模块或具体功能：从问题和文件引用开始，得到有源码依据的解释，沿关键链路阅读，再针对局部继续提问和修订。此次设计吸收 Archify、Diagram Design、Fireworks Tech Graph 的不同优势，形成统一的原生体验。
 
-产品中心是用户的问题、分析范围和阅读结果。OMM 等外部格式保留为兼容入口，展示方式、分析能力和后续演进由 Termdock 自己定义。本文约定后续方向和验收标准，尚未实施这些新增能力。
+产品中心是用户的问题、分析范围和阅读结果。OMM 等外部格式保留为兼容入口，展示方式、分析能力和后续演进由 Veymux 自己定义。本文约定后续方向和验收标准，尚未实施这些新增能力。
 
 ## 产品目标
 
@@ -20,13 +20,13 @@ Termdock 的架构功能应帮助用户理解一个项目、模块或具体功�
 
 ## 三个项目值得借鉴的能力
 
-| 项目 | 有依据的优势 | Termdock 的承接方向 |
+| 项目 | 有依据的优势 | Veymux 的承接方向 |
 | --- | --- | --- |
 | [Archify](https://github.com/tt-a1i/archify) | 用有类型的结构化数据表达不同图种；提供节点聚焦、路径及上游下游探索；支持源码依据与经过校验的交付。 | 围绕阅读问题选择图种；让用户沿已记录的连接探索功能；保存结构、源码依据和阅读位置。 |
-| [Diagram Design](https://github.com/cathrynlavery/diagram-design) | 先选择要表达的语义，再选择布局；强调主次、品牌一致性和连接线可读性。 | 总览与细节分层，突出当前阅读主线；使用 Termdock 的配色与字体；把文本、图例、箭头和节点一起纳入布局检查。 |
+| [Diagram Design](https://github.com/cathrynlavery/diagram-design) | 先选择要表达的语义，再选择布局；强调主次、品牌一致性和连接线可读性。 | 总览与细节分层，突出当前阅读主线；使用 Veymux 的配色与字体；把文本、图例、箭头和节点一起纳入布局检查。 |
 | [Fireworks Tech Graph](https://github.com/yizhiyanhua-ai/fireworks-tech-graph) | 区分技术语义与视觉样式；对 SVG 进行几何和构图校验；提供静态图与离线阅读输出。 | 先保证关系含义正确，再处理样式；建立可验证的布局质量标准，逐步提供便于文档和讨论使用的导出。 |
 
-这些优势不需要整套照搬。Archify 的独立 HTML、Diagram Design 的出版型图稿、Fireworks 的 SVG 输出各有用途；Termdock 的主要场景是项目终端里的持续分析与阅读。原生工作区应统一，导出文件可以适配其他场景。
+这些优势不需要整套照搬。Archify 的独立 HTML、Diagram Design 的出版型图稿、Fireworks 的 SVG 输出各有用途；Veymux 的主要场景是项目终端里的持续分析与阅读。原生工作区应统一，导出文件可以适配其他场景。
 
 不将第三方的主题数量、图种数量或安装方式直接变成产品菜单。优先吸收解决当前问题的方法，再按实际需求增加能力。既有 OMM 工作保留下来的递归文档、局部分析、历史和引用仍可复用。
 
@@ -197,7 +197,7 @@ flowchart LR
 
 ## 参考依据
 
-本设计基于官方仓库的说明、相关源码和 Termdock 当前实现。三个项目未完成同场景运行评测；其布局和交互能力作为设计参考，不构成 Termdock 的现有能力或性能结论。
+本设计基于官方仓库的说明、相关源码和 Veymux 当前实现。三个项目未完成同场景运行评测；其布局和交互能力作为设计参考，不构成 Veymux 的现有能力或性能结论。
 
 - **Archify**：参考版本 `58ab0b98d2d0def8e49dced705c7b566936723ec`。[生成约定](https://github.com/tt-a1i/archify/blob/58ab0b98d2d0def8e49dced705c7b566936723ec/archify/SKILL.md)、[源码分析约定](https://github.com/tt-a1i/archify/blob/58ab0b98d2d0def8e49dced705c7b566936723ec/archify/references/repository-authoring.md)、[阅读交互约定](https://github.com/tt-a1i/archify/blob/58ab0b98d2d0def8e49dced705c7b566936723ec/archify/references/viewer-runtime.md)。
 - **Diagram Design**：参考版本 `1a0b37ad53efebbd5ef48dfc8fcf2f9ce85bc2e1`。[设计与图种选择](https://github.com/cathrynlavery/diagram-design/blob/1a0b37ad53efebbd5ef48dfc8fcf2f9ce85bc2e1/skills/diagram-design/SKILL.md)、[架构布局](https://github.com/cathrynlavery/diagram-design/blob/1a0b37ad53efebbd5ef48dfc8fcf2f9ce85bc2e1/skills/diagram-design/references/type-architecture.md)、[几何校验](https://github.com/cathrynlavery/diagram-design/blob/1a0b37ad53efebbd5ef48dfc8fcf2f9ce85bc2e1/scripts/verify-geometry.py)。

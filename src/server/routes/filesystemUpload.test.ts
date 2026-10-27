@@ -22,7 +22,7 @@ describe('filesystem uploads preserve every selected file', () => {
   let origin: string;
 
   beforeEach(async () => {
-    root = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'td-upload-preservation-'));
+    root = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'veymux-upload-preservation-'));
     const app = express();
     app.use('/fs', filesystemRouter);
     server = app.listen(0, '127.0.0.1');
@@ -49,7 +49,7 @@ describe('filesystem uploads preserve every selected file', () => {
   }
 
   async function uploadSizedFiles(sizes: number[]) {
-    const boundary = 'td-upload-size-boundary';
+    const boundary = 'veymux-upload-size-boundary';
     const request = http.request(`${origin}/fs/upload?dir=${encodeURIComponent(root)}`, {
       method: 'POST', headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
     });
@@ -190,7 +190,7 @@ describe('filesystem uploads preserve every selected file', () => {
   });
 
   it('cleans reserved files after malformed multipart termination', async () => {
-    const boundary = 'td-upload-malformed-boundary';
+    const boundary = 'veymux-upload-malformed-boundary';
     const body = `--${boundary}\r\nContent-Disposition: form-data; name="files"; filename="incomplete.txt"\r\n\r\npartial content`;
     const response = await fetch(`${origin}/fs/upload?dir=${encodeURIComponent(root)}`, {
       method: 'POST', headers: { 'content-type': `multipart/form-data; boundary=${boundary}` }, body,
@@ -220,7 +220,7 @@ describe('filesystem uploads preserve every selected file', () => {
   });
 
   it('cleans partial destinations when the upload connection is canceled', async () => {
-    const boundary = 'td-upload-cancellation-boundary';
+    const boundary = 'veymux-upload-cancellation-boundary';
     const request = http.request(`${origin}/fs/upload?dir=${encodeURIComponent(root)}`, {
       method: 'POST', headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
     });

@@ -613,7 +613,7 @@ pub(crate) fn page_finished(window: &WebviewWindow, expected: Option<u64>) {
         return;
     };
     // Outside with_webview and registry locks. Old docs cannot overwrite newer attachment stamps.
-    let script=format!("window.dispatchEvent(new CustomEvent('termdock:owned-window-chrome',{{detail:{{ownerGeneration:{instance},documentGeneration:{document}}}}}));");
+    let script=format!("window.dispatchEvent(new CustomEvent('veymux:owned-window-chrome',{{detail:{{ownerGeneration:{instance},documentGeneration:{document}}}}}));");
     if binding(window) == Some((instance, document)) {
         let _ = window.eval(&script);
     }
@@ -1015,7 +1015,7 @@ fn configure(window: &WebviewWindow, phase: Option<u32>, expected: Option<u64>) 
                 return;
             }
             extern "C" {
-                fn td_preview_window_chrome(
+                fn veymux_preview_window_chrome(
                     wk: *mut std::ffi::c_void,
                     instance: u64,
                     document: u64,
@@ -1025,7 +1025,7 @@ fn configure(window: &WebviewWindow, phase: Option<u32>, expected: Option<u64>) 
                     counts: extern "C" fn(u64, u64, u32, u32, u32, u32),
                 );
             }
-            td_preview_window_chrome(
+            veymux_preview_window_chrome(
                 webview.inner().cast(),
                 instance,
                 document,

@@ -22,7 +22,7 @@ it('validates explicit identity scopes without granting permissions or changing 
   }
 });
 it.each(['create', 'update'])('refuses %s with a native scope on an old service before any policy write', async operation => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'td-native-profile-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-native-profile-'));
   cleanup.push(() => fs.rmSync(dir, { recursive: true, force: true }));
   const file = path.join(dir, 'policy.json'); fs.writeFileSync(file, JSON.stringify(policy()));
   const port = 60000 + Math.floor(Math.random() * 5000), socket = integrationSocketPath(port);

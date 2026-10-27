@@ -10,7 +10,7 @@ import type { TerminalHandlers } from '../../terminal/types';
 
 const backend = vi.hoisted(() => ({ connect: vi.fn(), close: vi.fn(), inputs: vi.fn(), resize: vi.fn(), handlers: undefined as TerminalHandlers | undefined,
   dimensions: undefined as (() => { cols: number; rows: number } | null) | undefined }));
-vi.mock('../../terminal/factory', () => ({ createTermdockAPI: () => ({
+vi.mock('../../terminal/factory', () => ({ createVeymuxAPI: () => ({
   connect: (_id: string, handlers: TerminalHandlers, options: { getDimensions?: typeof backend.dimensions }) => {
     backend.connect(); backend.handlers = handlers; backend.dimensions = options.getDimensions; return { close: backend.close };
   },

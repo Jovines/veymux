@@ -7,7 +7,7 @@ import { AuthorizationStore } from './authorization.js';
 const directories: string[] = [];
 afterEach(() => directories.splice(0).forEach(path => rmSync(path, { recursive: true, force: true })));
 function fixture() {
-  const directory = mkdtempSync(join(tmpdir(), 'termdock-invites-')); directories.push(directory);
+  const directory = mkdtempSync(join(tmpdir(), 'veymux-invites-')); directories.push(directory);
   const filePath = join(directory, 'invitations.json'); let now = 1000;
   const options = { filePath, serviceId: 'service-C', now: () => now };
   return { filePath, store: new InvitationStore(options), reload: () => new InvitationStore(options), advance: (ms: number) => { now += ms; } };

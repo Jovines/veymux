@@ -88,7 +88,7 @@ export function ArchitectureDiagram({ view, parentId, selectedId, onSelect, acti
     if (diagram.nodes.length > 300) { setFailed(true); return () => { cancelled = true; }; }
     void loadMermaid().then(async mermaid => {
       initializeMermaid(mermaid);
-      const rendered = await mermaid.render(`td-architecture-${key}`, diagram.code);
+      const rendered = await mermaid.render(`veymux-architecture-${key}`, diagram.code);
       if (!cancelled) setSvg(DOMPurify.sanitize(rendered.svg, { USE_PROFILES: { svg: true, svgFilters: true } }));
     }).catch(() => { if (!cancelled) setFailed(true); });
     return () => { cancelled = true; };
@@ -223,7 +223,7 @@ export function ArchitectureDiagram({ view, parentId, selectedId, onSelect, acti
     <div className={expanded ? 'relative flex min-h-0 flex-1 flex-col overflow-hidden min-[768px]:flex-row' : 'relative'}>
     {failed ? <p role="alert" className="p-4 text-sm text-muted-foreground">{diagram.nodes.length > 300 ? (locale === 'zh' ? '图中模块较多，请减少展开层级或选择单个视角。' : 'This graph has many modules. Expand fewer levels or select one perspective.') : t('architecture.diagramFailed')}</p>
       : !svg ? <p role="status" className="p-4 text-sm text-muted-foreground">{t('architecture.rendering')}</p>
-      : <div ref={viewport} data-sidebar-gesture-ignore className={`termdock-architecture-viewport overflow-auto overscroll-contain p-3 ${expanded ? 'min-h-0 min-w-0 flex-1' : 'h-[min(50dvh,26rem)]'}`} style={{ touchAction: 'none', maxHeight: !expanded && viewportSize.clipHeight ? Math.max(160, viewportSize.clipHeight - 150) : undefined }}
+      : <div ref={viewport} data-sidebar-gesture-ignore className={`veymux-architecture-viewport overflow-auto overscroll-contain p-3 ${expanded ? 'min-h-0 min-w-0 flex-1' : 'h-[min(50dvh,26rem)]'}`} style={{ touchAction: 'none', maxHeight: !expanded && viewportSize.clipHeight ? Math.max(160, viewportSize.clipHeight - 150) : undefined }}
         onPointerDown={event => {
           if (event.button !== 0) return;
           trackDiagramPointer(event);
@@ -255,7 +255,7 @@ export function ArchitectureDiagram({ view, parentId, selectedId, onSelect, acti
           pointers.current.delete(event.pointerId);
           if (tap) { dragged.current = true; selectNode(tap); }
         }} onPointerCancel={event => { pointers.current.delete(event.pointerId); dragged.current = true; }} onLostPointerCapture={event => { pointers.current.delete(event.pointerId); }}>
-        <div ref={root} role="group" aria-label={t('architecture.modules')} className="termdock-architecture-diagram mx-auto" style={size}
+        <div ref={root} role="group" aria-label={t('architecture.modules')} className="veymux-architecture-diagram mx-auto" style={size}
           onClick={event => {
             if (dragged.current) return;
             const node = (event.target as Element).closest('[data-architecture-node]');

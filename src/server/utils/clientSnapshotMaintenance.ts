@@ -83,7 +83,7 @@ async function leasedKeys(stateDirectory: string, reapDead: boolean): Promise<Se
       const file = path.join(directory, entry.name);
       try {
         const lease = JSON.parse(await fs.readFile(file, 'utf8'));
-        if (lease.kind !== 'termdock-client-snapshot-lease' || lease.version !== 1 || !KEY.test(lease.snapshotKey)
+        if (lease.kind !== 'veymux-client-snapshot-lease' || lease.version !== 1 || !KEY.test(lease.snapshotKey)
           || !Number.isSafeInteger(lease.pid) || lease.pid < 1 || !entry.name.startsWith(`${lease.pid}-`)) throw new Error('Unverified lease');
         if (alive(lease.pid)) result.add(lease.snapshotKey);
         else if (reapDead && Object.keys(lease).length === 4) await fs.unlink(file);
@@ -109,7 +109,7 @@ export function leaseClientSnapshot(clientDirectory: string, stateDirectory: str
     if (!syncFs.lstatSync(leases).isDirectory() || syncFs.realpathSync(leases) !== leases
       || !syncFs.lstatSync(root).isDirectory() || syncFs.realpathSync(root) !== root) throw new Error('Snapshot lease path validation failed');
     const file = path.join(leases, `${process.pid}-${crypto.randomBytes(8).toString('hex')}.json`);
-    syncFs.writeFileSync(file, JSON.stringify({ kind: 'termdock-client-snapshot-lease', version: 1, pid: process.pid, snapshotKey: path.basename(directory) }), { mode: 0o600, flag: 'wx' });
+    syncFs.writeFileSync(file, JSON.stringify({ kind: 'veymux-client-snapshot-lease', version: 1, pid: process.pid, snapshotKey: path.basename(directory) }), { mode: 0o600, flag: 'wx' });
     const remove = () => { try { syncFs.unlinkSync(file); } catch { /* already removed */ } };
     process.once('exit', remove);
     return () => { process.off('exit', remove); remove(); };

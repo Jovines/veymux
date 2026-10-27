@@ -25,7 +25,7 @@ it('retains multiple variants, remembers selection and updates or deletes only t
   expect(readAgentCommandPresets('codex', 'codex').presets).toHaveLength(1);
 });
 it('ignores corrupt storage without manufacturing an executable command', () => {
-  localStorage.setItem('termdock:agent-command-presets:v1', '{broken');
+  localStorage.setItem('veymux:agent-command-presets:v1', '{broken');
   localStorage.setItem(LEGACY_COMMANDS_KEY, '[]');
   expect(getAgentLaunchCommand('codex', 'codex')).toBe('codex');
   expect(() => selectAgentCommand('codex', 'codex', 'missing')).toThrow();
@@ -54,7 +54,7 @@ it('leaves a legacy installation unchanged when the authoritative preset write f
   localStorage.setItem(LEGACY_COMMANDS_KEY, JSON.stringify({ claude: 'claude --verbose' }));
   const original = Storage.prototype.setItem;
   vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function(this: Storage, key, value) {
-    if (key === 'termdock:agent-command-presets:v1') throw new Error('quota');
+    if (key === 'veymux:agent-command-presets:v1') throw new Error('quota');
     return original.call(this, key, value);
   });
   expect(() => deleteAgentCommand('claude', 'claude', 'legacy')).toThrow('quota');

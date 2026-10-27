@@ -127,14 +127,14 @@ export async function createFederationRuntime(app: express.Express, directory: s
   savePairing();
   const internalToken = randomBytes(32).toString('base64url');
   const internal = createServer((request, response) => {
-    if (request.headers['x-termdock-inner'] !== internalToken) { response.writeHead(403).end(); return; }
-    delete request.headers['x-termdock-inner'];
-    const subject = request.headers['x-termdock-device'];
-    delete request.headers['x-termdock-device'];
-    const fullService = request.headers['x-termdock-full-service'] === '1';
-    delete request.headers['x-termdock-full-service'];
-    const resourcesHeader = request.headers['x-termdock-resources']; delete request.headers['x-termdock-resources'];
-    const chatOnly = request.headers['x-termdock-chat-only'] === '1'; delete request.headers['x-termdock-chat-only'];
+    if (request.headers['x-veymux-inner'] !== internalToken) { response.writeHead(403).end(); return; }
+    delete request.headers['x-veymux-inner'];
+    const subject = request.headers['x-veymux-device'];
+    delete request.headers['x-veymux-device'];
+    const fullService = request.headers['x-veymux-full-service'] === '1';
+    delete request.headers['x-veymux-full-service'];
+    const resourcesHeader = request.headers['x-veymux-resources']; delete request.headers['x-veymux-resources'];
+    const chatOnly = request.headers['x-veymux-chat-only'] === '1'; delete request.headers['x-veymux-chat-only'];
     markEncryptedRequest(request, typeof subject === 'string' ? subject : undefined, fullService, typeof resourcesHeader === 'string' ? JSON.parse(resourcesHeader) : undefined, chatOnly); app(request, response);
   });
   // The outer encrypted consumer can apply backpressure long after a local
@@ -152,7 +152,7 @@ export async function createFederationRuntime(app: express.Express, directory: s
   const cancelHttp = (operation: HttpOperation) => { operation.abort.abort(); operation.body.end(new Error('CANCELLED')); releaseUpload(operation); };
 
   async function sessionInventory(): Promise<Array<Record<string, unknown>>> {
-    const response = await fetch(`${baseUrl}/api/terminal/session-inventory`, { headers: { 'x-termdock-inner': internalToken }, signal: AbortSignal.timeout(10_000) });
+    const response = await fetch(`${baseUrl}/api/terminal/session-inventory`, { headers: { 'x-veymux-inner': internalToken }, signal: AbortSignal.timeout(10_000) });
     if (!response.ok) throw new Error('SESSION_INVENTORY_UNAVAILABLE');
     const inventory = await response.json() as { clientSessions?: Array<Record<string, unknown>> };
     return Array.isArray(inventory.clientSessions) ? inventory.clientSessions : [];
@@ -228,10 +228,10 @@ export async function createFederationRuntime(app: express.Express, directory: s
           httpAllowed(operation.head);
           const attachment = attachmentRoot(operation.head);
           const requestResources = mergeShareResources([resources(subjectId), attachment ? { directories: [{ path: attachment, access: 'read' }] } : undefined]);
-          const headers = new Headers({ 'x-termdock-inner': internalToken, 'x-termdock-device': subjectId,
-            'x-termdock-full-service': full(subjectId) ? '1' : '0', 'x-termdock-resources': JSON.stringify(requestResources) });
+          const headers = new Headers({ 'x-veymux-inner': internalToken, 'x-veymux-device': subjectId,
+            'x-veymux-full-service': full(subjectId) ? '1' : '0', 'x-veymux-resources': JSON.stringify(requestResources) });
           const policy = resolveAccessRequest(String(operation.head.method), String(operation.head.path));
-          if (policy?.action === 'session.chat-send' && !full(subjectId) && !allowed(subjectId, 'session.input', policy.sessionId)) headers.set('x-termdock-chat-only', '1');
+          if (policy?.action === 'session.chat-send' && !full(subjectId) && !allowed(subjectId, 'session.input', policy.sessionId)) headers.set('x-veymux-chat-only', '1');
           const supplied = operation.head.headers;
           if (supplied && typeof supplied === 'object') for (const [name, value] of Object.entries(supplied)) {
             if (['content-type', 'accept', 'range', 'if-none-match', 'if-modified-since'].includes(name.toLowerCase()) && typeof value === 'string') headers.set(name, value);

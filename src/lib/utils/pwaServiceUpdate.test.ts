@@ -5,12 +5,12 @@ import { flushApplicationDrafts, reloadApplicationAfterServiceUpdate } from './p
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); document.body.replaceChildren(); });
 describe('reload after coordinated service update', () => {
   it('flushes drafts in all retained workspaces before replacing the application shell', () => {
-    const rootFlush = vi.fn(); window.addEventListener('termdock:before-update', rootFlush);
+    const rootFlush = vi.fn(); window.addEventListener('veymux:before-update', rootFlush);
     const frame = document.createElement('iframe'); frame.dataset.workspaceKey = 'other'; document.body.append(frame);
-    const childFlush = vi.fn(); frame.contentWindow!.addEventListener('termdock:before-update', childFlush);
+    const childFlush = vi.fn(); frame.contentWindow!.addEventListener('veymux:before-update', childFlush);
     flushApplicationDrafts();
     expect(rootFlush).toHaveBeenCalledOnce(); expect(childFlush).toHaveBeenCalledOnce();
-    window.removeEventListener('termdock:before-update', rootFlush);
+    window.removeEventListener('veymux:before-update', rootFlush);
   });
   it.each([false, true])('updates and activates a waiting worker even when controller-at-start is %s', async controlled => {
     const workers = new EventTarget();
@@ -18,14 +18,14 @@ describe('reload after coordinated service update', () => {
     const registration = { update: vi.fn(async () => {}), waiting, installing: undefined };
     Object.assign(workers, { controller: controlled ? {} : null, getRegistration: vi.fn(async () => registration) });
     vi.stubGlobal('navigator', { serviceWorker: workers });
-    const flush = vi.fn(); window.addEventListener('termdock:before-update', flush);
+    const flush = vi.fn(); window.addEventListener('veymux:before-update', flush);
     // jsdom reports navigation as unimplemented; completion here still proves
     // the real activation protocol and draft flush sequence before navigation.
     await reloadApplicationAfterServiceUpdate();
     expect(registration.update).toHaveBeenCalledOnce(); expect(waiting.postMessage).toHaveBeenCalledWith({ type: 'SKIP_WAITING' });
     expect(flush).toHaveBeenCalledTimes(2);
     expect(flush.mock.invocationCallOrder[0]).toBeLessThan(waiting.postMessage.mock.invocationCallOrder[0]);
-    window.removeEventListener('termdock:before-update', flush);
+    window.removeEventListener('veymux:before-update', flush);
   });
   it('does not treat failed resource installation as a completed interface update', async () => {
     const installing = Object.assign(new EventTarget(), { state: 'installing' });

@@ -4,7 +4,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 
-export const repository = 'Jovines/termdock';
+export const repository = 'Jovines/veymux';
 export const previewEndpoint = `https://github.com/${repository}/releases/download/preview-channel/preview.json`;
 export const stableEndpoint = `https://github.com/${repository}/releases/download/stable-channel/latest.json`;
 export function outsideSource(root, target) {
@@ -21,9 +21,9 @@ export function releasePlan(version, publicKey) {
   return {
     tag: `preview-v${version}`, version, prerelease: true,
     endpoint: previewEndpoint,
-    environment: { TERMDOCK_DESKTOP_CHANNEL: 'preview', TERMDOCK_PREVIEW_UPDATE_ENDPOINT: previewEndpoint, TERMDOCK_PREVIEW_UPDATE_PUBLIC_KEY: publicKey,
-      TERMDOCK_STABLE_UPDATE_ENDPOINT: stableEndpoint, TERMDOCK_STABLE_UPDATE_PUBLIC_KEY: publicKey },
-    config: { productName: 'Termdock Preview', mainBinaryName: 'termdock-preview', identifier: 'com.jovines.termdock.preview', version,
+    environment: { VEYMUX_DESKTOP_CHANNEL: 'preview', VEYMUX_PREVIEW_UPDATE_ENDPOINT: previewEndpoint, VEYMUX_PREVIEW_UPDATE_PUBLIC_KEY: publicKey,
+      VEYMUX_STABLE_UPDATE_ENDPOINT: stableEndpoint, VEYMUX_STABLE_UPDATE_PUBLIC_KEY: publicKey },
+    config: { productName: 'Veymux Preview', mainBinaryName: 'veymux-preview', identifier: 'com.jovines.veymux.preview', version,
       bundle: { createUpdaterArtifacts: true, macOS: { infoPlist: "Info.preview.plist" } },
       plugins: { updater: { pubkey: publicKey, endpoints: [], requireSignedVersion: true } } },
   };
@@ -33,7 +33,7 @@ export function updateManifest(plan, artifacts, notes = '', now = new Date()) {
   for (const { platform, filename, signature } of artifacts) {
     if (!['darwin-aarch64', 'darwin-x86_64'].includes(platform) || platforms[platform]) throw Error('Invalid or duplicate Preview platform');
     const arch = platform.slice('darwin-'.length);
-    if (filename !== `Termdock-Preview_${plan.version}_${arch}.app.tar.gz` || !signature?.trim()) throw Error('Invalid Preview update asset');
+    if (filename !== `Veymux-Preview_${plan.version}_${arch}.app.tar.gz` || !signature?.trim()) throw Error('Invalid Preview update asset');
     platforms[platform] = { signature: signature.trim(), url: `https://github.com/${repository}/releases/download/${plan.tag}/${filename}` };
   }
   if (!artifacts.length) throw Error('No signed Preview update assets');
@@ -53,7 +53,7 @@ function fsSafeOutput(result) {
   return result.stdout.trim();
 }
 export function buildPreview(version, destination, env = process.env) {
-  return buildRelease(version, destination, env, releasePlan(version, env.TERMDOCK_PREVIEW_UPDATE_PUBLIC_KEY));
+  return buildRelease(version, destination, env, releasePlan(version, env.VEYMUX_PREVIEW_UPDATE_PUBLIC_KEY));
 }
 export function buildRelease(version, destination, env, plan) {
   if (process.platform !== 'darwin') throw Error('Preview release packaging requires macOS');
@@ -69,8 +69,8 @@ export function buildRelease(version, destination, env, plan) {
   const realParent = fs.realpathSync(parent), realRoot = fs.realpathSync(root);
   if (!outsideSource(realRoot, realParent)) throw Error('Release output cannot resolve inside the source tree');
   const hasGit = fs.existsSync(path.join(root, '.git'));
-  const revision = hasGit ? output('git', ['rev-parse', 'HEAD'], { cwd: root }) : env.TERMDOCK_PREVIEW_SOURCE_REVISION;
-  if (!/^[a-f0-9]{40}$/.test(revision ?? '')) throw Error('Archive release requires an exact TERMDOCK_PREVIEW_SOURCE_REVISION');
+  const revision = hasGit ? output('git', ['rev-parse', 'HEAD'], { cwd: root }) : env.VEYMUX_PREVIEW_SOURCE_REVISION;
+  if (!/^[a-f0-9]{40}$/.test(revision ?? '')) throw Error('Archive release requires an exact VEYMUX_PREVIEW_SOURCE_REVISION');
   if (hasGit && output('git', ['status', '--porcelain'], { cwd: root })) throw Error('Preview release requires a clean source revision');
   if (!env.TAURI_SIGNING_PRIVATE_KEY) throw Error('A private updater signing key must be supplied by the release environment');
   if (!env.APPLE_SIGNING_IDENTITY?.startsWith('Developer ID Application:')) throw Error('Preview release requires a Developer ID Application identity');
@@ -97,13 +97,13 @@ export function buildRelease(version, destination, env, plan) {
   const arch = output('/usr/bin/lipo', ['-archs', path.join(app, 'Contents/MacOS', executable)]);
   const platform = { arm64: 'darwin-aarch64', x86_64: 'darwin-x86_64' }[arch];
   if (!platform) throw Error('Only single-architecture release assets are supported');
-  const name = `${plan.prerelease ? 'Termdock-Preview' : 'Termdock'}_${version}_${platform.slice(7)}`;
+  const name = `${plan.prerelease ? 'Veymux-Preview' : 'Veymux'}_${version}_${platform.slice(7)}`;
   const tar = path.join(out, `${name}.app.tar.gz`);
   fs.copyFileSync(`${app}.tar.gz`, tar);
   fs.copyFileSync(`${app}.tar.gz.sig`, `${tar}.sig`);
   const signature = fs.readFileSync(`${tar}.sig`, 'utf8');
   const manifest = plan.prerelease ? updateManifest(plan, [{ platform, filename: path.basename(tar), signature }]) : {
-    version, notes: 'Termdock Rust 正式版。需要 macOS 14 或更新版本。', pub_date: new Date().toISOString(),
+    version, notes: 'Veymux Rust 正式版。需要 macOS 14 或更新版本。', pub_date: new Date().toISOString(),
     platforms: { [platform]: { signature: signature.trim(), url: `https://github.com/${repository}/releases/download/${plan.tag}/${path.basename(tar)}` } },
   };
   const manifestName = plan.prerelease ? 'preview.json' : 'latest.json';
@@ -113,11 +113,11 @@ export function buildRelease(version, destination, env, plan) {
   fs.copyFileSync(path.join(bundle, 'dmg', dmgFiles[0]), path.join(out, `${name}.dmg`));
   const artifacts = [path.basename(tar), `${path.basename(tar)}.sig`, `${name}.dmg`, manifestName];
   if (!plan.prerelease) {
-    const rustZip = `Termdock-Rust-darwin-${arch}-${version}.zip`;
+    const rustZip = `Veymux-Rust-darwin-${arch}-${version}.zip`;
     run('/usr/bin/ditto', ['-c', '-k', '--keepParent', app, path.join(out, rustZip)]);
-    const legacyZip = `Termdock-darwin-${arch}-${version}.zip`;
-    if (!env.TERMDOCK_LEGACY_BRIDGE_ZIP || !fs.existsSync(env.TERMDOCK_LEGACY_BRIDGE_ZIP)) throw Error('Supply the verified macOS 12 Electron bridge ZIP via TERMDOCK_LEGACY_BRIDGE_ZIP');
-    fs.copyFileSync(env.TERMDOCK_LEGACY_BRIDGE_ZIP, path.join(out, legacyZip));
+    const legacyZip = `Veymux-darwin-${arch}-${version}.zip`;
+    if (!env.VEYMUX_LEGACY_BRIDGE_ZIP || !fs.existsSync(env.VEYMUX_LEGACY_BRIDGE_ZIP)) throw Error('Supply the verified macOS 12 Electron bridge ZIP via VEYMUX_LEGACY_BRIDGE_ZIP');
+    fs.copyFileSync(env.VEYMUX_LEGACY_BRIDGE_ZIP, path.join(out, legacyZip));
     artifacts.push(rustZip, legacyZip);
   }
   fs.writeFileSync(path.join(out, 'release.json'), JSON.stringify({ ...plan, environment: undefined,

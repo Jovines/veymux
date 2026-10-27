@@ -1517,7 +1517,7 @@ function FileTreeContent({ rootPath, onFileSelect, directoriesOnly = false, onPa
     const displayedEntries = contentEntries.slice(0, visibleSearchCount);
     const hasBufferedMore = visibleSearchCount < contentEntries.length;
     return (
-      <div className="termdock-native-select min-h-full space-y-px bg-surface px-2 py-2">
+      <div className="veymux-native-select min-h-full space-y-px bg-surface px-2 py-2">
         <SearchResultsHeader count={foundCount} loading={searchLoading} engine={searchMeta?.engine} limited={searchMeta?.limited} scope={activeSearchRoot} content />
         {searchError ? (
           <div className="mx-1 mt-3 rounded-xl border border-border/15 bg-surface-2 px-4 py-5 text-center text-sm text-muted-foreground">
@@ -1579,7 +1579,7 @@ function FileTreeContent({ rootPath, onFileSelect, directoriesOnly = false, onPa
     const displayedSearchEntries = searchEntries.slice(0, visibleSearchCount);
     const hasBufferedMore = visibleSearchCount < searchEntries.length;
     return (
-      <div className="termdock-native-select min-h-full space-y-px bg-surface px-2 py-2">
+      <div className="veymux-native-select min-h-full space-y-px bg-surface px-2 py-2">
         <SearchResultsHeader count={foundCount} loading={searchLoading} engine={searchMeta?.engine} limited={searchMeta?.limited} scope={activeSearchRoot} content={false} />
         {searchLoading && searchEntries.length === 0 ? (
           <LoadingStatus label={t('fileTree.searching')} className="py-8" />
@@ -1665,7 +1665,7 @@ function FileTreeContent({ rootPath, onFileSelect, directoriesOnly = false, onPa
   }
 
   return (
-    <div className="termdock-native-select w-max min-w-full space-y-px px-2 py-2">
+    <div className="veymux-native-select w-max min-w-full space-y-px px-2 py-2">
       {rootTruncated && (
         <div className="mb-2 rounded-xl bg-[rgb(var(--warning-rgb)_/_0.12)] px-3 py-2 text-[11px] text-[color:var(--warning)]">
           {t('fileTree.truncatedHint')}

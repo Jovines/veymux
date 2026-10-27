@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { flushCacheThrottled, readCache, writeCacheThrottled } from '../../utils/localStorageCache';
 
-export const SIDEBAR_SCROLL_POSITION_KEY = 'termdock-left-sidebar-scroll-position';
+export const SIDEBAR_SCROLL_POSITION_KEY = 'veymux-left-sidebar-scroll-position';
 
 export function useSidebarScrollPosition(
   listRef: RefObject<HTMLElement>,
@@ -34,13 +34,13 @@ export function useSidebarScrollPosition(
     const background = () => { if (document.hidden) flush(); };
     list.addEventListener('scroll', save, { passive: true });
     window.addEventListener('pagehide', flush);
-    window.addEventListener('termdock:before-update', flush);
+    window.addEventListener('veymux:before-update', flush);
     document.addEventListener('visibilitychange', background);
     return () => {
       flush();
       list.removeEventListener('scroll', save);
       window.removeEventListener('pagehide', flush);
-      window.removeEventListener('termdock:before-update', flush);
+      window.removeEventListener('veymux:before-update', flush);
       document.removeEventListener('visibilitychange', background);
     };
   }, [listRef]);

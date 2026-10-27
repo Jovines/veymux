@@ -32,13 +32,13 @@ it.each([390, 1280])('keeps explicit working consistent with the sidebar while a
   store.setSessionAgentStatus(id, { agentStatus: 'working', reviewed: false });
   await expect.poll(() => document.querySelector('[data-test-activity-dot] .bg-\\[var\\(--success\\)\\]')).not.toBeNull();
   await expect.element(page.getByRole('status', { name: 'CustomAgent处理中' })).toBeVisible();
-  expect(document.querySelector('[data-chat-terminal-access] .td-loading-spinner')).not.toBeNull();
+  expect(document.querySelector('[data-chat-terminal-access] .veymux-loading-spinner')).not.toBeNull();
   expect(useTerminalStore.getState().sessions.get(id)?.agentNeedsReview).toBe(true);
   const entry = document.querySelector('[data-chat-terminal-access]')!, box = entry.getBoundingClientRect();
   expect(box.left).toBeGreaterThanOrEqual(0); expect(box.right).toBeLessThanOrEqual(width);
   store.setSessionAgentStatus(id, { agentStatus: 'waiting', reviewed: false });
   await expect.element(page.getByRole('status', { name: 'CustomAgent等你处理' })).toBeVisible();
-  expect(entry.querySelector('.td-loading-spinner')).toBeNull();
+  expect(entry.querySelector('.veymux-loading-spinner')).toBeNull();
   store.setSessionAgentStatus(id, { agentStatus: 'done', reviewed: false });
   await expect.poll(() => entry.textContent).toBe('详情');
   store.setSessionAgentStatus(id, { agentStatus: 'working', reviewed: false });
@@ -140,12 +140,12 @@ it.each([390, 1280])('keeps empty chat details during activity and drafting unti
   store.setTerminalOutputActivity(id, true);
   store.setSessionAgentStatus(id, { agentStatus: 'working' });
   await expect.poll(() => document.querySelector('[data-chat-terminal-access]')?.textContent).toBe('详情');
-  expect(document.querySelector('[data-chat-terminal-access] .td-loading-spinner')).toBeNull();
+  expect(document.querySelector('[data-chat-terminal-access] .veymux-loading-spinner')).toBeNull();
   await page.getByRole('textbox', { name: '给CustomAgent的消息' }).fill('第一条消息');
   expect(document.querySelector('[data-chat-terminal-access]')?.textContent).toBe('详情');
   await page.getByRole('button', { name: '发送消息', exact: true }).click();
   await expect.element(page.getByRole('status', { name: 'CustomAgent处理中' })).toBeVisible();
-  expect(document.querySelector('[data-chat-terminal-access] .td-loading-spinner')).not.toBeNull();
+  expect(document.querySelector('[data-chat-terminal-access] .veymux-loading-spinner')).not.toBeNull();
   await expect.poll(() => messages.length).toBe(1);
 });
 it.each([390, 1280])('retries plugin recognition and switches both mode entries at width %i', async width => {

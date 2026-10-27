@@ -52,7 +52,7 @@ export default function CollaborationMainWorkspace({ groupId, activeSessionId, o
     useCollaborationNavigation.getState().terminal();
   };
   return <section aria-label="协作主工作区" className="absolute inset-0 flex min-h-0 min-w-0 flex-col bg-[var(--chrome-bg)] text-foreground">
-    <header data-termdock-window-header="true" className="flex min-h-14 shrink-0 items-center gap-1 border-b border-border/15 px-2 sm:min-h-16 sm:gap-3 sm:px-6">
+    <header data-veymux-window-header="true" className="flex min-h-14 shrink-0 items-center gap-1 border-b border-border/15 px-2 sm:min-h-16 sm:gap-3 sm:px-6">
       {!leftSidebarVisible && <SidebarVisibilityButton side="left" expanded={leftSidebarVisible} className="min-h-11 min-w-11" onClick={onOpenSidebar} />}
       <Workflow size={18} className="hidden shrink-0 text-primary sm:block" />
       <div className="min-w-0 flex-1"><h2 ref={title} tabIndex={-1} className="truncate text-base font-semibold outline-none">{group?.name ?? '协作工作区'}</h2><p className="text-[11px] text-muted-foreground">{group ? `${group.sessionIds.length} 位成员` : '正在连接工作组'}</p></div>

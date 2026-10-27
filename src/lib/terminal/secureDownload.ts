@@ -10,11 +10,11 @@ export async function prepareEncryptedDownload(blob: Blob, filename: string): Pr
     channel.port1.onmessage = event => {
       try {
         const url = new URL(event.data.url, location.origin);
-        finish(url.origin === location.origin && /^\/__termdock-download\/[a-f0-9-]{36}$/.test(url.pathname) ? url.href : null);
+        finish(url.origin === location.origin && /^\/__veymux-download\/[a-f0-9-]{36}$/.test(url.pathname) ? url.href : null);
       } catch { finish(null); }
     };
     channel.port1.onmessageerror = () => finish(null);
-    try { controller.postMessage({ type: 'termdock:prepare-download', blob, filename }, [channel.port2]); }
+    try { controller.postMessage({ type: 'veymux:prepare-download', blob, filename }, [channel.port2]); }
     catch { finish(null); }
   });
 }

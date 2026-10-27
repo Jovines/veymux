@@ -18,7 +18,7 @@ export function installEncryptedFileDrops(deliver: (payload: NativeFileDropPaylo
   const active = new Set<() => void>(), timers = new Set<number>();
   const controllers = new WeakMap<HTMLElement, AbortController>();
   const targetFor = (event: DragEvent) => event.target instanceof Element
-    ? event.target.closest<HTMLElement>('[data-termdock-terminal-dropzone]') : null;
+    ? event.target.closest<HTMLElement>('[data-veymux-terminal-dropzone]') : null;
   const remote = () => !allowLocalPaths || !canUseLocalDroppedPaths(location.origin, selectedTarget());
   const dragover = (event: DragEvent) => {
     const target = targetFor(event);
@@ -33,25 +33,25 @@ export function installEncryptedFileDrops(deliver: (payload: NativeFileDropPaylo
     event.preventDefault(); event.stopImmediatePropagation();
     controllers.get(target)?.abort();
     const controller = new AbortController();controllers.set(target,controller);
-    const sessionKey = target.dataset.termdockTerminalDropzone ?? '';
-    const selected = selectedTarget(), ownerKey = target.dataset.termdockTerminalOwner;
+    const sessionKey = target.dataset.veymuxTerminalDropzone ?? '';
+    const selected = selectedTarget(), ownerKey = target.dataset.veymuxTerminalOwner;
     const targetPeerId = selected?.targetPeerId ?? null;
     const operation = String(++dropOperationSequence);
     const isCurrent = () => !controller.signal.aborted && target.isConnected
-      && target.dataset.termdockTerminalDropzone === sessionKey
+      && target.dataset.veymuxTerminalDropzone === sessionKey
       && target.dataset.nativeFileDropOperation === operation
       && selectedTarget() === selected && selectedTarget()?.targetPeerId === targetPeerId
-      && target.dataset.termdockTerminalOwner === ownerKey;
+      && target.dataset.veymuxTerminalOwner === ownerKey;
     const discardStale = () => { if (isCurrent()) return false; if (target.dataset.nativeFileDropOperation === operation) { delete target.dataset.nativeFileDrag; delete target.dataset.nativeFileDropState; delete target.dataset.nativeFileDropOperation; delete target.dataset.nativeFileDropProgress; delete target.dataset.nativeFileDropCancellable; } return true; };
     target.dataset.nativeFileDropOperation = operation;
     target.dataset.nativeFileDrag = 'true'; target.dataset.nativeFileDropState = 'uploading';target.dataset.nativeFileDropCancellable='true';delete target.dataset.nativeFileDropProgress;
     const cancelStale = (event?: Event) => { if (event?.type === 'auth:unauthorized' || event?.type === 'pagehide' || !isCurrent()) { controller.abort(); discardStale(); } };
-    const observer = new MutationObserver(() => cancelStale());observer.observe(target,{attributes:true,attributeFilter:['data-termdock-terminal-dropzone','data-termdock-terminal-owner','data-native-file-drop-operation']});
+    const observer = new MutationObserver(() => cancelStale());observer.observe(target,{attributes:true,attributeFilter:['data-veymux-terminal-dropzone','data-veymux-terminal-owner','data-native-file-drop-operation']});
     const cancel = () => { controller.abort(); discardStale(); cleanup(); };
-    const cancelByUser = (event: Event) => { if (!(event.target instanceof Element) || event.target.closest('[data-termdock-terminal-dropzone]') !== target || !isCurrent()) return; cancel(); target.dataset.nativeFileDrag='true';target.dataset.nativeFileDropOperation=operation;target.dataset.nativeFileDropState='cancelled'; const timer=window.setTimeout(()=>{timers.delete(timer);if(target.dataset.nativeFileDropOperation===operation&&target.dataset.nativeFileDropState==='cancelled'){delete target.dataset.nativeFileDrag;delete target.dataset.nativeFileDropState;delete target.dataset.nativeFileDropOperation;}},3000);timers.add(timer); };
-    window.addEventListener('termdock:file-drop-cancel',cancelByUser);
-    const cleanup = () => { window.removeEventListener('termdock:file-drop-cancel',cancelByUser); observer.disconnect(); for (const name of ['termdock:secure-state','auth:unauthorized','pagehide']) window.removeEventListener(name,cancelStale); active.delete(cancel); };
-    active.add(cancel);for (const name of ['termdock:secure-state','auth:unauthorized','pagehide']) window.addEventListener(name,cancelStale);
+    const cancelByUser = (event: Event) => { if (!(event.target instanceof Element) || event.target.closest('[data-veymux-terminal-dropzone]') !== target || !isCurrent()) return; cancel(); target.dataset.nativeFileDrag='true';target.dataset.nativeFileDropOperation=operation;target.dataset.nativeFileDropState='cancelled'; const timer=window.setTimeout(()=>{timers.delete(timer);if(target.dataset.nativeFileDropOperation===operation&&target.dataset.nativeFileDropState==='cancelled'){delete target.dataset.nativeFileDrag;delete target.dataset.nativeFileDropState;delete target.dataset.nativeFileDropOperation;}},3000);timers.add(timer); };
+    window.addEventListener('veymux:file-drop-cancel',cancelByUser);
+    const cleanup = () => { window.removeEventListener('veymux:file-drop-cancel',cancelByUser); observer.disconnect(); for (const name of ['veymux:secure-state','auth:unauthorized','pagehide']) window.removeEventListener(name,cancelStale); active.delete(cancel); };
+    active.add(cancel);for (const name of ['veymux:secure-state','auth:unauthorized','pagehide']) window.addEventListener(name,cancelStale);
     void import('../terminal/api').then(({ uploadFiles }) => {
       if (!isCurrent()) throw new DOMException('Drop target changed','AbortError');
       return uploadFiles('/tmp', files, controller.signal, percent => { if(isCurrent())target.dataset.nativeFileDropProgress=String(Math.round(percent)); }, isCurrent);
@@ -65,7 +65,7 @@ export function installEncryptedFileDrops(deliver: (payload: NativeFileDropPaylo
     }).catch(error => {
       if (discardStale()) return;
       delete target.dataset.nativeFileDropCancellable;delete target.dataset.nativeFileDropProgress;target.dataset.nativeFileDropState = 'error';
-      target.dispatchEvent(new CustomEvent('termdock:file-drop-error', { bubbles: true, detail: error instanceof Error ? error.message : 'File upload failed' }));
+      target.dispatchEvent(new CustomEvent('veymux:file-drop-error', { bubbles: true, detail: error instanceof Error ? error.message : 'File upload failed' }));
       const timer = window.setTimeout(() => {
         timers.delete(timer);
         if (isCurrent() && target.dataset.nativeFileDropState === 'error') {

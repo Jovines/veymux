@@ -634,9 +634,9 @@ describe('persistent collaboration composer', () => {
     fireEvent.change(input, { target: { value: '请一起检查' } });
     const terminal = vi.fn();
     const ack = vi.fn();
-    window.addEventListener('termdock-insert-reference', terminal);
-    window.addEventListener('termdock-insert-reference-ack', ack);
-    act(() => window.dispatchEvent(new CustomEvent('termdock-insert-reference', { detail: { text: 'specs/方案.md:79', nonce: 'ref-1' } })));
+    window.addEventListener('veymux-insert-reference', terminal);
+    window.addEventListener('veymux-insert-reference-ack', ack);
+    act(() => window.dispatchEvent(new CustomEvent('veymux-insert-reference', { detail: { text: 'specs/方案.md:79', nonce: 'ref-1' } })));
     act(() => { expect(routeCollaborationInput("'/tmp/file with spaces.txt' ")).toBe(true); });
     expect(input.value).toBe("请一起检查\nspecs/方案.md:79\n'/tmp/file with spaces.txt' ");
     expect(terminal).not.toHaveBeenCalled();
@@ -644,8 +644,8 @@ describe('persistent collaboration composer', () => {
     await userEvent.click(screen.getByRole('button', { name: '展开' }));
     expect((screen.getByRole('textbox', { name: '内容' }) as HTMLTextAreaElement).value).toContain('specs/方案.md:79');
     expect(routeCollaborationInput('back to terminal')).toBe(false);
-    window.removeEventListener('termdock-insert-reference', terminal);
-    window.removeEventListener('termdock-insert-reference-ack', ack);
+    window.removeEventListener('veymux-insert-reference', terminal);
+    window.removeEventListener('veymux-insert-reference-ack', ack);
   });
 
   it('hides outside the selected group and restores its draft and input target on return', async () => {

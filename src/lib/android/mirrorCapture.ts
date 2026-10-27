@@ -10,7 +10,7 @@ function randomSuffix(): string {
 
 export function mirrorCaptureName(): string {
   const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
-  return `termdock-mirror-shot-${stamp}-${randomSuffix()}.png`;
+  return `veymux-mirror-shot-${stamp}-${randomSuffix()}.png`;
 }
 
 export function formatRecordingElapsed(ms: number): string {

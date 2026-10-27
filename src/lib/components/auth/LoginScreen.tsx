@@ -15,17 +15,6 @@ interface LoginScreenProps {
   onManageServices?: () => void;
 }
 
-// ASCII banner for the brand mark. Kept as a single string so the monospace
-// alignment is preserved exactly and we don't accidentally let a formatter
-// collapse runs of whitespace.
-const ASCII_LOGO = String.raw`
- ████████ ███████ ██████  ███    ███ ██████   ██████   ██████ ██   ██
-    ██    ██      ██   ██ ████  ████ ██   ██ ██    ██ ██      ██  ██
-    ██    █████   ██████  ██ ████ ██ ██   ██ ██    ██ ██      █████
-    ██    ██      ██   ██ ██  ██  ██ ██   ██ ██    ██ ██      ██  ██
-    ██    ███████ ██   ██ ██      ██ ██████   ██████   ██████ ██   ██
-`;
-
 // Renders a fullscreen password form. Stays mounted for the lifetime of the
 // "logged out" state — the parent App swaps it in/out based on auth status.
 export function LoginScreen({ onLoginSuccess, focusEnabled = true, serviceOrigin, serviceName, entryOrigin, entryName, onManageServices }: LoginScreenProps) {
@@ -101,18 +90,10 @@ export function LoginScreen({ onLoginSuccess, focusEnabled = true, serviceOrigin
         gap: 'clamp(20px, 4vh, 40px)',
       }}
     >
-      {/* ASCII brand mark — sized so the widest line still fits within the viewport.
-          Logo is ~70 monospace chars wide; in monospace, char-width ≈ 0.6em, so
-          the safe upper bound for `font-size` is roughly viewport / 42. */}
-      <pre
-        aria-hidden
-        className="max-w-full select-none overflow-hidden whitespace-pre leading-[1.05] text-primary/80 font-mono"
-        style={{
-          fontSize: 'clamp(5px, 2vw, 14px)',
-        }}
-      >
-        {ASCII_LOGO}
-      </pre>
+      <div className="flex flex-col items-center gap-3" aria-label="Veymux">
+        <img src="/brand.svg" alt="" className="h-24 w-24 rounded-3xl" />
+        <span className="text-3xl font-semibold tracking-tight">Veymux</span>
+      </div>
 
       {/* Terminal-style prompt with blinking cursor for personality */}
       <div

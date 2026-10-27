@@ -9,7 +9,7 @@ const recovery: NonNullable<SessionInventory['tmuxRecovery']> = { id: 'incident'
   sessions: [{ sessionId: 'opaque-id', name: '修复侧栏布局', tmuxSessionName: 'internal-name', cwd: '/work', agentSlug: 'codex', agentDisplayName: 'Codex' }] };
 const callbacks = () => ({ pending: null, error: null, onRestore: vi.fn(), onPause: vi.fn(), onDismiss: vi.fn() });
 it('keeps the original conversation name and one clear restore action visible', () => {
-  localStorage.setItem('termdock:locale', 'en');
+  localStorage.setItem('veymux:locale', 'en');
   const props = callbacks(); render(<TmuxRecoveryNotice recovery={recovery} {...props} />);
   expect(screen.getByText('修复侧栏布局')).toBeTruthy();
   expect(screen.queryByText('opaque-id')).toBeNull();

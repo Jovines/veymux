@@ -5,7 +5,7 @@
 // Change notification: `termfontchange` CustomEvent on `window` with
 // SessionFontSizeChangeDetail. Views filter by sessionId before applying.
 
-export const SESSION_FONT_SIZE_STORAGE_KEY = 'termdock-session-fonts-v1';
+export const SESSION_FONT_SIZE_STORAGE_KEY = 'veymux-session-fonts-v1';
 
 // Same clamp as the global settings UI and the ctrl/⌘+wheel gesture.
 export const MIN_SESSION_FONT_SIZE = 8;

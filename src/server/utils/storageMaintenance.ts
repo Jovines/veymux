@@ -14,7 +14,7 @@ export async function maintainGeneratedStorage(options: StorageMaintenanceOption
     ...await pruneClientSnapshots(options),
     ...await pruneWorkspaceCaches(options),
   ];
-  const report = { kind: 'termdock-generated-storage-maintenance', version: 1, startedAt, finishedAt: Date.now(), dryRun: options.dryRun === true,
+  const report = { kind: 'veymux-generated-storage-maintenance', version: 1, startedAt, finishedAt: Date.now(), dryRun: options.dryRun === true,
     reclaimedBytes: entries.filter(item => item.action === 'removed').reduce((sum, item) => sum + item.bytes, 0), entries };
   if (!options.dryRun) {
     const file = path.join(options.stateDirectory, 'storage-maintenance.json');

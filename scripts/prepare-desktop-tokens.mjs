@@ -33,3 +33,6 @@ const generated = [
 ].join('\n\n');
 
 fs.writeFileSync(outputPath, generated);
+// The packaged app excludes the repository scripts directory.
+fs.mkdirSync(path.join(root, '.desktop-dist'), { recursive: true });
+fs.copyFileSync(path.join(root, 'scripts', 'migrate-user-data.cjs'), path.join(root, '.desktop-dist', 'migrate-user-data.cjs'));

@@ -16,8 +16,8 @@ import * as authProtection from '../utils/authProtection.js';
 const cleanups: (() => void)[] = [];
 afterEach(() => { for (const close of cleanups.splice(0).reverse()) close(); vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 async function fixture(delayAcceptance = false) {
-  vi.stubEnv('TERMDOCK_PASSWORD', 'registry-password');
-  const dir = mkdtempSync(join(tmpdir(), 'td-registry-proof-')); cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+  vi.stubEnv('VEYMUX_PASSWORD', 'registry-password');
+  const dir = mkdtempSync(join(tmpdir(), 'veymux-registry-proof-')); cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
   execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1', '-keyout', join(dir, 'key.pem'), '-out', join(dir, 'cert.pem'), '-subj', '/CN=localhost', '-addext', 'subjectAltName=IP:127.0.0.1,DNS:localhost'], { stdio: 'ignore' });
   const runtime = await createFederationRuntime(express(), join(dir, 'b'), { terminal() {}, control() {} });
   cleanups.push(() => runtime.close());

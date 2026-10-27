@@ -1,5 +1,5 @@
 import { useEffect, type RefObject } from 'react';
-import { getTermdockDesktopBridge } from '../../desktop/nativeBridge';
+import { getVeymuxDesktopBridge } from '../../desktop/nativeBridge';
 import { WORKSPACE_VISIBILITY_EVENT } from '../../services/workspaceHost';
 import { isKeyboardLayerSource, useKeyboardLayerOpen } from '../../hooks/useKeyboardLayer';
 /** Only actual viewport exposure counts. Overscan, preload, and background
@@ -14,7 +14,7 @@ export function useChatMessageViewed(node: RefObject<HTMLElement>, root: RefObje
     let timer: ReturnType<typeof setTimeout> | undefined, exposed = false, finished = false;
     const cancel = () => { clearTimeout(timer); timer = undefined; };
     const available = () => !document.hidden && isKeyboardLayerSource(element)
-      && (!getTermdockDesktopBridge() || document.hasFocus());
+      && (!getVeymuxDesktopBridge() || document.hasFocus());
     const check = () => {
       if (!exposed || !available()) { cancel(); return; }
       if (timer || finished) return;

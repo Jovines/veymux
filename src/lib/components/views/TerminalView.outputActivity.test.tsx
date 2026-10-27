@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({ connect: vi.fn(), frames: [] as string[], view
   onReadyChange: (ready: boolean) => void; onWriteProgress: (id: number) => void; onFlowControl: (paused: boolean) => void;
 } }));
 vi.mock('../../i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }));
-vi.mock('../../terminal/factory', () => ({ createTermdockAPI: () => ({ connect: mocks.connect, sendInput: async () => {} }) }));
+vi.mock('../../terminal/factory', () => ({ createVeymuxAPI: () => ({ connect: mocks.connect, sendInput: async () => {} }) }));
 vi.mock('../../terminal/api', async original => ({
   ...await original<typeof import('../../terminal/api')>(),
   sendTerminalFocusState() {}, sendTerminalViewingState() {}, sendTerminalFlowControlState() {},

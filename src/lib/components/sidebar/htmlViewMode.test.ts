@@ -33,11 +33,11 @@ describe('per-file HTML view mode cache', () => {
   });
 
   it('falls back to source when the cache is corrupted', () => {
-    window.localStorage.setItem('termdock:right-sidebar:html-view-mode-by-file:v1', 'not-json');
+    window.localStorage.setItem('veymux:right-sidebar:html-view-mode-by-file:v1', 'not-json');
     expect(readHtmlViewMode('/repo', 'site/index.html')).toBe('source');
 
     window.localStorage.setItem(
-      'termdock:right-sidebar:html-view-mode-by-file:v1',
+      'veymux:right-sidebar:html-view-mode-by-file:v1',
       JSON.stringify({ '/repo::/repo/site/index.html': 'sideways' }),
     );
     expect(readHtmlViewMode('/repo', 'site/index.html')).toBe('source');

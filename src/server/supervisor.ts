@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * termdock supervisor — 盯住服务子进程，挂了就重启，并把原因记下来。
+ * veymux supervisor — 盯住服务子进程，挂了就重启，并把原因记下来。
  *
  * 它解决的是两件今天无人负责的事：
  *  1. 自动更新后新进程没起来（旧实现是发射后不管的 `node -e` bridge，不验证、不重试）；
@@ -11,7 +11,7 @@
  *
  * 架构：
  * ```
- * td / setsid          (launcher，短命)
+ * veymux / setsid          (launcher，短命)
  *  └─ supervisor       (detached 或前台，stdio 指向 server.log + ipc)
  *      └─ server       (同进程组，stdio 同样指向 server.log + ipc)
  * ```
@@ -50,7 +50,7 @@ import {
   isProcessRunning,
   removeJsonState,
   writeJsonStateAtomic,
-} from './utils/termdockState.js';
+} from './utils/veymuxState.js';
 
 export interface SupervisorTiming {
   /** 子进程必须在这个时间内 ready，否则按启动失败处理 */
@@ -88,20 +88,20 @@ export const DEFAULT_SUPERVISOR_TIMING: SupervisorTiming = {
 };
 
 /**
- * 节奏可以由 `TERMDOCK_SUPERVISOR_TIMING`（JSON）覆盖。
+ * 节奏可以由 `VEYMUX_SUPERVISOR_TIMING`（JSON）覆盖。
  *
  * 存在的理由之一是测试：崩溃循环用例要么等 5 次真实退避（1+2+4+8+16 = 31s），
  * 要么把节奏变成可注入的。顺带它也是生产上的调参口子（探测密度、退避上限）。
  * 只接受**正数**：0 会让 setInterval 空转。
  */
 export function resolveTimingFromEnv(env: NodeJS.ProcessEnv = process.env): Partial<SupervisorTiming> {
-  const raw = env.TERMDOCK_SUPERVISOR_TIMING;
+  const raw = env.VEYMUX_SUPERVISOR_TIMING;
   if (!raw) return {};
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    process.stderr.write('[supervisor] TERMDOCK_SUPERVISOR_TIMING is not valid JSON; using defaults\n');
+    process.stderr.write('[supervisor] VEYMUX_SUPERVISOR_TIMING is not valid JSON; using defaults\n');
     return {};
   }
   if (!parsed || typeof parsed !== 'object') return {};
@@ -150,7 +150,7 @@ export interface SupervisorDeps {
   /** 状态文件的读写，测试可重定向 */
   writeState: (state: unknown) => void;
   clearState: () => void;
-  /** 回报 launcher（`td` 后台模式在等这个）。没有 IPC 通道时是 no-op。 */
+  /** 回报 launcher（`veymux` 后台模式在等这个）。没有 IPC 通道时是 no-op。 */
   notifyLauncher: (message: SupervisorToLauncherMessage) => void;
 }
 
@@ -160,10 +160,10 @@ export function defaultSpawnChild(config: SupervisorConfig): SupervisedChild {
     stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
     env: {
       ...process.env,
-      TERMDOCK_SUPERVISED: '1',
+      VEYMUX_SUPERVISED: '1',
       // 给子进程一个能指名道姓的 pid：它的 disconnect 处理器要靠这个说清
       // "是谁丢下了我"，`ps` 里也能直接认出来。
-      TERMDOCK_SUPERVISOR_PID: String(process.pid),
+      VEYMUX_SUPERVISOR_PID: String(process.pid),
     },
   });
   // spawn 失败（ENOENT / EACCES）只会在 'error' 里出现，不会走 'exit'。
@@ -177,7 +177,7 @@ export function defaultNotifyLauncher(message: SupervisorToLauncherMessage): voi
 
 export function defaultLog(message: string): void {
   // 走 stderr：它和子进程的 stdout/stderr 是同一个 fd（server.log），
-  // 于是 `tail -f ~/.termdock/server.log` 能同时看到服务和监督者的叙述。
+  // 于是 `tail -f ~/.veymux/server.log` 能同时看到服务和监督者的叙述。
   process.stderr.write(`${new Date().toISOString()} ${message}\n`);
 }
 
@@ -187,7 +187,7 @@ export interface SupervisionHandle {
   start: () => void;
   /** 停止监督：杀子进程、删状态、退出。 */
   stop: () => void;
-  /** 重启一次子进程，但继续监督（`td --restart` / SIGHUP）。 */
+  /** 重启一次子进程，但继续监督（`veymux --restart` / SIGHUP）。 */
   restart: () => void;
 }
 
@@ -282,8 +282,8 @@ export function createSupervisor(config: SupervisorConfig, deps: SupervisorDeps)
         setPhase('running');
         armCrashReset();
         deps.log(`[supervisor] server ready (pid ${childPid ?? 'unknown'}, restarts ${restarts})`);
-        // 透传给 launcher：`td` 后台模式等的就是这个，而不是自己盲等 10 秒。
-        deps.notifyLauncher({ type: 'termdock-ready' });
+        // 透传给 launcher：`veymux` 后台模式等的就是这个，而不是自己盲等 10 秒。
+        deps.notifyLauncher({ type: 'veymux-ready' });
         return;
       }
       if (isStartupFailedMessage(message) && !becameReady) {
@@ -432,7 +432,7 @@ export function createSupervisor(config: SupervisorConfig, deps: SupervisorDeps)
     // 之后 supervisor 仍会按退避继续重试，所以只说"这次没起来"，不说"放弃了"。
     if (restarts === 0 && !becameReady && !stopRequested) {
       deps.notifyLauncher({
-        type: 'termdock-startup-failed',
+        type: 'veymux-startup-failed',
         reason: spawnError ? 'spawn-failed' : decision.event,
         detail: spawnError ? spawnError.message : decision.detail,
       });
@@ -475,7 +475,7 @@ export function createSupervisor(config: SupervisorConfig, deps: SupervisorDeps)
       version: config.version ?? null,
       restarts,
       lastIncident,
-      restartCommand: config.version ? `npm i -g termdock@${config.version}` : null,
+      restartCommand: config.version ? `npm i -g veymux@${config.version}` : null,
     });
   }
 
@@ -519,7 +519,7 @@ export function createSupervisor(config: SupervisorConfig, deps: SupervisorDeps)
     }, timing.killGraceMs + 1_000).unref?.();
   }
 
-  /** `td --restart`：不发停止请求，只让子进程重启一次。 */
+  /** `veymux --restart`：不发停止请求，只让子进程重启一次。 */
   function restart(): void {
     if (stopping || !child) return;
     restartRequested = true;
@@ -573,8 +573,8 @@ function parseArgs(argv: string[]): ParsedSupervisorArgs | null {
 /**
  * 以**当前进程**作为 supervisor 启动监督（装全局处理器 + 信号处理 + 开跑）。
  *
- * 两条入口共用：`supervisor.js` 独立入口（`td` 后台模式 spawn 它），
- * 以及 `td --supervise`（cli.ts 进程自己当 supervisor，给 setsid/systemd 用）。
+ * 两条入口共用：`supervisor.js` 独立入口（`veymux` 后台模式 spawn 它），
+ * 以及 `veymux --supervise`（cli.ts 进程自己当 supervisor，给 setsid/systemd 用）。
  */
 export function runSupervisor(
   config: SupervisorConfig,

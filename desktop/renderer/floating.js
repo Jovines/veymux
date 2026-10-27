@@ -1,4 +1,4 @@
-const api = window.termdockDesktop;
+const api = window.veymuxDesktop;
 const statusGroup = document.querySelector('#status');
 const closeButton = document.querySelector('#close');
 const running = document.querySelector('#running');

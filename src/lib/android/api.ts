@@ -78,9 +78,9 @@ export function androidStreamPath(serial: string, quality?: AndroidQuality): str
 export function androidErrorText(code: string): string {
   const known: Record<string, string> = {
     ADB_UNAVAILABLE: '本机没有可用的 adb，请先安装 Android platform-tools。',
-    ADB_NOT_FOUND: '找不到 adb 可执行文件，可用 TERMDOCK_ADB_BIN 指定路径。',
+    ADB_NOT_FOUND: '找不到 adb 可执行文件，可用 VEYMUX_ADB_BIN 指定路径。',
     SCRCPY_NOT_FOUND: '本机没有 scrcpy，请先安装（含 scrcpy-server）。',
-    SCRCPY_SERVER_NOT_FOUND: '找不到 scrcpy-server，可用 TERMDOCK_SCRCPY_SERVER 指定路径。',
+    SCRCPY_SERVER_NOT_FOUND: '找不到 scrcpy-server，可用 VEYMUX_SCRCPY_SERVER 指定路径。',
     SCRCPY_VERSION_UNKNOWN: '无法读取 scrcpy 版本，请确认 scrcpy --version 可执行。',
     SCRCPY_CONNECT_TIMEOUT: '设备连接超时，请确认已授权 USB 调试并保持解锁。',
     SCRCPY_UNSUPPORTED_CODEC: '设备返回了不支持的视频编码。',

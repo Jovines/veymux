@@ -4,7 +4,7 @@ import type { ComputerMotionTrace } from './motionTrace';
 import { observeComputerMotion } from './motionObservation';
 
 export type ComputerTouchMode = 'trackpad' | 'direct';
-const MODE_KEY = 'termdock:computer-touch-mode:v1';
+const MODE_KEY = 'veymux:computer-touch-mode:v1';
 export function readComputerTouchMode(): ComputerTouchMode {
   try {
     const saved = localStorage.getItem(MODE_KEY);

@@ -11,7 +11,7 @@ let root: Root | undefined;
 const initial = useSidebarStore.getState();
 beforeEach(() => {
   localStorage.clear(); sessionStorage.clear();
-  localStorage.setItem('termdock:locale', 'zh');
+  localStorage.setItem('veymux:locale', 'zh');
   useSidebarStore.setState({ ...initial, desktopLeftOpen: true, desktopRightOpen: false, leftOpen: false, rightOpen: false });
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);

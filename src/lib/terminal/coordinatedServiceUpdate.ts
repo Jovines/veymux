@@ -1,4 +1,4 @@
-import type { TermdockUpdateState } from './api';
+import type { VeymuxUpdateState } from './api';
 import type { ServiceUpdateNode, ServiceUpdatePlan } from './serviceUpdatePlan';
 import { compareVersions } from '../utils/version';
 import { ConnectionAccessError } from '../federation/accessFailure';
@@ -26,15 +26,15 @@ const atLeast = (version: string, minimum: string) => compareVersions(version, m
 
 /** Writes are issued once. After a dropped restart response only version reads
  * may reconcile it; transport recovery must never replay a restart or install. */
-export async function runCoordinatedServiceUpdate(plan: ServiceUpdatePlan, version: string, options: CoordinatedUpdateOptions): Promise<TermdockUpdateState> {
+export async function runCoordinatedServiceUpdate(plan: ServiceUpdatePlan, version: string, options: CoordinatedUpdateOptions): Promise<VeymuxUpdateState> {
   const now = options.now ?? Date.now;
   const pause = options.pause ?? (() => new Promise(resolve => window.setTimeout(resolve, 1000)));
   const guard = () => { if (!options.current()) throw new Error(options.chinese ? '更新操作已停止：当前服务或页面已变化。' : 'Update stopped: the active service or page changed.'); };
   let activeNode: ServiceUpdateNode | undefined;
   const progress = (node: ServiceUpdateNode, zh: string, en: string) => { guard(); activeNode = node; options.progress(`“${node.label}”：${options.chinese ? zh : en}`); };
-  const participants: { node: ServiceUpdateNode; connection?: UpdateConnection; state?: TermdockUpdateState; restartVersion?: string }[] = [];
-  let targetState: TermdockUpdateState | undefined;
-  async function request(connection: UpdateConnection, suffix = '', body?: object, optional = false): Promise<TermdockUpdateState | undefined> {
+  const participants: { node: ServiceUpdateNode; connection?: UpdateConnection; state?: VeymuxUpdateState; restartVersion?: string }[] = [];
+  let targetState: VeymuxUpdateState | undefined;
+  async function request(connection: UpdateConnection, suffix = '', body?: object, optional = false): Promise<VeymuxUpdateState | undefined> {
     guard();
     const response = await connection.fetch(`/api/terminal/update${suffix}`, {
       signal: AbortSignal.timeout(15_000), cache: 'no-store',

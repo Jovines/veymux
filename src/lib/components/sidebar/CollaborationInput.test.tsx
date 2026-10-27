@@ -9,7 +9,7 @@ const state = vi.hoisted(() => ({ upload: vi.fn(),
   target: { targetPeerId: 'service-a', serviceOrigin: 'https://service-a' },
 }));
 vi.mock('../../terminal/api', () => ({ uploadFiles: state.upload }));
-vi.mock('../../desktop/nativeBridge', () => ({ getTermdockDesktopBridge: () => state.bridge }));
+vi.mock('../../desktop/nativeBridge', () => ({ getVeymuxDesktopBridge: () => state.bridge }));
 vi.mock('../../federation/clientScope', () => ({ selectedTarget: () => state.target }));
 beforeEach(() => {
   vi.clearAllMocks(); state.bridge = null; state.target = { targetPeerId: 'service-a', serviceOrigin: 'https://service-a' };
@@ -43,7 +43,7 @@ it('gives pasted screenshots unique upload names instead of overwriting image.pn
   paste(field, [image]);
   await waitFor(() => expect(state.upload).toHaveBeenCalledTimes(2));
   const names = state.upload.mock.calls.map(call => (call[1] as File[])[0].name);
-  expect(names[0]).toMatch(/^termdock-clipboard-.*\.png$/);
+  expect(names[0]).toMatch(/^veymux-clipboard-.*\.png$/);
   expect(names[1]).not.toBe(names[0]);
 });
 it('keeps newer typing when an upload finishes later', async () => {
@@ -88,7 +88,7 @@ it('uses native file bytes for remote upload and verified local paths without re
   expect(state.upload).toHaveBeenCalledOnce();
 });
 it('never substitutes a video cover image after a recognized native video failure', async () => {
-  state.bridge = { readClipboardFiles: vi.fn().mockRejectedValue(new Error('TERMDOCK_CLIPBOARD_VIDEO_ERROR:无法读取剪贴板视频')) };
+  state.bridge = { readClipboardFiles: vi.fn().mockRejectedValue(new Error('VEYMUX_CLIPBOARD_VIDEO_ERROR:无法读取剪贴板视频')) };
   const { field } = setup('说明');
   paste(field, [new File(['cover'], 'cover.png', { type: 'image/png' })], '视频标题');
   expect((await screen.findByRole('alert')).textContent).toContain('无法读取剪贴板视频');

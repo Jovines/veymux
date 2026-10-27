@@ -1,5 +1,5 @@
 [package]
-name = "termdock-preview"
+name = "veymux-preview"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.93"
@@ -14,10 +14,10 @@ strip = "none"
 debug = true
 
 [lib]
-name = "termdock_preview"
+name = "veymux_preview"
 
 [[bin]]
-name = "termdock-preview"
+name = "veymux-preview"
 path = "src/main.rs"
 required-features = ["desktop"]
 

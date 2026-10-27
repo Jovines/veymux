@@ -105,7 +105,7 @@ it.each([
   const pageOrigin = 'http://127.0.0.1:43000';
   vi.stubGlobal('location', { origin: pageOrigin, href: pageOrigin + '/', host: '127.0.0.1:43000', pathname: '/' });
   const binding = vi.fn(() => supplied);
-  vi.stubGlobal('window', Object.assign(new EventTarget(), { termdockDesktop: supplied ? { ...(preview ? { previewCapabilities: {} } : {}), passwordBootstrapOrigin: binding } : undefined }));
+  vi.stubGlobal('window', Object.assign(new EventTarget(), { veymuxDesktop: supplied ? { ...(preview ? { previewCapabilities: {} } : {}), passwordBootstrapOrigin: binding } : undefined }));
   vi.stubGlobal('navigator', { onLine: true });
   let proved = false;
   const transport = vi.fn(async (raw, init) => {
@@ -136,7 +136,7 @@ it.each([
 it.each(['https://attacker.test', 'file:///tmp', 'https://service.test/', 'https://user:pass@service.test', 'https://service.test/?secret=x'])('rejects a forged Preview bootstrap binding %s before sending a password proof', async origin => {
   vi.resetModules(); state.target = null;
   vi.stubGlobal('location', { origin: 'http://127.0.0.1:43000' });
-  vi.stubGlobal('window', Object.assign(new EventTarget(), { termdockDesktop: { previewCapabilities: {}, passwordBootstrapOrigin: () => origin } }));
+  vi.stubGlobal('window', Object.assign(new EventTarget(), { veymuxDesktop: { previewCapabilities: {}, passwordBootstrapOrigin: () => origin } }));
   const transport = vi.fn(); vi.stubGlobal('fetch', transport);
   const integration = await import('./browserIntegration');
   await expect(integration.connectServiceAddress('https://service.test', 'known-password')).rejects.toThrow();

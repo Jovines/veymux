@@ -4,7 +4,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
 vi.mock('../../i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }));
-vi.mock('../../terminal/factory', () => ({ createTermdockAPI: () => ({}) }));
+vi.mock('../../terminal/factory', () => ({ createVeymuxAPI: () => ({}) }));
 const viewport = vi.hoisted(() => ({ focus: vi.fn(), refresh: vi.fn() }));
 vi.mock('../terminal/TerminalViewport', () => ({
   TerminalViewport: React.forwardRef(function Viewport(_props, ref) {

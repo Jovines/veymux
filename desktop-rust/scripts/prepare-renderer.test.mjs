@@ -10,11 +10,11 @@ test('actual Preview renderer generation marks only the real rail/header hosts a
   const generated=fs.readFileSync(new URL('../.renderer-dist/index.html',import.meta.url),'utf8');
   const dom=new JSDOM(generated),doc=dom.window.document;
   try {
-    assert.equal(doc.querySelectorAll('aside.rail[data-termdock-window-rail="true"]').length,1);
+    assert.equal(doc.querySelectorAll('aside.rail[data-veymux-window-rail="true"]').length,1);
     assert.equal(doc.querySelectorAll('.brand[data-tauri-drag-region]').length,1);
     assert.equal(doc.querySelectorAll('.topbar[data-tauri-drag-region]').length,1);
     for(const selector of ['html','body','.app-shell','.workspace','.rail-nav'])assert.equal(doc.querySelector(selector).hasAttribute('data-tauri-drag-region'),false);
-    for(const selector of ['html','body','.app-shell','.workspace','.rail-nav'])assert.equal(doc.querySelector(selector).hasAttribute('data-termdock-window-rail'),false);
+    for(const selector of ['html','body','.app-shell','.workspace','.rail-nav'])assert.equal(doc.querySelector(selector).hasAttribute('data-veymux-window-rail'),false);
     assert.equal(doc.querySelector('aside.rail > .brand').hasAttribute('data-tauri-drag-region'),true);
   }finally{dom.window.close();}
   const styles=fs.readFileSync(new URL('../.renderer-dist/styles.css',import.meta.url),'utf8');

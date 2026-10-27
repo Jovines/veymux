@@ -10,8 +10,8 @@ import { CollaborationRoutingStore } from './collaborationRouting.js';
 import { resolveCollaborationSessionId } from './sessionBindingRecovery.js';
 
 it('creates a self automation through the real CLI with a stale backend and surviving tmux pane', async () => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'td-cli-upgrade-'));
-  const stateDirectory = path.join(directory, '.termdock');
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-cli-upgrade-'));
+  const stateDirectory = path.join(directory, '.veymux');
   fs.mkdirSync(stateDirectory);
   const groupsFile = path.join(stateDirectory, 'collaboration-groups.json');
   const legacy = JSON.stringify({ version: 1, groups: [{ id: 'original-group', name: 'Original team', sessionIds: ['original-peer', 'other'], createdAt: 1, updatedAt: 1 }], messages: [] });
@@ -22,7 +22,7 @@ it('creates a self automation through the real CLI with a stale backend and surv
   const records = [{ sessionId: 'original-peer', backendSessionId: null, tmuxSessionName: null }];
   let created: Record<string, unknown> | undefined;
   const server = http.createServer(async (req, res) => {
-    expect(req.headers['x-termdock-local-token']).toBe('isolated-test-token');
+    expect(req.headers['x-veymux-local-token']).toBe('isolated-test-token');
     if (req.method === 'POST' && req.url === '/api/terminal/operations/automations') {
       let body = '';
       for await (const chunk of req) body += chunk;
@@ -41,12 +41,12 @@ it('creates a self automation through the real CLI with a stale backend and surv
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
     fs.writeFileSync(path.join(stateDirectory, 'server.json'), JSON.stringify({ pid: process.pid, host: '127.0.0.1', scheme: 'http', port: (server.address() as { port: number }).port, localApiToken: 'isolated-test-token' }));
     const preload = path.join(directory, 'preload.mjs');
-    fs.writeFileSync(preload, "import os from 'node:os'; import { syncBuiltinESMExports } from 'node:module'; os.homedir = () => process.env.TERMDOCK_COLLAB_TEST_DIRECTORY; syncBuiltinESMExports();");
+    fs.writeFileSync(preload, "import os from 'node:os'; import { syncBuiltinESMExports } from 'node:module'; os.homedir = () => process.env.VEYMUX_COLLAB_TEST_DIRECTORY; syncBuiltinESMExports();");
     const tmux = path.join(directory, 'tmux-fixture');
     fs.writeFileSync(tmux, '#!/usr/bin/env node\nif (JSON.stringify(process.argv.slice(2)) !== JSON.stringify(["display-message", "-p", "-t", "%7", "#S"])) process.exit(1);\nconsole.log("original-tmux");\n', { mode: 0o700 });
     const result = await new Promise<{ code: number | null; stdout: string; stderr: string }>((resolve, reject) => {
       const child = spawn(process.execPath, ['--import', preload, '--import', 'tsx', fileURLToPath(new URL('../cli.ts', import.meta.url)), 'automation', 'create', '--name', 'self review', '--every', '30', '--self', '--prompt', 'check team'], {
-        env: { ...process.env, TERMDOCK_COLLAB_TEST_DIRECTORY: directory, TERMDOCK_BACKEND_SESSION_ID: 'obsolete-backend', TMUX: 'isolated', TMUX_PANE: '%7', TMUX_BIN: tmux },
+        env: { ...process.env, VEYMUX_COLLAB_TEST_DIRECTORY: directory, VEYMUX_BACKEND_SESSION_ID: 'obsolete-backend', TMUX: 'isolated', TMUX_PANE: '%7', TMUX_BIN: tmux },
         stdio: ['ignore', 'pipe', 'pipe'],
       });
       let stdout = ''; let stderr = '';

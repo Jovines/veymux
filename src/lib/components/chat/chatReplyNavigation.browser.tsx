@@ -47,7 +47,7 @@ function pointTop(point: ReturnType<typeof readingPoint>) { return document.quer
 const target = (id: string) => document.querySelector<HTMLElement>(`[data-chat-viewport-row="${id}"]`);
 it.each([1280, 390])('loads an older original and returns to the same visible text at width %i', async width => {
   const f = await mount(width), point = readingPoint();
-  await page.screenshot({ path: `/tmp/termdock-reply-jump-before-${width}.png` });
+  await page.screenshot({ path: `/tmp/veymux-reply-jump-before-${width}.png` });
   await commands.replyActivate('[data-chat-message="m-89"] [data-chat-reply-context]');
   await expect.poll(() => target('m-6')).not.toBeNull();
   const list = document.querySelector('.session-chat-scroll')!.getBoundingClientRect();
@@ -55,7 +55,7 @@ it.each([1280, 390])('loads an older original and returns to the same visible te
   expect(target('m-6')!.getBoundingClientRect().top - list.top).toBeLessThan(30);
   expect(f.requests.some(query => query.includes('around=m-6'))).toBe(true);
   expect(document.querySelector('[data-chat-located="true"]')?.getAttribute('data-chat-viewport-row')).toBe('m-6');
-  await page.screenshot({ path: `/tmp/termdock-reply-jump-target-${width}.png` });
+  await page.screenshot({ path: `/tmp/veymux-reply-jump-target-${width}.png` });
   f.offline();
   await commands.replyActivate('[aria-label="返回回复"]');
   await expect.poll(() => pointTop(point)).not.toBeUndefined();

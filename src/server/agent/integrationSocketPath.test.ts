@@ -6,7 +6,7 @@ import { expect, it } from 'vitest';
 import { integrationSocketPath } from './integrationServer';
 
 it('retains existing addresses but bounds long and multibyte home paths for real IPC', async () => {
-  expect(integrationSocketPath(9834, '/Users/test')).toBe('/Users/test/.termdock/integration-9834.sock');
+  expect(integrationSocketPath(9834, '/Users/test')).toBe('/Users/test/.veymux/integration-9834.sock');
   const socket=integrationSocketPath(53219,`/long-${process.pid}/`+'目录'.repeat(80));
   expect(Buffer.byteLength(socket)).toBeLessThan(100);
   expect(integrationSocketPath(53219,'/other/'+'目录'.repeat(80))).not.toBe(socket);

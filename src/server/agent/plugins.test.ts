@@ -128,7 +128,7 @@ describe('plugin validation', () => {
     expect(result).toHaveProperty('error');
     if (!('error' in result)) throw new Error('expected validation error');
     expect(result.error.code).toBe('AGENT_PLUGIN_MANIFEST_V1_UNSUPPORTED');
-    expect(result.error.migration?.guideCommand).toBe('td agent-plugin --json');
+    expect(result.error.migration?.guideCommand).toBe('veymux agent-plugin --json');
     expect(result.error.migration?.aiPrompt).toContain('Return only the corrected manifest JSON');
     expect(result.error.errors.join(' ')).toContain('manifest v1 is no longer supported');
   });

@@ -7,7 +7,7 @@ import { chatProgramName, chatProgramNameFromArgv, validChatProgramName } from '
  * Third-party CLI coding-agent registry + detection.
  * （设计移植自 tty7 的 core/cli_agent.rs，Apache-2.0；此处为 TypeScript 重写）
  *
- * termdock recognizes when a pane is running a known coding agent (Claude
+ * veymux recognizes when a pane is running a known coding agent (Claude
  * Code, Codex, Gemini CLI, …) so the tab can brand it and notifications can
  * say *which* agent finished or needs you. Detection is a pure function over
  * the foreground process's argv (which the server already polls for program
@@ -283,7 +283,7 @@ function replayFlags(agent: AgentInfo, argv: string[]): string[] | null {
 /**
  * Recover a native session id from an already-resumed Agent process. Hooks
  * are authoritative, but after a tmux/server interruption the session-start
- * hook may have happened before Termdock reattached. The live argv is then
+ * hook may have happened before Veymux reattached. The live argv is then
  * the only durable source available for a future recovery.
  */
 export function inferResumeSessionId(agent: AgentInfo, argv: string[]): string | null {

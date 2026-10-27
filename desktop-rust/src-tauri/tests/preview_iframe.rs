@@ -1,7 +1,7 @@
 //! Opt-in real Chromium regression for the sandboxed HTML preview entry.
 use axum::{http::header, routing::get, Router};
 use std::{collections::BTreeMap, process::Stdio};
-use termdock_preview::{config::Connection, proxy};
+use veymux_preview::{config::Connection, proxy};
 use tokio::{net::TcpListener, process::Command};
 #[tokio::test]
 #[ignore = "requires installed agent-browser/Chromium; run explicitly for iframe acceptance"]
@@ -11,7 +11,7 @@ async fn sandboxed_preview_shell_loads_through_actual_boundary() {
 const capability='12345678-1234-1234-1234-123456789012';
 window.addEventListener('message',event=>{ document.body.dataset.lastMessage=JSON.stringify(event.data);
  if(event.data?.type==='preview-ready' && event.data.capability===capability) {
-  event.source.postMessage({type:'preview-init',capability,resources:[],html:`<!doctype html><html><body><p>Sandbox content loaded</p><script>let isolated=false;try{void parent.localStorage}catch(e){isolated=true}parent.postMessage({loaded:true,isolated,nativeBridge:typeof window.termdockDesktop},'*');<\/script></body></html>`},'*');
+  event.source.postMessage({type:'preview-init',capability,resources:[],html:`<!doctype html><html><body><p>Sandbox content loaded</p><script>let isolated=false;try{void parent.localStorage}catch(e){isolated=true}parent.postMessage({loaded:true,isolated,nativeBridge:typeof window.veymuxDesktop},'*');<\/script></body></html>`},'*');
  }
  if(event.data?.loaded) document.body.dataset.result=JSON.stringify(event.data);
 });
@@ -58,7 +58,7 @@ window.addEventListener('message',event=>{ document.body.dataset.lastMessage=JSO
     )
     .await
     .unwrap();
-    let session = format!("td-preview-iframe-{}", std::process::id());
+    let session = format!("veymux-preview-iframe-{}", std::process::id());
     let browser = |args: Vec<String>| {
         let mut command = Command::new("agent-browser");
         command
@@ -97,7 +97,7 @@ window.addEventListener('message',event=>{ document.body.dataset.lastMessage=JSO
     .unwrap();
     let _ = browser(vec![
         "screenshot".into(),
-        "/tmp/termdock-tauri-html-preview.png".into(),
+        "/tmp/veymux-tauri-html-preview.png".into(),
     ])
     .output()
     .await;

@@ -1,7 +1,7 @@
 /**
  * Token discovery — reads auth tokens from agent configuration files.
  *
- * Termdock's hook installers already know where each agent stores its config.
+ * Veymux's hook installers already know where each agent stores its config.
  * This module extracts OAuth tokens / API keys so the QuotaManager can call
  * provider usage APIs without asking the user to re-enter credentials.
  */

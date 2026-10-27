@@ -1,25 +1,25 @@
-# Termdock
+# Veymux
 
 <p align="center">
-  <img src="public/pwa-192x192.png" alt="Termdock 图标" width="96" />
+  <img src="public/pwa-192x192.png" alt="Veymux 图标" width="96" />
 </p>
 
 **把终端和 AI 编程工作区，带到你的手机、浏览器和 Mac。**
 
-[![npm](https://img.shields.io/npm/v/termdock)](https://www.npmjs.com/package/termdock)
-[![Downloads](https://img.shields.io/npm/dm/termdock)](https://www.npmjs.com/package/termdock)
-[![macOS Download](https://img.shields.io/github/v/release/Jovines/termdock?label=macOS)](https://github.com/Jovines/termdock/releases)
+[![npm](https://img.shields.io/npm/v/veymux)](https://www.npmjs.com/package/veymux)
+[![Downloads](https://img.shields.io/npm/dm/veymux)](https://www.npmjs.com/package/veymux)
+[![macOS Download](https://img.shields.io/github/v/release/Jovines/veymux?label=macOS)](https://github.com/Jovines/veymux/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
 简体中文 · [English](README.en.md)
 
-Termdock 是一个可自托管的 Web 终端与 AI Agent 工作区。你可以在电脑上运行 Claude Code、Codex、Gemini CLI 等工具，再从手机继续操作同一个 tmux 会话；也可以连接多台机器，把任务、消息、代码审阅和文件预览放在同一工作区里。
+Veymux 是一个可自托管的 Web 终端与 AI Agent 工作区。你可以在电脑上运行 Claude Code、Codex、Gemini CLI 等工具，再从手机继续操作同一个 tmux 会话；也可以连接多台机器，把任务、消息、代码审阅和文件预览放在同一工作区里。
 
-终端与命令在运行 Termdock 服务的机器上执行。浏览器、PWA 和 macOS 客户端负责连接与交互；AI CLI 需要在服务所在机器上单独安装和登录。
+终端与命令在运行 Veymux 服务的机器上执行。浏览器、PWA 和 macOS 客户端负责连接与交互；AI CLI 需要在服务所在机器上单独安装和登录。
 
 [快速开始](#快速开始) · [功能特性](#功能特性) · [AI 与协作](#ai-与协作) · [常见问题](#常见问题) · [文档](#文档导航) · [参与贡献](#参与贡献)
 
-## 为什么用 Termdock
+## 为什么用 Veymux
 
 - **离开电脑后继续工作**：手机打开同一服务，查看输出、补充指令、处理 Agent 提问；关闭页面后，tmux 会话继续运行。
 - **给手机一个适合终端的界面**：可定制快捷键栏、触摸滚动、滑动切换会话，以及 iOS 软键盘适配。
@@ -37,7 +37,7 @@ Termdock 是一个可自托管的 Web 终端与 AI Agent 工作区。你可以�
 | Node.js | **22 或更新版本**，并安装 npm |
 | 持久会话 | `tmux`，需要能从 `PATH` 找到 |
 | 客户端 | 当前版本的 Chrome、Edge、Firefox 或 Safari；手机可通过 HTTPS 安装 PWA |
-| macOS 桌面安装包 | Rust 正式版要求 macOS 14+，当前打包目标为 Apple Silicon（arm64），见 [Releases](https://github.com/Jovines/termdock/releases) |
+| macOS 桌面安装包 | Rust 正式版要求 macOS 14+，当前打包目标为 Apple Silicon（arm64），见 [Releases](https://github.com/Jovines/veymux/releases) |
 
 安装过程会检查原生终端模块和 tmux，并尝试修复依赖。手动准备 tmux：
 
@@ -55,7 +55,7 @@ sudo apt-get install -y tmux
 macOS 安装、启动修复和自动更新会从当前选中的 Xcode / Command Line Tools 解析配套的 SDK、`clang` 和 `clang++`，保留显式设置的 `DEVELOPER_DIR`、`SDKROOT`、`CC`、`CXX`。多套工具共存时，可仅为本次安装选择 Xcode（无需修改全局设置）：
 
 ```bash
-DEVELOPER_DIR="/Applications/Xcode.app/Contents/Developer" npm install -g termdock --foreground-scripts
+DEVELOPER_DIR="/Applications/Xcode.app/Contents/Developer" npm install -g veymux --foreground-scripts
 ```
 
 若出现 `tapi error` / `unknown architecture`，检查失败日志中的工具链路径，以及 `xcode-select -p` 和 `xcrun --sdk macosx --show-sdk-path`；已有的 SDK 或编译器覆盖也需要来自配套工具链。
@@ -63,33 +63,33 @@ DEVELOPER_DIR="/Applications/Xcode.app/Contents/Developer" npm install -g termdo
 ### 安装并启动
 
 ```bash
-npm install -g termdock
+npm install -g veymux
 
 # 先设置密码，再启动服务
-td --set-password
-td
+veymux --set-password
+veymux
 
 # 查看实际访问地址和服务状态
-td --status
+veymux --status
 ```
 
-`td` 和 `termdock` 是同一个 CLI 的两个名称。首次启动可能引导配置局域网名称与 HTTPS；打开启动日志或 `td --status` 给出的地址，登录后创建终端即可开始使用。
+`veymux` 和 `veymux` 是同一个 CLI 的两个名称。首次启动可能引导配置局域网名称与 HTTPS；打开启动日志或 `veymux --status` 给出的地址，登录后创建终端即可开始使用。
 
 只想先在本机试用，也可以运行：
 
 ```bash
-npx termdock --host 127.0.0.1
+npx veymux --host 127.0.0.1
 ```
 
 没有配置证书时，本机地址为 `http://localhost:9834`；配置证书后使用日志显示的 HTTPS 地址。默认监听地址为 `0.0.0.0:9834`，后台模式由 supervisor 监督运行。手机访问和 PWA 安装请继续阅读[局域网 HTTPS 配置](#局域网-https-访问手机--本机)。
 
 ### macOS 桌面版
 
-从 [GitHub Releases](https://github.com/Jovines/termdock/releases) 下载 DMG，安装后打开连接中心。桌面版可以复用本机服务，也可以连接局域网或公网中的独立服务。
+从 [GitHub Releases](https://github.com/Jovines/veymux/releases) 下载 DMG，安装后打开连接中心。桌面版可以复用本机服务，也可以连接局域网或公网中的独立服务。
 
-如果本机已有 Node.js 22+ 和 CLI，桌面版会检测并按需启动服务；缺少 CLI 时，可点击「安装并启动」安装到 `~/.termdock/cli`。缺少合适的 Node.js 时，连接中心提供官网下载入口。退出桌面版后，独立服务继续运行。
+如果本机已有 Node.js 22+ 和 CLI，桌面版会检测并按需启动服务；缺少 CLI 时，可点击「安装并启动」安装到 `~/.veymux/cli`。缺少合适的 Node.js 时，连接中心提供官网下载入口。退出桌面版后，独立服务继续运行。
 
-桌面版提供原生窗口、快捷键、Finder 文件交互和独立的应用更新。打包、签名与升级说明见 [Termdock for macOS](docs/macos-desktop.md)。
+桌面版提供原生窗口、快捷键、Finder 文件交互和独立的应用更新。打包、签名与升级说明见 [Veymux for macOS](docs/macos-desktop.md)。
 
 ## 功能特性
 
@@ -123,7 +123,7 @@ Ubuntu / Linux、Windows 默认选择 RDP，macOS 默认选择 VNC；目标系�
 VNC 使用 [noVNC](https://github.com/novnc/noVNC)，RDP 使用 [Apache Guacamole](https://guacamole.apache.org/)。
 
 1. 在 Mac 上打开「系统设置 → 通用 → 共享 → 屏幕共享」，允许用于登录的 Mac 账户。
-2. 在「电脑」页填写当前 Termdock 服务能访问的电脑内网 IP 或主机名；VNC 端口固定为 5900，RDP 默认 3389，可按目标设置调整。
+2. 在「电脑」页填写当前 Veymux 服务能访问的电脑内网 IP 或主机名；VNC 端口固定为 5900，RDP 默认 3389，可按目标设置调整。
    可选择「连接服务所在电脑」，使用服务端本机地址；这里的本机是当前服务所在电脑。
 3. 填写 Mac 用户名和账户密码；如果使用独立 VNC 密码，先在 Mac 的屏幕共享设置中
    开启「VNC 查看器可以使用密码控制屏幕」，用户名可留空，按服务器要求补充。
@@ -131,7 +131,7 @@ VNC 使用 [noVNC](https://github.com/novnc/noVNC)，RDP 使用 [Apache Guacamol
 连接需要当前服务的全权授权。目标、协议、端口、账号和证书信任选择保存在当前服务。
 默认勾选「记住登录」，成功连接后将密码加密保存到服务端，下次打开自动连接；高级设置可关闭自动连接，
 「清除登录」可删除当前目标账号的凭据。密码不会进入浏览器存储或普通设置文件，服务端凭据文件及密钥仅供当前系统用户读取。
-切换侧栏页面、关闭侧栏或离开服务工作区时会断开控制。浏览器到 Termdock 的画面和输入复用现有加密通道；服务到目标电脑的 VNC 段
+切换侧栏页面、关闭侧栏或离开服务工作区时会断开控制。浏览器到 Veymux 的画面和输入复用现有加密通道；服务到目标电脑的 VNC 段
 应放在可信内网或 VPN 中。文字发送使用远程剪贴板，字符支持取决于服务器能力。
 系统设置步骤可参考 [Apple 屏幕共享说明](https://support.apple.com/guide/mac-help/mh11848/mac)。
 
@@ -148,22 +148,22 @@ TigerVNC 虚拟桌面是独立会话，不等同于当前屏幕。
 域可留空；连接服务所在电脑时使用 `127.0.0.1`。RDP 登录可能创建新会话，是否显示当前屏幕
 由目标远程桌面服务决定。
 
-RDP 需要在 **Termdock 服务电脑** 启动支持 RDP 的 `guacd`，仅监听回环地址 `127.0.0.1:4822`。
+RDP 需要在 **Veymux 服务电脑** 启动支持 RDP 的 `guacd`，仅监听回环地址 `127.0.0.1:4822`。
 Linux Docker 示例（复用主机网络，使 `127.0.0.1` 指向服务电脑）：
 
 ```bash
-docker run -d --name termdock-guacd --network host --restart unless-stopped \
+docker run -d --name veymux-guacd --network host --restart unless-stopped \
   -e LOG_LEVEL=warning guacamole/guacd:1.6.0 -b 127.0.0.1
 ```
 
 也可在服务电脑安装 Apache Guacamole 的 `guacd` 并绑定回环地址；自定义后端端口使用
-`TERMDOCK_GUACD_PORT`。转换服务没有独立认证，不能暴露到局域网或公网。
-浏览器通过当前 Termdock 服务的全权授权与加密通道连接；RDP 密码的传输与保存请求均通过该通道，
+`VEYMUX_GUACD_PORT`。转换服务没有独立认证，不能暴露到局域网或公网。
+浏览器通过当前 Veymux 服务的全权授权与加密通道连接；RDP 密码的传输与保存请求均通过该通道，
 不写入 URL、日志或普通连接配置。无需部署 Guacamole 网页、数据库或另外开放业务 HTTP / WebSocket 端口。
 
 ### 安全与认证
 
-- **密码登录**：通过 `td --set-password` 设置密码，浏览器使用 OPAQUE 密码证明授权设备，再建立 Noise 加密连接
+- **密码登录**：通过 `veymux --set-password` 设置密码，浏览器使用 OPAQUE 密码证明授权设备，再建立 Noise 加密连接
 - **设备邀请与撤销**：一次性邀请链接和二维码，可选择会话查看、操作或完整服务权限
 - **加密中继**：已配置的入口转发密文，目标服务独立验证设备身份与权限
 - **登录限流**：基于来源 IP 的指数退避，防暴力破解
@@ -182,9 +182,9 @@ docker run -d --name termdock-guacd --network host --restart unless-stopped \
 - STL / GLB / glTF 模型查看与位置引用；KiCad 原理图、PCB 和工程预览。部分转换需要服务机上的额外工具，见[电子设计预览](docs/electronics-preview.md)。
 - Android 投屏与控制，需要服务机上的 adb、scrcpy 及已授权的设备；电脑桌面控制步骤见上文。
 
-在项目终端中打开 Agent，然后进入右侧栏「架构 → 生成」，把内置提示词放入输入区或上下文草稿，检查后发送。生成时可选择整个项目、目录 / 模块（支持多个相对路径），或跨目录的功能链路；可选依赖追踪深度和分析诉求，大项目不必先生成全量总览。宽工作区在分析表单旁复用「文件」页的目录树，可展开目录、搜索并通过引用按钮加入整个目录或文件，边浏览边写问题；手机和窄侧栏通过「选择目录或文件」确认后返回表单。可直接引用「文件」页当前打开的目录或当前文件，或粘贴文件、行号及差异引用，自动转换成项目相对路径。要分析某个模块里的某个功能，选择「功能链路」，填写功能问题并选中该模块目录；范围边界模式只展开范围内的实现，依赖追踪模式再跟随必要的外部调用。可在「分析诉求与限制」中写自己的问题，内置提示词会结合范围和问题生成。项目总览保存在 `.termdock/architecture.json`，局部分析独立保存在 `.termdock/architectures/`，通过「已保存分析」切换。「更新」只处理当前图，其他图保留；选择模块后的「细化分析这个模块」可直接准备其源码范围。面板通过加密文件监听刷新，300 ms 合并变化，并由 10 秒轮询覆盖未订阅目录及断线情况。分析消耗当前 Agent 的时间和额度。架构文件与源码通过当前目标服务的加密通道读取，支持远端项目和入口中转。 手机默认使用模块说明卡片，详情在独立阅读面板中打开并保留列表位置；普通关系图和全屏图共用阅读动线：宽工作区把说明与画布并排，窄工作区先显示两行简介，按「查看详情」再展开说明，也可收起。布局依据面板可用空间，窄桌面侧栏也使用简介条。普通视图的源码和细化分析在工作区内切换为阅读页面，返回时保留原图位置。说明面板为画布让出空间，保持缩放，并让选中节点留在可见画布内。可沿关联模块查看并逐步返回，源码在当前架构内按行预览，一步返回模块。全屏内可切换视角、展开子模块并返回上一级，也支持拖动平移和双指缩放，默认保持文字可读。长分析说明、路径列表和范围限制放在折叠区。
+在项目终端中打开 Agent，然后进入右侧栏「架构 → 生成」，把内置提示词放入输入区或上下文草稿，检查后发送。生成时可选择整个项目、目录 / 模块（支持多个相对路径），或跨目录的功能链路；可选依赖追踪深度和分析诉求，大项目不必先生成全量总览。宽工作区在分析表单旁复用「文件」页的目录树，可展开目录、搜索并通过引用按钮加入整个目录或文件，边浏览边写问题；手机和窄侧栏通过「选择目录或文件」确认后返回表单。可直接引用「文件」页当前打开的目录或当前文件，或粘贴文件、行号及差异引用，自动转换成项目相对路径。要分析某个模块里的某个功能，选择「功能链路」，填写功能问题并选中该模块目录；范围边界模式只展开范围内的实现，依赖追踪模式再跟随必要的外部调用。可在「分析诉求与限制」中写自己的问题，内置提示词会结合范围和问题生成。项目总览保存在 `.veymux/architecture.json`，局部分析独立保存在 `.veymux/architectures/`，通过「已保存分析」切换。「更新」只处理当前图，其他图保留；选择模块后的「细化分析这个模块」可直接准备其源码范围。面板通过加密文件监听刷新，300 ms 合并变化，并由 10 秒轮询覆盖未订阅目录及断线情况。分析消耗当前 Agent 的时间和额度。架构文件与源码通过当前目标服务的加密通道读取，支持远端项目和入口中转。 手机默认使用模块说明卡片，详情在独立阅读面板中打开并保留列表位置；普通关系图和全屏图共用阅读动线：宽工作区把说明与画布并排，窄工作区先显示两行简介，按「查看详情」再展开说明，也可收起。布局依据面板可用空间，窄桌面侧栏也使用简介条。普通视图的源码和细化分析在工作区内切换为阅读页面，返回时保留原图位置。说明面板为画布让出空间，保持缩放，并让选中节点留在可见画布内。可沿关联模块查看并逐步返回，源码在当前架构内按行预览，一步返回模块。全屏内可切换视角、展开子模块并返回上一级，也支持拖动平移和双指缩放，默认保持文字可读。长分析说明、路径列表和范围限制放在折叠区。
 
-架构工作区兼容 oh-my-mermaid 的 `.omm` 目录，支持全部视角总图、嵌套层级、跨视角引用与七类 Markdown 文档。可直接编辑节点和视角文档，保存时保留版本并检查并发冲突；「历史、导入与分享」提供差异、JSON / `.omm` 文档包互导及绑定目标服务的私有查看链接。`td architecture --help` 提供原生命令及项目内 Agent 技能安装。云端账户和组织沿用 Termdock 自身的服务与设备授权，不连接上游托管 SaaS。详细能力对照与验收边界见 [架构功能对照](docs/architecture-parity.md)。
+架构工作区兼容 oh-my-mermaid 的 `.omm` 目录，支持全部视角总图、嵌套层级、跨视角引用与七类 Markdown 文档。可直接编辑节点和视角文档，保存时保留版本并检查并发冲突；「历史、导入与分享」提供差异、JSON / `.omm` 文档包互导及绑定目标服务的私有查看链接。`veymux architecture --help` 提供原生命令及项目内 Agent 技能安装。云端账户和组织沿用 Veymux 自身的服务与设备授权，不连接上游托管 SaaS。详细能力对照与验收边界见 [架构功能对照](docs/architecture-parity.md)。
 
 ### PWA
 
@@ -211,20 +211,20 @@ docker run -d --name termdock-guacd --network host --restart unless-stopped \
 全局安装后可使用：
 
 ```bash
-termdock --host 127.0.0.1 --port 4000
-termdock --foreground            # 前台运行
-termdock --status                # 查看后台状态
-termdock --stop                  # 停止后台服务
-termdock --restart               # 请求 supervisor 重启服务
-td --help                       # 完整 CLI 帮助
-td update                        # 从 npm 官方源升级全局 CLI
+veymux --host 127.0.0.1 --port 4000
+veymux --foreground            # 前台运行
+veymux --status                # 查看后台状态
+veymux --stop                  # 停止后台服务
+veymux --restart               # 请求 supervisor 重启服务
+veymux --help                       # 完整 CLI 帮助
+veymux update                        # 从 npm 官方源升级全局 CLI
 ```
 
-`td update`（也可写作 `td upgrade`）会优先使用 npm 官方源
+`veymux update`（也可写作 `veymux upgrade`）会优先使用 npm 官方源
 `https://registry.npmjs.org` 查询并安装最新正式版；仅当官方源查询或安装失败时，
 才会回退到本机 `.npmrc` 配置的源（npm 命令不再传入 `--registry`）。
 如果后台服务正在运行，升级不会打断现有终端会话；可在方便时执行
-`td --stop && td`，让服务切换到新版本。
+`veymux --stop && veymux`，让服务切换到新版本。
 
 npm CLI 服务也会自动更新：启动 15 秒后检查一次，之后每 6 小时检查。
 新版会在后台安装，但无论是否有网页连接都绝不会自动重启。更新状态会持久保存，
@@ -238,63 +238,63 @@ macOS 桌面版仍使用独立的签名更新机制，不运行 npm 自动更新
 
 ```bash
 # 交互式设置（输入隐藏）
-termdock --set-password
+veymux --set-password
 
-# 通过管道设置（CI / 脚本场景；先在环境中设置 TERMDOCK_SETUP_PASSWORD）
-printf '%s\n' "$TERMDOCK_SETUP_PASSWORD" | termdock --set-password
+# 通过管道设置（CI / 脚本场景；先在环境中设置 VEYMUX_SETUP_PASSWORD）
+printf '%s\n' "$VEYMUX_SETUP_PASSWORD" | veymux --set-password
 
 # 关闭鉴权
-termdock --clear-password
+veymux --clear-password
 ```
 
-密码状态存放在 `~/.termdock/auth.json`（mode 0600，scrypt 哈希，不可逆）。修改密码会使所有已登录会话失效。
+密码状态存放在 `~/.veymux/auth.json`（mode 0600，scrypt 哈希，不可逆）。修改密码会使所有已登录会话失效。
 
 服务在未设置密码时启动会打印醒目的安全警告。
 
 ### 局域网 HTTPS 访问（手机 / 本机）
 
-Termdock 可以为当前机器发布一个产品化的局域网地址：
+Veymux 可以为当前机器发布一个产品化的局域网地址：
 
 ```text
-https://<name>.termdock.local:9834
+https://<name>.veymux.local:9834
 ```
 
 `<name>` 会在首次启动时自动生成一个 4 位默认值，也可以在设置抽屉里的「本地访问」中自定义。自定义名称不做人为长度限制，但必须是合法 hostname label。
 
-第一版仍然保留 `:9834` 端口；无端口的 `https://<name>.termdock.local` 需要后续单独引入 443 代理/Helper。
+第一版仍然保留 `:9834` 端口；无端口的 `https://<name>.veymux.local` 需要后续单独引入 443 代理/Helper。
 
-第一次在交互终端运行 `termdock` 时，CLI 会引导你选择 `.termdock.local` 前缀，并询问是否启用 HTTPS。选择启用后会准备 mkcert 并生成证书；选择稍后配置或无界面首次启动时，不会擅自下载工具。已有默认 HTTPS 配置损坏且无法修复时会停止启动，避免退回 HTTP。
+第一次在交互终端运行 `veymux` 时，CLI 会引导你选择 `.veymux.local` 前缀，并询问是否启用 HTTPS。选择启用后会准备 mkcert 并生成证书；选择稍后配置或无界面首次启动时，不会擅自下载工具。已有默认 HTTPS 配置损坏且无法修复时会停止启动，避免退回 HTTP。
 
 使用建议：
 
 ```bash
 # 1. 先启用密码，避免把 shell 暴露给同一内网其他人
-termdock --set-password
+veymux --set-password
 
 # 2. 自动准备本地 HTTPS 证书
 #    优先使用已安装的 mkcert；缺失时将固定版本官方二进制校验后安装到用户目录
 #    支持 Linux x64/ARM64/ARM、macOS Intel/Apple Silicon，无需 Homebrew 或 root
-termdock --setup-local-https
+veymux --setup-local-https
 
 # 只生成证书，不修改本机信任库（容器、无 sudo 的服务器或手动管理信任时）
-termdock --setup-local-https --no-install-ca
+veymux --setup-local-https --no-install-ca
 
-# 3. 正常启动；如果 ~/.termdock/certs/ 下已有证书，会自动启用 HTTPS
-termdock
+# 3. 正常启动；如果 ~/.veymux/certs/ 下已有证书，会自动启用 HTTPS
+veymux
 
 # 4. 查看正式地址和手机首次接入地址
-termdock --status
+veymux --status
 ```
 
 该命令会生成并保存：
 
 ```text
-~/.termdock/certs/termdock-local.pem
-~/.termdock/certs/termdock-local-key.pem
-~/.termdock/certs/rootCA.pem
+~/.veymux/certs/veymux-local.pem
+~/.veymux/certs/veymux-local-key.pem
+~/.veymux/certs/rootCA.pem
 ```
 
-首次自动安装的 mkcert 位于 `~/.termdock/bin/mkcert`。证书在临时目录中生成，
+首次自动安装的 mkcert 位于 `~/.veymux/bin/mkcert`。证书在临时目录中生成，
 校验证书与私钥、CA 签名及域名/IP 后才替换现有文件；后台续签保留原 CA。
 不要分发 mkcert CAROOT 中的 `rootCA-key.pem`，客户端只需要公开的 `rootCA.pem`。
 
@@ -306,10 +306,10 @@ termdock --status
 也可以手动覆盖证书路径：
 
 ```bash
-termdock --https-cert <cert.pem> --https-key <key.pem> --https-ca <rootCA.pem>
+veymux --https-cert <cert.pem> --https-key <key.pem> --https-ca <rootCA.pem>
 ```
 
-手机首次接入时，先在同一 Wi‑Fi 下打开 `termdock --status` 或服务启动日志输出的 onboarding 地址，例如：
+手机首次接入时，先在同一 Wi‑Fi 下打开 `veymux --status` 或服务启动日志输出的 onboarding 地址，例如：
 
 ```text
 http://192.0.2.23:52741/onboarding
@@ -324,7 +324,7 @@ http://192.0.2.23:52741/ca
 安装并信任 CA 后，再打开正式地址：
 
 ```text
-https://<name>.termdock.local:9834
+https://<name>.veymux.local:9834
 ```
 
 注意：mDNS 依赖同一局域网的 `.local` 组播；访客 Wi‑Fi、客户端隔离、VPN 或部分企业网络可能会阻止解析。此时 `localhost` 访问仍然可用，但手机上的漂亮域名可能不可用。
@@ -335,21 +335,21 @@ https://<name>.termdock.local:9834
 
 ### 在同一个终端继续 AI 工作
 
-在服务机上安装并登录你选择的 Agent CLI，然后在 Termdock 终端中启动，例如 `claude`、`codex` 或 `gemini`。项目内置多种 Agent 的识别与会话恢复适配，也支持通过插件添加适配。
+在服务机上安装并登录你选择的 Agent CLI，然后在 Veymux 终端中启动，例如 `claude`、`codex` 或 `gemini`。项目内置多种 Agent 的识别与会话恢复适配，也支持通过插件添加适配。
 
-Termdock 不提供模型账户或 API 额度，调用费用与权限由对应 CLI 和提供商决定。普通 shell、Vim、htop 等终端程序也可以使用。
+Veymux 不提供模型账户或 API 额度，调用费用与权限由对应 CLI 和提供商决定。普通 shell、Vim、htop 等终端程序也可以使用。
 
 ### 工作组、任务与跨机器协作
 
 创建协作组并添加 Agent 会话后，可以发送消息、建立目标与子任务、回答问题、确认方案、审阅结果和验收交付。自动协作支持协调者拆分目标、独立执行目录与独立评审，具体流程见[协作指南](docs/collaboration.md)。
 
-在 Termdock 管理的终端内查看 CLI：
+在 Veymux 管理的终端内查看 CLI：
 
 ```bash
-td collab --help
-td collab status
-td collab send <接收者会话ID> '请检查这次改动并回复结果'
-td collab inbox --json
+veymux collab --help
+veymux collab status
+veymux collab send <接收者会话ID> '请检查这次改动并回复结果'
+veymux collab inbox --json
 ```
 
 协作以终端和明确回复为依据，不要求各家 Agent 安装专用 hook。跨服务协作完成身份登记后，由服务后台通过加密通道继续投递与重试，不依赖网页一直打开。**写入终端不等于 Agent 已读或任务已完成**；任务报告保留原文与时间，最终结果需要明确评审或验收。
@@ -361,7 +361,7 @@ td collab inbox --json
 Agent 适配可以作为独立 Git 仓库分享。插件仓库根目录必须包含 `manifest.json`，可以同时携带 `icon.svg` 和标题生成等辅助脚本：
 
 ```text
-my-agent-termdock-plugin/
+my-agent-veymux-plugin/
 ├── manifest.json
 ├── icon.svg          # 可选
 └── scripts/          # 可选；manifest 中用 {pluginDir} 引用
@@ -370,23 +370,23 @@ my-agent-termdock-plugin/
 安装和维护命令：
 
 ```bash
-td plugin-install https://github.com/owner/my-agent-termdock-plugin
-td plugin-list --json
-td plugin-check my-agent
-td plugin-update my-agent
-td plugin-doctor my-agent --json
-td plugin-hooks my-agent install
-td plugin-hooks my-agent uninstall
-td plugin-remove my-agent
+veymux plugin-install https://github.com/owner/my-agent-veymux-plugin
+veymux plugin-list --json
+veymux plugin-check my-agent
+veymux plugin-update my-agent
+veymux plugin-doctor my-agent --json
+veymux plugin-hooks my-agent install
+veymux plugin-hooks my-agent uninstall
+veymux plugin-remove my-agent
 ```
 
-`plugin-install/update/remove` 管理完整插件包；`plugin-hooks` 只管理写入 Agent 原生配置文件的 Termdock hook 条目，两者生命周期互相独立。设置界面提供相同操作。
+`plugin-install/update/remove` 管理完整插件包；`plugin-hooks` 只管理写入 Agent 原生配置文件的 Veymux hook 条目，两者生命周期互相独立。设置界面提供相同操作。
 
-插件来源支持公开及自建 Git 服务，包括 HTTPS、HTTP、`ssh://git@git.internal:2222/team/plugin.git` 和 `git@git.internal:team/plugin.git`，也支持嵌套分组路径。拉取和检查更新均由当前连接的 Termdock 服务电脑执行，沿用该用户的 Git credential helper、SSH 配置与 agent、代理和 CA 配置；远程连接时，浏览器所在电脑的密钥不会自动出现在服务电脑上。Git 操作不等待终端密码输入，已有凭证或 SSH agent 必须可用。管理员可用 `TERMDOCK_PLUGIN_GIT_HOSTS` 指定允许的主机列表；未设置时不限制托管域名。
+插件来源支持公开及自建 Git 服务，包括 HTTPS、HTTP、`ssh://git@git.internal:2222/team/plugin.git` 和 `git@git.internal:team/plugin.git`，也支持嵌套分组路径。拉取和检查更新均由当前连接的 Veymux 服务电脑执行，沿用该用户的 Git credential helper、SSH 配置与 agent、代理和 CA 配置；远程连接时，浏览器所在电脑的密钥不会自动出现在服务电脑上。Git 操作不等待终端密码输入，已有凭证或 SSH agent 必须可用。管理员可用 `VEYMUX_PLUGIN_GIT_HOSTS` 指定允许的主机列表；未设置时不限制托管域名。
 
-安装插件后，用 `td plugin-list --json` 核对注册结果，再按需运行 `td plugin-hooks <slug> install`。Codex 的新 Hook 还须在 `/hooks` 中获准执行；设置页会区分“待授权”和“运行状态未确认”，不会只凭配置文件存在就认为已生效。终端也接受 OSC 7501 程序状态报告，显示运行、等待、完成及错误；该通道不修改 Agent 活动计数或发送 Hook 通知。
+安装插件后，用 `veymux plugin-list --json` 核对注册结果，再按需运行 `veymux plugin-hooks <slug> install`。Codex 的新 Hook 还须在 `/hooks` 中获准执行；设置页会区分“待授权”和“运行状态未确认”，不会只凭配置文件存在就认为已生效。终端也接受 OSC 7501 程序状态报告，显示运行、等待、完成及错误；该通道不修改 Agent 活动计数或发送 Hook 通知。
 
-安全上，安装插件只会注册声明式能力，不会自动安装 hooks，也不会因打开设置页就执行插件的模型探测命令。只有用户启用该插件的自动标题后，才会调用它声明的 CLI。插件 hook 目标必须是用户目录内、不经过符号链接的 JSON 文件；实际 hook 命令由 Termdock 生成，插件不能注入任意 shell。仍应只安装你信任且审查过的仓库。
+安全上，安装插件只会注册声明式能力，不会自动安装 hooks，也不会因打开设置页就执行插件的模型探测命令。只有用户启用该插件的自动标题后，才会调用它声明的 CLI。插件 hook 目标必须是用户目录内、不经过符号链接的 JSON 文件；实际 hook 命令由 Veymux 生成，插件不能注入任意 shell。仍应只安装你信任且审查过的仓库。
 
 自动标题插件必须区分“始终传入的参数”和“选中模型后才传入的整组参数”。例如 CustomAgent 使用 `-c model="..."` 时：
 
@@ -404,28 +404,28 @@ td plugin-remove my-agent
 }
 ```
 
-`modelArgs` 是一个原子参数组：用户或 Termdock 选中模型时整组前置，没有模型时整组省略，此时明确使用 Agent CLI 默认模型。模型命令可输出 JSON 数组，也可输出 `{ "models": [...], "recommendedModel": "..." }`；模型 ID 字段支持 `id` / `name` / `model`，并可选提供 `displayName`、`description`、`isDefault` 和 `isEconomical`。原生 CLI 字段仍无法匹配时，用 `{pluginDir}` 内的脚本实时转换，禁止硬编码模型列表。
+`modelArgs` 是一个原子参数组：用户或 Veymux 选中模型时整组前置，没有模型时整组省略，此时明确使用 Agent CLI 默认模型。模型命令可输出 JSON 数组，也可输出 `{ "models": [...], "recommendedModel": "..." }`；模型 ID 字段支持 `id` / `name` / `model`，并可选提供 `displayName`、`description`、`isDefault` 和 `isEconomical`。原生 CLI 字段仍无法匹配时，用 `{pluginDir}` 内的脚本实时转换，禁止硬编码模型列表。
 
-自动选择顺序是：插件顶层 `recommendedModel` → 第一个 `isEconomical: true` → 第一个 `isDefault: true` → 不传模型并使用 Agent CLI 默认值。Termdock 不再根据模型名称或说明猜测价格；用户手动选择始终优先于自动选择。
+自动选择顺序是：插件顶层 `recommendedModel` → 第一个 `isEconomical: true` → 第一个 `isDefault: true` → 不传模型并使用 Agent CLI 默认值。Veymux 不再根据模型名称或说明猜测价格；用户手动选择始终优先于自动选择。
 
-`td plugin-doctor <slug> --json` 会显式运行一次模型探测，报告 `titleNamer`、可用模型数、自动选择结果、被忽略字段和修复建议；它不会调用付费的标题生成命令。
+`veymux plugin-doctor <slug> --json` 会显式运行一次模型探测，报告 `titleNamer`、可用模型数、自动选择结果、被忽略字段和修复建议；它不会调用付费的标题生成命令。
 
 开发本地插件时可直接传目录；旧的 manifest-only 命令仍可使用：
 
 ```bash
-td plugin-install ./my-agent-termdock-plugin
-td plugin-create ./manifest.json
+veymux plugin-install ./my-agent-veymux-plugin
+veymux plugin-create ./manifest.json
 ```
 
-插件作者和 Agent 可以运行 `td agent-plugin --json` 获取机器可读的当前协议、manifest schema、状态模型和全部公共命令。v1 manifest 会返回可直接交给 AI 修复的迁移说明。
+插件作者和 Agent 可以运行 `veymux agent-plugin --json` 获取机器可读的当前协议、manifest schema、状态模型和全部公共命令。v1 manifest 会返回可直接交给 AI 修复的迁移说明。
 
 ## 源码开发
 
 ### 从源码安装
 
 ```bash
-git clone https://github.com/Jovines/termdock.git
-cd termdock
+git clone https://github.com/Jovines/veymux.git
+cd veymux
 ./install-local.sh
 ```
 
@@ -438,11 +438,11 @@ cd termdock
 bash auth-login.sh
 
 # 仅当 cookie 失效时，再提供原密码刷新登录态
-export TERMDOCK_PASSWORD="<your-termdock-password>"
+export VEYMUX_PASSWORD="<your-veymux-password>"
 bash auth-login.sh
 
 # 自动化请求统一带 cookie
-curl -b ~/.termdock/automation.cookies http://localhost:9834/api/auth/status
+curl -b ~/.veymux/automation.cookies http://localhost:9834/api/auth/status
 ```
 
 这不会创建第二套密码，也不会关闭鉴权。
@@ -493,7 +493,7 @@ npm start
 
 ### tmux 焦点跟踪
 
-Termdock 复用系统默认 tmux server。每次创建、复用、切换或通过 CLI attach tmux 会话时，Termdock 会自动确保 shared tmux server 的 `focus-events` 为 `on`，并在浏览器焦点变化时把 focus in/out 事件按需转发给 tmux 内部请求了 focus tracking 的程序（例如 Claude Code、Vim、fzf 等）。这是单向增强项：Termdock 不会在会话关闭后把 `focus-events` 自动恢复为 `off`。如果你手动维护 `~/.tmux.conf`，也可以显式加入：
+Veymux 复用系统默认 tmux server。每次创建、复用、切换或通过 CLI attach tmux 会话时，Veymux 会自动确保 shared tmux server 的 `focus-events` 为 `on`，并在浏览器焦点变化时把 focus in/out 事件按需转发给 tmux 内部请求了 focus tracking 的程序（例如 Claude Code、Vim、fzf 等）。这是单向增强项：Veymux 不会在会话关闭后把 `focus-events` 自动恢复为 `off`。如果你手动维护 `~/.tmux.conf`，也可以显式加入：
 
 ```tmux
 set -g focus-events on
@@ -502,7 +502,7 @@ set -g focus-events on
 ## 项目结构
 
 ```text
-termdock/
+veymux/
 ├── src/
 │   ├── App.tsx / main.tsx       # Web 应用入口
 │   ├── index.css               # 主题与全局样式 token
@@ -527,7 +527,7 @@ termdock/
 
 ### 程序化接入
 
-优先使用 `td collab`、`td automation`、`td notify` 和各命令的 `--help`，支持结构化 JSON 输出。页面业务请求必须使用应用的加密 `fetch` / `secureSocket`；直接 HTTP API 列表不能作为当前浏览器或远端接入方案。
+优先使用 `veymux collab`、`veymux automation`、`veymux notify` 和各命令的 `--help`，支持结构化 JSON 输出。页面业务请求必须使用应用的加密 `fetch` / `secureSocket`；直接 HTTP API 列表不能作为当前浏览器或远端接入方案。
 
 本机自动化的认证示例见上文 `auth-login.sh`，传输与授权设计见[加密连接文档](src/server/federation/README.md)。
 
@@ -569,7 +569,7 @@ TERMINAL_IDLE_TIMEOUT=21600000 # 空闲超时 (毫秒；生产默认 6 小时)
 ### 状态目录
 
 ```
-~/.termdock/
+~/.veymux/
 ├── auth.json        # 密码哈希（mode 0600，仅在启用鉴权时存在）
 ├── server.json      # 后台进程 PID / 端口
 ├── server.log       # 后台运行日志
@@ -596,7 +596,7 @@ Esc / Tab / Ctrl / Alt / Cmd / ↑↓←→ / Enter / Backspace，并支持在�
 
 ### 手机应该打开哪个地址？
 
-打开 `td --status` 输出的局域网 HTTPS 地址，并确保手机和服务机网络可达。手机上的 `localhost` 指手机本身；首次接入使用日志提供的 onboarding 地址安装并信任 CA，再访问正式地址。
+打开 `veymux --status` 输出的局域网 HTTPS 地址，并确保手机和服务机网络可达。手机上的 `localhost` 指手机本身；首次接入使用日志提供的 onboarding 地址安装并信任 CA，再访问正式地址。
 
 ### 关闭浏览器或 Mac 客户端会结束任务吗？
 
@@ -604,15 +604,15 @@ tmux 模式下，关闭客户端或暂时断网不会结束终端里的程序。
 
 ### 安装成功，但创建终端失败？
 
-先检查 `node --version`、`tmux -V` 与 `td --status`，再查看 `~/.termdock/server.log` 或前台运行输出。常见原因是 Node.js 版本过低、tmux 不在 PATH，或 `node-pty` 原生模块未正确安装。源码环境可在安装编译工具后运行 `npm rebuild node-pty --build-from-source`。
+先检查 `node --version`、`tmux -V` 与 `veymux --status`，再查看 `~/.veymux/server.log` 或前台运行输出。常见原因是 Node.js 版本过低、tmux 不在 PATH，或 `node-pty` 原生模块未正确安装。源码环境可在安装编译工具后运行 `npm rebuild node-pty --build-from-source`。
 
-### HTTPS 证书已信任，`.termdock.local` 仍无法打开？
+### HTTPS 证书已信任，`.veymux.local` 仍无法打开？
 
 检查是否同一局域网、是否开启访客网络或客户端隔离，以及 VPN 是否阻断 mDNS。不要跳过证书验证；如果改用 IP 或其他域名，证书也需要覆盖该地址。
 
 ### 可以部署到公网吗？
 
-可以，需要正确配置 HTTPS、强密码和 `TERMDOCK_PUBLIC_ORIGIN`，详见[公网安全模式](docs/configuration.md#公网安全模式)。终端拥有服务账户权限；应用的认证和路径检查不提供多租户系统隔离。
+可以，需要正确配置 HTTPS、强密码和 `VEYMUX_PUBLIC_ORIGIN`，详见[公网安全模式](docs/configuration.md#公网安全模式)。终端拥有服务账户权限；应用的认证和路径检查不提供多租户系统隔离。
 
 ### 离线还能操作终端吗？
 
@@ -642,43 +642,38 @@ CLI 服务更新与 macOS 应用更新相互独立。安装新 CLI 后需确认�
 
 ## 参与贡献
 
-欢迎通过 [Issues](https://github.com/Jovines/termdock/issues) 反馈问题或讨论功能，也欢迎提交 [Pull Request](https://github.com/Jovines/termdock/pulls)。中文和英文都可以。
+欢迎通过 [Issues](https://github.com/Jovines/veymux/issues) 反馈问题或讨论功能，也欢迎提交 [Pull Request](https://github.com/Jovines/veymux/pulls)。中文和英文都可以。
 
 除了代码，文档修正、翻译、不同设备上的体验反馈、Agent 插件和真实使用案例都能帮助项目成长。开发流程见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
-如果 Termdock 对你有用，欢迎给项目一个 Star，或把仓库链接分享给需要手机终端、自托管开发环境或多 Agent 协作的朋友。分享截图与复现日志时，请先隐藏密码、邀请链接、密钥与私人路径。
+如果 Veymux 对你有用，欢迎给项目一个 Star，或把仓库链接分享给需要手机终端、自托管开发环境或多 Agent 协作的朋友。分享截图与复现日志时，请先隐藏密码、邀请链接、密钥与私人路径。
 
 ## 许可证与致谢
 
-Termdock 使用 [MIT License](LICENSE)。打包的第三方组件和字体另有各自许可，见[第三方声明](public/third-party-notices.txt)。
+Veymux 使用 [MIT License](LICENSE)。打包的第三方组件和字体另有各自许可，见[第三方声明](public/third-party-notices.txt)。
 
 感谢 [xterm.js](https://github.com/xtermjs/xterm.js)、[tmux](https://github.com/tmux/tmux)、[node-pty](https://github.com/microsoft/node-pty)、[noVNC](https://github.com/novnc/noVNC) 及其他开源项目；界面配色来自 [Flexoki](https://stephango.com/flexoki)。
 
-<details>
-<summary>项目命名备注</summary>
 
-项目新名称暂定为 **Termcove**。目前仅记录改名意向，程序名称、CLI 命令和 npm 包名仍沿用 Termdock / `termdock`；未来正式决定后再统一迁移。
-
-</details>
 
 ## CLI 使用示例
 
 ### AI 关键进展提醒
 
-你只需对 Agent 说：**用 `td n` 提醒我，先运行 `td n` 看用法。**
+你只需对 Agent 说：**用 `veymux n` 提醒我，先运行 `veymux n` 看用法。**
 
-`td n` 不带参数时显示帮助和 Agent 使用提示，不会发送提醒；`td n --prompt`
-输出可直接复制的提示词。`td notify` 保留为完整名称，两者等价。
-`n` 专用于提醒；创建 tmux 会话请用 `td nt` 或 `td --new-tmux`。
-注意：1.4.224 的 `n` 存在别名冲突，仍会创建 tmux；该版本请用 `td notify`。
+`veymux n` 不带参数时显示帮助和 Agent 使用提示，不会发送提醒；`veymux n --prompt`
+输出可直接复制的提示词。`veymux notify` 保留为完整名称，两者等价。
+`n` 专用于提醒；创建 tmux 会话请用 `veymux nt` 或 `veymux --new-tmux`。
+注意：1.4.224 的 `n` 存在别名冲突，仍会创建 tmux；该版本请用 `veymux notify`。
 
-AI 在 Termdock 会话内运行以下命令，即可把关键进展推送到已连接的 TD 页面：
+AI 在 Veymux 会话内运行以下命令，即可把关键进展推送到已连接的 TD 页面：
 
 ```bash
-td n "测试通过，可以开始验收" --title "关键进展"
-td notify "需要你确认数据库迁移方案"
-td notify "后台任务已完成" --session <来源会话的完整Session-ID>
-td notify --help
+veymux n "测试通过，可以开始验收" --title "关键进展"
+veymux notify "需要你确认数据库迁移方案"
+veymux notify "后台任务已完成" --session <来源会话的完整Session-ID>
+veymux notify --help
 ```
 
 默认从当前终端或 tmux pane 识别来源 Session；脱离终端的后台进程可用
@@ -689,7 +684,7 @@ td notify --help
 只有实际打开对应 Session 查看才会清除。当前可见 Session 收到提醒时不累积未读。
 
 可在 AI 的项目指令中加入：**完成关键里程碑、遇到阻塞或需要我决策时，调用
-`td notify "简短描述关键进展和需要我做的事"`；日常过程日志无需提醒。**
+`veymux notify "简短描述关键进展和需要我做的事"`；日常过程日志无需提醒。**
 
 这是页面内提醒，不需要系统通知权限。正文最多 4000 字符，标题最多 120 字符。
 CLI 输出 JSON；退出码 0 表示已向在线连接转发，不代表用户已阅读。没有在线页面时
@@ -700,16 +695,16 @@ CLI 输出 JSON；退出码 0 表示已向在线连接转发，不代表用户�
 后台工具进程无需位于 tmux pane 内，也可以显式指定自己的协作身份：
 
 ```bash
-td collab --session <自己的完整会话ID> status
-td collab --session <自己的完整会话ID> send <接收者ID> "消息"
-td collab --session <自己的完整会话ID> reply <消息ID> "回复"
-td collab --session <自己的完整会话ID> rebind --pane %173
+veymux collab --session <自己的完整会话ID> status
+veymux collab --session <自己的完整会话ID> send <接收者ID> "消息"
+veymux collab --session <自己的完整会话ID> reply <消息ID> "回复"
+veymux collab --session <自己的完整会话ID> rebind --pane %173
 ```
 
 `--session` 适用于所有 `collab` 子命令，指定来源成员；`rebind --pane` 单独指定绑定位置。
-来源 ID 使用 `td collab status` 输出中的完整 Termdock 成员 `sessionId`，不是
+来源 ID 使用 `veymux collab status` 输出中的完整 Veymux 成员 `sessionId`，不是
 `wt-…` tmux 名称、后端 ID 或 Claude 会话 ID。可从仍可用的同组会话查询成员列表。
-也可设置 `TERMDOCK_COLLAB_SESSION_ID`，命令行参数优先。显式身份会跳过环境和
+也可设置 `VEYMUX_COLLAB_SESSION_ID`，命令行参数优先。显式身份会跳过环境和
 tmux 检测；无效 ID 由服务端拒绝，不回退到其他身份。现有本地 API 认证和组权限检查仍然生效。
 此功能以同一系统用户下的进程彼此信任为前提；`--session` 是来源选择，不是身份认证，
 不提供这些进程之间的防冒充隔离。
@@ -717,19 +712,19 @@ tmux 检测；无效 ID 由服务端拒绝，不回退到其他身份。现有�
 
 ### 定时任务
 
-`td automation --help` 提供与网页相同的定时任务管理功能。命令默认返回 JSON，成功退出码为 0，失败为 1；Agent 可以保存返回的 `automation.id`，继续管理自己的任务：
+`veymux automation --help` 提供与网页相同的定时任务管理功能。命令默认返回 JSON，成功退出码为 0，失败为 1；Agent 可以保存返回的 `automation.id`，继续管理自己的任务：
 
 ```bash
-td automation create --name 'Review team progress' --every 30 --self \
+veymux automation create --name 'Review team progress' --every 30 --self \
   --prompt 'Review collaboration group progress and continue the work'
-td automation list
-td automation show <automation-id>
-td automation pause <automation-id>
-td automation resume <automation-id>
-td automation run <automation-id>
-td automation delete <automation-id>
+veymux automation list
+veymux automation show <automation-id>
+veymux automation pause <automation-id>
+veymux automation resume <automation-id>
+veymux automation run <automation-id>
+veymux automation delete <automation-id>
 ```
 
-`--self` 选择当前 Termdock 会话，包括服务重启后继续运行的 tmux 会话。其他本机会话使用 `--session <full-session-id>`；每次新建会话使用 `--command '<agent launch command>'`。向既有会话投递时，触发时刻必须已有 Agent 运行。新会话默认使用 CLI 当前目录，可通过 `--cwd` 指定；提示词也可以用 `--file <path>` 或 `--stdin` 提供。
+`--self` 选择当前 Veymux 会话，包括服务重启后继续运行的 tmux 会话。其他本机会话使用 `--session <full-session-id>`；每次新建会话使用 `--command '<agent launch command>'`。向既有会话投递时，触发时刻必须已有 Agent 运行。新会话默认使用 CLI 当前目录，可通过 `--cwd` 指定；提示词也可以用 `--file <path>` 或 `--stdin` 提供。
 
 支持 `--every <整分钟>`（1–43200），或 `--at HH:MM` 配合可选的 `--weekdays 1,2,3,4,5`（0 为周日，6 为周六；不填则每天），按服务端时区执行。任务启用且服务运行时会重复触发，`--disabled` 创建暂停状态的任务。运行成功表示已分派，不代表 Agent 已完成工作；定时任务属于当前服务。

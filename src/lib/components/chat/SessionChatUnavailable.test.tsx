@@ -12,7 +12,7 @@ it('replaces unavailable chat controls with one actionable status and preserves 
   let available = true;
   const terminal = vi.fn();
   vi.stubGlobal('fetch', vi.fn(async () => Response.json({ agentAvailable: available, messages: [] })));
-  const key = `termdock:chat:${location.origin}:unavailable-draft`;
+  const key = `veymux:chat:${location.origin}:unavailable-draft`;
   const files = [{ path: '/tmp/one.png', name: '截图.png', type: 'image/png', reference: '图片1' }];
   sessionStorage.setItem(`${key}:draft`, '请看【图片1】这里');
   sessionStorage.setItem(`${key}:extras`, composeChatDraft('请看【图片1】这里', files, []));

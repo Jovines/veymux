@@ -1,6 +1,6 @@
 # Desktop and service updates
 
-Termdock Desktop connects to independently installed Termdock services.
+Veymux Desktop connects to independently installed Veymux services.
 Each connected service owns its CLI installation and Runtime update lifecycle.
 The CLI and service Runtime controls in Settings operate on that connected
 service through its encrypted page transport.

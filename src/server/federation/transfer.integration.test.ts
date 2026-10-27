@@ -45,7 +45,7 @@ function delayed(socket: WebSocket, oneWayMs: number): globalThis.WebSocket {
 
 it.each(['direct', 'relay'] as const)('pipelines uploads/downloads over real WSS + Noise (%s), preserving input and cancellation', async route => {
   vi.stubGlobal('CloseEvent', class extends Event { code: number; reason: string; constructor(type: string, init: { code: number; reason: string }) { super(type); this.code = init.code; this.reason = init.reason; } });
-  const dir = mkdtempSync(join(tmpdir(), 'td-network-transfer-'));
+  const dir = mkdtempSync(join(tmpdir(), 'veymux-network-transfer-'));
   cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
   execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1', '-keyout', join(dir, 'key.pem'), '-out', join(dir, 'cert.pem'), '-subj', '/CN=localhost', '-addext', 'subjectAltName=IP:127.0.0.1,DNS:localhost'], { stdio: 'ignore' });
   const ca = readFileSync(join(dir, 'cert.pem')), key = readFileSync(join(dir, 'key.pem'));

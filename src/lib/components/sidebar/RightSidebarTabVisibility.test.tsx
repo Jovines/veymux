@@ -32,7 +32,7 @@ const sidebar = (width = 800, open = true) => <I18nProvider><RightSidebar isOpen
 
 beforeEach(() => {
   computerLife.mounts = 0; computerLife.unmounts = 0;
-  localStorage.setItem('termdock:locale', 'zh');
+  localStorage.setItem('veymux:locale', 'zh');
   vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
   useSidebarStore.setState({ ...initialState, rootPath: null, rightTab: 'files' });
   vi.mocked(getSettings).mockResolvedValue({ locale: 'zh' } as Awaited<ReturnType<typeof getSettings>>);

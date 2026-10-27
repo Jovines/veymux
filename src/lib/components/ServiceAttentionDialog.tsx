@@ -71,7 +71,7 @@ export function ServiceAttentionDialog({ groups, currentKey, onClose }: {
     restoreFocus.current = false;
     let opened = false;
     if (sessionId && group.key === currentKey) {
-      window.dispatchEvent(new CustomEvent('termdock:focus-session', { detail: sessionId }));
+      window.dispatchEvent(new CustomEvent('veymux:focus-session', { detail: sessionId }));
       opened = true;
     } else if (sessionId && latest.service?.targetPeerId) {
       opened = host?.focusSession(latest.service.targetPeerId, sessionId) ?? false;

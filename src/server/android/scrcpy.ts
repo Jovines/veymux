@@ -34,7 +34,7 @@ export interface ScrcpyStartOptions { maxSize?: number; maxFps?: number; videoBi
 interface ScrcpyBinaries { bin: string; serverJar: string; version: string }
 
 function scrcpyExecutableCandidates(): string[] {
-  const override = process.env.TERMDOCK_SCRCPY_BIN;
+  const override = process.env.VEYMUX_SCRCPY_BIN;
   const candidates: string[] = [];
   if (override) candidates.push(override);
   const names = process.platform === 'win32' ? ['scrcpy.exe', 'scrcpy'] : ['scrcpy'];
@@ -51,7 +51,7 @@ function resolveScrcpyBin(): string | null {
 }
 
 function serverJarCandidates(bin: string): string[] {
-  const candidates: string[] = [process.env.TERMDOCK_SCRCPY_SERVER || ''];
+  const candidates: string[] = [process.env.VEYMUX_SCRCPY_SERVER || ''];
   if (bin !== 'scrcpy') {
     let resolved = bin;
     try { resolved = realpathSync(bin); } catch { /* keep original path */ }
@@ -104,7 +104,7 @@ export async function resolveScrcpyBinaries(): Promise<ScrcpyBinaries> {
 }
 
 function remoteJarPath(version: string): string {
-  return `/data/local/tmp/termdock-scrcpy-server-${version}.jar`;
+  return `/data/local/tmp/veymux-scrcpy-server-${version}.jar`;
 }
 
 function adbBinary(): string {
@@ -224,11 +224,11 @@ export class ScrcpySession {
           await runAdbCapture(['-s', this.serial, 'push', bitrateOverlayPath, bitrateOverlayRemote]);
           bitrateStage = 'BITRATE_TUNNEL_FAILED';
           if (this.tunnelForward) {
-            const assigned = Number(await runAdbCapture(['-s', this.serial, 'forward', 'tcp:0', `localabstract:termdock_bitrate_${scidHex(this.scid)}`]));
+            const assigned = Number(await runAdbCapture(['-s', this.serial, 'forward', 'tcp:0', `localabstract:veymux_bitrate_${scidHex(this.scid)}`]));
             if (!Number.isInteger(assigned) || assigned < 1 || assigned > 65535) throw new Error('BITRATE_FORWARD_INVALID_PORT');
             this.bitrateForwardPort = assigned;
           } else {
-            await runAdbCapture(['-s', this.serial, 'reverse', `localabstract:termdock_bitrate_${scidHex(this.scid)}`, `tcp:${port}`]);
+            await runAdbCapture(['-s', this.serial, 'reverse', `localabstract:veymux_bitrate_${scidHex(this.scid)}`, `tcp:${port}`]);
           }
           liveBitrate = true;
         } catch (error) {
@@ -242,7 +242,7 @@ export class ScrcpySession {
         this.bitrateChannel?.close();
         this.server?.close();
         await this.removeForward();
-        await Promise.allSettled(['scrcpy_', 'termdock_bitrate_'].map(prefix =>
+        await Promise.allSettled(['scrcpy_', 'veymux_bitrate_'].map(prefix =>
           runAdbCapture(['-s', this.serial, 'reverse', '--remove', `localabstract:${prefix}${scidHex(this.scid)}`], 8000)));
         return;
       }
@@ -250,7 +250,7 @@ export class ScrcpySession {
       const args = [
         '-s', this.serial, 'shell',
         `CLASSPATH=${liveBitrate ? bitrateOverlayRemote + ":" : ""}${remoteJar}`,
-        'app_process', ...(liveBitrate ? [`-Dtermdock.bitrate=termdock_bitrate_${scidHex(this.scid)}`, ...(this.tunnelForward ? ['-Dtermdock.bitrateForward=true'] : [])] : []), '/',
+        'app_process', ...(liveBitrate ? [`-Dveymux.bitrate=veymux_bitrate_${scidHex(this.scid)}`, ...(this.tunnelForward ? ['-Dveymux.bitrateForward=true'] : [])] : []), '/',
         'com.genymobile.scrcpy.Server', version,
         `scid=${this.scid.toString(16)}`,
         'log_level=info',
@@ -455,7 +455,7 @@ export class ScrcpySession {
     await this.removeForward();
     try { await runAdbCapture(['-s', this.serial, 'reverse', '--remove', `localabstract:scrcpy_${scidHex(this.scid)}`], 8000); }
     catch { /* reverse 可能已随进程退出被清理 */ }
-    try { await runAdbCapture(['-s', this.serial, 'reverse', '--remove', `localabstract:termdock_bitrate_${scidHex(this.scid)}`], 8000); }
+    try { await runAdbCapture(['-s', this.serial, 'reverse', '--remove', `localabstract:veymux_bitrate_${scidHex(this.scid)}`], 8000); }
     catch { /* optional channel */ }
     this.events.onClose();
   }

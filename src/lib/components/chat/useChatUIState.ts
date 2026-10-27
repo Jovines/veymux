@@ -10,7 +10,7 @@ export function mergeChatUIEdits(base: unknown, edited: unknown, remote: unknown
   return Object.fromEntries([...new Set([...Object.keys(remote), ...Object.keys(edited)])].filter(key => !['__proto__', 'prototype', 'constructor'].includes(key)).map(key => [key, mergeChatUIEdits(base[key], edited[key], remote[key])]));
 }
 export function useChatUIState(sessionId: string, messageId: string, snapshot: ChatUIState | undefined, enabled: boolean) {
-  const key = `termdock:chat-ui:${savedConnection()?.targetPeerId || location.origin}:${sessionId}:${messageId}`;
+  const key = `veymux:chat-ui:${savedConnection()?.targetPeerId || location.origin}:${sessionId}:${messageId}`;
   const initial = snapshot || { revision: 0, values: {} };
   const model = useRef({ base: initial, values: initial.values, saving: false, waiters: [] as (() => void)[], live: true, blocked: false, enabled });
   model.current.enabled = enabled;

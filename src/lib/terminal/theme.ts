@@ -30,7 +30,7 @@ export interface TerminalTheme {
   brightWhite: string;
 }
 
-export type TermdockColorTheme = 'dark' | 'light';
+export type VeymuxColorTheme = 'dark' | 'light';
 
 // Terminal colors are an ANSI palette, not regular app UI tokens.
 //
@@ -98,6 +98,6 @@ export const FLEXOKI_LIGHT: TerminalTheme = {
   brightWhite: '#100F0F',
 };
 
-export function getTerminalTheme(colorTheme: TermdockColorTheme): TerminalTheme {
+export function getTerminalTheme(colorTheme: VeymuxColorTheme): TerminalTheme {
   return colorTheme === 'light' ? FLEXOKI_LIGHT : FLEXOKI_DARK;
 }

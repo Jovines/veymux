@@ -1,5 +1,5 @@
 /**
- * Termdock 配置中心
+ * Veymux 配置中心
  *
  * —— 如何新增可配置值（三步法） ——
  * 1. 选辅助函数：envInt(envKey, fallback) / envStr(envKey, fallback)
@@ -8,7 +8,7 @@
  * 3. 在 .env.example 补充文档，在 docs/configuration.md 补充速查表条目
  *
  * —— 命名规则 ——
- * 环境变量：TERMDOCK_<CATEGORY>_<PROPERTY>，全大写蛇形
+ * 环境变量：VEYMUX_<CATEGORY>_<PROPERTY>，全大写蛇形
  * 详见 docs/configuration.md
  *
  * —— 为什么用 getter ——
@@ -44,14 +44,14 @@ function isDev(): boolean {
 
 /**
  * 端口配置（可通过环境变量覆盖）
- * - TERMDOCK_PORT_FRONTEND: 前端开发服务器 (Vite) 端口
+ * - VEYMUX_PORT_FRONTEND: 前端开发服务器 (Vite) 端口
  * - PORT: 正式服务端口
- * - TERMDOCK_PORT_DEV_BACKEND: 后端开发 API 端口
+ * - VEYMUX_PORT_DEV_BACKEND: 后端开发 API 端口
  */
 export const PORT = {
-  get frontend(): number { return envInt('TERMDOCK_PORT_FRONTEND', 9833); },
+  get frontend(): number { return envInt('VEYMUX_PORT_FRONTEND', 9833); },
   get backend(): number { return envInt('PORT', 9834); },
-  get devBackend(): number { return envInt('TERMDOCK_PORT_DEV_BACKEND', 9835); },
+  get devBackend(): number { return envInt('VEYMUX_PORT_DEV_BACKEND', 9835); },
 };
 
 /** 默认主机（HOST 环境变量可覆盖） */
@@ -62,10 +62,10 @@ export const DEFAULT_HOST = '0.0.0.0';
 // ---------------------------------------------------------------------------
 
 export const LOCAL_ACCESS = {
-  get domainSuffix(): string { return envStr('TERMDOCK_LOCAL_ACCESS_DOMAIN_SUFFIX', 'termdock.local'); },
-  get generatedNameLength(): number { return envInt('TERMDOCK_LOCAL_ACCESS_NAME_LENGTH', 4); },
-  get generatedNameAlphabet(): string { return envStr('TERMDOCK_LOCAL_ACCESS_NAME_ALPHABET', 'abcdefghijklmnopqrstuvwxyz0123456789'); },
-  get mdnsTtlSeconds(): number { return envInt('TERMDOCK_LOCAL_ACCESS_MDNS_TTL', 120); },
+  get domainSuffix(): string { return envStr('VEYMUX_LOCAL_ACCESS_DOMAIN_SUFFIX', 'veymux.local'); },
+  get generatedNameLength(): number { return envInt('VEYMUX_LOCAL_ACCESS_NAME_LENGTH', 4); },
+  get generatedNameAlphabet(): string { return envStr('VEYMUX_LOCAL_ACCESS_NAME_ALPHABET', 'abcdefghijklmnopqrstuvwxyz0123456789'); },
+  get mdnsTtlSeconds(): number { return envInt('VEYMUX_LOCAL_ACCESS_MDNS_TTL', 120); },
 };
 
 // ---------------------------------------------------------------------------
@@ -105,6 +105,6 @@ export const TERMINAL = {
 export const TMUX = {
   /** tmux scrollback history-limit */
   get historyLimit(): number {
-    return envInt('TERMDOCK_TMUX_HISTORY_LIMIT', 10_000);
+    return envInt('VEYMUX_TMUX_HISTORY_LIMIT', 10_000);
   },
 };

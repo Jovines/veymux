@@ -58,7 +58,7 @@
       if (!client || new URL(client.url).origin !== self.location.origin) return false;
       const url = new URL(client.url);
       return client.frameType === 'top-level' || (url.pathname === '/workspace.html'
-        && /^12D3KooW[1-9A-HJ-NP-Za-km-z]{44}$/.test(url.searchParams.get('termdock-workspace') || ''));
+        && /^12D3KooW[1-9A-HJ-NP-Za-km-z]{44}$/.test(url.searchParams.get('veymux-workspace') || ''));
     };
     const binding = isApplication(source) ? undefined : frameBindings.get(source.id);
     const client = isApplication(source) ? source : binding ? await self.clients.get(binding.ownerId) : undefined;
@@ -96,8 +96,8 @@
       const headers = {}; request.headers.forEach((value, key) => { headers[key] = value; });
       const url = new URL(request.url);
       const headPromise = wait();
-      client.postMessage({ type: 'termdock-secure-fetch', path: url.pathname + url.search,
-        method: request.method, headers, body, expectedTargetPeerId: binding?.targetPeerId || new URL(client.url).searchParams.get('termdock-workspace'), previewPrefix: binding?.previewPrefix }, [channel.port2, ...(body ? [body] : [])]);
+      client.postMessage({ type: 'veymux-secure-fetch', path: url.pathname + url.search,
+        method: request.method, headers, body, expectedTargetPeerId: binding?.targetPeerId || new URL(client.url).searchParams.get('veymux-workspace'), previewPrefix: binding?.previewPrefix }, [channel.port2, ...(body ? [body] : [])]);
       const head = await headPromise;
       if (head?.type !== 'head' || !Number.isInteger(head.status)) throw new Error('Invalid bridge header');
       if (event.resultingClientId && request.mode === 'navigate' && typeof head.targetPeerId === 'string') {

@@ -7,7 +7,7 @@ const css = readFileSync(join(process.cwd(), 'src/lib/components/sidebar/sidebar
 describe('Markdown code scroller styles', () => {
   it('keeps long code lines unwrapped inside a width-constrained horizontal scroller', () => {
     const rule = css.match(
-      /\.termdock-native-select\s+pre\.termdock-file-preview-horizontal-scroll\s*\{([^}]+)\}/,
+      /\.veymux-native-select\s+pre\.veymux-file-preview-horizontal-scroll\s*\{([^}]+)\}/,
     )?.[1];
 
     expect(rule).toBeTruthy();

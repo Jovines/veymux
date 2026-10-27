@@ -8,7 +8,7 @@ import router from './notifications';
 afterEach(() => vi.clearAllMocks());
 it('keys subscription reads and writes by verified device identity, not an absent or forged cookie', async () => {
   const app = express(); app.use(express.json());
-  app.use((req, _res, next) => { req.cookies = { 'termdock-client': 'spoofed-cookie' }; markEncryptedRequest(req, 'verified-device'); next(); });
+  app.use((req, _res, next) => { req.cookies = { 'veymux-client': 'spoofed-cookie' }; markEncryptedRequest(req, 'verified-device'); next(); });
   app.use(router);
   const server = app.listen(0, '127.0.0.1'); await once(server, 'listening');
   const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;

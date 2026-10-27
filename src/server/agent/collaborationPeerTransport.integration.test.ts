@@ -17,8 +17,8 @@ import { CollaborationStore } from './collaborationStore.js';
 const cleanups: Array<() => void> = [];
 afterEach(() => { for (const close of cleanups.splice(0).reverse()) close(); vi.unstubAllEnvs(); });
 async function fixture() {
-  vi.stubEnv('TERMDOCK_PASSWORD', 'peer-wire-test-password');
-  const dir = mkdtempSync(join(tmpdir(), 'td-peer-wire-')); cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+  vi.stubEnv('VEYMUX_PASSWORD', 'peer-wire-test-password');
+  const dir = mkdtempSync(join(tmpdir(), 'veymux-peer-wire-')); cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
   execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1', '-keyout', join(dir, 'key.pem'), '-out', join(dir, 'ca.pem'), '-subj', '/CN=localhost', '-addext', 'subjectAltName=IP:127.0.0.1,DNS:localhost'], { stdio: 'ignore' });
   const ca = readFileSync(join(dir, 'ca.pem')), key = readFileSync(join(dir, 'key.pem'));
   const source = await createIdentity();

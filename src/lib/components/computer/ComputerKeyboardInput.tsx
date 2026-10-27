@@ -77,10 +77,10 @@ export default function ComputerKeyboardInput({ sendText, sendKey, sendChord, pa
     };
     const resetContext = () => { if (!composing.current) reset(); };
     field.addEventListener('beforeinput', beforeInput);
-    field.addEventListener('termdock:computer-input-reset', resetContext);
+    field.addEventListener('veymux:computer-input-reset', resetContext);
     return () => {
       field.removeEventListener('beforeinput', beforeInput);
-      field.removeEventListener('termdock:computer-input-reset', resetContext);
+      field.removeEventListener('veymux:computer-input-reset', resetContext);
       clearTimeout(candidateTimer.current);
     };
   }, []);

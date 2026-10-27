@@ -17,7 +17,7 @@ const first = { serviceId: owner, sessionId: 'first' };
 const current = { serviceId: owner, sessionId: 'current' };
 let directory: string, store: CollaborationTaskStore;
 beforeEach(() => {
-  directory = mkdtempSync(join(tmpdir(), 'td-accepted-report-'));
+  directory = mkdtempSync(join(tmpdir(), 'veymux-accepted-report-'));
   store = new CollaborationTaskStore(join(directory, 'tasks.json'));
 });
 afterEach(() => rmSync(directory, { recursive: true, force: true }));

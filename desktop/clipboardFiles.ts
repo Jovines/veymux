@@ -25,7 +25,7 @@ async function isLocalService(serviceId: unknown): Promise<boolean> {
     // Read the public half of our protobuf Ed25519 key. Desktop packages omit
     // node_modules, so encode the public identity without runtime dependencies.
     // No private key material is returned to the page.
-    const encoded = await readFile(path.join(homedir(), '.termdock', 'federation', 'identity.key'), 'utf8');
+    const encoded = await readFile(path.join(homedir(), '.veymux', 'federation', 'identity.key'), 'utf8');
     const key = Buffer.from(encoded, 'base64');
     // PrivateKey protobuf: Ed25519 enum (1), 64 bytes (seed + public key).
     if (key.length !== 68 || !key.subarray(0, 4).equals(Buffer.from([8, 1, 18, 64]))) return false;
@@ -56,7 +56,7 @@ export async function readClipboardFiles(options?: { localServiceId?: string }):
   if (process.platform !== 'darwin') return [];
   // Keep large movie bytes out of osascript stdout/base64. The private directory
   // is removed after reading, including when the native reader fails.
-  const directory = await mkdtemp(path.join(tmpdir(), 'termdock-clipboard-'));
+  const directory = await mkdtemp(path.join(tmpdir(), 'veymux-clipboard-'));
   try {
     const { stdout } = await execFileAsync('/usr/bin/osascript', ['-l', 'JavaScript', '-e', `
     ObjC.import('AppKit');
@@ -120,14 +120,14 @@ export async function readClipboardFiles(options?: { localServiceId?: string }):
               ? preferredMime : 'application/octet-stream';
             const filePath = argv[0] + '/video-' + i + '.' + extension;
             if (!data.writeToFileAtomically(filePath, true)) {
-              throw new Error('TERMDOCK_CLIPBOARD_VIDEO_ERROR: 无法读取剪贴板视频');
+              throw new Error('VEYMUX_CLIPBOARD_VIDEO_ERROR: 无法读取剪贴板视频');
             }
             videos.push({ path: filePath, type: mime });
             savedMovie = true;
             break;
           }
           if (advertisedMovie && !savedMovie) {
-            throw new Error('TERMDOCK_CLIPBOARD_VIDEO_ERROR: 复制来源未提供可读取的视频数据，请重新复制视频或选择文件上传');
+            throw new Error('VEYMUX_CLIPBOARD_VIDEO_ERROR: 复制来源未提供可读取的视频数据，请重新复制视频或选择文件上传');
           }
         }
       }

@@ -3,9 +3,9 @@ import { promisify } from 'util';
 
 const execFileAsync = promisify(execFile);
 
-export const TERMDOCK_OUTER_TERM = 'xterm-256color';
-export const TERMDOCK_TRUECOLOR_FEATURE_SLOT = 'terminal-features[100]';
-export const TERMDOCK_TRUECOLOR_OVERRIDE_SLOT = 'terminal-overrides[100]';
+export const VEYMUX_OUTER_TERM = 'xterm-256color';
+export const VEYMUX_TRUECOLOR_FEATURE_SLOT = 'terminal-features[100]';
+export const VEYMUX_TRUECOLOR_OVERRIDE_SLOT = 'terminal-overrides[100]';
 
 export type TmuxCommandRunner = (args: string[]) => Promise<unknown>;
 
@@ -14,7 +14,7 @@ export function buildInteractiveColorEnvironment(
 ): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...source, COLORTERM: 'truecolor' };
   delete env.NO_COLOR;
-  if (source.TERMDOCK_FORCE_COLOR === '1') {
+  if (source.VEYMUX_FORCE_COLOR === '1') {
     env.FORCE_COLOR = '1';
   } else {
     delete env.FORCE_COLOR;
@@ -63,7 +63,7 @@ export async function resolveTmuxInnerTerm(): Promise<'tmux-256color' | 'screen-
 }
 
 /**
- * Keep Termdock's known xterm.js capabilities independent of each host's
+ * Keep Veymux's known xterm.js capabilities independent of each host's
  * ~/.tmux.conf. A fixed array slot makes repeated preparation idempotent.
  * terminal-features is available in modern tmux; legacy releases use Tc.
  */
@@ -74,13 +74,13 @@ export async function ensureTmuxColorCapabilities(
 ): Promise<void> {
   try {
     await runTmux([
-      'set-option', '-s', TERMDOCK_TRUECOLOR_FEATURE_SLOT,
-      `${TERMDOCK_OUTER_TERM}:RGB`,
+      'set-option', '-s', VEYMUX_TRUECOLOR_FEATURE_SLOT,
+      `${VEYMUX_OUTER_TERM}:RGB`,
     ]);
   } catch {
     await runTmux([
-      'set-option', '-s', TERMDOCK_TRUECOLOR_OVERRIDE_SLOT,
-      `${TERMDOCK_OUTER_TERM}:Tc`,
+      'set-option', '-s', VEYMUX_TRUECOLOR_OVERRIDE_SLOT,
+      `${VEYMUX_OUTER_TERM}:Tc`,
     ]);
   }
 

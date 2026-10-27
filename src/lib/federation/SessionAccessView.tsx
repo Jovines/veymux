@@ -14,7 +14,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { createBrowserTerminal, TerminalGeometry, type TerminalGeometryPhase } from '../terminal/geometry';
 import { acknowledgeResize, createResizeSyncState, observeServerSize, requestResize } from '../terminal/resizeSync';
 import '@xterm/xterm/css/xterm.css';
-import { getTerminalTheme, type TermdockColorTheme } from '../terminal/theme';
+import { getTerminalTheme, type VeymuxColorTheme } from '../terminal/theme';
 import type { SecureClient } from './secureClient';
 import { beginSidebarResize } from '../components/sidebar/sidebarResize';
 import { useSidebarStore } from '../stores/useSidebarStore';
@@ -38,7 +38,7 @@ function SharedSessionPane({ client, initialSessionId, initialViewMode, sessions
   const sidebarWidth = useSidebarStore(state => state.rightSidebarWidth);
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 1024);
   const [wide, setWide] = useState(() => window.innerWidth >= 1024);
-  const [invitedMode] = useState(() => { try { return sessionStorage.getItem(`termdock:shared-view:${client.targetPeerId}`); } catch { return null; } });
+  const [invitedMode] = useState(() => { try { return sessionStorage.getItem(`veymux:shared-view:${client.targetPeerId}`); } catch { return null; } });
   const defaultMode = initialViewMode || (invitedMode === 'chat' ? 'chat' : invitedMode === 'terminal' ? 'terminal' : savedConnection()?.viewMode) || 'terminal';
   const allowTerminal = selected?.canViewTerminal !== false, allowChat = selected?.canViewChat !== false;
   // Explicit shared capabilities choose a local view; switching a preview
@@ -83,7 +83,7 @@ function SharedSessionPane({ client, initialSessionId, initialViewMode, sessions
   }, [sessions, initialSessionId]);
   const [reconnectEpoch, setReconnectEpoch] = useState(0);
   const [status, setStatus] = useState('正在读取会话…');
-  const [theme, setTheme] = useState<TermdockColorTheme>(() => document.documentElement.dataset.theme === 'light' ? 'light' : 'dark');
+  const [theme, setTheme] = useState<VeymuxColorTheme>(() => document.documentElement.dataset.theme === 'light' ? 'light' : 'dark');
   useEffect(() => {
     const observer = new MutationObserver(() => setTheme(document.documentElement.dataset.theme === 'light' ? 'light' : 'dark'));
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
@@ -262,8 +262,8 @@ export function SessionAccessView({ client, initialSessionId, initialViewMode, i
   const [sessions, setSessions] = useState<RemoteSession[]>([]);
   const [resources, setResources] = useState<ShareResources>({});
   const [directoryError, setDirectoryError] = useState('');
-  const [split, setSplit] = useState(() => { try { const saved = sessionStorage.getItem(`termdock:shared-layout:${client.targetPeerId}`); if (saved) return saved === 'split'; } catch { /* Optional layout preference. */ } return initialViewLayout === 'split'; });
-  useEffect(() => { if (initialViewLayout !== 'split') return; try { if (sessionStorage.getItem(`termdock:shared-layout:${client.targetPeerId}`)) return; } catch { /* Optional layout preference. */ } setSplit(true); }, [initialViewLayout, client.targetPeerId]);
+  const [split, setSplit] = useState(() => { try { const saved = sessionStorage.getItem(`veymux:shared-layout:${client.targetPeerId}`); if (saved) return saved === 'split'; } catch { /* Optional layout preference. */ } return initialViewLayout === 'split'; });
+  useEffect(() => { if (initialViewLayout !== 'split') return; try { if (sessionStorage.getItem(`veymux:shared-layout:${client.targetPeerId}`)) return; } catch { /* Optional layout preference. */ } setSplit(true); }, [initialViewLayout, client.targetPeerId]);
   useEffect(() => {
     let active = true, running = false;
     const refresh = async () => {
@@ -287,7 +287,7 @@ export function SessionAccessView({ client, initialSessionId, initialViewMode, i
   const showSplit = split && !!second;
   return <div className="flex h-full min-h-0 flex-col bg-[var(--chrome-bg)] text-foreground">
     {desktopInvitation && canOpenDesktopInvitation() && <div className="flex shrink-0 justify-end border-b border-border/30 px-2"><DesktopInvitationButton invitation={desktopInvitation} compact /></div>}
-    {sessions.length > 1 && <div className="flex shrink-0 justify-end border-b border-border/30 px-2"><button type="button" aria-pressed={showSplit} className="inline-flex min-h-11 items-center gap-2 rounded-lg px-3 text-xs hover:bg-surface-2" onClick={() => { setSplit(!showSplit); try { sessionStorage.setItem(`termdock:shared-layout:${client.targetPeerId}`, showSplit ? 'single' : 'split'); } catch { /* Optional layout preference. */ } }}><Columns2 size={15} />{showSplit ? '单会话' : '分屏查看'}</button></div>}
+    {sessions.length > 1 && <div className="flex shrink-0 justify-end border-b border-border/30 px-2"><button type="button" aria-pressed={showSplit} className="inline-flex min-h-11 items-center gap-2 rounded-lg px-3 text-xs hover:bg-surface-2" onClick={() => { setSplit(!showSplit); try { sessionStorage.setItem(`veymux:shared-layout:${client.targetPeerId}`, showSplit ? 'single' : 'split'); } catch { /* Optional layout preference. */ } }}><Columns2 size={15} />{showSplit ? '单会话' : '分屏查看'}</button></div>}
     <div className={`flex min-h-0 flex-1 ${showSplit ? 'flex-col lg:flex-row' : ''}`}>
       <section className="min-h-0 min-w-0 flex-1" aria-label={showSplit ? '第一个共享会话' : '共享会话'}><SharedSessionPane client={client} initialSessionId={showSplit ? first?.sessionId : initialSessionId} initialViewMode={initialViewMode} sessions={showSplit ? sessions.filter(session => session.sessionId !== second?.sessionId) : sessions} resources={resources} directoryError={directoryError} /></section>
       {showSplit && <section className="min-h-0 min-w-0 flex-1 border-t border-border lg:border-l lg:border-t-0" aria-label="第二个共享会话"><SharedSessionPane client={client} initialSessionId={second.sessionId} initialViewMode={initialViewMode} sessions={sessions.filter(session => session.sessionId !== first?.sessionId)} resources={resources} directoryError={directoryError} /></section>}

@@ -15,8 +15,8 @@ it.each([
   { mode: 'detached rebind', args: ['rebind', '--session', 'original-peer', '--pane', '%173'], explicit: true, invalid: false },
   { mode: 'unknown explicit identity', args: ['status', '--session', 'missing-peer'], explicit: false, invalid: true },
 ])('resolves collaboration identity: $mode', async ({ args, explicit, invalid }) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'td-cli-upgrade-'));
-  const stateDirectory = path.join(directory, '.termdock');
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-cli-upgrade-'));
+  const stateDirectory = path.join(directory, '.veymux');
   fs.mkdirSync(stateDirectory);
   const groupsFile = path.join(stateDirectory, 'collaboration-groups.json');
   const legacy = JSON.stringify({ version: 1, groups: [{ id: 'original-group', name: 'Original team', sessionIds: ['original-peer', 'other'], createdAt: 1, updatedAt: 1 }], messages: [] });
@@ -38,12 +38,12 @@ it.each([
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
     fs.writeFileSync(path.join(stateDirectory, 'server.json'), JSON.stringify({ pid: process.pid, host: '127.0.0.1', scheme: 'http', port: (server.address() as { port: number }).port, localApiToken: 'isolated-test-token' }));
     const preload = path.join(directory, 'preload.mjs');
-    fs.writeFileSync(preload, "import os from 'node:os'; import { syncBuiltinESMExports } from 'node:module'; os.homedir = () => process.env.TERMDOCK_COLLAB_TEST_DIRECTORY; syncBuiltinESMExports();");
+    fs.writeFileSync(preload, "import os from 'node:os'; import { syncBuiltinESMExports } from 'node:module'; os.homedir = () => process.env.VEYMUX_COLLAB_TEST_DIRECTORY; syncBuiltinESMExports();");
     const tmux = path.join(directory, 'tmux-fixture');
     fs.writeFileSync(tmux, '#!/usr/bin/env node\nif (JSON.stringify(process.argv.slice(2)) !== JSON.stringify(["display-message", "-p", "-t", "%7", "#S"])) process.exit(1);\nconsole.log("original-tmux");\n', { mode: 0o700 });
     const result = await new Promise<{ code: number | null; stdout: string; stderr: string }>((resolve, reject) => {
       const child = spawn(process.execPath, ['--import', preload, '--import', 'tsx', fileURLToPath(new URL('../cli.ts', import.meta.url)), 'collab', ...args], {
-        env: { ...process.env, TERMDOCK_COLLAB_TEST_DIRECTORY: directory, TERMDOCK_COLLAB_SESSION_ID: '', TERMDOCK_BACKEND_SESSION_ID: explicit ? '' : 'obsolete-backend', TMUX: explicit ? '' : 'isolated', TMUX_PANE: explicit ? '' : '%7', TMUX_BIN: tmux },
+        env: { ...process.env, VEYMUX_COLLAB_TEST_DIRECTORY: directory, VEYMUX_COLLAB_SESSION_ID: '', VEYMUX_BACKEND_SESSION_ID: explicit ? '' : 'obsolete-backend', TMUX: explicit ? '' : 'isolated', TMUX_PANE: explicit ? '' : '%7', TMUX_BIN: tmux },
         stdio: ['ignore', 'pipe', 'pipe'],
       });
       let stdout = ''; let stderr = '';
@@ -70,7 +70,7 @@ it.each([
 }, 15_000);
 
 it('preserves real process timeout codes and drains large piped inbox JSON', async () => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'td-cli-process-'));
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-cli-process-'));
   const server = http.createServer((req, res) => {
     req.resume();
     res.setHeader('Content-Type', 'application/json');
@@ -80,13 +80,13 @@ it('preserves real process timeout codes and drains large piped inbox JSON', asy
   });
   try {
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-    fs.mkdirSync(path.join(directory, '.termdock'));
-    fs.writeFileSync(path.join(directory, '.termdock/server.json'), JSON.stringify({ pid: process.pid, host: '127.0.0.1', scheme: 'http', port: (server.address() as { port: number }).port, localApiToken: 'isolated-test-token' }));
+    fs.mkdirSync(path.join(directory, '.veymux'));
+    fs.writeFileSync(path.join(directory, '.veymux/server.json'), JSON.stringify({ pid: process.pid, host: '127.0.0.1', scheme: 'http', port: (server.address() as { port: number }).port, localApiToken: 'isolated-test-token' }));
     const preload = path.join(directory, 'preload.mjs');
-    fs.writeFileSync(preload, "import os from 'node:os'; import { syncBuiltinESMExports } from 'node:module'; os.homedir = () => process.env.TERMDOCK_COLLAB_TEST_DIRECTORY; syncBuiltinESMExports();");
+    fs.writeFileSync(preload, "import os from 'node:os'; import { syncBuiltinESMExports } from 'node:module'; os.homedir = () => process.env.VEYMUX_COLLAB_TEST_DIRECTORY; syncBuiltinESMExports();");
     const run = (args: string[]) => new Promise<{ code: number | null; stdout: string; stderr: string }>((resolve, reject) => {
       const child = spawn(process.execPath, ['--import', preload, '--import', 'tsx', fileURLToPath(new URL('../cli.ts', import.meta.url)), 'collab', ...args], {
-        env: { ...process.env, TERMDOCK_COLLAB_TEST_DIRECTORY: directory, TERMDOCK_BACKEND_SESSION_ID: 'generic', TMUX: '' }, stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, VEYMUX_COLLAB_TEST_DIRECTORY: directory, VEYMUX_BACKEND_SESSION_ID: 'generic', TMUX: '' }, stdio: ['ignore', 'pipe', 'pipe'],
       });
       let stdout = ''; let stderr = '';
       const timer = setTimeout(() => child.kill(), 15_000);

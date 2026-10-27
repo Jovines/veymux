@@ -1,6 +1,7 @@
 #!/usr/bin/env node
+import './utils/brandMigration.js';
 /**
- * termdock pty-host daemon — owns shell-mode PTYs outside the server process,
+ * veymux pty-host daemon — owns shell-mode PTYs outside the server process,
  * so sessions survive server restarts/crashes/deploys. （架构移植自 tty7 的
  * persistent daemon，Apache-2.0；单进程多 channel 复用版）
  *

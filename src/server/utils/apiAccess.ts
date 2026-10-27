@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import { requireAuth } from './authProtection.js';
 
 export function isTrustedLocalRequest(req: Request, token?: string | null): boolean {
-  const supplied = req.header('X-Termdock-Local-Token');
+  const supplied = req.header('X-Veymux-Local-Token');
   if (!token || !supplied || req.headers.origin || req.headers['sec-fetch-site']) return false;
   const address = req.socket.remoteAddress ?? '';
   if (!['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(address)) return false;

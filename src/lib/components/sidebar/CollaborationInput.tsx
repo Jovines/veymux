@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState, type Dispatch, type SetStateAction 
 import { Paperclip, RefreshCw } from 'lucide-react';
 import { focusCollaborationInput, registerCollaborationInput } from '../../collaboration/inputTarget';
 import { escapeShellPath } from '../../desktop/shellPath';
-import { getTermdockDesktopBridge } from '../../desktop/nativeBridge';
+import { getVeymuxDesktopBridge } from '../../desktop/nativeBridge';
 import { selectedTarget } from '../../federation/clientScope';
 import { uploadTerminalClipboardFiles, uploadTerminalClipboardImage } from '../../terminal/clipboardImage';
 import { clipboardEventContent, readClipboardContent } from '../../terminal/clipboardContent';
@@ -24,11 +24,11 @@ export function CollaborationInput({ inputKey, paneKey, label, value, onChange, 
   const scope = useRef({ active, disabled, inputKey }); scope.current = { active, disabled, inputKey };
   useEffect(() => {
     const cancel = () => { for (const operation of operations.current) operation.abort(); };
-    window.addEventListener('termdock:secure-state', cancel);
+    window.addEventListener('veymux:secure-state', cancel);
     window.addEventListener('auth:unauthorized', cancel);
     return () => {
       cancel();
-      window.removeEventListener('termdock:secure-state', cancel);
+      window.removeEventListener('veymux:secure-state', cancel);
       window.removeEventListener('auth:unauthorized', cancel);
     };
   }, [active, disabled, inputKey]);
@@ -71,7 +71,7 @@ export function CollaborationInput({ inputKey, paneKey, label, value, onChange, 
     ? [await uploadTerminalClipboardImage(files[0], signal)] : uploadTerminalClipboardFiles(files, signal);
   const paste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const { files, text } = clipboardEventContent(event.clipboardData);
-    const native = getTermdockDesktopBridge();
+    const native = getVeymuxDesktopBridge();
     if (!native?.readClipboardFiles && !files.length && text) return;
     if (!native && !files.length && typeof navigator.clipboard?.read !== 'function') return;
     event.preventDefault();

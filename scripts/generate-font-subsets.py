@@ -20,9 +20,9 @@ ROOT = Path(__file__).resolve().parents[1]
 FONTS = ROOT / "public/fonts"
 OUTPUT = FONTS / "terminal"
 FAMILY_SOURCES = [
-    ("Termdock Prompt Icons", [f"JetBrainsMonoNLNerdFontMono-{w}" for w in ["Regular", "Bold"]]),
-    ("Termdock Maple", [f"MapleMono-{w}" for w in ["Regular", "Bold", "Italic", "BoldItalic"]]),
-    ("Termdock Mono", [f"JetBrainsMonoNLNerdFontMono-{w}" for w in ["Regular", "Bold", "Italic", "BoldItalic"]]),
+    ("Veymux Prompt Icons", [f"JetBrainsMonoNLNerdFontMono-{w}" for w in ["Regular", "Bold"]]),
+    ("Veymux Maple", [f"MapleMono-{w}" for w in ["Regular", "Bold", "Italic", "BoldItalic"]]),
+    ("Veymux Mono", [f"JetBrainsMonoNLNerdFontMono-{w}" for w in ["Regular", "Bold", "Italic", "BoldItalic"]]),
     ("Noto Sans Mono CJK SC", ["NotoSansMonoCJKsc-Subset", "NotoSansMonoCJKsc-Bold-Subset"]),
 ]
 
@@ -45,13 +45,13 @@ def main(families: list[str] | None = None) -> None:
     if families:
         previous = json.loads((OUTPUT / "manifest.json").read_text())
         def stored_family(face: dict) -> str:
-            return face.get("family") or ("Termdock Maple" if face["source"].startswith("MapleMono-")
-                                          else "Termdock Mono" if face["source"].startswith("JetBrainsMono")
+            return face.get("family") or ("Veymux Maple" if face["source"].startswith("MapleMono-")
+                                          else "Veymux Mono" if face["source"].startswith("JetBrainsMono")
                                           else "Noto Sans Mono CJK SC")
         manifest["faces"] = [face for face in previous["faces"] if stored_family(face) not in families]
         expected.update(shard["file"] for face in manifest["faces"] for shard in face["shards"])
         replaced_families = set(families)
-        if "Termdock Maple" in replaced_families:
+        if "Veymux Maple" in replaced_families:
             replaced_families.add("Maple Mono")
         css.extend(line for line in (ROOT / "src/lib/terminal/fontFaces.css").read_text().splitlines()
                    if line.startswith("@font-face") and not any(f'font-family:"{family}";' in line for family in replaced_families))
@@ -62,7 +62,7 @@ def main(families: list[str] | None = None) -> None:
             source = FONTS / f"{stem}.woff2"
             original = TTFont(source)
             cmap = original.getBestCmap()
-            if family == "Termdock Prompt Icons":
+            if family == "Veymux Prompt Icons":
                 spec = json.loads((ROOT / "tools/font/terminal-prompt-icons.json").read_text())
                 selected = {int(point, 16) for point in spec["codepoints"]}
                 for start, end in spec["ranges"]:
@@ -70,11 +70,11 @@ def main(families: list[str] | None = None) -> None:
                 cmap = {cp: glyph for cp, glyph in cmap.items() if cp in selected}
             groups: dict[str, list[int]] = {}
             for cp in sorted(cmap):
-                if family == "Termdock Prompt Icons":
+                if family == "Veymux Prompt Icons":
                     key = "icons"
-                elif family == "Termdock Maple":
+                elif family == "Veymux Maple":
                     key = "ascii" if cp == 0xD or 0x20 <= cp <= 0x7E else "text"
-                elif family == "Termdock Mono":
+                elif family == "Veymux Mono":
                     key = f"icons-{cp // 1024:x}" if 0xE000 <= cp <= 0xF8FF or 0xF0000 <= cp <= 0x10FFFF else "text"
                 else:
                     key = f"cjk-{cp // 256:x}" if 0x3400 <= cp <= 0x9FFF else "punctuation"
@@ -87,29 +87,29 @@ def main(families: list[str] | None = None) -> None:
                 subsetter = subset.Subsetter(options=options)
                 subsetter.populate(unicodes=points)
                 subsetter.subset(font)
-                if family == "Termdock Maple":
+                if family == "Veymux Maple":
                     # Maple Mono is an OFL reserved name. Our web subsets keep
                     # its glyphs/metrics but carry their own derivative name.
                     for record in font["name"].names:
                         if record.nameID not in (1, 3, 4, 6, 16):
                             continue
                         value = record.toUnicode()
-                        renamed = value.replace("Maple Mono", "Termdock Maple").replace("MapleMono", "TermdockMaple")
+                        renamed = value.replace("Maple Mono", "Veymux Maple").replace("MapleMono", "VeymuxMaple")
                         if renamed != value:
                             record.string = renamed.encode(record.getEncoding())
-                if family == "Termdock Prompt Icons":
+                if family == "Veymux Prompt Icons":
                     suffix = "Bold" if "Bold" in stem else "Regular"
-                    names = {1: family, 16: family, 3: f"TermdockPromptIcons-{suffix}",
-                             4: f"{family} {suffix}", 6: f"TermdockPromptIcons-{suffix}"}
+                    names = {1: family, 16: family, 3: f"VeymuxPromptIcons-{suffix}",
+                             4: f"{family} {suffix}", 6: f"VeymuxPromptIcons-{suffix}"}
                     for record in font["name"].names:
                         if record.nameID in names:
                             record.string = names[record.nameID].encode(record.getEncoding())
                 buffer = io.BytesIO()
                 font.save(buffer)
                 body = buffer.getvalue()
-                output_stem = stem.replace("MapleMono", "TermdockMaple")
-                if family == "Termdock Prompt Icons":
-                    output_stem = stem.replace("JetBrainsMonoNLNerdFontMono", "TermdockPromptIcons")
+                output_stem = stem.replace("MapleMono", "VeymuxMaple")
+                if family == "Veymux Prompt Icons":
+                    output_stem = stem.replace("JetBrainsMonoNLNerdFontMono", "VeymuxPromptIcons")
                 name = f"{output_stem}-{key}-{hashlib.sha256(body).hexdigest()[:12]}.woff2"
                 (OUTPUT / name).write_bytes(body)
                 expected.add(name)
@@ -124,7 +124,7 @@ def main(families: list[str] | None = None) -> None:
                 css.append(f'@font-face{{font-family:"{family}";src:url("/fonts/terminal/{name}") format("woff2");font-weight:{weight};font-style:{style};font-display:swap;unicode-range:{ranges(points)};}}')
                 records.append({"file": name, "bytes": len(body), "codepoints": len(points), "group": key})
             record = {"source": source.name, "sourceSha256": hashlib.sha256(source.read_bytes()).hexdigest(), "shards": records}
-            if family == "Termdock Prompt Icons":
+            if family == "Veymux Prompt Icons":
                 record["family"] = family
             manifest["faces"].append(record)
     # Delete only generated font shards; the full source font pack is untouched.

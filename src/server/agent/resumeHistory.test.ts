@@ -9,7 +9,7 @@ describe('AgentResumeHistoryStore', () => {
   let file: string;
 
   beforeEach(() => {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'termdock-agent-resume-history-'));
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-agent-resume-history-'));
     file = path.join(dir, 'history.json');
   });
 

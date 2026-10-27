@@ -11,7 +11,7 @@ it('reserves client capacity and pauses launches under CPU pressure', () => {
 
 it('validates recovery gate configuration', () => {
   expect(configuredTmuxRecoveryLoadBudget({})).toEqual({ maxClients: 96, maxLoadPerCpu: 0.9 });
-  expect(configuredTmuxRecoveryLoadBudget({ TD_TMUX_RECOVERY_MAX_CLIENTS: '150', TD_TMUX_RECOVERY_MAX_LOAD_PER_CPU: '1.2' }))
+  expect(configuredTmuxRecoveryLoadBudget({ VEYMUX_TMUX_RECOVERY_MAX_CLIENTS: '150', VEYMUX_TMUX_RECOVERY_MAX_LOAD_PER_CPU: '1.2' }))
     .toEqual({ maxClients: 150, maxLoadPerCpu: 1.2 });
-  for (const value of ['0', '-1', 'NaN', '2.5']) expect(() => configuredTmuxRecoveryLoadBudget({ TD_TMUX_RECOVERY_MAX_CLIENTS: value })).toThrow();
+  for (const value of ['0', '-1', 'NaN', '2.5']) expect(() => configuredTmuxRecoveryLoadBudget({ VEYMUX_TMUX_RECOVERY_MAX_CLIENTS: value })).toThrow();
 });

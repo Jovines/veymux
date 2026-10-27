@@ -136,7 +136,7 @@ class GestureManagerClass {
   // ── Debug ──
 
   private log(action: string, handler: string, detail = ''): void {
-    if (typeof window !== 'undefined' && (window as any).__TERMDOCK_GESTURE_DEBUG__) {
+    if (typeof window !== 'undefined' && (window as any).__VEYMUX_GESTURE_DEBUG__) {
       const ts = performance.now().toFixed(0);
       console.debug(`[GestureManager ${ts}] ${action} ${handler} ${detail}`);
     }

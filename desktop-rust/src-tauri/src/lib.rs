@@ -1,4 +1,5 @@
 pub mod clipboard_collector;
+pub mod brand_migration;
 pub mod config;
 pub mod invitation_link;
 pub mod product;

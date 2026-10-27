@@ -7,12 +7,12 @@ const root=new URL('../../',import.meta.url);
 const source=new URL('../../dist/client/',import.meta.url);
 const destination=new URL('../.workspace-dist/',import.meta.url);
 if(!fs.existsSync(new URL('index.html',source))) throw new Error('Build the existing React client before preparing Preview workspace assets');
-let revision=process.env.TERMDOCK_PREVIEW_SOURCE_REVISION,dirty=false,diffHash=null;
+let revision=process.env.VEYMUX_PREVIEW_SOURCE_REVISION,dirty=false,diffHash=null;
 try {
  revision ||= execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim();
  const diff=execFileSync('git',['diff','HEAD','--','src','public','vite.config.ts','desktop','desktop-rust'],{cwd:root});
  dirty=diff.length>0 || execFileSync('git',['status','--porcelain','--','src','public','vite.config.ts','desktop','desktop-rust'],{cwd:root,encoding:'utf8'}).trim().length>0;diffHash=dirty?crypto.createHash('sha256').update(diff).digest('hex'):null;
-} catch { if(!revision) throw new Error('An archive build needs TERMDOCK_PREVIEW_SOURCE_REVISION set to its exact source commit'); }
+} catch { if(!revision) throw new Error('An archive build needs VEYMUX_PREVIEW_SOURCE_REVISION set to its exact source commit'); }
 if(!/^[a-f0-9]{40}$/.test(revision)) throw new Error('Invalid Preview source revision');
 if(process.argv.includes('--require-clean')&&dirty) throw new Error('Package Preview from a clean task commit/archive; keep unfinished WIP out of the package');
 fs.rmSync(destination,{recursive:true,force:true});fs.mkdirSync(destination,{recursive:true});

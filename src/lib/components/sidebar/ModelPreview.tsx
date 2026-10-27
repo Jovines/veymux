@@ -337,9 +337,9 @@ async function parseModel(buffer: ArrayBuffer, kind: Model3dLoaderKind): Promise
   });
   gltf.scene.traverse((node) => {
     const mapping = gltf.parser?.associations.get(node);
-    if (mapping?.meshes !== undefined) node.userData.termdockSinglePart = true;
+    if (mapping?.meshes !== undefined) node.userData.veymuxSinglePart = true;
     const originalName = mapping?.nodes !== undefined ? gltf.parser.json.nodes?.[mapping.nodes]?.name : undefined;
-    if (originalName) node.userData.termdockPartName = originalName;
+    if (originalName) node.userData.veymuxPartName = originalName;
   });
   return { kind: 'gltf', object: gltf.scene };
 }
@@ -936,7 +936,7 @@ function mountModelViewer(
       const normal: [number, number, number] | null = worldNormal ? [worldNormal.x, -worldNormal.z, worldNormal.y] : null;
       // 优先最近的零件 Group；底层 Mesh 名可能是导出器生成名或乱码。
       const partNode = explosion?.part(hit.object);
-      const part = partNode?.userData.termdockPartName || partNode?.name || resolvePickedPartName(hit.object);
+      const part = partNode?.userData.veymuxPartName || partNode?.name || resolvePickedPartName(hit.object);
       return { part, node: partNode?.uuid, visibilityId: visibility.id(hit.object), point, normal };
     },
     setSelection: (selections) => {
@@ -1069,7 +1069,7 @@ type ModelPreviewStatus =
   | { kind: 'ready'; dims: string; partCount: number; parts: ModelPartInfo[] }
   | { kind: 'error'; message: string };
 
-const BG_STORAGE_KEY = 'termdock.model3d.bg';
+const BG_STORAGE_KEY = 'veymux.model3d.bg';
 
 export default function ModelPreview({
   blobUrl,

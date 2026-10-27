@@ -59,8 +59,8 @@ export function invitationForService(value: unknown, service: SavedConnection): 
   if (value === undefined) return;
   if (typeof value !== 'string' || value.length > 12000) throw new Error('邀请链接无效。');
   const url = new URL(value);
-  if (url.origin !== service.url || url.username || url.password || url.search || url.pathname !== '/' || !url.hash.startsWith('#termdock-invite=')) throw new Error('邀请地址与服务不一致。');
-  const descriptor = JSON.parse(Buffer.from(url.hash.slice('#termdock-invite='.length), 'base64url').toString('utf8'));
+  if (url.origin !== service.url || url.username || url.password || url.search || url.pathname !== '/' || !url.hash.startsWith('#veymux-invite=')) throw new Error('邀请地址与服务不一致。');
+  const descriptor = JSON.parse(Buffer.from(url.hash.slice('#veymux-invite='.length), 'base64url').toString('utf8'));
   if (descriptor.v !== 1 || descriptor.serviceId !== service.targetPeerId || descriptor.entryServiceId !== service.entryServiceId || descriptor.entryUrl !== service.url || (descriptor.routeOnly === true ? descriptor.code !== undefined || !descriptor.entryServiceId || typeof descriptor.routeCode !== 'string' || !/^[A-Za-z0-9_-]{32,128}$/.test(descriptor.routeCode) : typeof descriptor.code !== 'string' || !/^[A-Za-z0-9_-]{32,128}$/.test(descriptor.code))) throw new Error('邀请内容与服务不一致。');
   return url.href;
 }

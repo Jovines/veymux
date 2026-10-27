@@ -33,7 +33,7 @@ import { useDiffDisplayPrefs, type DiffContextPref, type DiffWhitespacePref } fr
 const MAX_DIFF_CACHE_ENTRIES = 24;
 const MAX_PARSED_DIFF_CACHE_ENTRIES = 32;
 const MAX_RENDER_DIFF_LINES = 8_000;
-const DIFF_VIEW_TYPE_STORAGE_KEY = 'termdock:diff-viewer:view-type:v1';
+const DIFF_VIEW_TYPE_STORAGE_KEY = 'veymux:diff-viewer:view-type:v1';
 export const SPLIT_DIFF_MEDIA_QUERY = '(min-width: 900px)';
 
 type DiffLoadResult = FileDiffResponse;
@@ -1788,7 +1788,7 @@ export function DiffViewer({ filePath, repoRoot, referenceFilePath, interactionI
         })();
         const lineReferenceInserted = Boolean(lineReference && insertedReferenceKey === lineReference.referenceKey);
         const lineReferenceCopied = Boolean(lineReference && copiedReferenceKey === lineReference.referenceKey);
-        const diffGutterStyle = { '--termdock-diff-gutter-width': `${getDiffGutterWidthCh(expandedHunks ?? file.hunks)}ch` } as React.CSSProperties;
+        const diffGutterStyle = { '--veymux-diff-gutter-width': `${getDiffGutterWidthCh(expandedHunks ?? file.hunks)}ch` } as React.CSSProperties;
         return (
         // Keep a stable file anchor on each parsed diff block. It is useful for
         // deep links/debugging and preserves the previous DOM contract even when
@@ -1826,12 +1826,12 @@ export function DiffViewer({ filePath, repoRoot, referenceFilePath, interactionI
             </div>
           )}
           {/*
-            `termdock-diff-scroll` opts this card into a CSS rule that
+            `veymux-diff-scroll` opts this card into a CSS rule that
             sets `touch-action: pan-x` on the inner overflow element. That
             tells the browser the user wants horizontal panning on touch
             here, so it doesn't get hijacked by the parent vertical
             scroller's overscroll/pan-y chain.
-            `termdock-diff-wrap` flips long lines to wrap mode instead.
+            `veymux-diff-wrap` flips long lines to wrap mode instead.
           */}
           {file.hunks.length === 0 ? (
             <div className="bg-surface-2 px-3 py-5 text-center text-xs text-muted-foreground">
@@ -1839,8 +1839,8 @@ export function DiffViewer({ filePath, repoRoot, referenceFilePath, interactionI
               {t('diffViewer.binaryOrEmpty')}
             </div>
           ) : (
-            <DiffSplitScrollArea enabled={viewType === 'split' && !wrap} label={t('rightSidebar.horizontalScrollHint')} className={`termdock-native-select overflow-x-auto termdock-diff-scroll ${viewType === 'split' ? 'diff-split' : ''} ${wrap ? 'termdock-diff-wrap' : ''}`}>
-              <div className="termdock-diff-canvas min-w-full">
+            <DiffSplitScrollArea enabled={viewType === 'split' && !wrap} label={t('rightSidebar.horizontalScrollHint')} className={`veymux-native-select overflow-x-auto veymux-diff-scroll ${viewType === 'split' ? 'diff-split' : ''} ${wrap ? 'veymux-diff-wrap' : ''}`}>
+              <div className="veymux-diff-canvas min-w-full">
                 {file.hunks.map((hunk, index) => {
                     const hunkFlatIndex = hunkFlatCursor;
                     hunkFlatCursor += 1;
@@ -1959,7 +1959,7 @@ export function DiffViewer({ filePath, repoRoot, referenceFilePath, interactionI
                             )}
                             </div>
                               )}
-                              <div className="termdock-diff-audit-explanation min-w-0">{auditRecord.explanation}</div>
+                              <div className="veymux-diff-audit-explanation min-w-0">{auditRecord.explanation}</div>
                             </>
                           ) : null}
                         </div>
@@ -2091,7 +2091,7 @@ export function DiffViewer({ filePath, repoRoot, referenceFilePath, interactionI
                                         </button>
                                       )}
                                     </div>
-                                    <div className="termdock-diff-audit-explanation min-w-0">{hunkAudit.current?.explanation ?? hunkAudit.stale?.explanation}</div>
+                                    <div className="veymux-diff-audit-explanation min-w-0">{hunkAudit.current?.explanation ?? hunkAudit.stale?.explanation}</div>
                                   </div>
                                 );
                               })()
@@ -2224,11 +2224,11 @@ export function DiffViewer({ filePath, repoRoot, referenceFilePath, interactionI
     );
 
     if (embedded) {
-      return <div className="termdock-native-select overflow-hidden bg-surface">{getReferenceLongPressHandlers.popoverNode}{body}</div>;
+      return <div className="veymux-native-select overflow-hidden bg-surface">{getReferenceLongPressHandlers.popoverNode}{body}</div>;
     }
 
     return (
-      <div className="termdock-diff px-3 py-2">
+      <div className="veymux-diff px-3 py-2">
         {getReferenceLongPressHandlers.popoverNode}
         <div className="border-b border-border/15 px-1 pb-2">
           <div className="truncate text-sm font-medium text-foreground" title={filePath ?? undefined}>{titleParts.name}</div>
@@ -2267,7 +2267,7 @@ export function DiffViewer({ filePath, repoRoot, referenceFilePath, interactionI
         ref={containerRef}
         onMouseEnter={() => { diffHoveredRef.current = true; }}
         onMouseLeave={() => { diffHoveredRef.current = false; }}
-        className="termdock-diff termdock-native-select termdock-diff-card-mobile overflow-hidden rounded-b-xl"
+        className="veymux-diff veymux-native-select veymux-diff-card-mobile overflow-hidden rounded-b-xl"
         data-diff-viewer
         data-diff-view-type={viewType}
         data-diff-inline-mode={inlineMode}
@@ -2286,7 +2286,7 @@ export function DiffViewer({ filePath, repoRoot, referenceFilePath, interactionI
       ref={containerRef}
       onMouseEnter={() => { diffHoveredRef.current = true; }}
       onMouseLeave={() => { diffHoveredRef.current = false; }}
-      className="termdock-diff termdock-native-select px-3 py-2"
+      className="veymux-diff veymux-native-select px-3 py-2"
       data-diff-viewer
       data-diff-view-type={viewType}
       data-diff-inline-mode={inlineMode}

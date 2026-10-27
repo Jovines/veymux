@@ -23,7 +23,7 @@ export async function renewBackgroundSubscriptions(subscription: PushSubscriptio
 function pickPreferences(value: BackgroundTarget['preferences']) {
   return { aiEnabled: value.aiEnabled, exitEnabled: value.exitEnabled, alertStyle: value.alertStyle, locale: value.locale };
 }
-const LOG_DATABASE = 'termdock-encrypted-notification-logs';
+const LOG_DATABASE = 'veymux-encrypted-notification-logs';
 interface ClickLog { id: string; targetPeerId: string; stage: string; traceId: string; data: unknown; ts: number }
 const traceTargets = new Map<string, string>();
 let flushing: Promise<void> | undefined;

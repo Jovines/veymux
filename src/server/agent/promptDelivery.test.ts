@@ -10,9 +10,9 @@ describe('buildBracketedPasteBytes', () => {
   });
 
   it('keeps a multiline collaboration inbox in one paste', () => {
-    const inbox = '[Termdock 协作收件箱]\n- [任务 #1] 用户 → 发布组: 检查构建\n- [问题 #2] 用户 → 发布组: 测试通过了吗？\n请处理这些消息。';
+    const inbox = '[Veymux 协作收件箱]\n- [任务 #1] 用户 → 发布组: 检查构建\n- [问题 #2] 用户 → 发布组: 测试通过了吗？\n请处理这些消息。';
     expect(buildBracketedPasteBytes(inbox)).toBe(
-      '\x1b[200~[Termdock 协作收件箱]\r- [任务 #1] 用户 → 发布组: 检查构建\r- [问题 #2] 用户 → 发布组: 测试通过了吗？\r请处理这些消息。\x1b[201~',
+      '\x1b[200~[Veymux 协作收件箱]\r- [任务 #1] 用户 → 发布组: 检查构建\r- [问题 #2] 用户 → 发布组: 测试通过了吗？\r请处理这些消息。\x1b[201~',
     );
   });
 

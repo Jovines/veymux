@@ -34,7 +34,7 @@ it('rejects stale metadata from another backend and never shows generated route 
   }
 });
 it('retains the sidebar cold-start title cache until live metadata arrives', () => {
-  localStorage.setItem('termdock-shell-titles-v1', JSON.stringify({ one: '缓存的会话标题' }));
+  localStorage.setItem('veymux-shell-titles-v1', JSON.stringify({ one: '缓存的会话标题' }));
   const cached = { ...record, shellTitle: null };
   expect(sessionOption(cached, { terminalSessionId: 'backend', shellTitle: null }).displayName).toBe('缓存的会话标题');
   expect(sessionOption(cached, { terminalSessionId: 'backend', shellTitle: '实时标题' }).displayName).toBe('实时标题');

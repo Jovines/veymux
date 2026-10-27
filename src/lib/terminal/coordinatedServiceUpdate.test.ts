@@ -1,13 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import { runCoordinatedServiceUpdate, type CoordinatedUpdateOptions, type UpdateConnection } from './coordinatedServiceUpdate';
 import type { ServiceUpdatePlan } from './serviceUpdatePlan';
-import type { TermdockUpdateState } from './api';
+import type { VeymuxUpdateState } from './api';
 
 const plan: ServiceUpdatePlan = { targetId: 'target', relayId: 'entry', interfaceId: 'entry', nodes: [
   { intent: { url: 'https://entry.example', targetPeerId: 'target', entryServiceId: 'entry' }, label: '工作电脑', role: 'target' },
   { intent: { url: 'https://entry.example', targetPeerId: 'entry' }, label: '家中中转', role: 'relay' },
 ] };
-const ready = (): TermdockUpdateState => ({ status: 'ready', currentVersion: '1.0.0', latestVersion: '1.0.1', checkedAt: 1, error: null, source: 'official' });
+const ready = (): VeymuxUpdateState => ({ status: 'ready', currentVersion: '1.0.0', latestVersion: '1.0.1', checkedAt: 1, error: null, source: 'official' });
 function setup() {
   const states = [ready(), ready()];
   const requests: string[] = [];

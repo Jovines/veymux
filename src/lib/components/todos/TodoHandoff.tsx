@@ -11,7 +11,7 @@ import { DirectoryPickerDialog } from '../sidebar/DirectoryPickerDialog';
 import { todoGhost, todoPrimary, todoSecondary } from './TodoForms';
 
 const field = 'min-h-11 w-full min-w-0 rounded-lg border border-border/40 bg-surface-2 px-3 py-2.5 text-base text-foreground outline-none focus:border-primary sm:text-sm';
-const lastKey = (workspace: string) => `termdock:todo-recipient:v1:${workspace}`;
+const lastKey = (workspace: string) => `veymux:todo-recipient:v1:${workspace}`;
 export function rememberTodoRecipient(workspace: string, sessionId: string) { try { localStorage.setItem(lastKey(workspace), sessionId); } catch { /* In-memory drafts still work. */ } }
 export function TodoHandoff({ workspace, ids, config, agents, sessions, initialSessionId, directories, busy, loading, title, onSend, onCancel, onChangeRecipient }: {
   workspace: string; ids: string[]; config: TodoLaunchConfig; agents: AgentLauncherInfo[]; sessions: SessionOption[];

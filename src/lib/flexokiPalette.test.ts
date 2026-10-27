@@ -66,6 +66,7 @@ const FLEXOKI_FAMILY = new Set(
 const CORE_VARS: Record<string, string> = {
   '--background': '#100F0F', // bg
   '--background-subtle': '#1C1B1A', // bg-2
+  '--brand-mark': '#3AA99F', // cyan-400
   '--surface': '#282726', // ui
   '--surface-2': '#343331', // ui-2
   '--surface-elevated': '#403E3C', // ui-3

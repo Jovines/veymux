@@ -92,7 +92,7 @@ it('bypasses old pane and process caches while a lost runtime is being reconcile
   const context = vm.createContext({ Date, Promise, liveTmuxSessions: [{ name: 'own-test' }],
     globalSessionState: { sessions: [{ sessionId: 'front', tmuxSessionName: 'own-test' }] },
     tmuxRecoveryState: { runtimeLostSessionIds: ['front'], incident: null },
-    isTermdockManagedTmuxSession: () => true, resolveLiveTmuxMetadata: resolve,
+    isVeymuxManagedTmuxSession: () => true, resolveLiveTmuxMetadata: resolve,
     backfillAgentResumeFromTmuxProcess: () => {}, syncDynamicTmuxMetadata: () => {},
   });
   const code = ts.transpileModule(`(async () => { ${refresh.getText(ast)}; return refreshedTmuxSessions; })()`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;

@@ -7,7 +7,7 @@ export interface RdpConnection {
   ignoreCert: boolean; width: number; height: number;
 }
 
-/** A Guacamole tunnel backed solely by Termdock's authenticated Noise channel. */
+/** A Guacamole tunnel backed solely by Veymux's authenticated Noise channel. */
 export class SecureRdpTunnel extends Guacamole.Tunnel {
   private socket: WebSocket | null = null;
   cancelPointerMoves: () => void;

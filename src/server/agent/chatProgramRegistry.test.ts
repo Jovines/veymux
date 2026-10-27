@@ -29,7 +29,7 @@ it('keeps built-in detection authoritative and rejects broad interpreter and she
   expect(detectAgentFromCommand('node server.js')).toBeNull(); expect(detectAgentFromCommand('bash')).toBeNull();
 });
 it('enables chat submission and replies for a configured custom program through the existing pipeline', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'td-custom-chat-')), store = new CollaborationStore(join(dir, 'chat.json'));
+  const dir = mkdtempSync(join(tmpdir(), 'veymux-custom-chat-')), store = new CollaborationStore(join(dir, 'chat.json'));
   const app = express(); app.use(express.json());
   app.use((req, _res, next) => { markEncryptedRequest(req, 'owner'); next(); });
   const delivered: string[] = [];

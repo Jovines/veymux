@@ -8,7 +8,7 @@ it('requests the installed Mac handler explicitly and offers recovery without cl
   vi.stubGlobal('navigator',{platform:'MacIntel',maxTouchPoints:0});
   render(<DesktopInvitationButton invitation={invitation} />);
   const link=screen.getByRole('link',{name:'在客户端打开'});
-  expect(link.getAttribute('href')).toMatch(/^termdock:\/\/invite\/#termdock-invite=/);
+  expect(link.getAttribute('href')).toMatch(/^veymux:\/\/invite\/#veymux-invite=/);
   link.addEventListener('click',event=>event.preventDefault());fireEvent.click(link);
   expect(screen.getByRole('link',{name:'安装或更新 Mac 客户端'})).toBeTruthy();
   expect(screen.queryByText(/已添加|已连接|已接受/)).toBeNull();

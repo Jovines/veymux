@@ -4,14 +4,14 @@ import { installWorkspaceHost } from './workspaceHost';
 import { writeBrowserServices, type ServiceConnection } from './serviceDirectory';
 import { scopedStorageKey, TARGET_KEY } from '../federation/clientScope';
 
-const lastWorkspace = 'termdock-secure-last-workspace';
+const lastWorkspace = 'veymux-secure-last-workspace';
 const entry: ServiceConnection = { id: 'entry', targetPeerId: 'entry', url: 'https://entry.example', label: 'Entry' };
 const remote: ServiceConnection = {
   id: 'remote', targetPeerId: 'remote', url: 'https://remote.internal', label: 'Remote',
   routes: [{ url: entry.url, targetPeerId: 'entry' }],
 };
 function restart(cold = false) {
-  delete window.__termdockWorkspaceHost;
+  delete window.__veymuxWorkspaceHost;
   if (cold) sessionStorage.clear();
   return installWorkspaceHost(entry)!;
 }
@@ -19,10 +19,10 @@ function restart(cold = false) {
 describe('PWA workspace selection restore', () => {
   beforeEach(() => {
     localStorage.clear(); sessionStorage.clear();
-    delete window.__termdockWorkspaceHost;
+    delete window.__veymuxWorkspaceHost;
     writeBrowserServices([entry, remote]);
   });
-  afterEach(() => { vi.restoreAllMocks(); delete window.__termdockWorkspaceHost; });
+  afterEach(() => { vi.restoreAllMocks(); delete window.__veymuxWorkspaceHost; });
 
   it('restores the switched service and its relay routes after a cold launch without a worker', () => {
     localStorage.setItem(TARGET_KEY, JSON.stringify(entry));

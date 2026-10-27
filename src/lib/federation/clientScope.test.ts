@@ -9,8 +9,8 @@ describe('service state isolation', () => {
   });
   it('keeps device preferences and explicitly paired directory global', () => {
     expect(scopedStorageKey(TARGET_KEY, 'B')).toBe(TARGET_KEY);
-    expect(scopedStorageKey('termdock-color-theme', 'C')).toBe('termdock-color-theme');
-    expect(scopedStorageKey('termdock.federation.connections.v1', 'C')).toBe('termdock.federation.connections.v1');
+    expect(scopedStorageKey('veymux-color-theme', 'C')).toBe('veymux-color-theme');
+    expect(scopedStorageKey('veymux.federation.connections.v1', 'C')).toBe('veymux.federation.connections.v1');
   });
   it('preserves legacy tabs only for the first verified direct service without reviving deleted state', () => {
     localStorage.setItem('terminal-state', 'existing-tabs');

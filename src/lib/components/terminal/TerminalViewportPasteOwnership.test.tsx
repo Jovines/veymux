@@ -21,7 +21,7 @@ vi.mock('../../terminal/clipboardImage', () => ({
 }));
 vi.mock('../../federation/clientScope', () => federation);
 vi.mock('../../collaboration/inputTarget', () => ({ routeCollaborationInput: vi.fn(() => false) }));
-vi.mock('../../desktop/nativeBridge', () => ({ getTermdockDesktopBridge: () => desktop.bridge, subscribeNativeFileDrops: vi.fn(() => () => {}) }));
+vi.mock('../../desktop/nativeBridge', () => ({ getVeymuxDesktopBridge: () => desktop.bridge, subscribeNativeFileDrops: vi.fn(() => () => {}) }));
 vi.mock('../../i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }));
 vi.mock('../../hooks/useTouchScroll', () => ({ useTouchScroll: () => ({ setupTouchScroll: vi.fn(() => () => {}), stopAllScroll: vi.fn() }) }));
 vi.mock('../../hooks/useGesture', () => ({ useGesture: vi.fn() }));
@@ -91,7 +91,7 @@ describe('TerminalViewport async paste ownership', () => {
   afterEach(() => {
     cleanup();
     vi.useRealTimers();
-    if ('termdockDesktop' in window) delete (window as Window & { termdockDesktop?: unknown }).termdockDesktop;
+    if ('veymuxDesktop' in window) delete (window as Window & { veymuxDesktop?: unknown }).veymuxDesktop;
     desktop.bridge = undefined;
     vi.unstubAllGlobals();
   });
@@ -577,7 +577,7 @@ describe('TerminalViewport async paste ownership', () => {
 
   it('keeps both native paths and uploadable files from one clipboard read', async () => {
     desktop.bridge = { readClipboardFiles: vi.fn() };
-    Object.defineProperty(window, 'termdockDesktop', {
+    Object.defineProperty(window, 'veymuxDesktop', {
       configurable: true,
       value: { readClipboardFiles: vi.fn() },
     });
@@ -594,7 +594,7 @@ describe('TerminalViewport async paste ownership', () => {
   });
 
 for (const rejected of [false, true]) it(`native clipboard read cannot rebind its late ${rejected?'failure':'result'} to the new target`, async () => {
-  desktop.bridge={readClipboardFiles:vi.fn()};Object.defineProperty(window,'termdockDesktop',{configurable:true,value:desktop.bridge});clipboard.readTerminalClipboardFiles.mockReset();
+  desktop.bridge={readClipboardFiles:vi.fn()};Object.defineProperty(window,'veymuxDesktop',{configurable:true,value:desktop.bridge});clipboard.readTerminalClipboardFiles.mockReset();
   const pending=deferred<{files:File[];paths:string[]}>();clipboard.readTerminalClipboardFiles.mockReturnValueOnce(pending.promise);
   const onInput=vi.fn().mockResolvedValue(true);
   const props={sessionKey:'read-frontend',sessionId:'read-frontend',getPasteOwnerKey:()=> 'backend-read',chunks:[],onInput,onResize:vi.fn(),terminalSettings:{rendererMode:'dom'} as never,theme:{} as never,autoFocus:false};
@@ -606,7 +606,7 @@ for (const rejected of [false, true]) it(`native clipboard read cannot rebind it
   expect(onInput).not.toHaveBeenCalled();expect(screen.queryByRole('alert')).toBeNull();
 });
 it('a late same-target clipboard read cannot reclaim ownership from a completed newer paste',async()=>{
- desktop.bridge={readClipboardFiles:vi.fn()};Object.defineProperty(window,'termdockDesktop',{configurable:true,value:desktop.bridge});clipboard.readTerminalClipboardFiles.mockReset();const pending=deferred<{files:File[];paths:string[]}>();
+ desktop.bridge={readClipboardFiles:vi.fn()};Object.defineProperty(window,'veymuxDesktop',{configurable:true,value:desktop.bridge});clipboard.readTerminalClipboardFiles.mockReset();const pending=deferred<{files:File[];paths:string[]}>();
  clipboard.readTerminalClipboardFiles.mockReturnValueOnce(pending.promise).mockResolvedValueOnce({files:[],paths:['/tmp/new']});
  const onInput=vi.fn().mockResolvedValue(true),p={sessionKey:'read-race',sessionId:'read-race',chunks:[],onInput,onResize:vi.fn(),terminalSettings:{rendererMode:'dom'} as never,theme:{} as never,autoFocus:false};
  render(<TerminalViewport {...p}/>);await waitFor(()=>expect(screen.getByRole('textbox')).toBeTruthy());

@@ -1,6 +1,6 @@
-# Termdock for macOS
+# Veymux for macOS
 
-Termdock Desktop is a macOS client for independently running Termdock services.
+Veymux Desktop is a macOS client for independently running Veymux services.
 It connects to local, LAN, and public service URLs. On launch it detects the local
 environment and starts an installed standalone CLI when no service is running.
 The connection center can also assist with a missing CLI or Node.js installation.
@@ -16,18 +16,18 @@ The connection center can also assist with a missing CLI or Node.js installation
   sidebar. Switching pages preserves remote connection drafts; incoming
   workspace connection reviews reveal the remote page automatically.
 - An existing local service is reused. Otherwise Desktop locates Node.js 22+
-  and the standalone `termdock` CLI, including common Homebrew and version-manager
+  and the standalone `veymux` CLI, including common Homebrew and version-manager
   installations, and starts the CLI in its normal supervised daemon mode.
 - When the CLI is missing, **安装并启动** installs it from npm into
-  `~/.termdock/cli` without sudo or changing other global npm packages, then
+  `~/.veymux/cli` without sudo or changing other global npm packages, then
   starts it. Installation and startup failures expose details and a retry action.
 - When Node.js or npm is missing or too old, **下载 Node.js** opens the official
   download page. Returning to the connection center resumes environment detection;
   CLI installation still requires the installation button.
 - The connection center updates local status automatically and can open the
-  workspace, or save and connect to another Termdock URL. Startup assistance is
+  workspace, or save and connect to another Veymux URL. Startup assistance is
   restricted to the app's connection center, not remote service pages.
-- Desktop-only bookmarks and UI preferences live in `~/.termdock/desktop.json`.
+- Desktop-only bookmarks and UI preferences live in `~/.veymux/desktop.json`.
 - Direct connections load the service's frontend. Saved connections reachable
   only through an entry service use the app's bundled static frontend.
 - Closing or quitting Desktop leaves standalone services running, including
@@ -49,20 +49,20 @@ Regression coverage lives in `tests/desktopConnectionCenter.test.ts` and
 
 ## Upgrading from a desktop-managed service
 
-Older apps could install `td` / `termdock` symlinks into the app bundle. Before
-replacing one of those apps, install the standalone CLI with `npm install -g termdock`
+Older apps could install `veymux` / `veymux` symlinks into the app bundle. Before
+replacing one of those apps, install the standalone CLI with `npm install -g veymux`
 and verify that the commands resolve to that installation. If an old bundled
 service is still running, stop it with the CLI and start the standalone service.
 Your sessions, authentication, certificates, and preferences remain under
-`~/.termdock`; upgrading the app does not delete them or stop the old process.
+`~/.veymux`; upgrading the app does not delete them or stop the old process.
 
 ## macOS integration
 
-- Native inset title bar and traffic lights share Termdock's chrome surface.
+- Native inset title bar and traffic lights share Veymux's chrome surface.
 - Service windows open at the cursor's display work-area size, filling the
   available desktop while leaving room for the macOS menu bar and Dock.
   This also applies to connections restored on launch.
-- `⌘,` opens Termdock Settings, including service switching, application updates, and data actions.
+- `⌘,` opens Veymux Settings, including service switching, application updates, and data actions.
 - `⌘T` creates a session, `⌘W` closes the active session, and `⌘⇧[` / `⌘⇧]`
   switch sessions.
 - `⌘B` toggles sessions and `⌘⇧B` toggles the file sidebar.
@@ -83,7 +83,7 @@ Your sessions, authentication, certificates, and preferences remain under
   avoiding framework imports that require newer JXA BridgeSupport metadata.
   If the native file reader fails, the page still uses text and file/image data
   captured from the paste event, or the separate native image reader.
-- The last successful Termdock connection is reopened on the next launch.
+- The last successful Veymux connection is reopened on the next launch.
 
 ## Building
 
@@ -113,11 +113,11 @@ them. Keep signing and notarization credentials outside the repository.
 ## GitHub releases and application updates
 
 The Rust application requires macOS 14+ on Apple Silicon. Download the versioned
-`Termdock_VERSION_aarch64.dmg` from GitHub Releases. Its bundle identity remains
-`com.jovines.termdock`. Application updates use the pinned, signed Tauri feed at
+`Veymux_VERSION_aarch64.dmg` from GitHub Releases. Its bundle identity remains
+`com.jovines.veymux`. Application updates use the pinned, signed Tauri feed at
 `stable-channel/latest.json` and are installed after the user accepts.
 
-Old Electron clients select `Termdock-darwin-arm64-VERSION.zip`, which contains
+Old Electron clients select `Veymux-darwin-arm64-VERSION.zip`, which contains
 one fixed compatibility bridge (1.4.357, macOS 12+). On macOS 14+ the bridge verifies the SHA-256, Developer ID team, notarization
 tickets, application identity and version of the Rust DMG, then uses a detached
 installer to back up, replace and relaunch the application. It does not pass the

@@ -5,7 +5,7 @@ import { peerIdFromPublicKey, peerIdFromString } from '@libp2p/peer-id'
 import { AbstractMessageStream } from '@libp2p/utils'
 import type { Logger, PrivateKey, Upgrader, MessageStream } from '@libp2p/interface'
 
-export const SECURE_PROTOCOL = 'termdock-e2ee-v1'
+export const SECURE_PROTOCOL = 'veymux-e2ee-v1'
 export const MAX_SECURE_CONNECTION_AGE_MS = 60 * 60 * 1000
 export const MAX_SECURE_CONNECTION_BYTES_PER_DIRECTION = 512 * 1024 * 1024
 const MAX_BUFFER_BYTES = 4 * 1024 * 1024

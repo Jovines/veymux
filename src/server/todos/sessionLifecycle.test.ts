@@ -7,7 +7,7 @@ import { CollectionSessionLifecycle, type CollectionObservation, type Collection
 let dir: string, store: TodoStore, runtime: CollectionSessionRuntime, lifecycle: CollectionSessionLifecycle, clock: number, fact: CollectionObservation | null;
 const config = { agentSlug: 'codex', command: 'codex', cwd: '/tmp', prompt: '收集' };
 beforeEach(() => {
-  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'td-lifecycle-')); store = new TodoStore(path.join(dir, 'todos.json'));
+  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-lifecycle-')); store = new TodoStore(path.join(dir, 'todos.json'));
   clock = 1_000_000; fact = { identity: 'runtime-1', ownershipIdentity: 'owner-1', lastOutputAt: clock, observedAt: clock };
   runtime = { observe: vi.fn(async () => fact && { ...fact, observedAt: clock }), reuse: vi.fn(async () => {}), close: vi.fn(async () => true) };
   lifecycle = new CollectionSessionLifecycle(store, runtime, () => clock);

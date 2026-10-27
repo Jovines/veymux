@@ -26,7 +26,7 @@ function router() {
 const next = async (ws: WebSocket) => JSON.parse(String((await once(ws, 'message'))[0]));
 describe('registered direct targets', () => {
   it('connects phone → B → C over verified WSS without an A process and tears down streams', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'td-direct-')); cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+    const dir = mkdtempSync(join(tmpdir(), 'veymux-direct-')); cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
     execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1', '-keyout', join(dir, 'key.pem'), '-out', join(dir, 'ca.pem'), '-subj', '/CN=localhost', '-addext', 'subjectAltName=IP:127.0.0.1,DNS:localhost'], { stdio: 'ignore' });
     const target = createServer({ key: readFileSync(join(dir, 'key.pem')), cert: readFileSync(join(dir, 'ca.pem')) });
     const wss = new WebSocketServer({ server: target, path: '/api/federation/relay-target' });
@@ -53,7 +53,7 @@ describe('registered direct targets', () => {
     expect((await unknown)[0]).toBe(1008);
   });
   it.each(['ca', 'leaf'] as const)('uses only the %s fingerprint approved by Desktop for a direct WSS connection', async trust => {
-    const dir = mkdtempSync(join(tmpdir(), 'td-desktop-ca-')); cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+    const dir = mkdtempSync(join(tmpdir(), 'veymux-desktop-ca-')); cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
     execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1', '-keyout', join(dir, 'key.pem'), '-out', join(dir, 'ca.pem'), '-subj', '/CN=localhost', '-addext', 'subjectAltName=IP:127.0.0.1,DNS:localhost'], { stdio: 'ignore' });
     const ca = readFileSync(join(dir, 'ca.pem')); let caRequests = 0;
     const target = createServer({ key: readFileSync(join(dir, 'key.pem')), cert: ca }, (req, res) => {

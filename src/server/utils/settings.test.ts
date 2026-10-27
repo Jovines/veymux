@@ -18,7 +18,7 @@ import {
 const tempDirs: string[] = [];
 
 function tempSettingsPath(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'termdock-settings-test-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-settings-test-'));
   tempDirs.push(dir);
   return path.join(dir, 'settings.json');
 }

@@ -2,11 +2,11 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { ConnectionCenterServices } from './ConnectionCenterServices';
-import type { TermdockDesktopBridge } from '../../lib/desktop/nativeBridge';
+import type { VeymuxDesktopBridge } from '../../lib/desktop/nativeBridge';
 import type { ServiceConnectionReview } from '../../lib/services/desktopServiceConnection';
 import { createInviteLink } from '../../lib/federation/inviteLink';
 
-afterEach(() => { cleanup(); localStorage.clear(); delete window.termdockDesktop; });
+afterEach(() => { cleanup(); localStorage.clear(); delete window.veymuxDesktop; });
 const certificateError = () => Object.assign(new Error('TLS rejected'), { code: 'PREVIEW_DISCOVERY_FAILED' });
 const target = '12D3KooW' + 'a'.repeat(44), entry = '12D3KooW' + 'b'.repeat(44);
 const connection = { id: target, url: 'https://entry.example', serviceOrigin: 'https://target.internal', targetPeerId: target, entryServiceId: entry, label: 'Remote', routes: [{ url: 'https://backup.example', targetPeerId: entry }] };
@@ -19,7 +19,7 @@ function fixture(initial: ServiceConnectionReview | null = null) {
     certificatePins: vi.fn().mockResolvedValue({}),
     inspectCertificate: vi.fn(async (origin: string) => ({ origin, fingerprint: 'a'.repeat(64), receipt: 'one-shot' })),
     trustCertificate: vi.fn().mockResolvedValue(undefined), discardCertificateInspection: vi.fn().mockResolvedValue(undefined), revokeCertificate: vi.fn(),
-  } as unknown as TermdockDesktopBridge;
+  } as unknown as VeymuxDesktopBridge;
   return { native, deliver(request: ServiceConnectionReview) { pending = request; notify(); } };
 }
 it('receives a request queued before mount, checks the entry certificate, and retries the full saved route once', async () => {

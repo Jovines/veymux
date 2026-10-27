@@ -9,7 +9,7 @@ import { downloadVerifiedExecutable, ensureMkcert, inspectLocalCertificate, loca
 
 let material: { cert: string; key: string; ca: string }, other: typeof material;
 const directories: string[] = [];
-const names = ['localhost', '127.0.0.1', '::1', '*.termdock.local'];
+const names = ['localhost', '127.0.0.1', '::1', '*.veymux.local'];
 async function certificates() {
   await import('reflect-metadata');
   const x509 = await import('@peculiar/x509');
@@ -30,7 +30,7 @@ async function certificates() {
 }
 beforeAll(async () => { material = await certificates(); other = await certificates(); });
 afterEach(() => { vi.restoreAllMocks(); for (const directory of directories.splice(0)) fs.rmSync(directory, { recursive: true, force: true }); });
-function directory() { const result = fs.mkdtempSync(path.join(os.tmpdir(), 'termdock https ')); directories.push(result); return result; }
+function directory() { const result = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux https ')); directories.push(result); return result; }
 function fixture(value = material) {
   const root = directory(), directory_ = path.join(root, 'certs'), caRoot = path.join(root, 'CA with spaces');
   fs.mkdirSync(caRoot); fs.writeFileSync(path.join(caRoot, 'rootCA.pem'), value.ca);
@@ -50,7 +50,7 @@ for (const asset of Object.keys(MKCERT_SHA256)) it(`selects the pinned official 
   const [platform, arch] = asset.split('-'), home = directory();
   const download = vi.fn(async (_url: string, _hash: string, target: string) => { fs.mkdirSync(path.dirname(target), { recursive: true }); fs.writeFileSync(target, 'fixture'); });
   const result = await ensureMkcert({ platform, arch: arch === 'amd64' ? 'x64' : arch, home, find: () => null, run: async () => ({ stdout: 'v1.4.4', stderr: '' }), download });
-  expect(result).toBe(path.join(home, '.termdock/bin/mkcert'));
+  expect(result).toBe(path.join(home, '.veymux/bin/mkcert'));
   expect(download).toHaveBeenCalledWith(`https://github.com/FiloSottile/mkcert/releases/download/v1.4.4/mkcert-v1.4.4-${asset}`, MKCERT_SHA256[asset], result);
 });
 it('uses an existing mkcert without downloading it', async () => {
@@ -118,7 +118,7 @@ for (const fault of ['generation', 'missing-ca', 'bad-key', 'bad-ca', 'missing-s
   };
   await expect(setupLocalHttps({ ...f, names: fault === 'missing-san' ? [...names, 'missing.example'] : names, run, mkcert: '/mock/mkcert', installCa: false })).rejects.toThrow();
   for (const key of ['cert', 'key', 'ca'] as const) expect(fs.readFileSync(files[key], 'utf8')).toBe(material[key]);
-  expect(fs.readdirSync(f.directory).sort()).toEqual(['rootCA.pem', 'termdock-local-key.pem', 'termdock-local.pem']);
+  expect(fs.readdirSync(f.directory).sort()).toEqual(['rootCA.pem', 'veymux-local-key.pem', 'veymux-local.pem']);
 });
 
 it('renews an expiring certificate and detects a mismatched key or SAN change', async () => {

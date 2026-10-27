@@ -4,7 +4,7 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Arc,
 };
-use termdock_preview::proxy;
+use veymux_preview::proxy;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpListener,
@@ -78,7 +78,7 @@ async fn real_self_signed_tls_is_origin_scoped_and_rejects_changed_leaf_before_h
     assert_eq!(http_requests.load(Ordering::SeqCst), 1);
     // Saved identities and routed invitations must pass the same entry TLS
     // check as a new address, without contacting the unreachable target.
-    let connection = termdock_preview::config::Connection {
+    let connection = veymux_preview::config::Connection {
         id: "saved".into(), url: origin.clone(), label: "Saved target".into(),
         target_peer_id: Some("saved-target".into()),
         service_origin: Some("https://unreachable.invalid".into()),
@@ -103,7 +103,7 @@ async fn entry_probe_preserves_password_bootstrap_for_both_new_and_saved_service
         }));
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap(); });
         for peer in [None, Some("saved-target".into())] {
-            let connection = termdock_preview::config::Connection {
+            let connection = veymux_preview::config::Connection {
                 id: "protected".into(), url: url.clone(), label: "Protected".into(),
                 target_peer_id: peer, service_origin: None, entry_service_id: None, routes: vec![],
             };

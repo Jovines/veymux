@@ -29,7 +29,7 @@ export function requestReferenceInsertion(text: string, sessionId: string | null
       if (finished) return;
       finished = true;
       window.clearTimeout(timer);
-      window.removeEventListener('termdock-insert-reference-ack', onAck);
+      window.removeEventListener('veymux-insert-reference-ack', onAck);
       if (owned) releaseOwnedTerminalPasteRequest(nonce);
       resolve(ok && isCurrent());
     };
@@ -38,8 +38,8 @@ export function requestReferenceInsertion(text: string, sessionId: string | null
       if (detail?.nonce === nonce) finish(detail.ok === true);
     };
     const timer = window.setTimeout(() => finish(false), 1500);
-    window.addEventListener('termdock-insert-reference-ack', onAck);
-    window.dispatchEvent(new CustomEvent('termdock-insert-reference', {
+    window.addEventListener('veymux-insert-reference-ack', onAck);
+    window.dispatchEvent(new CustomEvent('veymux-insert-reference', {
       detail: owned ? { ...owned, ...(options?.reference ? { reference: { ...options.reference, text } } : {}), focus: options?.focus ?? owned.focus } : { text, sessionId, nonce, focus: false, paste: true, submitAfterPaste: false, ...options, ...(options?.reference ? { reference: { ...options.reference, text } } : {}) },
     }));
   });

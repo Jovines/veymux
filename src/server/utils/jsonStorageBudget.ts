@@ -19,8 +19,8 @@ export class JsonStorageBudget {
   constructor(private file: string, private label: string, setting: string, fallback: number,
     private full: () => Error, options: JsonStorageOptions = {}) {
     this.maxBytes = options.maxBytes ?? Number(process.env[setting] ?? fallback);
-    this.warnPercent = options.warnPercent ?? Number(process.env.TERMDOCK_STORAGE_WARN_PERCENT ?? 80);
-    if (!Number.isSafeInteger(this.maxBytes) || this.maxBytes < 1 || !Number.isSafeInteger(this.warnPercent) || this.warnPercent < 1 || this.warnPercent > 100) throw new Error(`Invalid storage configuration: ${setting} / TERMDOCK_STORAGE_WARN_PERCENT`);
+    this.warnPercent = options.warnPercent ?? Number(process.env.VEYMUX_STORAGE_WARN_PERCENT ?? 80);
+    if (!Number.isSafeInteger(this.maxBytes) || this.maxBytes < 1 || !Number.isSafeInteger(this.warnPercent) || this.warnPercent < 1 || this.warnPercent > 100) throw new Error(`Invalid storage configuration: ${setting} / VEYMUX_STORAGE_WARN_PERCENT`);
     try { const raw = fs.readFileSync(file); this.bytes = raw.length; this.fingerprint = digest(raw); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
     this.report();

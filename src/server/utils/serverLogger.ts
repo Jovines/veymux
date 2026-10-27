@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { TERMDOCK_DIR } from './termdockState.js';
+import { VEYMUX_DIR } from './veymuxState.js';
 
 const MIB = 1024 * 1024;
 const DEFAULT_MAX_BYTES = 4 * MIB;
@@ -69,13 +69,13 @@ function listManagedLogs(directory: string): ManagedLogFile[] {
   return files;
 }
 
-export function enforceTermdockLogBudget(options: {
+export function enforceVeymuxLogBudget(options: {
   directory?: string;
   structuredLogMaxBytes?: number;
   serverLogMaxBytes?: number;
   totalLogMaxBytes?: number;
 } = {}): void {
-  const directory = options.directory ?? TERMDOCK_DIR;
+  const directory = options.directory ?? VEYMUX_DIR;
   const structuredLogMaxBytes = options.structuredLogMaxBytes ?? DEFAULT_MAX_BYTES;
   const serverLogMaxBytes = options.serverLogMaxBytes ?? SERVER_LOG_MAX_BYTES;
   const totalLogMaxBytes = options.totalLogMaxBytes ?? TOTAL_LOG_MAX_BYTES;
@@ -108,18 +108,18 @@ function scheduleLogBudgetMaintenance(): void {
   maintenanceScheduled = true;
   const timer = setTimeout(() => {
     maintenanceScheduled = false;
-    enforceTermdockLogBudget();
+    enforceVeymuxLogBudget();
   }, 100);
   timer.unref?.();
 }
 
-export function startTermdockLogMaintenance(): () => void {
+export function startVeymuxLogMaintenance(): () => void {
   // Integration tests may start a real HTTP server while still using the
   // developer's HOME. Never let a test process prune production diagnostics.
   if (process.env.NODE_ENV === 'test') return () => {};
-  enforceTermdockLogBudget();
+  enforceVeymuxLogBudget();
   if (!maintenanceTimer) {
-    maintenanceTimer = setInterval(enforceTermdockLogBudget, LOG_MAINTENANCE_INTERVAL_MS);
+    maintenanceTimer = setInterval(enforceVeymuxLogBudget, LOG_MAINTENANCE_INTERVAL_MS);
     maintenanceTimer.unref?.();
   }
   return () => {
@@ -149,7 +149,7 @@ function enqueueWrite(filePath: string, line: string, maxBytes: number): void {
   const next = previous
     .catch(() => undefined)
     .then(async () => {
-      await fs.promises.mkdir(TERMDOCK_DIR, { recursive: true });
+      await fs.promises.mkdir(VEYMUX_DIR, { recursive: true });
       await rotateIfNeeded(filePath, maxBytes);
       await fs.promises.appendFile(filePath, line, 'utf8');
     })
@@ -157,12 +157,12 @@ function enqueueWrite(filePath: string, line: string, maxBytes: number): void {
   writeChains.set(filePath, next);
 }
 
-export function getTermdockLogPath(name: string, directory: string = TERMDOCK_DIR): string {
+export function getVeymuxLogPath(name: string, directory: string = VEYMUX_DIR): string {
   return path.join(directory, name);
 }
 
 export function writeJsonLog(name: string, entry: Record<string, unknown>, maxBytes = DEFAULT_MAX_BYTES): void {
-  const filePath = getTermdockLogPath(name);
+  const filePath = getVeymuxLogPath(name);
   const line = JSON.stringify({
     ts: new Date().toISOString(),
     pid: process.pid,
@@ -181,7 +181,7 @@ export function writeJsonLog(name: string, entry: Record<string, unknown>, maxBy
  */
 export function writeJsonLogSync(name: string, entry: Record<string, unknown>): void {
   try {
-    const filePath = getTermdockLogPath(name);
+    const filePath = getVeymuxLogPath(name);
     const line = JSON.stringify({
       ts: new Date().toISOString(),
       pid: process.pid,
@@ -195,7 +195,7 @@ export function writeJsonLogSync(name: string, entry: Record<string, unknown>): 
 }
 
 export function writeTextLog(name: string, line: string, maxBytes = DEFAULT_MAX_BYTES): void {
-  const filePath = getTermdockLogPath(name);
+  const filePath = getVeymuxLogPath(name);
   enqueueWrite(filePath, `${line.replace(/\n$/, '')}\n`, maxBytes);
 }
 

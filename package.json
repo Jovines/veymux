@@ -1,12 +1,11 @@
 {
-  "name": "termdock",
+  "name": "veymux",
   "version": "1.4.386",
   "description": "A complete web-based terminal application with modern UI",
   "type": "module",
   "main": ".desktop-dist/main.js",
   "bin": {
-    "termdock": "dist/server/cli.js",
-    "td": "dist/server/cli.js"
+    "veymux": "dist/server/cli.js"
   },
   "exports": {
     ".": "./dist/server/entry.js"
@@ -17,7 +16,7 @@
     "runtime-manifest.json",
     "README.md",
     "docs/systemd.md",
-    "packaging/systemd/termdock.service.d/10-preserve-tmux.conf",
+    "packaging/systemd/veymux.service.d/10-preserve-tmux.conf",
     "LICENSE",
     "scripts",
     "docs/integrations.md",
@@ -47,6 +46,7 @@
     "test": "vitest --passWithNoTests",
     "test:initialization": "node --test tests/nodePtyInstall.test.mjs tests/installUtils.test.mjs && node --import tsx --test tests/initialization.process.test.mjs && vitest run --maxWorkers=2 src/server/utils/bootCheck.test.ts src/server/utils/localHttpsSetup.test.ts src/server/utils/nodePtyCleanup.test.ts src/server/utils/npmUpdate.test.ts",
     "test:initialization:real": "node --import tsx --test tests/initialization.real.test.mjs",
+    "test:startup": "node --test tests/startupArtwork.test.mjs && vitest run src/lib/components/StartupScreen.test.tsx src/lib/bootRecovery.test.ts",
     "test:webgl": "vitest run --config vitest.webgl.config.ts",
     "test:terminal-geometry": "vitest run src/lib/terminal/geometry.test.ts src/lib/terminal/geometryBoundary.test.ts src/lib/terminal/fitHysteresis.test.ts src/lib/terminal/api.continuousReconnect.test.ts src/lib/components/terminal/TerminalViewportPasteOwnership.test.tsx src/lib/federation/SessionAccessView.test.tsx src/server/utils/tmuxDisplayGeometry.test.ts src/server/utils/tmuxObserverSize.test.ts src/server/utils/tmuxSizeOwnership.test.ts src/server/utils/terminalHandshakeDimensions.test.ts src/server/routes/terminalInitialSize.test.ts src/server/routes/terminalSampling.test.ts",
     "test:terminal-geometry:browser": "vitest run --config vitest.webgl.config.ts src/lib/terminal/geometry.browser.ts && vitest run --config vitest.tmux-output.config.ts",
@@ -56,7 +56,9 @@
     "postinstall": "node scripts/postinstall.mjs",
     "preview:desktop:dev": "npm --prefix desktop-rust run dev",
     "preview:desktop:build": "npm --prefix desktop-rust run build",
-    "preview:desktop:test": "npm --prefix desktop-rust run verify"
+    "preview:desktop:test": "npm --prefix desktop-rust run verify",
+    "test:brand": "node --test tests/brandMigration.test.mjs tests/browserBrandMigration.test.mjs tests/brandBoundary.test.mjs",
+    "generate:brand-assets": "node scripts/generate-brand-assets.mjs"
   },
   "dependencies": {
     "@chainsafe/libp2p-noise": "17.0.0",
@@ -166,7 +168,7 @@
   },
   "keywords": [
     "terminal",
-    "termdock",
+    "veymux",
     "xterm",
     "express",
     "cli"
@@ -174,11 +176,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Jovines/termdock.git"
+    "url": "git+https://github.com/Jovines/veymux.git"
   },
-  "homepage": "https://github.com/Jovines/termdock#readme",
+  "homepage": "https://veymux.com",
   "bugs": {
-    "url": "https://github.com/Jovines/termdock/issues"
+    "url": "https://github.com/Jovines/veymux/issues"
   },
   "overrides": {
     "prismjs": "^1.30.0"

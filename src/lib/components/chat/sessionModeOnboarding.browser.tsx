@@ -23,7 +23,7 @@ declare module 'vitest/browser' {
 interface InFlight { sent: boolean; stage: string; error: string; observed?: string; content?: string; history?: ChatMessage[]; replies?: ChatMessage[]; replyPending?: boolean }
 
 const backend = vi.hoisted(() => ({ resize: vi.fn(), connect: vi.fn(), input: vi.fn(), close: vi.fn(), handlers: undefined as TerminalHandlers | undefined }));
-vi.mock('../../terminal/factory', () => ({ createTermdockAPI: () => ({
+vi.mock('../../terminal/factory', () => ({ createVeymuxAPI: () => ({
   connect: (_id: string, handlers: TerminalHandlers) => {
     backend.connect(); backend.handlers = handlers;
     queueMicrotask(() => { handlers.onEvent({ type: 'connected', mode: 'shell', cwd: '/tmp' }); handlers.onEvent({ type: 'data', data: '\r\nSession mode onboarding fixture\r\n$ ' }); });
@@ -44,7 +44,7 @@ async function mount(width: number, initial: 'terminal' | 'chat', compact = fals
   await page.viewport(width, 844);
   const id = `mode-onboarding-${initial}-${width}-${Date.now()}`;
   let mode = initial;
-  localStorage.setItem(`termdock:session-view:${location.origin}:${id}`, mode);
+  localStorage.setItem(`veymux:session-view:${location.origin}:${id}`, mode);
   vi.stubGlobal('fetch', vi.fn(async (url, init?: RequestInit) => {
     if (String(url).includes('/view-mode')) {
       if (init?.body) mode = JSON.parse(String(init.body)).mode;
@@ -107,12 +107,12 @@ it.each([390, 1280])('never flashes an uncertainty card during real projected wr
     expect(question?.textContent).toContain('test');
     expect(placeholder.querySelector('[data-chat-agent-header]')?.textContent).toContain('Codex');
     expect(placeholder.querySelector('[style*=mask]')).not.toBeNull();
-    expect(placeholder.querySelector('.td-loading-spinner')).toBeNull();
+    expect(placeholder.querySelector('.veymux-loading-spinner')).toBeNull();
     expect(placeholder.querySelector('[data-chat-agent-awaiting]')).not.toBeNull();
     expect(getComputedStyle(placeholder.querySelector('.chat-agent-waiting')!.firstElementChild!).animationName).toBe('chat-agent-wave');
     expect(page.getByRole('status', { name: 'Codex发送中' }).element().closest('[data-chat-terminal-dock]')).not.toBeNull();
     expect(document.querySelector('[data-chat-terminal-dock]')?.contains(placeholder)).toBe(false);
-    await page.screenshot({ path: `/tmp/termdock-reply-placeholder-${width}-dpr${devicePixelRatio}.png` });
+    await page.screenshot({ path: `/tmp/veymux-reply-placeholder-${width}-dpr${devicePixelRatio}.png` });
     for (const stage of ['unknown', 'not_started', 'paste_attempted', 'paste_written', 'submit_attempted', 'submit_written', 'delivered']) {
       flight.stage = stage; window.dispatchEvent(new Event('online'));
       await expect.poll(() => flight.observed).toBe(stage); await frame();
@@ -144,7 +144,7 @@ it.each([390, 1280])('starts the next reply after the new question and replaces 
   expect(question?.textContent).toContain('下一轮问题');
   expect(document.querySelectorAll('[data-chat-agent-header]')).toHaveLength(2);
   expect(document.querySelector('[data-chat-terminal-access]')?.textContent).toContain('详情');
-  await page.screenshot({ path: `/tmp/termdock-followup-placeholder-${width}-dpr${devicePixelRatio}.png` });
+  await page.screenshot({ path: `/tmp/veymux-followup-placeholder-${width}-dpr${devicePixelRatio}.png` });
   flight.stage = 'delivered'; flight.replies = [{ id: 'new-progress', role: 'assistant', content: '正在核对新问题', createdAt: 4, status: 'stored', replyTo: 'in-flight', responseKind: 'progress' }];
   window.dispatchEvent(new Event('online'));
   await expect.element(page.getByText('正在核对新问题', { exact: true })).toBeVisible();
@@ -153,7 +153,7 @@ it.each([390, 1280])('starts the next reply after the new question and replaces 
   expect(document.querySelector('[data-chat-agent-awaiting]')).toBeNull();
   expect(document.querySelector('[data-chat-reply-feedback]')).toBeNull();
   expect(page.getByRole('status', { name: 'Codex等待回复' }).element().closest('[data-chat-terminal-dock]')).not.toBeNull();
-  await page.screenshot({ path: `/tmp/termdock-first-reply-static-${width}-dpr${devicePixelRatio}.png` });
+  await page.screenshot({ path: `/tmp/veymux-first-reply-static-${width}-dpr${devicePixelRatio}.png` });
   expect(document.querySelector('[data-chat-message="old-result"]')).toBe(previous);
   const terminalInput = document.querySelector('textarea[data-terminal-input-anchor]');
   await page.getByRole('button', { name: '查看终端详情', exact: true }).click();
@@ -167,7 +167,7 @@ it.each([390, 1280])('starts the next reply after the new question and replaces 
   expect(document.querySelector('[data-chat-reply-feedback]')).toBeNull();
   expect(document.querySelectorAll('[data-chat-agent-header]')).toHaveLength(2);
   expect(document.querySelector('[data-chat-terminal-access]')?.getAttribute('data-chat-reply-phase')).toBe('idle');
-  expect(document.querySelector('[data-chat-terminal-access] .td-loading-spinner')).toBeNull();
+  expect(document.querySelector('[data-chat-terminal-access] .veymux-loading-spinner')).toBeNull();
   expect(document.querySelector('[data-chat-terminal-access]')?.textContent).toBe('详情');
 });
 
@@ -179,7 +179,7 @@ it.each([390, 1280])('shows failed probe guidance and terminal recovery without 
   await expect.element(page.getByRole('button', { name: '已检查并清理，重新投递' })).toBeVisible();
   await expect.element(page.getByText('投递待确认', { exact: true })).toBeVisible();
   expect(document.querySelector('[data-chat-composer]')!.getBoundingClientRect().bottom).toBeLessThanOrEqual(844);
-  await page.screenshot({ path: `/tmp/termdock-input-probe-failed-${width}-dpr${devicePixelRatio}.png` });
+  await page.screenshot({ path: `/tmp/veymux-input-probe-failed-${width}-dpr${devicePixelRatio}.png` });
   await page.getByRole('button', { name: '查看终端', exact: true }).click();
   await expect.element(page.getByRole('button', { name: '切换到对话', exact: true })).toBeVisible();
   await page.getByRole('button', { name: '切换到对话', exact: true }).click();
@@ -225,7 +225,7 @@ it.each([390, 1280])('recovers queued chat inside the workspace without commands
   await input.fill('下一条草稿\n保留第二行');
   await page.getByRole('button', { name: '重新连接', exact: true }).click();
   await expect.element(page.getByText('暂时无法恢复，消息已保留。可查看终端中的会话。')).toBeVisible();
-  expect(document.body.textContent).not.toMatch(/td collab|复制命令|运行以下命令/);
+  expect(document.body.textContent).not.toMatch(/veymux collab|复制命令|运行以下命令/);
   expect(document.querySelector('[data-chat-message="delivery-fixture"]')).not.toBeNull();
   expect((await input.element()).textContent).toContain('下一条草稿');
   recovery.fail = false;
@@ -235,7 +235,7 @@ it.each([390, 1280])('recovers queued chat inside the workspace without commands
   expect(document.querySelector('[data-chat-delivery-notice]')).toBeNull();
   expect(document.querySelectorAll('[data-chat-message="delivery-fixture"]')).toHaveLength(1);
   expect((await input.element()).textContent).toContain('保留第二行');
-  await page.screenshot({ path: `/tmp/termdock-in-page-recovery-${width}-dpr${devicePixelRatio}.png` });
+  await page.screenshot({ path: `/tmp/veymux-in-page-recovery-${width}-dpr${devicePixelRatio}.png` });
 });
 
 it.each([[320, false], [390, false], [1280, false], [320, true]] as const)('keeps unread chat discoverable in the mode switch at width %i (compact %s)', async (width, compact) => {
@@ -247,7 +247,7 @@ it.each([[320, false], [390, false], [1280, false], [320, true]] as const)('keep
   const rect = badge.getBoundingClientRect();
   expect(rect.width).toBeGreaterThanOrEqual(16); expect(rect.left).toBeGreaterThanOrEqual(0); expect(rect.right).toBeLessThanOrEqual(width);
   expect(getComputedStyle(badge).backgroundColor).not.toBe('rgba(0, 0, 0, 0)');
-  await page.screenshot({ path: `/tmp/termdock-chat-unread-${width}-${compact}-dpr${devicePixelRatio}.png` });
+  await page.screenshot({ path: `/tmp/veymux-chat-unread-${width}-${compact}-dpr${devicePixelRatio}.png` });
   await entry.click();
   await expect.element(page.getByRole('textbox', { name: '给Codex的消息' })).toBeVisible();
   expect(useTerminalStore.getState().sessions.get(id)?.chatAttention?.unreadIds).toEqual(['reply-one', 'reply-two']);
@@ -269,7 +269,7 @@ it.each([320, 390, 1280])('keeps the empty-state switch understated and preserve
   expect(rect.height).toBeGreaterThanOrEqual(44); expect(rect.left).toBeGreaterThanOrEqual(0); expect(rect.right).toBeLessThanOrEqual(width);
   expect(color.backgroundColor).toBe('rgba(0, 0, 0, 0)');
   expect(localStorage.getItem(TERMINAL_MODE_HINT_KEY)).toBeNull();
-  await page.screenshot({ path: `/tmp/termdock-session-mode-empty-${width}-dpr${devicePixelRatio}.png` });
+  await page.screenshot({ path: `/tmp/veymux-session-mode-empty-${width}-dpr${devicePixelRatio}.png` });
   await page.elementLocator(node).click();
   await expect.element(page.getByRole('button', { name: '切换到对话' })).toBeVisible();
   await expect.poll(() => document.querySelector('.xterm-rows')?.textContent).toContain('Session mode onboarding fixture');
@@ -297,7 +297,7 @@ it.each([320, 390, 1280])('anchors the bubble outside Swiper without changing te
   expect(getComputedStyle(layer).zIndex).toBe(getComputedStyle(document.documentElement).getPropertyValue('--z-chrome-hint').trim());
   expect(backend.resize.mock.calls.length).toBeGreaterThan(0);
   const originalGrid = backend.resize.mock.calls.at(-1)![0];
-  await page.screenshot({ path: `/tmp/termdock-session-mode-terminal-${width}-dpr${devicePixelRatio}.png` });
+  await page.screenshot({ path: `/tmp/veymux-session-mode-terminal-${width}-dpr${devicePixelRatio}.png` });
   if (width === 390) {
     document.documentElement.style.setProperty('--safe-left-inset', '32px');
     document.documentElement.style.setProperty('--safe-right-inset', '38px');

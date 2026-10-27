@@ -26,7 +26,7 @@ export function collaborationTaskRoutes(options: { agent: boolean; store: Collab
       return { tasks, peers, actor: null };
     }
     const sessionId = options.resolveSession((req.method === 'GET' ? req.query : req.body) ?? {});
-    if (!sessionId || sessionId.startsWith('remote:')) throw new CollaborationError('SESSION_NOT_FOUND', '请在 Termdock 管理的本机会话内使用任务命令', 404);
+    if (!sessionId || sessionId.startsWith('remote:')) throw new CollaborationError('SESSION_NOT_FOUND', '请在 Veymux 管理的本机会话内使用任务命令', 404);
     return { tasks, peers, actor: peers.taskMember(sessionId) };
   };
   const run = (handler: (req: Request, c: ReturnType<typeof context>) => unknown | Promise<unknown>) =>

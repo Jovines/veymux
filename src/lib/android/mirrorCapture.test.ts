@@ -6,7 +6,7 @@ import {
 
 describe('mirror capture naming', () => {
   it('截图是 png，且多次采集不重名', () => {
-    expect(mirrorCaptureName()).toMatch(/^termdock-mirror-shot-\d{14}-[a-z0-9]+\.png$/);
+    expect(mirrorCaptureName()).toMatch(/^veymux-mirror-shot-\d{14}-[a-z0-9]+\.png$/);
     const names = new Set(Array.from({ length: 20 }, () => mirrorCaptureName()));
     expect(names.size).toBe(20);
   });

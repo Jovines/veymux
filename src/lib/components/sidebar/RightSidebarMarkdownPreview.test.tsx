@@ -213,7 +213,7 @@ describe('right sidebar Markdown preview rendering', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Heading' })).toBeTruthy();
     expect(screen.getByText('ts')).toBeTruthy();
     expect(screen.getByText('const ok = true;')).toBeTruthy();
-    expect(screen.getByText('const ok = true;').closest('pre')?.className).toContain('termdock-code');
+    expect(screen.getByText('const ok = true;').closest('pre')?.className).toContain('veymux-code');
   });
 
   it('adds stable unique ids to headings for anchor links', () => {
@@ -370,8 +370,8 @@ describe('right sidebar Markdown preview rendering', () => {
       '>     const quoted = true;',
     ].join('\n'));
 
-    expect(screen.getByText('const top = true;').closest('pre')?.className).toContain('termdock-code');
-    expect(screen.getByText('const quoted = true;').closest('pre')?.className).toContain('termdock-code');
+    expect(screen.getByText('const top = true;').closest('pre')?.className).toContain('veymux-code');
+    expect(screen.getByText('const quoted = true;').closest('pre')?.className).toContain('veymux-code');
   });
 
   it('renders Mermaid fences as bounded inline SVG diagrams', async () => {
@@ -401,7 +401,7 @@ describe('right sidebar Markdown preview rendering', () => {
     expect(svg?.parentElement?.className).toContain('max-h-[70vh]');
     expect(svg?.parentElement?.className).toContain('overflow-auto');
     expect(mermaidInitialize).toHaveBeenCalledWith(expect.objectContaining({ theme: 'neutral' }));
-    expect(mermaidRender).toHaveBeenCalledWith(expect.stringContaining('termdock-md-mermaid-code-0'), 'graph TD\n  A-->B');
+    expect(mermaidRender).toHaveBeenCalledWith(expect.stringContaining('veymux-md-mermaid-code-0'), 'graph TD\n  A-->B');
   });
 
   it('passes Mermaid flowcharts with HTML line breaks through to Mermaid', async () => {
@@ -420,7 +420,7 @@ describe('right sidebar Markdown preview rendering', () => {
     ].join('\n'));
 
     await waitFor(() => expect(screen.getByRole('img', { name: 'Mermaid diagram' })).toBeTruthy());
-    expect(mermaidRender).toHaveBeenCalledWith(expect.stringContaining('termdock-md-mermaid-code-0'), code);
+    expect(mermaidRender).toHaveBeenCalledWith(expect.stringContaining('veymux-md-mermaid-code-0'), code);
   });
 
   it('renders inline and block math with KaTeX', async () => {
@@ -489,7 +489,7 @@ describe('right sidebar Markdown preview rendering', () => {
 
     const scroller = container.querySelector('[data-markdown-table-scroll]');
     expect(scroller?.className).toContain('max-w-full');
-    expect(scroller?.className).toContain('termdock-md-table-scroll');
+    expect(scroller?.className).toContain('veymux-md-table-scroll');
     expect(scroller?.className).toContain('overflow-x-auto');
     expect(scroller?.className).toContain('overflow-y-hidden');
   });

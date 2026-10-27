@@ -9,10 +9,10 @@ afterEach(() => {
   vi.unstubAllGlobals();
   document.body.replaceChildren();
   document.documentElement.removeAttribute('style');
-  delete document.documentElement.dataset.termdockTouchViewport;
-  delete document.documentElement.dataset.termdockPwaStatusBar;
-  delete document.documentElement.dataset.termdockNativeKeyboard;
-  delete document.documentElement.dataset.termdockNativePan;
+  delete document.documentElement.dataset.veymuxTouchViewport;
+  delete document.documentElement.dataset.veymuxPwaStatusBar;
+  delete document.documentElement.dataset.veymuxNativeKeyboard;
+  delete document.documentElement.dataset.veymuxNativePan;
 });
 
 it('uses no top fallback with a native iPad status bar, while retaining a real inset on old installs', () => {
@@ -23,7 +23,7 @@ it('uses no top fallback with a native iPad status bar, while retaining a real i
     userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X)',
     platform: 'MacIntel', maxTouchPoints: 5, standalone: true,
   });
-  document.documentElement.dataset.termdockPwaStatusBar = 'default';
+  document.documentElement.dataset.veymuxPwaStatusBar = 'default';
   document.documentElement.style.setProperty('--safe-top-inset', 'env(safe-area-inset-top, 0px)');
   let rawTop = 0;
   vi.spyOn(window, 'getComputedStyle').mockImplementation(() => ({
@@ -82,7 +82,7 @@ it('reserves iPad PWA safe areas across rotation, keyboard movement and blur', (
   });
   syncInitialViewportCssVars();
   const style = document.documentElement.style;
-  expect(document.documentElement.dataset.termdockTouchViewport).toBe('true');
+  expect(document.documentElement.dataset.veymuxTouchViewport).toBe('true');
   expect(style.getPropertyValue('--safe-top-inset')).toBe('20px');
   expect(style.getPropertyValue('--safe-bottom-inset')).toBe('20px');
   renderHook(() => useViewportHeight());
@@ -236,7 +236,7 @@ it('repairs a silent post-animation iOS measurement without continuously refitti
   document.body.append(input);
   input.focus();
   const layout = vi.fn();
-  document.addEventListener('termdock:viewport-layout-change', layout);
+  document.addEventListener('veymux:viewport-layout-change', layout);
   const { unmount } = renderHook(() => useViewportHeight());
   const flush = (at: number) => act(() => {
     now = at;
@@ -269,7 +269,7 @@ it('repairs a silent post-animation iOS measurement without continuously refitti
   expect(frames.size).toBe(1);
   unmount();
   expect(frames.size).toBe(0);
-  document.removeEventListener('termdock:viewport-layout-change', layout);
+  document.removeEventListener('veymux:viewport-layout-change', layout);
 });
 
 it('does not cache a native viewport pan as a new base height for subsequent keyboard openings', () => {
@@ -332,6 +332,6 @@ it('updates native compensation from actual page motion without a visual-height 
     act(() => { top = position; window.dispatchEvent(new Event('scroll')); });
     flush();
     expect(document.documentElement.style.getPropertyValue('--app-native-pan')).toBe(`${-position || 0}px`);
-    expect(document.documentElement.dataset.termdockNativePan).toBe(String(position < 0));
+    expect(document.documentElement.dataset.veymuxNativePan).toBe(String(position < 0));
   }
 });

@@ -41,7 +41,7 @@ function closeFixture(path = '/:sessionId', backendLive = true) {
   const cleanup = vi.fn(() => { expect(closedAt).not.toBeNull(); });
   const persist = vi.fn();
   const context = routeFunctions(['markTmuxSessionClosed'], `
-    const TERMDOCK_GUI_DETACHED_AT_OPTION = '@termdock-gui-detached-at';
+    const VEYMUX_GUI_DETACHED_AT_OPTION = '@veymux-gui-detached-at';
     globalThis.close = ${handler};
   `, {
     terminalSessions: new Map(backendLive ? [['backend', record]] : []), globalSessionState: state,
@@ -67,7 +67,7 @@ it('completes ordinary close without depending on a second request from the page
   expect(fixture.state.sessions).toEqual([]);
   expect(fixture.cleanup).toHaveBeenCalledOnce();
   expect(fixture.persist).toHaveBeenCalledOnce();
-  expect(isTmuxRecoveryCandidate({ managedByTermdock: true, sourceFrontendSessionId: 'frontend',
+  expect(isTmuxRecoveryCandidate({ managedByVeymux: true, sourceFrontendSessionId: 'frontend',
     boundFrontendSessionId: null, guiDetachedAt: fixture.closedAt() })).toBe(false);
 });
 
@@ -76,7 +76,7 @@ it('also closes persisted records when their backend wrapper is already missing'
   await fixture.context.close(fixture.request, fixture.response);
   expect(fixture.state.sessions).toEqual([]);
   expect(fixture.cleanup).not.toHaveBeenCalled();
-  expect(fixture.run).toHaveBeenCalledWith(['set-option', '-t', 'task', '@termdock-gui-detached-at', expect.any(String)]);
+  expect(fixture.run).toHaveBeenCalledWith(['set-option', '-t', 'task', '@veymux-gui-detached-at', expect.any(String)]);
   expect(fixture.response.json).toHaveBeenCalledWith({ success: true, alreadyGone: true });
 });
 
@@ -105,7 +105,7 @@ it('allows confirmed missing tmux sessions to close, but preserves unexpected-lo
   const fixture = closeFixture();
   fixture.run.mockRejectedValueOnce(new Error("can't find session: task"));
   await expect(fixture.context.markTmuxSessionClosed('task')).resolves.toBeUndefined();
-  expect(isTmuxRecoveryCandidate({ managedByTermdock: true, sourceFrontendSessionId: 'frontend',
+  expect(isTmuxRecoveryCandidate({ managedByVeymux: true, sourceFrontendSessionId: 'frontend',
     boundFrontendSessionId: null, guiDetachedAt: null })).toBe(true);
 });
 
@@ -198,7 +198,7 @@ it('uses refreshed pane argv for recovery reconciliation instead of cached tmux 
     getTmuxStatus: async () => ({ available: true }),
     listLiveTmuxInventorySessions: async () => [{ name: 'original', program: 'zsh' }],
     observeTmuxServerGeneration: observe,
-    isTermdockManagedTmuxSession: () => true,
+    isVeymuxManagedTmuxSession: () => true,
     resolveLiveTmuxMetadata: async () => ({ program: 'node', rawArgs: 'node /app/customagent', cwd: '/work' }),
     backfillAgentResumeFromTmuxProcess: vi.fn(), syncDynamicTmuxMetadata: vi.fn(),
     globalSessionState: { sessions: [], updatedAt: 1 }, terminalSessions: new Map(),
@@ -355,7 +355,7 @@ it.each([false, true])('only queues automatic reconnect with explicit opt-in: %s
     const operations: { incidentId: string }[] = [];
     const create = vi.fn(async (operation: { incidentId: string }) => { operations.push(operation); });
     const context = routeFunctions(['observeTmuxServerGeneration'], '', {
-      setTimeout, process: { env: enabled ? { TD_TMUX_AUTO_RECOVERY: '1' } : {} },
+      setTimeout, process: { env: enabled ? { VEYMUX_TMUX_AUTO_RECOVERY: '1' } : {} },
       tmuxRecoveryState: state, persistTmuxRecoveryState: vi.fn(), getTmuxServerPid: async () => 200,
       globalSessionState: { sessions: [{ sessionId: 'frontend', mode: 'tmux', tmuxSessionName: 'original', cwd: '/work', agentResume: { slug: 'custom-agent', sessionId: 'native' } }] },
       terminalSessions: new Map(), intentionallyDeletingTmuxSessions: new Set(),

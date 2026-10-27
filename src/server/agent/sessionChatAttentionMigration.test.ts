@@ -8,7 +8,7 @@ import { sessionChatHistory, sessionChatIndex, watchSessionChatIndices } from '.
 const directories: string[] = [];
 afterEach(() => { vi.restoreAllMocks(); for (const dir of directories.splice(0)) fs.rmSync(dir, { recursive: true, force: true }); });
 function fixture() {
-  const dir = fs.mkdtempSync(join(tmpdir(), 'td-chat-attention-')); directories.push(dir);
+  const dir = fs.mkdtempSync(join(tmpdir(), 'veymux-chat-attention-')); directories.push(dir);
   const file = join(dir, 'collaboration.json'), store = new CollaborationStore(file);
   const group = store.ensureSessionChat('agent');
   const [request] = store.send({ groupId: group.id, fromSessionId: null, toSessionIds: ['agent'], kind: 'ask', content: '历史问题',

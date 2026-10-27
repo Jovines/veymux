@@ -13,22 +13,22 @@ const { rebuildNodePty } = require('../scripts/ensure-node-pty.cjs');
 function fixture(t) {
   // macOS exposes /var through /private/var; child process.cwd() resolves that
   // alias. Compare the same real directory while retaining the spaces fixture.
-  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'termdock install ')));
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'veymux install ')));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const bin = path.join(root, 'bin');
   fs.mkdirSync(bin);
   const env = {
     ...process.env, HOME: root, PATH: `${bin}${path.delimiter}${process.env.PATH}`,
-    npm_config_global: 'true', SHELL: '/nonexistent/login-shell', TERMDOCK_INSTALL_FIXTURE: root,
+    npm_config_global: 'true', SHELL: '/nonexistent/login-shell', VEYMUX_INSTALL_FIXTURE: root,
   };
   const executable = (name, code) => fs.writeFileSync(path.join(bin, name), `#!${process.execPath}\n${code}`, { mode: 0o755 });
   executable('npx', `
     const fs = require('node:fs'), path = require('node:path');
-    const root = process.env.TERMDOCK_INSTALL_FIXTURE;
+    const root = process.env.VEYMUX_INSTALL_FIXTURE;
     fs.writeFileSync(path.join(root, 'invocation.json'), JSON.stringify({ args: process.argv.slice(2), cwd: process.cwd(), global: process.env.npm_config_global,
-      ...(process.env.TERMDOCK_RECORD_TOOLCHAIN ? { toolchain: Object.fromEntries(['DEVELOPER_DIR', 'SDKROOT', 'CC', 'CXX', 'CFLAGS', 'CXXFLAGS', 'LDFLAGS', 'CPLUS_INCLUDE_PATH'].map(key => [key, process.env[key]])) } : {}) }));
+      ...(process.env.VEYMUX_RECORD_TOOLCHAIN ? { toolchain: Object.fromEntries(['DEVELOPER_DIR', 'SDKROOT', 'CC', 'CXX', 'CFLAGS', 'CXXFLAGS', 'LDFLAGS', 'CPLUS_INCLUDE_PATH'].map(key => [key, process.env[key]])) } : {}) }));
     console.error('fixture node-gyp diagnostic');
-    if (process.env.TERMDOCK_REBUILD_FAIL) process.exit(17);
+    if (process.env.VEYMUX_REBUILD_FAIL) process.exit(17);
     fs.writeFileSync(path.join(root, 'rebuilt'), 'ok');
   `);
   executable('tmux', "console.log('tmux 3.6a');");
@@ -41,20 +41,20 @@ for (const fail of [false, true, 'probe']) test(`postinstall fallback with inher
   const pty = path.join(root, 'node_modules/node-pty');
   fs.mkdirSync(scripts);
   fs.mkdirSync(path.join(pty, 'prebuilds'), { recursive: true });
-  for (const name of ['postinstall.mjs', 'ensure-node-pty.cjs', 'native-build-env.cjs', 'node-pty-darwin-spawn.inc', 'install-utils.cjs']) {
+  for (const name of ['postinstall.mjs', 'migrate-user-data.cjs', 'ensure-node-pty.cjs', 'native-build-env.cjs', 'node-pty-darwin-spawn.inc', 'install-utils.cjs']) {
     fs.copyFileSync(new URL(`../scripts/${name}`, import.meta.url), path.join(scripts, name));
   }
   // This exercises the cross-platform fallback, independently of the Darwin patch gate.
   fs.writeFileSync(path.join(pty, 'package.json'), JSON.stringify({ name: 'node-pty', main: 'index.cjs' }));
   fs.writeFileSync(path.join(pty, 'index.cjs'), `
     exports.spawn = () => {
-      if (process.env.TERMDOCK_PROBE_FAIL || !require('node:fs').existsSync(require('node:path').join(process.env.TERMDOCK_INSTALL_FIXTURE, 'rebuilt'))) throw new Error('incompatible binary');
+      if (process.env.VEYMUX_PROBE_FAIL || !require('node:fs').existsSync(require('node:path').join(process.env.VEYMUX_INSTALL_FIXTURE, 'rebuilt'))) throw new Error('incompatible binary');
       return { kill() {} };
     };
   `);
   const script = path.join(scripts, 'postinstall.mjs');
   const result = spawnSync(process.execPath, ['-e', `Object.defineProperty(process, 'platform', { value: 'linux' }); import(${JSON.stringify(pathToFileURL(script).href)});`], {
-    env: { ...env, ...(fail === true ? { TERMDOCK_REBUILD_FAIL: '1' } : fail === 'probe' ? { TERMDOCK_PROBE_FAIL: '1' } : {}) }, encoding: 'utf8', timeout: 30_000,
+    env: { ...env, ...(fail === true ? { VEYMUX_REBUILD_FAIL: '1' } : fail === 'probe' ? { VEYMUX_PROBE_FAIL: '1' } : {}) }, encoding: 'utf8', timeout: 30_000,
   });
   if (fail) {
     assert.notEqual(result.status, 0);
@@ -68,14 +68,14 @@ for (const fail of [false, true, 'probe']) test(`postinstall fallback with inher
     args: ['--global=false', '--yes', 'node-gyp', 'rebuild'], cwd: pty, global: 'true',
   });
   assert.equal(fs.existsSync(path.join(pty, 'prebuilds')), false);
-  assert.equal(fs.existsSync(path.join(root, '.termdock/.boot-check-ok')), !fail);
+  assert.equal(fs.existsSync(path.join(root, '.veymux/.boot-check-ok')), !fail);
 });
 
 test('rebuild failures preserve native tool output, cwd and exit status', t => {
   const { root, env } = fixture(t);
   const script = require.resolve('../scripts/ensure-node-pty.cjs');
   const result = spawnSync(process.execPath, ['-e', `require(${JSON.stringify(script)}).rebuildNodePty(${JSON.stringify(root)});`], {
-    env: { ...env, TERMDOCK_REBUILD_FAIL: '1' }, encoding: 'utf8', timeout: 30_000,
+    env: { ...env, VEYMUX_REBUILD_FAIL: '1' }, encoding: 'utf8', timeout: 30_000,
   });
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /fixture node-gyp diagnostic/);
@@ -132,7 +132,7 @@ function macFixture(t) {
         if (failure === 'exit') return { status: 72, stderr: 'fixture SDK is unavailable' };
         if (failure === 'spawn') return { status: null, error: Object.assign(new Error('fixture timed out'), { code: 'ETIMEDOUT' }) };
         if (failure === 'relative') return { status: 0, stdout: 'relative/sdk' };
-        if (failure === 'missing') return { status: 0, stdout: '/nonexistent/termdock-sdk' };
+        if (failure === 'missing') return { status: 0, stdout: '/nonexistent/veymux-sdk' };
         if (failure === 'empty') return { status: 0, stdout: '' };
         return { status: 0, stdout: path.join(options.env.DEVELOPER_DIR,
           args[2] === '--show-sdk-path' ? 'SDKs/MacOSX26.2.sdk' : 'Toolchains/usr/bin/' + args[3]) + '\\n' };
@@ -142,7 +142,7 @@ function macFixture(t) {
       } finally { assert.deepEqual({ ...process.env }, before); }
     `;
     return spawnSync(process.execPath, ['-e', code], {
-      env: { ...env, TERMDOCK_RECORD_TOOLCHAIN: '1', ...overrides }, encoding: 'utf8', timeout: 30_000,
+      env: { ...env, VEYMUX_RECORD_TOOLCHAIN: '1', ...overrides }, encoding: 'utf8', timeout: 30_000,
     });
   }
   const commands = developer => {
@@ -218,7 +218,7 @@ for (const failure of ['exit', 'spawn', 'relative', 'missing', 'empty']) test(`D
 
 test('Darwin native build failure reports the selected toolchain and original linker output', t => {
   const f = macFixture(t);
-  const result = f.run({ TERMDOCK_REBUILD_FAIL: '1' });
+  const result = f.run({ VEYMUX_REBUILD_FAIL: '1' });
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /fixture node-gyp diagnostic/);
   assert.match(result.stderr, /exit status=17/);

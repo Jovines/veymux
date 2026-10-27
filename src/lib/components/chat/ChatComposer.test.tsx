@@ -38,7 +38,7 @@ it('shows image/video cards, removes one, sends a file without text, and restore
   await screen.findByRole('button', { name: '修改草稿' });
   expect(parseChatDraft(posts[0].content).attachments).toEqual([{ path: '/tmp/demo.mp4', name: '演示.mp4', type: 'video/mp4', size: 5, reference: '视频2' }]);
   expect(parseChatDraft(posts[0].content).text).toBe('【视频2】');
-  expect(screen.queryByText(/termdock-context/)).toBeNull();
+  expect(screen.queryByText(/veymux-context/)).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: '修改草稿' }));
   expect(screen.getByRole('button', { name: '移除附件 演示.mp4' })).toBeTruthy();
   view.unmount(); await mount();
@@ -125,7 +125,7 @@ it('anchors attachments in prose, retains text typed during upload, and reuses t
   finish({ files: [{ path: '/tmp/one.png' }] }); await screen.findByRole('button', { name: '移除附件 第一张.png' });
   expect(editorText()).toBe('这张【图片1】 与另一张对比，看看差别');
   setChatEditorCaret(input, editorText().length);
-  fireEvent(window, new CustomEvent('termdock-insert-reference', { detail: { text: '【图片1】', sessionId: 'composer' } }));
+  fireEvent(window, new CustomEvent('veymux-insert-reference', { detail: { text: '【图片1】', sessionId: 'composer' } }));
   expect(editorText().match(/【图片1】/g)).toHaveLength(2);
   fireEvent.click(screen.getByRole('button', { name: '发送消息' })); await screen.findByRole('button', { name: '修改草稿' });
   const content = parseChatDraft(posts[0].content); expect(content.attachments).toHaveLength(1); expect(content.attachments[0]).toMatchObject({ path: '/tmp/one.png', reference: '图片1' });

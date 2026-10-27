@@ -1,9 +1,9 @@
-import { getTermdockDesktopBridge } from '../desktop/nativeBridge';
+import { getVeymuxDesktopBridge } from '../desktop/nativeBridge';
 
 /** Explicit user copy writes on this client, independently of service APIs. */
 export async function writeClipboardText(text: string, current: () => boolean = () => true): Promise<boolean> {
   if (!current()) return false;
-  const desktop = getTermdockDesktopBridge();
+  const desktop = getVeymuxDesktopBridge();
   if (desktop?.writeClipboardText) {
     try { await desktop.writeClipboardText(text); return current(); }
     catch { return false; }

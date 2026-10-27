@@ -19,7 +19,7 @@ export class AndroidRecordings {
   private jobs = new Map<string, Job>();
   private loading: Promise<void> | undefined;
   private starts = new Map<string, Promise<AndroidRecording>>();
-  constructor(private readonly directory = join(homedir(), '.termdock', 'recordings')) {}
+  constructor(private readonly directory = join(homedir(), '.veymux', 'recordings')) {}
   private file(job: Job) { return join(this.directory, job.info.name); }
   private persist(job: Job): Promise<void> {
     job.writing = (job.writing ?? Promise.resolve()).catch(() => {}).then(async () => {
@@ -36,7 +36,7 @@ export class AndroidRecordings {
         if (!/^[a-f0-9-]{36}\.json$/.test(name)) continue;
         try {
           const info = JSON.parse(await fs.readFile(join(this.directory, name), 'utf8')) as AndroidRecording;
-          if (name !== `${info.id}.json` || info.name !== `termdock-recording-${info.id}.mp4`) continue;
+          if (name !== `${info.id}.json` || info.name !== `veymux-recording-${info.id}.mp4`) continue;
           if (info.status !== 'ready' && info.status !== 'error') {
             info.status = 'error'; info.error = '录制因服务重启中断，文件可能不完整。';
           }
@@ -64,7 +64,7 @@ export class AndroidRecordings {
     const { bin, serverJar } = await resolveScrcpyBinaries();
     if ([...this.jobs.values()].filter(job => ['starting', 'recording', 'stopping'].includes(job.info.status)).length >= 3) throw new Error('同时最多录制三个设备');
     const id = randomUUID();
-    const job: Job = { info: { id, serial, name: `termdock-recording-${id}.mp4`, size: 0, startedAt: Date.now(), status: 'starting', ...(ownerId ? { ownerId } : {}) } };
+    const job: Job = { info: { id, serial, name: `veymux-recording-${id}.mp4`, size: 0, startedAt: Date.now(), status: 'starting', ...(ownerId ? { ownerId } : {}) } };
     this.jobs.set(id, job);
     await this.persist(job);
     const child = spawn(bin, [

@@ -10,9 +10,9 @@ let auth: typeof import('../utils/authProtection.js');
 let csrf: InstanceType<typeof import('../utils/csrfProtection.js').CsrfProtection>;
 beforeEach(async () => {
   vi.resetModules();
-  directory = mkdtempSync(join(os.tmpdir(), 'termdock-object-auth-test-'));
+  directory = mkdtempSync(join(os.tmpdir(), 'veymux-object-auth-test-'));
   vi.spyOn(os, 'homedir').mockReturnValue(directory);
-  vi.stubEnv('TERMDOCK_PASSWORD', ''); vi.stubEnv('TERMDOCK_PUBLIC_ORIGIN', '');
+  vi.stubEnv('VEYMUX_PASSWORD', ''); vi.stubEnv('VEYMUX_PUBLIC_ORIGIN', '');
   context = await import('./requestContext.js');
   auth = await import('../utils/authProtection.js');
   auth.writeAuthFile(auth.hashPassword('strong test-only password'));
@@ -25,7 +25,7 @@ function response() {
   return res as unknown as Response;
 }
 function request() {
-  return { method: 'POST', path: '/api/terminal/one/input', cookies: {}, headers: { 'x-termdock-inner': 'attacker', 'x-termdock-encrypted': 'true' }, encrypted: true } as unknown as Request;
+  return { method: 'POST', path: '/api/terminal/one/input', cookies: {}, headers: { 'x-veymux-inner': 'attacker', 'x-veymux-encrypted': 'true' }, encrypted: true } as unknown as Request;
 }
 describe('encrypted request authentication marker', () => {
   it('cannot be forged by an HTTP header or a request property', () => {

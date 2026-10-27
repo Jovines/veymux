@@ -5,7 +5,7 @@ export interface ChatReplyContext { id: string; text: string; createdAt: number 
 export function chatReplyExcerpt(content: string): string {
   let text = content;
   let files: { name: string; reference?: string }[] = [];
-  const marker = '```termdock-context\n', at = content.lastIndexOf(marker);
+  const marker = '```veymux-context\n', at = content.lastIndexOf(marker);
   if (at >= 0 && (at === 0 || content.slice(0, at).endsWith('\n\n')) && content.endsWith('\n```')) {
     try {
       const value = JSON.parse(content.slice(at + marker.length, -4));

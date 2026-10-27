@@ -35,7 +35,7 @@ async function fetchWithAuth(token: string): Promise<KimiUsageResponse> {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
       Accept: 'application/json',
-      'User-Agent': 'termdock/1.0',
+      'User-Agent': 'veymux/1.0',
     },
     signal: AbortSignal.timeout(10_000),
   });

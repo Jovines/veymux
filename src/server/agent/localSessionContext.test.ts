@@ -4,8 +4,8 @@ import { parseCollaborationCommand, executeCollaborationCommand } from './collab
 
 it('uses stable explicit identity without probing a detached process or mixing stale hints', async () => {
   const detect = vi.fn(async () => ({ backendSessionId: 'wrong', tmuxSessionName: 'wrong' }));
-  expect(await resolveLocalCollaborationContext('mine', { TERMDOCK_COLLAB_SESSION_ID: 'other' }, detect)).toEqual({ sessionId: 'mine' });
-  expect(await resolveLocalCollaborationContext(undefined, { TERMDOCK_COLLAB_SESSION_ID: 'mine' }, detect)).toEqual({ sessionId: 'mine' });
+  expect(await resolveLocalCollaborationContext('mine', { VEYMUX_COLLAB_SESSION_ID: 'other' }, detect)).toEqual({ sessionId: 'mine' });
+  expect(await resolveLocalCollaborationContext(undefined, { VEYMUX_COLLAB_SESSION_ID: 'mine' }, detect)).toEqual({ sessionId: 'mine' });
   expect(detect).not.toHaveBeenCalled();
 });
 
@@ -18,10 +18,10 @@ it('does not guess a default tmux session when all identity variables are missin
 
 it('accepts a pane hint without TMUX and preserves a backend identity on tmux failure', async () => {
   const run = vi.fn(async () => 'original-tmux\n');
-  expect(await detectLocalSessionContext({ TMUX_PANE: '%173', TERMDOCK_BACKEND_SESSION_ID: 'stale' }, run))
+  expect(await detectLocalSessionContext({ TMUX_PANE: '%173', VEYMUX_BACKEND_SESSION_ID: 'stale' }, run))
     .toEqual({ backendSessionId: 'stale', tmuxSessionName: 'original-tmux' });
   expect(run).toHaveBeenCalledWith('tmux', ['display-message', '-p', '-t', '%173', '#S']);
-  expect(await detectLocalSessionContext({ TMUX_PANE: '%173', TERMDOCK_BACKEND_SESSION_ID: 'live' }, async () => { throw new Error('offline'); }))
+  expect(await detectLocalSessionContext({ TMUX_PANE: '%173', VEYMUX_BACKEND_SESSION_ID: 'live' }, async () => { throw new Error('offline'); }))
     .toEqual({ backendSessionId: 'live', tmuxSessionName: null });
 });
 

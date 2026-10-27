@@ -30,7 +30,7 @@ export async function prepareSecureHtmlPreview(src: string, options: { fetch: Pr
   const first = new URL(src, origin);
   if (first.origin !== origin || !canonicalApiPath(first.pathname)?.startsWith(PREFIX)) fail('预览地址不是有效的本地文件入口');
   const capability = crypto.randomUUID();
-  const virtualBase = `https://termdock-preview.invalid/${capability}/`;
+  const virtualBase = `https://veymux-preview.invalid/${capability}/`;
   const errors: string[] = [];
   const report = (message: string) => { if (!errors.includes(message) && errors.length < 20) errors.push(message); };
   const urls = new Set<string>();
@@ -100,7 +100,7 @@ export async function prepareSecureHtmlPreview(src: string, options: { fetch: Pr
   }
   function blob(data: BlobPart, type: string): string {
     if (disposed) fail('预览已关闭');
-    const url = `termdock-resource-${capability}-${packed.length}`; packed.push({ token: url, data, type }); urls.add(url); return url;
+    const url = `veymux-resource-${capability}-${packed.length}`; packed.push({ token: url, data, type }); urls.add(url); return url;
   }
   async function asset(value: string, base: URL, kind: 'css' | 'script' | 'resource', stack: Set<string> = new Set()): Promise<string> {
     if (!value || value.startsWith('#')) return value;
@@ -179,7 +179,7 @@ export async function prepareSecureHtmlPreview(src: string, options: { fetch: Pr
     }
     const sources = [...externalOrigins].join(' ');
     const csp = document.createElement('meta'); csp.httpEquiv = 'Content-Security-Policy';
-    csp.content = `default-src 'none'; script-src 'unsafe-inline' 'wasm-unsafe-eval' blob: ${sources}; style-src 'unsafe-inline' blob: ${sources}; img-src blob: data: ${sources}; font-src blob: data: ${sources}; media-src blob: data: ${sources}; connect-src blob: ${sources} ${[...externalOrigins].map(value => value.replace(/^https:/, 'wss:')).join(' ')}; worker-src blob:; frame-src 'none'; object-src 'none'; base-uri https://termdock-preview.invalid; form-action 'none'`;
+    csp.content = `default-src 'none'; script-src 'unsafe-inline' 'wasm-unsafe-eval' blob: ${sources}; style-src 'unsafe-inline' blob: ${sources}; img-src blob: data: ${sources}; font-src blob: data: ${sources}; media-src blob: data: ${sources}; connect-src blob: ${sources} ${[...externalOrigins].map(value => value.replace(/^https:/, 'wss:')).join(' ')}; worker-src blob:; frame-src 'none'; object-src 'none'; base-uri https://veymux-preview.invalid; form-action 'none'`;
     const referrer = document.createElement('meta'); referrer.name = 'referrer'; referrer.content = 'no-referrer';
     const bootstrap = document.createElement('script'); bootstrap.textContent = previewRuntime + '\ninstallPreviewRuntime(' + [capability, virtualBase, [...externalOrigins], shim].map(scriptText).join(',') + ');';
     const loader = document.createElement('script'); loader.src = shim;

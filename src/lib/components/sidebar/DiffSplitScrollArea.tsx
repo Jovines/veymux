@@ -136,10 +136,10 @@ export function DiffSplitScrollArea({ enabled, className, label, children }: {
   };
 
   return (
-    <div ref={rootRef} className={`${className} ${enabled ? 'termdock-diff-split-nowrap' : ''}`} onScrollCapture={onScroll}>
+    <div ref={rootRef} className={`${className} ${enabled ? 'veymux-diff-split-nowrap' : ''}`} onScrollCapture={onScroll}>
       {children}
       {enabled && overflow && (
-        <div className="termdock-diff-horizontal-bars">
+        <div className="veymux-diff-horizontal-bars">
           {[0, 1].map((side) => (
             <div key={side} ref={(element) => { barsRef.current[side] = element; }} data-diff-horizontal-scroll tabIndex={0} role="region" aria-label={label}>
               <div />

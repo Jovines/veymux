@@ -103,7 +103,7 @@ export function FreeSplitLayout({ layoutId, panes, preset = 'grid', initialTree,
   useEffect(() => {
     const flush = () => persist();
     window.addEventListener('pagehide', flush);
-    return () => { window.removeEventListener('pagehide', flush); document.dispatchEvent(new CustomEvent('termdock:gesture-lock', { detail: { locked: false } })); flush(); };
+    return () => { window.removeEventListener('pagehide', flush); document.dispatchEvent(new CustomEvent('veymux:gesture-lock', { detail: { locked: false } })); flush(); };
   }, [layoutId]);
 
   const geometry = layoutRects(tree);
@@ -116,7 +116,7 @@ export function FreeSplitLayout({ layoutId, panes, preset = 'grid', initialTree,
   const trackLayoutDrag = useDragLifetime(reason => {
     activeResize.current = null; drag.current = null; dropRef.current = null;
     if (reason !== 'dispose') { setDrop(null); setDragPreview(null); persist(); }
-    document.dispatchEvent(new CustomEvent('termdock:gesture-lock', { detail: { locked: false } }));
+    document.dispatchEvent(new CustomEvent('veymux:gesture-lock', { detail: { locked: false } }));
   });
   // Portal children are DOM descendants but not React descendants of this layout.
   // Capture starts on the DOM container so terminal and collaboration titles share the path.
@@ -131,7 +131,7 @@ export function FreeSplitLayout({ layoutId, panes, preset = 'grid', initialTree,
       const pane = handle.closest<HTMLElement>('[data-layout-pane]');
       if (!pane || !host.contains(pane)) return;
       trackLayoutDrag(event, host);
-      document.dispatchEvent(new CustomEvent('termdock:gesture-lock', { detail: { locked: true } }));
+      document.dispatchEvent(new CustomEvent('veymux:gesture-lock', { detail: { locked: true } }));
       const box = pane.getBoundingClientRect();
       drag.current = { id: pane.dataset.layoutPane!, x: event.clientX, y: event.clientY, moved: false,
         originX: event.clientX - box.left, originY: event.clientY - box.top,
@@ -191,12 +191,12 @@ export function FreeSplitLayout({ layoutId, panes, preset = 'grid', initialTree,
       if (activeResize.current) { activeResize.current = null; persist(); }
       if (drag.current?.moved && dropRef.current) { change(movePane(treeRef.current, drag.current.id, dropRef.current.id, dropRef.current.side)); persist(); }
       drag.current = null; dropRef.current = null; setDrop(null); setDragPreview(null);
-      document.dispatchEvent(new CustomEvent('termdock:gesture-lock', { detail: { locked: false } }));
+      document.dispatchEvent(new CustomEvent('veymux:gesture-lock', { detail: { locked: false } }));
       if (event.currentTarget.hasPointerCapture?.(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
     }}
-    onLostPointerCapture={() => { document.dispatchEvent(new CustomEvent('termdock:gesture-lock', { detail: { locked: false } })); activeResize.current = null; drag.current = null; dropRef.current = null; setDrop(null); setDragPreview(null); persist(); }}
-    onKeyDownCapture={event => { if (event.key === 'Escape') { drag.current = null; dropRef.current = null; setDrop(null); setDragPreview(null); document.dispatchEvent(new CustomEvent('termdock:gesture-lock', { detail: { locked: false } })); } }}
-    onPointerCancel={() => { document.dispatchEvent(new CustomEvent('termdock:gesture-lock', { detail: { locked: false } })); activeResize.current = null; drag.current = null; dropRef.current = null; setDrop(null); setDragPreview(null); persist(); }}>
+    onLostPointerCapture={() => { document.dispatchEvent(new CustomEvent('veymux:gesture-lock', { detail: { locked: false } })); activeResize.current = null; drag.current = null; dropRef.current = null; setDrop(null); setDragPreview(null); persist(); }}
+    onKeyDownCapture={event => { if (event.key === 'Escape') { drag.current = null; dropRef.current = null; setDrop(null); setDragPreview(null); document.dispatchEvent(new CustomEvent('veymux:gesture-lock', { detail: { locked: false } })); } }}
+    onPointerCancel={() => { document.dispatchEvent(new CustomEvent('veymux:gesture-lock', { detail: { locked: false } })); activeResize.current = null; drag.current = null; dropRef.current = null; setDrop(null); setDragPreview(null); persist(); }}>
     {dragPreview && <div aria-hidden="true" data-drag-placeholder="true" className="pointer-events-none absolute border-2 border-dashed border-primary/30 bg-primary/5" style={rectStyle(geometry.panes.find(p => p.id === dragPreview.id)?.rect ?? { x: 0, y: 0, width: 0, height: 0 })} />}
     {allPanes.map(pane => {
       const rect = geometry.panes.find(p => p.id === pane.id)?.rect;
@@ -211,7 +211,7 @@ export function FreeSplitLayout({ layoutId, panes, preset = 'grid', initialTree,
     {!focusId && handles.map(h => <button key={h.key} type="button" role="separator" aria-label={h.side ? `调整${({ top: '上', bottom: '下', left: '左', right: '右' })[h.side]}半段分隔线` : '调整分屏大小'} aria-orientation={h.axis === 'x' ? 'vertical' : 'horizontal'} disabled={!ready}
       className={`swiper-no-swiping absolute z-10 touch-none bg-border hover:bg-primary focus-visible:bg-primary ${h.axis === 'x' ? 'w-px cursor-col-resize' : 'h-px cursor-row-resize'}`}
       style={{ left: `${h.x * 100}%`, top: `${h.y * 100}%`, ...(h.axis === 'x' ? { height: `${h.length * 100}%` } : { width: `${h.length * 100}%` }) }}
-      onPointerDown={event => { event.preventDefault(); event.stopPropagation(); trackLayoutDrag(event, event.currentTarget); document.dispatchEvent(new CustomEvent('termdock:gesture-lock', { detail: { locked: true } })); activeResize.current = h; event.currentTarget.setPointerCapture?.(event.pointerId); }}
+      onPointerDown={event => { event.preventDefault(); event.stopPropagation(); trackLayoutDrag(event, event.currentTarget); document.dispatchEvent(new CustomEvent('veymux:gesture-lock', { detail: { locked: true } })); activeResize.current = h; event.currentTarget.setPointerCapture?.(event.pointerId); }}
       onDoubleClick={() => { change(h.side ? resizeFourBoundary(treeRef.current, h.side, 0.5) : resizeNode(treeRef.current, h.path!, 0.5)); persist(); }}
       onKeyDown={event => {
         if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;

@@ -2,7 +2,7 @@
  * 进程内崩溃取证：进程在"运行中挂了"时，至少留下一份能说清原因的记录。
  *
  * 现状是反过来的——全仓没有 uncaughtException/unhandledRejection 处理，
- * 而 `~/.termdock/server.log` 连时间戳都没有；挂掉之后没人知道为什么。
+ * 而 `~/.veymux/server.log` 连时间戳都没有；挂掉之后没人知道为什么。
  *
  * 职责边界：这里只负责**记录**，不负责重启（那是 supervisor 的事，见 supervisor.ts）。
  * 两者故意解耦：supervisor 覆盖不了"进程还在但内部已错乱"，进程内处理器覆盖不了
@@ -13,9 +13,9 @@
  */
 
 import fs from 'fs';
-import { getTermdockLogPath, writeJsonLogSync } from './serverLogger.js';
-import { RUNTIME_METRICS_PATH, TERMDOCK_DIR } from './termdockState.js';
-import { getTermdockVersion } from './version.js';
+import { getVeymuxLogPath, writeJsonLogSync } from './serverLogger.js';
+import { RUNTIME_METRICS_PATH, VEYMUX_DIR } from './veymuxState.js';
+import { getVeymuxVersion } from './version.js';
 
 const CRASH_LOG_NAME = 'crash.log';
 const LOG_TAIL_MAX_LINES = 40;
@@ -73,7 +73,7 @@ function readTailLines(filePath: string, maxLines: number, maxBytes: number): st
  */
 export function readCrashLogTail(
   maxLines: number = CRASH_LOG_TAIL_LINES,
-  crashLogPath: string = getTermdockLogPath(CRASH_LOG_NAME),
+  crashLogPath: string = getVeymuxLogPath(CRASH_LOG_NAME),
 ): Record<string, unknown>[] {
   return readTailLines(crashLogPath, maxLines, CRASH_LOG_TAIL_BYTES).flatMap((line) => {
     try {
@@ -88,9 +88,9 @@ export function readCrashLogTail(
 /** server.log 尾部若干行，给人看的那一面（内容原样，不做解析）。 */
 export function readServerLogTail(
   maxLines: number = LOG_TAIL_MAX_LINES,
-  logDirectory: string = TERMDOCK_DIR,
+  logDirectory: string = VEYMUX_DIR,
 ): string[] {
-  return readTailLines(getTermdockLogPath('server.log', logDirectory), maxLines, LOG_TAIL_MAX_BYTES);
+  return readTailLines(getVeymuxLogPath('server.log', logDirectory), maxLines, LOG_TAIL_MAX_BYTES);
 }
 
 /**
@@ -244,12 +244,12 @@ export function installCrashForensics(options: CrashForensicsOptions): CrashFore
     onUncaughtException: (error: unknown) => {
       fatalRecorded = true;
       recordIncident('uncaught-exception', { error });
-      log('[termdock] uncaught exception:', error);
+      log('[veymux] uncaught exception:', error);
       exit(1);
     },
     onUnhandledRejection: (reason: unknown) => {
       recordIncident('unhandled-rejection', { error: reason });
-      log('[termdock] unhandled rejection (service keeps running):', reason);
+      log('[veymux] unhandled rejection (service keeps running):', reason);
     },
     onExit: (code: number) => {
       if (code === 0 || fatalRecorded) return;
@@ -286,7 +286,7 @@ export function recordSupervisorLost(detail: string): void {
     role: 'server',
     event: 'supervisor-lost',
     detail,
-    version: getTermdockVersion(),
+    version: getVeymuxVersion(),
     serverPid: process.pid,
     uptimeMs: Math.round(process.uptime() * 1_000),
   });

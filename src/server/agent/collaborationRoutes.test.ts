@@ -11,7 +11,7 @@ describe('collaboration API with arbitrary pull consumers', () => {
   let directory: string; let store: CollaborationStore; let server: Server; let url: string;
   let renamed: Array<[string, string]>;
   beforeEach(async () => {
-    directory = fs.mkdtempSync(path.join(os.tmpdir(), 'td-collab-http-'));
+    directory = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-collab-http-'));
     store = new CollaborationStore(path.join(directory, 'messages.json'));
     store.save({ name: 'Generic clients', sessionIds: ['a', 'b'] });
     renamed = [];

@@ -6,7 +6,7 @@ import { RouteAccess } from './routeAccess.js';
 const dirs: string[] = [];
 afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
 function setup() {
-  const dir = mkdtempSync(join(tmpdir(), 'td-route-')); dirs.push(dir); const file = join(dir, 'routes.json');
+  const dir = mkdtempSync(join(tmpdir(), 'veymux-route-')); dirs.push(dir); const file = join(dir, 'routes.json');
   const token = 'secret'.repeat(8); let now = 1000; let authorized = true;
   const config = { relays: [{ id: 'A', token, targets: ['C'] }] }; writeFileSync(file, JSON.stringify(config));
   return { access: new RouteAccess(file, () => now, () => authorized), file, config, token, revokeSubject: () => { authorized = false; }, time: (value: number) => { now = value; } };

@@ -59,11 +59,11 @@ export interface RuntimeDiagnostics {
   storage: RuntimeStorageSnapshot;
   findings: RuntimeFinding[];
   scopes: {
-    cpu: 'termdock-process';
-    memory: 'termdock-process';
-    diskIo: 'termdock-process';
-    networkIo: 'termdock-http-sockets';
-    storage: 'termdock-state-directory';
+    cpu: 'veymux-process';
+    memory: 'veymux-process';
+    diskIo: 'veymux-process';
+    networkIo: 'veymux-http-sockets';
+    storage: 'veymux-state-directory';
   };
 }
 
@@ -146,24 +146,24 @@ export function evaluateRuntimeHealth(sample: RuntimeMetricSample, storage: Runt
   const add = (severity: RuntimeFinding['severity'], code: string, message: string, value: number, threshold: number) => {
     findings.push({ severity, code, message, value: round(value), threshold });
   };
-  if (sample.rssBytes >= 1024 ** 3) add('critical', 'PROCESS_RSS_HIGH', 'Termdock 内存占用超过 1 GiB', sample.rssBytes, 1024 ** 3);
-  else if (sample.rssBytes >= 512 * 1024 ** 2) add('warning', 'PROCESS_RSS_HIGH', 'Termdock 内存占用超过 512 MiB', sample.rssBytes, 512 * 1024 ** 2);
+  if (sample.rssBytes >= 1024 ** 3) add('critical', 'PROCESS_RSS_HIGH', 'Veymux 内存占用超过 1 GiB', sample.rssBytes, 1024 ** 3);
+  else if (sample.rssBytes >= 512 * 1024 ** 2) add('warning', 'PROCESS_RSS_HIGH', 'Veymux 内存占用超过 512 MiB', sample.rssBytes, 512 * 1024 ** 2);
   if (sample.eventLoopDelayP99Ms >= 500) add('critical', 'EVENT_LOOP_STALLED', 'Node.js 事件循环 P99 延迟过高', sample.eventLoopDelayP99Ms, 500);
   else if (sample.eventLoopDelayP99Ms >= 100) add('warning', 'EVENT_LOOP_SLOW', 'Node.js 事件循环 P99 延迟偏高', sample.eventLoopDelayP99Ms, 100);
-  if (sample.diskWriteBytesPerSecond >= 25 * 1024 ** 2) add('critical', 'DISK_WRITE_RATE_HIGH', 'Termdock 持续磁盘写入速率过高', sample.diskWriteBytesPerSecond, 25 * 1024 ** 2);
-  else if (sample.diskWriteBytesPerSecond >= 5 * 1024 ** 2) add('warning', 'DISK_WRITE_RATE_HIGH', 'Termdock 磁盘写入速率偏高', sample.diskWriteBytesPerSecond, 5 * 1024 ** 2);
-  if (sample.activeConnections >= 1000) add('critical', 'CONNECTION_COUNT_HIGH', 'Termdock 活跃连接数过高', sample.activeConnections, 1000);
-  else if (sample.activeConnections >= 200) add('warning', 'CONNECTION_COUNT_HIGH', 'Termdock 活跃连接数偏高', sample.activeConnections, 200);
+  if (sample.diskWriteBytesPerSecond >= 25 * 1024 ** 2) add('critical', 'DISK_WRITE_RATE_HIGH', 'Veymux 持续磁盘写入速率过高', sample.diskWriteBytesPerSecond, 25 * 1024 ** 2);
+  else if (sample.diskWriteBytesPerSecond >= 5 * 1024 ** 2) add('warning', 'DISK_WRITE_RATE_HIGH', 'Veymux 磁盘写入速率偏高', sample.diskWriteBytesPerSecond, 5 * 1024 ** 2);
+  if (sample.activeConnections >= 1000) add('critical', 'CONNECTION_COUNT_HIGH', 'Veymux 活跃连接数过高', sample.activeConnections, 1000);
+  else if (sample.activeConnections >= 200) add('warning', 'CONNECTION_COUNT_HIGH', 'Veymux 活跃连接数偏高', sample.activeConnections, 200);
   if (sample.requestsPerSecond >= 0.25 && sample.requestErrorRatio >= 0.25) add('critical', 'REQUEST_ERROR_RATIO_HIGH', '最近采样窗口请求错误率过高', sample.requestErrorRatio, 0.25);
   else if (sample.requestsPerSecond >= 0.25 && sample.requestErrorRatio >= 0.1) add('warning', 'REQUEST_ERROR_RATIO_HIGH', '最近采样窗口请求错误率偏高', sample.requestErrorRatio, 0.1);
   if (sample.requestLatencyP95Ms >= 5_000) add('critical', 'REQUEST_LATENCY_HIGH', '请求 P95 延迟超过 5 秒', sample.requestLatencyP95Ms, 5_000);
   else if (sample.requestLatencyP95Ms >= 1_000) add('warning', 'REQUEST_LATENCY_HIGH', '请求 P95 延迟超过 1 秒', sample.requestLatencyP95Ms, 1_000);
-  if (storage.totalBytes >= 2 * 1024 ** 3) add('critical', 'STATE_DIRECTORY_LARGE', 'Termdock 状态目录超过 2 GiB', storage.totalBytes, 2 * 1024 ** 3);
-  else if (storage.totalBytes >= 512 * 1024 ** 2) add('warning', 'STATE_DIRECTORY_LARGE', 'Termdock 状态目录超过 512 MiB', storage.totalBytes, 512 * 1024 ** 2);
+  if (storage.totalBytes >= 2 * 1024 ** 3) add('critical', 'STATE_DIRECTORY_LARGE', 'Veymux 状态目录超过 2 GiB', storage.totalBytes, 2 * 1024 ** 3);
+  else if (storage.totalBytes >= 512 * 1024 ** 2) add('warning', 'STATE_DIRECTORY_LARGE', 'Veymux 状态目录超过 512 MiB', storage.totalBytes, 512 * 1024 ** 2);
   if (storage.freeBytes !== null && storage.totalFilesystemBytes) {
     const freeRatio = storage.freeBytes / storage.totalFilesystemBytes;
-    if (storage.freeBytes <= 1024 ** 3 || freeRatio <= 0.05) add('critical', 'DISK_SPACE_LOW', 'Termdock 所在磁盘剩余空间严重不足', freeRatio, 0.05);
-    else if (storage.freeBytes <= 5 * 1024 ** 3 || freeRatio <= 0.1) add('warning', 'DISK_SPACE_LOW', 'Termdock 所在磁盘剩余空间偏低', freeRatio, 0.1);
+    if (storage.freeBytes <= 1024 ** 3 || freeRatio <= 0.05) add('critical', 'DISK_SPACE_LOW', 'Veymux 所在磁盘剩余空间严重不足', freeRatio, 0.05);
+    else if (storage.freeBytes <= 5 * 1024 ** 3 || freeRatio <= 0.1) add('warning', 'DISK_SPACE_LOW', 'Veymux 所在磁盘剩余空间偏低', freeRatio, 0.1);
   }
   return findings;
 }
@@ -284,7 +284,7 @@ export class RuntimeMonitor {
     return {
       status: findings.some((item) => item.severity === 'critical') ? 'critical' : findings.length > 0 ? 'warning' : 'ok',
       generatedAt: Date.now(), current, history: [...this.history], storage, findings,
-      scopes: { cpu: 'termdock-process', memory: 'termdock-process', diskIo: 'termdock-process', networkIo: 'termdock-http-sockets', storage: 'termdock-state-directory' },
+      scopes: { cpu: 'veymux-process', memory: 'veymux-process', diskIo: 'veymux-process', networkIo: 'veymux-http-sockets', storage: 'veymux-state-directory' },
     };
   }
 

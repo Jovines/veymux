@@ -135,7 +135,7 @@ describe('DiffLab regression fixtures', () => {
         }
       });
       if (parsed.some((file) => file.hunks.length > 0)) {
-        expect(Boolean(container.querySelector('.termdock-diff-wrap'))).toBe(wrap === 'on');
+        expect(Boolean(container.querySelector('.veymux-diff-wrap'))).toBe(wrap === 'on');
       }
       if (inline === 'none') expect(container.querySelector('.diff-code-edit')).toBeNull();
     },
@@ -193,7 +193,7 @@ describe('DiffLab regression fixtures', () => {
   it.each(['on', 'off'])('covers embedded stream rendering with three-digit gutters, wrap=%s', async (wrap) => {
     const { container } = renderLab(`?diff-lab=1&fixture=multilineRewrite&view=split&inline=words&wrap=${wrap}&embedded=1`);
     await waitFor(() => expect(container.querySelector('.diff-line-compare')).toBeTruthy());
-    expect(container.querySelector('.termdock-diff-card-mobile')).toBeTruthy();
+    expect(container.querySelector('.veymux-diff-card-mobile')).toBeTruthy();
     expect(container.querySelector('.diff-gutter')?.textContent).toBe('714');
     expect(container.textContent).not.toContain('Swipe left/right to see the full diff');
   });
@@ -543,8 +543,8 @@ describe('DiffLab line-level insert references', () => {
     // Same shape as the hunk reference, but only the tapped line.
     expect(insertedText(container)).toBe([
       '```diff',
-      '# /tmp/termdock-diff-lab/UnrelatedReplacement.ts: hunk 1, old lines 2 -> new lines none',
-      'diff --git /tmp/termdock-diff-lab/UnrelatedReplacement.ts /tmp/termdock-diff-lab/UnrelatedReplacement.ts',
+      '# /tmp/veymux-diff-lab/UnrelatedReplacement.ts: hunk 1, old lines 2 -> new lines none',
+      'diff --git /tmp/veymux-diff-lab/UnrelatedReplacement.ts /tmp/veymux-diff-lab/UnrelatedReplacement.ts',
       '@@ -1,5 +1,5 @@',
       '-  const retries = calculateRetryBudget(request);',
       '```',
@@ -578,8 +578,8 @@ describe('DiffLab line-level insert references', () => {
     await waitFor(() => expect(insertedText(container)).not.toBe(''));
     expect(insertedText(container)).toBe([
       '```diff',
-      '# /tmp/termdock-diff-lab/UnrelatedReplacement.ts: hunk 1, old lines 2 -> new lines 2',
-      'diff --git /tmp/termdock-diff-lab/UnrelatedReplacement.ts /tmp/termdock-diff-lab/UnrelatedReplacement.ts',
+      '# /tmp/veymux-diff-lab/UnrelatedReplacement.ts: hunk 1, old lines 2 -> new lines 2',
+      'diff --git /tmp/veymux-diff-lab/UnrelatedReplacement.ts /tmp/veymux-diff-lab/UnrelatedReplacement.ts',
       '@@ -1,5 +1,5 @@',
       '-  const retries = calculateRetryBudget(request);',
       '+  notifyObservers(session.status);',
@@ -617,8 +617,8 @@ describe('DiffLab line-level insert references', () => {
     // context line numbers instead of reading "none -> none".
     expect(insertedText(container)).toBe([
       '```diff',
-      '# /tmp/termdock-diff-lab/UnrelatedReplacement.ts: hunk 1, old lines 1 -> new lines 1',
-      'diff --git /tmp/termdock-diff-lab/UnrelatedReplacement.ts /tmp/termdock-diff-lab/UnrelatedReplacement.ts',
+      '# /tmp/veymux-diff-lab/UnrelatedReplacement.ts: hunk 1, old lines 1 -> new lines 1',
+      'diff --git /tmp/veymux-diff-lab/UnrelatedReplacement.ts /tmp/veymux-diff-lab/UnrelatedReplacement.ts',
       '@@ -1,5 +1,5 @@',
       ' export function updateSession(request: Request) {',
       '```',

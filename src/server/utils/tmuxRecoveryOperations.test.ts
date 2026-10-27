@@ -6,7 +6,7 @@ import { configuredTmuxRecoveryConcurrency, TmuxRecoveryOperationError, TmuxReco
 
 const directories: string[] = [];
 async function makeStore(concurrency = 2) {
-  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'termdock-tmux-recovery-'));
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'veymux-tmux-recovery-'));
   directories.push(directory);
   const store = new TmuxRecoveryOperationStore(path.join(directory, 'ops.json'), concurrency);
   await store.load();

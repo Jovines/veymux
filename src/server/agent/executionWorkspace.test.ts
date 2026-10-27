@@ -10,9 +10,9 @@ const exec=promisify(execFile);const git=async(cwd:string,args:string[])=> (awai
 let dir:string,workspace:import('./collaborationTaskTypes').TaskWorkspace;
 let archive:typeof import('./collaborationTaskWorkspace').archiveTaskWorkspace,restore:typeof import('./collaborationTaskWorkspace').restoreTaskWorkspace;
 beforeEach(async()=>{
- dir=await fs.mkdtemp(path.join(os.tmpdir(),'termdock-execution-'));state.home=dir;vi.resetModules();({archiveTaskWorkspace:archive,restoreTaskWorkspace:restore}=await import('./collaborationTaskWorkspace'));
+ dir=await fs.mkdtemp(path.join(os.tmpdir(),'veymux-execution-'));state.home=dir;vi.resetModules();({archiveTaskWorkspace:archive,restoreTaskWorkspace:restore}=await import('./collaborationTaskWorkspace'));
  const repo=path.join(dir,'repo');await fs.mkdir(repo);await git(repo,['init']);await git(repo,['config','user.email','test@example.local']);await git(repo,['config','user.name','Test']);await fs.writeFile(path.join(repo,'file'),'original');await fs.writeFile(path.join(repo,'.gitignore'),'ignored\n');await git(repo,['add','file','.gitignore']);await git(repo,['commit','-m','base']);
- const branch='termdock/task/'+'a'.repeat(32)+'-'+'b'.repeat(8);const cwd=path.join(dir,'.termdock/task-workspaces','goal','worker');await fs.mkdir(path.dirname(cwd),{recursive:true});await git(repo,['worktree','add','-b',branch,cwd]);workspace={cwd,repository:repo,branch,base:await git(repo,['rev-parse','HEAD'])};
+ const branch='veymux/task/'+'a'.repeat(32)+'-'+'b'.repeat(8);const cwd=path.join(dir,'.veymux/task-workspaces','goal','worker');await fs.mkdir(path.dirname(cwd),{recursive:true});await git(repo,['worktree','add','-b',branch,cwd]);workspace={cwd,repository:repo,branch,base:await git(repo,['rev-parse','HEAD'])};
 });
 afterEach(async()=>{await fs.rm(dir,{recursive:true,force:true});vi.resetModules();});
 it('reclaims a clean execution directory and rebuilds its exact branch and commit',async()=>{

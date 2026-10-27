@@ -14,7 +14,7 @@ describe('sidebar file search', () => {
   let origin: string;
 
   beforeEach(async () => {
-    root = await fs.mkdtemp(path.join(os.tmpdir(), 'td-fuzzy-search-'));
+    root = await fs.mkdtemp(path.join(os.tmpdir(), 'veymux-fuzzy-search-'));
     await fs.mkdir(path.join(root, 'Sidebar'));
     await fs.writeFile(path.join(root, 'Sidebar/RightSidebar.tsx'), 'HelloWorld\n');
     await fs.writeFile(path.join(root, 'notes.txt'), 'other text\n');

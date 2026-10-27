@@ -21,11 +21,11 @@ describe('resolveCollaborationSpawnMode', () => {
 });
 
 describe('buildCollaborationSpawnCommand', () => {
-  it('pre-authorizes only the td collab surface for claude members (the one CLI whose flags it documents)', () => {
+  it('pre-authorizes only the veymux collab surface for claude members (the one CLI whose flags it documents)', () => {
     expect(buildCollaborationSpawnCommand({ slug: 'claude', command: 'claude' }))
-      .toBe('claude --allowedTools "Bash(td collab *)"');
+      .toBe('claude --allowedTools "Bash(veymux collab *)"');
     expect(buildCollaborationSpawnCommand({ slug: 'claude', command: 'claude --resume 123 --foo bar' }))
-      .toBe('claude --resume 123 --foo bar --allowedTools "Bash(td collab *)"');
+      .toBe('claude --resume 123 --foo bar --allowedTools "Bash(veymux collab *)"');
   });
 
   it('launches every other agent plain — no injected flags for permission interfaces we do not know', () => {

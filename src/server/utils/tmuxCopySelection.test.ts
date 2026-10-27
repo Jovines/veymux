@@ -23,7 +23,7 @@ test('bounded current selection is read from the uniquely filtered buffer and cl
 for(const options of [{mode:false},{selection:false}])test('no current selection does not read an old global buffer '+JSON.stringify(options),async()=>{const m=model(options);assert.equal((await copyTmuxSelection('owned',m.run)).status,'empty');assert.equal(m.calls.length,1);});
 for(const options of [{large:true},{changed:true},{readFailure:true},{cleanupFailure:true}])test('copy rejects without truncation/success and cleans only its own buffer '+JSON.stringify(options),async()=>{const m=model(options);await assert.rejects(copyTmuxSelection('owned',m.run));assert.equal(m.calls.at(-1)?.[0],'delete-buffer');if(options.large)assert(!m.calls.some(args=>args[0]==='save-buffer'));});
 test('real isolated tmux preserves exact pane, selection and unrelated buffers',async()=>{
- const dir=await mkdtemp(join(tmpdir(),'termdock-copy-owned-')),socket=join(dir,'socket');
+ const dir=await mkdtemp(join(tmpdir(),'veymux-copy-owned-')),socket=join(dir,'socket');
  const run=async(args:string[],options?:{maxBuffer:number})=>(await exec('tmux',['-S',socket,'-f','/dev/null',...args],{maxBuffer:options?.maxBuffer??1024*1024,timeout:3000})).stdout;
  try{
   await run(['new-session','-d','-s','owned','/bin/sleep 120']);
@@ -38,7 +38,7 @@ test('real isolated tmux preserves exact pane, selection and unrelated buffers',
   const result=await copyTmuxSelection('owned',run);assert.equal(result.text,'owned');assert.equal(result.paneId,pane);
   assert.equal((await run(['display-message','-t',pane,'-p','#{pane_in_mode}:#{selection_present}'])).trim(),'1:1');
   assert.equal(await run(['save-buffer','-b','unrelated','-']),'old unrelated');
-  assert(!(await run(['list-buffers','-F','#{buffer_name}'])).includes('termdock-copy-'));
+  assert(!(await run(['list-buffers','-F','#{buffer_name}'])).includes('veymux-copy-'));
   await run(['new-session','-d','-s','other','/bin/sleep 120']);assert.equal((await copyTmuxSelection('other',run)).status,'empty');
   const otherPane=(await run(['split-window','-h','-t','=owned:','-P','-F','#{pane_id}','/bin/sleep 120'])).trim();
   const otherSelected=await copyTmuxSelection('owned',run);assert.equal(otherSelected.status,'empty');assert.equal(otherSelected.paneId,otherPane);assert.equal((await run(['display-message','-t',pane,'-p','#{pane_in_mode}'])).trim(),'1');
@@ -57,7 +57,7 @@ test('metadata failure still enumerates only its UUID buffers, attempts every de
  await assert.rejects(copyTmuxSelection('owned',run),error=>error===primary);assert.equal(lists,2);assert.equal(deleted.length,2);assert(deleted.every(name=>name.startsWith(prefix)));assert(primary.cause instanceof AggregateError);assert.equal(primary.cause.errors.length,2);
 });
 test('real oversized selection rejects without truncating and removes only its own buffer',async()=>{
- const dir=await mkdtemp(join(tmpdir(),'termdock-copy-large-owned-')),socket=join(dir,'socket');
+ const dir=await mkdtemp(join(tmpdir(),'veymux-copy-large-owned-')),socket=join(dir,'socket');
  const run=async(args:string[],options?:{maxBuffer:number})=>(await exec('tmux',['-S',socket,'-f','/dev/null',...args],{maxBuffer:options?.maxBuffer??1024*1024,timeout:3000})).stdout;
  try{
   await run(['new-session','-d','-s','bootstrap','/bin/sleep','120']);
@@ -68,7 +68,7 @@ test('real oversized selection rejects without truncating and removes only its o
   await run(['copy-mode','-t',pane]);for(const command of ['history-top','start-of-line','begin-selection','history-bottom','end-of-line'])await run(['send-keys','-t',pane,'-X',command]);
   await assert.rejects(copyTmuxSelection('large',run),/256 KiB/);
   assert.equal((await run(['display-message','-t',pane,'-p','#{pane_in_mode}:#{selection_present}'])).trim(),'1:1');
-  assert.equal(await run(['save-buffer','-b','unrelated','-']),'preserve');assert(!(await run(['list-buffers','-F','#{buffer_name}'])).includes('termdock-copy-'));
+  assert.equal(await run(['save-buffer','-b','unrelated','-']),'preserve');assert(!(await run(['list-buffers','-F','#{buffer_name}'])).includes('veymux-copy-'));
   await assert.rejects(copyTmuxSelection('not-an-owned-session',run));
  }finally{await run(['kill-session','-t','=large']).catch(()=>{});await run(['kill-session','-t','=bootstrap']).catch(()=>{});await rm(dir,{recursive:true,force:true});}
 });

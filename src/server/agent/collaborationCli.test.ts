@@ -139,7 +139,7 @@ describe('collaboration CLI contract', () => {
     const setter = fixture([{ ok: true, group: { id: 'g1', sessionIds: ['p1', 'p2'], roles: { p2: '排版' } } }]);
     expect(await executeCollaborationCommand(parseCollaborationCommand(['role', 'set', 'g1', 'p2', '负责', '排版', '--text']), { backendSessionId: 'p1' }, setter.io)).toBe(0);
     expect(setter.calls[0]).toEqual(expect.arrayContaining(['POST', expect.stringContaining('/role'), expect.objectContaining({ group_id: 'g1', session_id: 'p2', role: '负责 排版', backendSessionId: 'p1' })]));
-    expect(setter.output).toEqual(['定位已设置：p2 = 排版\n（改成员显示名: td collab rename p2 <新名字>）']);
+    expect(setter.output).toEqual(['定位已设置：p2 = 排版\n（改成员显示名: veymux collab rename p2 <新名字>）']);
     const unseter = fixture([{ ok: true, group: { id: 'g1', sessionIds: ['p1', 'p2'], roles: {} } }]);
     expect(await executeCollaborationCommand(parseCollaborationCommand(['role', 'unset', 'g1', 'p2']), {}, unseter.io)).toBe(0);
     expect(unseter.calls[0][2]).toMatchObject({ group_id: 'g1', session_id: 'p2', role: null });
@@ -170,7 +170,7 @@ describe('collaboration CLI contract', () => {
     expect(helper.output.at(-4)).toBe('组「发布组」(2 个成员)');
     expect(helper.output.at(-3)).toBe('- 开发 (p1)：组长');
     expect(helper.output.at(-2)).toBe('- p2：排版');
-    expect(helper.output.at(-1)).toBe('给成员发消息: td collab send <成员id> "消息内容" --text（成员 id 见上表）');
+    expect(helper.output.at(-1)).toBe('给成员发消息: veymux collab send <成员id> "消息内容" --text（成员 id 见上表）');
   });
 
   it('parses rename with trailing words joining as the new name and rejects empties', () => {
@@ -192,7 +192,7 @@ describe('collaboration CLI contract', () => {
     standalone.io.request = async () => { throw new Error('no server'); };
     const lines: string[] = []; const io: CollaborationCliIO = { ...standalone.io, write: (line) => lines.push(line) };
     expect(await executeCollaborationCommand(parseCollaborationCommand(['--help']), {}, io)).toBe(0);
-    expect(lines[0]).toContain('td collab — durable messages');
+    expect(lines[0]).toContain('veymux collab — durable messages');
     expect(lines.some((line) => line.includes('成员定位'))).toBe(false);
   });
 
@@ -279,8 +279,8 @@ describe('collaboration CLI contract', () => {
     ] };
     const f = fixture([data]);
     expect(await executeCollaborationCommand(parseCollaborationCommand(['status', '--text']), {}, f.io)).toBe(0);
-    expect(f.output.join('\n')).toContain('开发：td collab capture p2 --text');
-    expect(f.output.join('\n')).toContain('远端成员，请用 td collab send remote:peer');
+    expect(f.output.join('\n')).toContain('开发：veymux collab capture p2 --text');
+    expect(f.output.join('\n')).toContain('远端成员，请用 veymux collab send remote:peer');
     expect(f.output.join('\n')).not.toContain('capture remote:peer');
     const json = fixture([data]);
     expect(await executeCollaborationCommand(parseCollaborationCommand(['status']), {}, json.io)).toBe(0);

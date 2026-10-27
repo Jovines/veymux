@@ -9,7 +9,7 @@ import { markEncryptedRequest } from '../federation/requestContext';
 const cleanup: (() => void)[] = [];
 afterEach(() => cleanup.splice(0).reverse().forEach(close => close()));
 it('updates only authorized existing text and rejects stale, linked and out-of-root writes', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'td-shared-write-')); cleanup.push(() => rmSync(dir, { recursive: true, force: true }));
+  const dir = mkdtempSync(join(tmpdir(), 'veymux-shared-write-')); cleanup.push(() => rmSync(dir, { recursive: true, force: true }));
   const shared = join(dir, 'shared'); mkdirSync(shared); const file = join(shared, 'file.txt'), secret = join(dir, 'secret'); writeFileSync(file, 'before'); writeFileSync(secret, 'private');
   symlinkSync(secret, join(shared, 'symlink')); linkSync(secret, join(shared, 'hardlink'));
   let access: 'read' | 'write' = 'write'; const app = express(); app.use(express.json()); app.use((req, _res, next) => { markEncryptedRequest(req, 'guest', false, { directories: [{ path: shared, access }] }); next(); }); app.use('/api/terminal/fs', sharedFileBoundary);

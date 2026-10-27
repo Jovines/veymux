@@ -5,13 +5,13 @@ import { fileURLToPath } from 'node:url';
 
 // The overlay implements a private scrcpy ABI: never load it into an unverified server.
 const SUPPORTED_SERVER_SHA256 = '8588238c9a5a00aa542906b6ec7e6d5541d9ffb9b5d0f6e1bc0e365e2303079e';
-const OVERLAY_SHA256 = 'f8eb6275ed255eba00c53146e874d22fe1e5766a466ba03d42a3b07df4f99d63';
+const OVERLAY_SHA256 = '26aa8b9210487223677760c5e02f7acfdc27039cb1248c3976b9c56198f53e8d';
 export const bitrateOverlayPath = fileURLToPath(new URL('../../../scripts/android-bitrate/bitrate.jar', import.meta.url));
-export const bitrateOverlayRemote = '/data/local/tmp/termdock-bitrate-' + OVERLAY_SHA256.slice(0, 16) + '.jar';
+export const bitrateOverlayRemote = '/data/local/tmp/veymux-bitrate-' + OVERLAY_SHA256.slice(0, 16) + '.jar';
 export const bundledPreviewServerPath = fileURLToPath(new URL('../../../scripts/android-bitrate/scrcpy-server-v3.3.4', import.meta.url));
 /** Pin the preview ABI across host scrcpy installations. Explicit overrides remain opt-in. */
 export async function resolveBundledPreviewServer(): Promise<{ serverJar: string; version: string } | null> {
-  if (process.env.TERMDOCK_SCRCPY_SERVER) return null;
+  if (process.env.VEYMUX_SCRCPY_SERVER) return null;
   try {
     const server = await readFile(bundledPreviewServerPath);
     if (createHash('sha256').update(server).digest('hex') !== SUPPORTED_SERVER_SHA256) {

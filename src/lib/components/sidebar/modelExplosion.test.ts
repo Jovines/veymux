@@ -96,7 +96,7 @@ describe('display-only assembly explosion', () => {
   it('preserves multi-material part groups and exposes only assembly roots', () => {
     const { scene, base, lid } = fixture();
     expect(assemblyRoots(scene)).toEqual([base, lid]);
-    const single = new Group(); single.add(lid); lid.userData.termdockSinglePart = true;
+    const single = new Group(); single.add(lid); lid.userData.veymuxSinglePart = true;
     expect(assemblyRoots(single)).toEqual([lid]);
     const c = createModelExplosion(single); c.set({ axis: 'y', amount: 1 });
     expect(c.offset(lid).length()).toBe(0);

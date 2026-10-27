@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import './utils/brandMigration.js';
 import { parseTodoCommand, executeTodoCommand, TODO_HELP, type TodoCommand } from './todos/cli.js';
 
 // libuv 线程池默认只有 4 个线程，慢/挂起的异步 IO（fs.promises、crypto 等）
@@ -10,9 +11,9 @@ import { config as loadDotenv } from 'dotenv';
 import os from 'os';
 import { resolve } from 'path';
 
-// 加载 .env 配置：用户级 ~/.termdock/.env 为基准，项目级 CWD .env 可覆盖
+// 加载 .env 配置：用户级 ~/.veymux/.env 为基准，项目级 CWD .env 可覆盖
 // dotenv 不会覆盖已存在的环境变量，因此系统环境变量和命令行参数优先级最高
-loadDotenv({ path: resolve(os.homedir(), '.termdock', '.env'), quiet: true });
+loadDotenv({ path: resolve(os.homedir(), '.veymux', '.env'), quiet: true });
 loadDotenv({ path: resolve(process.cwd(), '.env'), quiet: true });
 
 if (['architecture', 'arch'].includes(process.argv[2] ?? '')) {
@@ -54,11 +55,11 @@ import { isFirstRunCompleted, markFirstRunCompleted, normalizeLocalAccessName, s
 import { runBootChecks, formatBootCheckReport } from './utils/bootCheck.js';
 import { localAccessManager, getLanIPv4Addresses } from './utils/localAccess.js';
 import type { CertificateRefreshResult, StartServerResult } from './entry.js';
-import { OFFICIAL_NPM_REGISTRY, updateTermdockFromOfficialRegistry } from './utils/npmUpdate.js';
+import { OFFICIAL_NPM_REGISTRY, updateVeymuxFromOfficialRegistry } from './utils/npmUpdate.js';
 import { DAEMON_START_TIMEOUT_MS, waitForHealth } from './utils/healthProbe.js';
-import { isProcessRunning, readLocalApiCa, STOP_GRACE_MS, type ServerState } from './utils/termdockState.js';
+import { isProcessRunning, readLocalApiCa, STOP_GRACE_MS, type ServerState } from './utils/veymuxState.js';
 import { recordSupervisorLost } from './utils/crashForensics.js';
-import { getTermdockVersion } from './utils/version.js';
+import { getVeymuxVersion } from './utils/version.js';
 import {
   getSupervisorStatus,
   signalSupervisorRestart,
@@ -78,7 +79,7 @@ import {
 
 const execFileAsync = promisify(execFile);
 
-const TERMDOCK_VERSION: string = (() => {
+const VEYMUX_VERSION: string = (() => {
   try {
     const require_ = createRequire(import.meta.url);
     const pkg = require_(path.join(__dirname || '', '..', '..', 'package.json'));
@@ -91,11 +92,11 @@ const TERMDOCK_VERSION: string = (() => {
   } catch { /* ignore */ }
   return '0.0.0';
 })();
-const TERMDOCK_HOST = os.hostname();
-const TERMDOCK_PID = String(process.pid);
-const TERMDOCK_TMUX_HISTORY_LIMIT = TMUX.historyLimit;
+const VEYMUX_HOST = os.hostname();
+const VEYMUX_PID = String(process.pid);
+const VEYMUX_TMUX_HISTORY_LIMIT = TMUX.historyLimit;
 
-const stateDir = path.join(os.homedir(), '.termdock');
+const stateDir = path.join(os.homedir(), '.veymux');
 const stateFilePath = path.join(stateDir, 'server.json');
 const supervisorStatePath = path.join(stateDir, 'supervisor.json');
 const logFilePath = path.join(stateDir, 'server.log');
@@ -103,8 +104,8 @@ const globalSessionStateFilePath = path.join(stateDir, 'global-session-state.jso
 const localApiTokenPath = path.join(stateDir, 'local-api-token');
 const changeAuditSnapshotPath = path.join(stateDir, 'change-audit-snapshot.json');
 const certDir = path.join(stateDir, 'certs');
-const defaultHttpsCertPath = path.join(certDir, 'termdock-local.pem');
-const defaultHttpsKeyPath = path.join(certDir, 'termdock-local-key.pem');
+const defaultHttpsCertPath = path.join(certDir, 'veymux-local.pem');
+const defaultHttpsKeyPath = path.join(certDir, 'veymux-local-key.pem');
 const defaultHttpsCaPath = path.join(certDir, 'rootCA.pem');
 const restartBridgeCaffeinateSeconds = 300;
 
@@ -164,7 +165,7 @@ interface CliOptions {
   foreground: boolean;
   /** 前台运行 + 受 supervisor 监督（给 setsid/systemd/docker 用） */
   supervise: boolean;
-  /** 显式声明不受监督（`td` 后台模式默认受监督） */
+  /** 显式声明不受监督（`veymux` 后台模式默认受监督） */
   noSupervisor: boolean;
   /** 让正在运行的 supervisor 重启服务子进程 */
   restart: boolean;
@@ -224,9 +225,8 @@ interface GlobalCliSessionState {
 }
 
 function printHelp() {
-  console.log(`Usage: td [options]
-       td <cmd> [args]
-       termdock [options]
+  console.log(`Usage: veymux [options]
+       veymux <cmd> [args]
 
 Options:
   --host <host>      Host to bind to (default: ${DEFAULT_HOST})
@@ -249,38 +249,38 @@ Options:
   -v, --version      Print version and exit
   --set-password     Set or update the access password (interactive prompt)
   --clear-password   Remove the access password and disable authentication
-  --tls              List termdock-managed tmux sessions (reads tmux directly,
+  --tls              List veymux-managed tmux sessions (reads tmux directly,
                      no server connection required)
-  -a, --all          With --tls/--attach-tmux: include tmux sessions not stamped by termdock
+  -a, --all          With --tls/--attach-tmux: include tmux sessions not stamped by veymux
   --json             With --tls: emit session JSON; with --plugin-init:
                      emit the machine-readable Agent integration protocol
-  --attach-tmux [n]  Attach to a termdock-managed tmux session.
+  --attach-tmux [n]  Attach to a veymux-managed tmux session.
                      With no name: interactive picker.
                      With name: attach directly (e.g. --attach-tmux wt-foo).
                      Add --all to include unmanaged tmux sessions in matching.
-  --new-tmux [name]  Create (or ensure) and attach to a tmux session for termdock.
-                     New sessions start in the directory where td was invoked.
+  --new-tmux [name]  Create (or ensure) and attach to a tmux session for veymux.
+                     New sessions start in the directory where veymux was invoked.
                      With no name: auto-generate a wt-* name and enter it directly.
                      Use --tls to inspect sessions without attaching.
   --new-tmux-detached [name]
                      Create (or ensure) a tmux session and leave it detached.
   --inject-change-audit [file]
                      Inject AI-generated hunk explanations into the running
-                     Termdock server. Reads JSON from file or stdin.
+                     Veymux server. Reads JSON from file or stdin.
   --inject-branch-audit [file]
                      Inject AI-generated branch hunk explanations into the
-                     running Termdock server. Reads JSON from file or stdin.
+                     running Veymux server. Reads JSON from file or stdin.
   --branch-audit-export <base> [cwd]
                      Export branch-vs-base diff hunks for branch audit.
   --change-audit-list [cwd]
-                     List current Git diff hunks with stable Termdock hunk IDs.
+                     List current Git diff hunks with stable Veymux hunk IDs.
   --change-audit-export [cwd]
                      Export current Git diff hunks with full diff text for one-pass review.
   --change-audit-show <id> [cwd]
-                     Print one hunk's diff/context by Termdock hunk ID.
+                     Print one hunk's diff/context by Veymux hunk ID.
   --change-audit-explain <id> [cwd]
                      Read a natural-language explanation from stdin and inject
-                      it for the specified Termdock hunk ID.
+                      it for the specified Veymux hunk ID.
   --plugin-init      Print the Agent integration protocol reference
   --plugin-create <file>
                      Create a plugin from a manifest JSON file
@@ -301,17 +301,17 @@ Options:
 
 Short commands:
   architecture       Analyze, browse and edit recursive project architecture
-                     (see td architecture --help)
+                     (see veymux architecture --help)
   agent-plugin [--json]
                      Explain how an Agent integrates itself. JSON mode is
                      machine-readable and intended for Agent consumption.
   agent-event <slug> <event> [status]
                      Emit one lifecycle/status event from an Agent hook.
   pi                 Same as agent-plugin
-  n [message]       Progress reminder; run td n for help and Agent instructions
-  notify [message]  Same as n (see td n --prompt)
-  todo               Manage todos (see td todo --help)
-  automation         Manage scheduled tasks (see td automation --help)
+  n [message]       Progress reminder; run veymux n for help and Agent instructions
+  notify [message]  Same as n (see veymux n --prompt)
+  todo               Manage todos (see veymux todo --help)
+  automation         Manage scheduled tasks (see veymux automation --help)
   integration       Manage local scoped integrations (see integration help)
   collab status      Show this Session's collaboration groups and peers
   collab inbox       Read messages without acknowledging (see collab --help)
@@ -375,15 +375,15 @@ Short commands:
 
 Password examples:
   ${c.dim('# Set password interactively (recommended)')}
-  td --set-password
+  veymux --set-password
 
   ${c.dim('# Pipe a password from stdin (CI / scripted setup)')}
-  echo "my-secret" | td --set-password
+  echo "my-secret" | veymux --set-password
 
   ${c.dim('# Disable authentication entirely')}
-  td --clear-password
+  veymux --clear-password
 
-Auth state lives in ${c.cyan(path.join('~', '.termdock', 'auth.json'))} (mode 0600).`);
+Auth state lives in ${c.cyan(path.join('~', '.veymux', 'auth.json'))} (mode 0600).`);
 }
 
 function ensureStateDir() {
@@ -476,7 +476,7 @@ type HttpsOptions = ReturnType<typeof resolveHttpsOptions>;
 /**
  * 自己这个 entry 的绝对路径，解析掉符号链接。
  *
- * 必须 realpath：全局安装时 `bin/termdock` 是指向 `dist/server/cli.js` 的软链，
+ * 必须 realpath：全局安装时 `bin/veymux` 是指向 `dist/server/cli.js` 的软链，
  * 而 `npm i -g` 会先 unlink 再重建它——那个窗口里按软链路径 spawn 会 ENOENT。
  * 解析成真实路径之后，重启落到的永远是同一个安装。
  */
@@ -518,8 +518,8 @@ function resolveHealthTarget(
 function getRequiredLocalHttpsNames(): string[] {
   const localName = getLocalAccessSetting().name;
   return [
-    '*.termdock.local',
-    `${localName}.termdock.local`,
+    '*.veymux.local',
+    `${localName}.veymux.local`,
     ...getLanIPv4Addresses(),
     'localhost',
     '127.0.0.1',
@@ -548,7 +548,7 @@ async function runSetupLocalHttps(options: { quietRestartHint?: boolean; install
   if (result.trust === 'requested') console.log(`  ${c.dim('Local CA trust installation was requested; browser trust may require certutil and a browser restart.')}`);
   else console.log(`  ${c.dim('Local CA trust has not been installed by this command.')}`);
   console.log('');
-  if (!options.quietRestartHint) console.log(`${ICON.info} ${c.dim('Restart Termdock to use HTTPS:')} ${c.cyan('td --stop && td')}`);
+  if (!options.quietRestartHint) console.log(`${ICON.info} ${c.dim('Restart Veymux to use HTTPS:')} ${c.cyan('veymux --stop && veymux')}`);
 }
 
 function printRunningState(state: ServerState) {
@@ -556,7 +556,7 @@ function printRunningState(state: ServerState) {
   const authLine = isAuthEnabled()
     ? `${c.green('enabled')} ${c.dim('(password required)')}`
     : `${c.red('disabled')} ${c.dim('(no password — anyone on the LAN can connect)')}`;
-  console.log(`${ICON.ok} ${c.green('Termdock is running in background.')}`);
+  console.log(`${ICON.ok} ${c.green('Veymux is running in background.')}`);
   console.log(`  ${c.dim('PID:')}  ${state.pid}`);
   console.log(`  ${c.dim('URL:')}  ${c.cyan(state.localUrl ?? `http://${displayHost}:${state.port}`)}`);
   if (state.lanUrl) console.log(`  ${c.dim('LAN:')}  ${c.cyan(state.lanUrl)} ${state.localAccessStatus ? c.dim(`(${state.localAccessStatus})`) : ''}`);
@@ -595,7 +595,7 @@ function describeIncident(incident: { event: string; detail: string }): string {
 
 /**
  * 我们自己发起的事件：label 已经把话说完了，`detail` 只是换个说法再说一遍
- * （"restarted on request" / "restart requested by termdock --restart"）。
+ * （"restarted on request" / "restart requested by veymux --restart"）。
  */
 const SELF_EXPLANATORY_EVENTS = new Set(['stop', 'update-restart', 'manual-restart']);
 
@@ -637,16 +637,16 @@ function printSupervisorState(status: SupervisorStatus | null, serverRunning: bo
   }
   if (state.phase === 'gave-up') {
     console.log(`  ${ICON.err} ${c.red('Automatic restart stopped after repeated crashes. The service is NOT running.')}`);
-    console.log(`  ${c.dim('Reset with:')} ${c.cyan('td --stop && td')}`);
-    if (state.lastIncident?.version) console.log(`  ${c.dim('Roll back with:')} ${c.cyan(`npm i -g termdock@${state.lastIncident.version}`)}`);
+    console.log(`  ${c.dim('Reset with:')} ${c.cyan('veymux --stop && veymux')}`);
+    if (state.lastIncident?.version) console.log(`  ${c.dim('Roll back with:')} ${c.cyan(`npm i -g veymux@${state.lastIncident.version}`)}`);
   } else if (!alive) {
     console.log(`  ${ICON.err} ${c.red(serverRunning
       ? 'The supervisor is gone — the service is running unsupervised.'
       : 'The supervisor is gone and the service is not running.')}`);
     if (serverRunning) {
-      console.log(`  ${c.dim('Restore supervision with:')} ${c.cyan('td --stop && td')} ${c.dim('(this restarts the service)')}`);
+      console.log(`  ${c.dim('Restore supervision with:')} ${c.cyan('veymux --stop && veymux')} ${c.dim('(this restarts the service)')}`);
     } else {
-      console.log(`  ${c.dim('Start again with:')} ${c.cyan('td')}`);
+      console.log(`  ${c.dim('Start again with:')} ${c.cyan('veymux')}`);
     }
   }
 }
@@ -789,7 +789,7 @@ function parseArgs(argv: string[]): CliOptions {
         agentEvent = { slug: next, event, status: customStatus && !customStatus.startsWith('-') ? customStatus : undefined };
         argv = argv.slice(agentEvent.status ? 4 : 3);
       } else {
-        console.error(`${ICON.err} ${c.red('Usage: td agent-event <slug> <event> [status]')}`);
+        console.error(`${ICON.err} ${c.red('Usage: veymux agent-event <slug> <event> [status]')}`);
         process.exit(1);
       }
     } else if (command === 'notify' || command === 'n') {
@@ -840,7 +840,7 @@ function parseArgs(argv: string[]): CliOptions {
         pluginHooks = { slug: next, action };
         argv = argv.slice(3);
       } else {
-        console.error(`${ICON.err} ${c.red('Usage: td plugin-hooks <slug> <install|uninstall>')}`);
+        console.error(`${ICON.err} ${c.red('Usage: veymux plugin-hooks <slug> <install|uninstall>')}`);
         process.exit(1);
       }
     } else if (command === 'premove' || command === 'plugin-remove') {
@@ -863,7 +863,7 @@ function parseArgs(argv: string[]): CliOptions {
     }
 
     if (arg === '-v' || arg === '-V' || arg === '--version') {
-      console.log(TERMDOCK_VERSION);
+      console.log(VEYMUX_VERSION);
       process.exit(0);
     }
 
@@ -1124,7 +1124,7 @@ function parseArgs(argv: string[]): CliOptions {
         pluginHooks = { slug, action };
         index += 2;
       } else {
-        console.error(`${ICON.err} ${c.red('Usage: td --plugin-hooks <slug> <install|uninstall>')}`);
+        console.error(`${ICON.err} ${c.red('Usage: veymux --plugin-hooks <slug> <install|uninstall>')}`);
         process.exit(1);
       }
       continue;
@@ -1211,7 +1211,7 @@ function parseArgs(argv: string[]): CliOptions {
 
 // Reads a single line from stdin without echoing keystrokes. Used for password
 // entry. Falls back to plain readline (with echo) if stdin is not a TTY, e.g.
-// when piping a password in via `echo ... | td --set-password`.
+// when piping a password in via `echo ... | veymux --set-password`.
 async function promptHidden(prompt: string): Promise<string> {
   const isTty = Boolean((process.stdin as NodeJS.ReadStream).isTTY);
 
@@ -1260,7 +1260,7 @@ async function runSetPassword(): Promise<void> {
   const wasEnabled = isAuthEnabled();
 
   if (isTty) {
-    console.log(`${ICON.lock} ${c.bold('Termdock — set access password')}`);
+    console.log(`${ICON.lock} ${c.bold('Veymux — set access password')}`);
     console.log(c.dim('  Password must be at least 8 characters. Input is hidden.'));
     console.log('');
   }
@@ -1292,10 +1292,10 @@ async function runSetPassword(): Promise<void> {
 
   console.log('');
   console.log(`${ICON.ok} ${c.green(wasEnabled ? 'Password updated.' : 'Password set. Authentication enabled.')}`);
-  console.log(`  ${c.dim('Stored at:')}      ${c.cyan(path.join('~', '.termdock', 'auth.json'))} ${c.dim('(mode 0600, scrypt hash)')}`);
+  console.log(`  ${c.dim('Stored at:')}      ${c.cyan(path.join('~', '.veymux', 'auth.json'))} ${c.dim('(mode 0600, scrypt hash)')}`);
   console.log(`  ${c.dim('Sessions:')}       ${c.dim('all existing browsers were signed out')}`);
   if (isEnvPasswordSet()) {
-    console.log(`${ICON.warn} ${c.yellow('TERMDOCK_PASSWORD is set in the environment — it takes precedence over the stored password.')}`);
+    console.log(`${ICON.warn} ${c.yellow('VEYMUX_PASSWORD is set in the environment — it takes precedence over the stored password.')}`);
   }
 
   // If the server is running, nudge the user to restart so the in-memory
@@ -1303,11 +1303,11 @@ async function runSetPassword(): Promise<void> {
   const running = getRunningState();
   if (running) {
     console.log('');
-    console.log(`${ICON.info} ${c.yellow('Termdock is currently running — restart it so the change takes effect:')}`);
-    console.log(`     ${c.cyan('td --stop && td')}`);
+    console.log(`${ICON.info} ${c.yellow('Veymux is currently running — restart it so the change takes effect:')}`);
+    console.log(`     ${c.cyan('veymux --stop && veymux')}`);
   } else {
     console.log('');
-    console.log(`${ICON.info} ${c.dim('Start Termdock with:')} ${c.cyan('td')}`);
+    console.log(`${ICON.info} ${c.dim('Start Veymux with:')} ${c.cyan('veymux')}`);
   }
 }
 
@@ -1324,21 +1324,21 @@ function runClearPassword(): void {
     console.log(`${ICON.ok} ${c.green('Stored password cleared.')}`);
     console.log(`  ${c.dim('All existing sessions have been invalidated.')}`);
     console.log('');
-    console.log(`${ICON.info} ${c.yellow('TERMDOCK_PASSWORD is set in the environment — authentication stays enabled.')}`);
+    console.log(`${ICON.info} ${c.yellow('VEYMUX_PASSWORD is set in the environment — authentication stays enabled.')}`);
     console.log(`  ${c.dim('Unset the variable to fully disable authentication.')}`);
   } else {
     console.log(`${ICON.ok} ${c.green('Password cleared. Authentication is now disabled.')}`);
     console.log(`  ${c.dim('All existing sessions have been invalidated.')}`);
     console.log('');
     console.log(`${ICON.warn} ${c.yellow('Warning:')} ${c.dim('the server is now reachable by anyone who can reach the host/port.')}`);
-    console.log(`  ${c.dim('Re-enable auth at any time with:')} ${c.cyan('td --set-password')}`);
+    console.log(`  ${c.dim('Re-enable auth at any time with:')} ${c.cyan('veymux --set-password')}`);
   }
 
   const running = getRunningState();
   if (running) {
     console.log('');
-    console.log(`${ICON.info} ${c.yellow('Termdock is currently running — restart it so the change takes effect:')}`);
-    console.log(`     ${c.cyan('td --stop && td')}`);
+    console.log(`${ICON.info} ${c.yellow('Veymux is currently running — restart it so the change takes effect:')}`);
+    console.log(`     ${c.cyan('veymux --stop && veymux')}`);
   }
 }
 
@@ -1370,7 +1370,7 @@ async function postLocalJson(baseUrl: string, token: string, endpoint: string, p
       headers: {
         'Content-Type': 'application/json',
         'Content-Length': Buffer.byteLength(body),
-        'X-Termdock-Local-Token': token,
+        'X-Veymux-Local-Token': token,
         ...extraHeaders,
       },
     }, (res) => {
@@ -1402,7 +1402,7 @@ async function getLocalJson(baseUrl: string, token: string, endpoint: string, ti
       method,
       ca,
       headers: {
-        'X-Termdock-Local-Token': token,
+        'X-Veymux-Local-Token': token,
         ...extraHeaders,
       },
     }, (res) => {
@@ -1423,9 +1423,9 @@ async function runNotify(command: NotifyCommand): Promise<void> {
   if (command.prompt) { console.log(NOTIFY_PROMPT); return; }
   try {
     const state = getRunningState();
-    if (!state?.localApiToken) throw new Error('Termdock is not running or its local API token is unavailable.');
+    if (!state?.localApiToken) throw new Error('Veymux is not running or its local API token is unavailable.');
     const context = await resolveLocalCollaborationContext(command.session);
-    if (!Object.keys(context).length) throw new Error('Cannot identify the session; run inside Termdock or pass --session <full-session-id>.');
+    if (!Object.keys(context).length) throw new Error('Cannot identify the session; run inside Veymux or pass --session <full-session-id>.');
     const baseUrl = state.localUrl ?? `${state.scheme ?? 'http'}://${state.host === '0.0.0.0' ? 'localhost' : state.host}:${state.port}`;
     const response = await postLocalJson(baseUrl, state.localApiToken, '/api/terminal/operations/notify', {
       ...context, message: command.message, title: command.title,
@@ -1440,7 +1440,7 @@ async function runNotify(command: NotifyCommand): Promise<void> {
 
 async function resolveCurrentLocalSessionId(baseUrl: string, localToken: string): Promise<string> {
       const context = await detectLocalSessionContext();
-      if (!context.backendSessionId && !context.tmuxSessionName) throw new Error('--self requires a Termdock-managed session');
+      if (!context.backendSessionId && !context.tmuxSessionName) throw new Error('--self requires a Veymux-managed session');
       const query = new URLSearchParams(Object.fromEntries(Object.entries(context).filter((entry): entry is [string, string] => typeof entry[1] === 'string')));
       const response = await getLocalJson(baseUrl, localToken, `/api/terminal/operations/orchestration/peers?${query}`);
       const data = JSON.parse(response.body);
@@ -1452,7 +1452,7 @@ async function runAutomation(command: AutomationCommand): Promise<void> {
   if (command.action === 'help') { console.log(AUTOMATION_HELP); return; }
   const state = getRunningState();
   if (!state?.localApiToken) {
-    console.error(JSON.stringify({ ok: false, code: 'SERVICE_UNAVAILABLE', error: 'Termdock is not running or its local API token is unavailable.' }));
+    console.error(JSON.stringify({ ok: false, code: 'SERVICE_UNAVAILABLE', error: 'Veymux is not running or its local API token is unavailable.' }));
     process.exitCode = 1; return;
   }
   const baseUrl = state.localUrl ?? `${state.scheme ?? 'http'}://${state.host === '0.0.0.0' ? 'localhost' : state.host}:${state.port}`;
@@ -1477,7 +1477,7 @@ async function runCollab(command: NonNullable<CliOptions['collab']>): Promise<vo
   if (!runningState?.localApiToken) {
     // Help is a plain read: it must stay available without a running server.
     if (command.action === 'help') { console.log(COLLAB_HELP); return; }
-    console.error(JSON.stringify({ ok: false, code: 'SERVICE_UNAVAILABLE', error: 'Termdock is not running or its local API token is unavailable.' }));
+    console.error(JSON.stringify({ ok: false, code: 'SERVICE_UNAVAILABLE', error: 'Veymux is not running or its local API token is unavailable.' }));
     process.exit(1);
   }
   const context = await resolveLocalCollaborationContext(command.options.session as string | undefined);
@@ -1485,7 +1485,7 @@ async function runCollab(command: NonNullable<CliOptions['collab']>): Promise<vo
     // Bare help stays reachable from a plain shell; the roster snapshot in
     // help needs a session identity and only appears when one is available.
     if (command.action === 'help') { console.log(COLLAB_HELP); return; }
-    console.error(JSON.stringify({ ok: false, code: 'SESSION_NOT_FOUND', error: 'Cannot identify the collaboration session. Pass --session <full-session-id> or set TERMDOCK_COLLAB_SESSION_ID; see td collab --help.' }));
+    console.error(JSON.stringify({ ok: false, code: 'SESSION_NOT_FOUND', error: 'Cannot identify the collaboration session. Pass --session <full-session-id> or set VEYMUX_COLLAB_SESSION_ID; see veymux collab --help.' }));
     process.exit(1);
   }
   const baseUrl = runningState.localUrl
@@ -1517,12 +1517,12 @@ async function runInjectChangeAudit(source: string | true): Promise<void> {
 async function postChangeAuditPayload(payload: unknown): Promise<void> {
   const runningState = getRunningState();
   if (!runningState) {
-    console.error(`${ICON.err} ${c.red('Termdock is not running. Start it before injecting change audit explanations.')}`);
+    console.error(`${ICON.err} ${c.red('Veymux is not running. Start it before injecting change audit explanations.')}`);
     process.exit(1);
   }
   const token = runningState.localApiToken;
   if (!token) {
-    console.error(`${ICON.err} ${c.red('Running Termdock server does not expose a local injection token. Restart Termdock first.')}`);
+    console.error(`${ICON.err} ${c.red('Running Veymux server does not expose a local injection token. Restart Veymux first.')}`);
     process.exit(1);
   }
 
@@ -1544,12 +1544,12 @@ async function postChangeAuditPayload(payload: unknown): Promise<void> {
 async function runInjectBranchAudit(source: string | true): Promise<void> {
   const runningState = getRunningState();
   if (!runningState) {
-    console.error(`${ICON.err} ${c.red('Termdock is not running. Start it before injecting branch explanations.')}`);
+    console.error(`${ICON.err} ${c.red('Veymux is not running. Start it before injecting branch explanations.')}`);
     process.exit(1);
   }
   const token = runningState.localApiToken;
   if (!token) {
-    console.error(`${ICON.err} ${c.red('Running Termdock server does not expose a local injection token. Restart Termdock first.')}`);
+    console.error(`${ICON.err} ${c.red('Running Veymux server does not expose a local injection token. Restart Veymux first.')}`);
     process.exit(1);
   }
 
@@ -2105,12 +2105,12 @@ function resolveServerBaseUrl(state: ServerState): string {
 function requireRunningServer(): { baseUrl: string; token: string } {
   const state = getRunningState();
   if (!state) {
-    console.error(`${ICON.err} ${c.red('Termdock is not running. Start it first: td')}`);
+    console.error(`${ICON.err} ${c.red('Veymux is not running. Start it first: veymux')}`);
     process.exit(1);
   }
   const token = state.localApiToken;
   if (!token) {
-    console.error(`${ICON.err} ${c.red('Running server has no local API token. Restart Termdock first.')}`);
+    console.error(`${ICON.err} ${c.red('Running server has no local API token. Restart Veymux first.')}`);
     process.exit(1);
   }
   return { baseUrl: resolveServerBaseUrl(state), token };
@@ -2165,33 +2165,33 @@ const AGENT_PLUGIN_EXAMPLE = {
 
 function runPluginInitJson(): void {
   console.log(JSON.stringify({
-    protocol: 'termdock-agent-plugin',
+    protocol: 'veymux-agent-plugin',
     version: 2,
-    purpose: 'Register this Agent with Termdock and publish lifecycle/status updates.',
+    purpose: 'Register this Agent with Veymux and publish lifecycle/status updates.',
     commands: {
-      guide: 'td agent-plugin --json',
-      register: 'td plugin-create ./manifest.json',
-      installPackage: 'td plugin-install https://github.com/owner/repository',
-      checkUpdate: 'td plugin-check <slug>',
-      updatePackage: 'td plugin-update <slug>',
-      doctor: 'td plugin-doctor <slug> --json',
-      emit: 'td agent-event <slug> <event> [status]',
-      inspect: 'td plugin-list --json',
-      hooks: 'td plugin-hooks <slug> <install|uninstall>',
-      remove: 'td plugin-remove <slug>',
+      guide: 'veymux agent-plugin --json',
+      register: 'veymux plugin-create ./manifest.json',
+      installPackage: 'veymux plugin-install https://github.com/owner/repository',
+      checkUpdate: 'veymux plugin-check <slug>',
+      updatePackage: 'veymux plugin-update <slug>',
+      doctor: 'veymux plugin-doctor <slug> --json',
+      emit: 'veymux agent-event <slug> <event> [status]',
+      inspect: 'veymux plugin-list --json',
+      hooks: 'veymux plugin-hooks <slug> <install|uninstall>',
+      remove: 'veymux plugin-remove <slug>',
     },
     ui: {
       location: 'Settings > Detection Rules',
-      registration: 'A successfully created plugin appears immediately without restarting Termdock.',
+      registration: 'A successfully created plugin appears immediately without restarting Veymux.',
       install: 'The user clicks Install to write the declared hook mappings into hooks.target.',
-      uninstall: 'The user clicks Uninstall to remove only Termdock-owned hook entries.',
+      uninstall: 'The user clicks Uninstall to remove only Veymux-owned hook entries.',
     },
     lifecycleEvents: AGENT_EVENT_KINDS,
     phases: ['idle', 'working', 'waiting', 'done'],
     indicators: ['spinner', 'pulse', 'dot', 'ring', 'badge', 'terminal', 'question'],
     tones: ['neutral', 'info', 'success', 'warning', 'danger', 'accent'],
     statusModel: {
-      phase: 'Stable Termdock behavior used for notifications and attention.',
+      phase: 'Stable Veymux behavior used for notifications and attention.',
       id: 'Agent-defined fine-grained status referenced by hook mappings or agent-event.',
       label: 'Human-readable status text.',
       indicator: 'Theme-safe visual indicator.',
@@ -2199,48 +2199,48 @@ function runPluginInitJson(): void {
     },
     collaboration: {
       capabilities: 'Optional routing hints shown beside this Agent in collaboration groups.',
-      universalTransport: 'Every detected Agent receives durable inbox messages through its PTY and can use td collab when it has shell access.',
+      universalTransport: 'Every detected Agent receives durable inbox messages through its PTY and can use veymux collab when it has shell access.',
       hooks: 'Hooks publish declared lifecycle/status events; collaboration does not wait for an idle phase and does not require hooks.',
     },
     security: {
       source: 'Public and self-hosted Git repositories support HTTPS, HTTP, SSH and scp-style addresses. The service computer uses its Git credential helpers, SSH agent/configuration, proxy and CA settings. URL passwords and query tokens are rejected.',
       package: 'Symlinks, active/external SVG content, oversized files, submodules, and excessive unpacked size are rejected.',
-      hooks: 'hooks.target must be a non-symlinked ~/ JSON path. Termdock generates the hook command; manifests cannot inject shell.',
+      hooks: 'hooks.target must be a non-symlinked ~/ JSON path. Veymux generates the hook command; manifests cannot inject shell.',
       titleCommands: 'Installing or inspecting a plugin never executes its title/model commands. They run only after the user enables automatic titles for that plugin.',
       updates: 'Changes to hook or title command declarations revoke the corresponding prior opt-in.',
     },
     titleModelContract: {
-      noCatalog: 'If titleNamer.models is absent or yields no recommendation, Termdock omits modelArgs and uses the Agent CLI default model.',
+      noCatalog: 'If titleNamer.models is absent or yields no recommendation, Veymux omits modelArgs and uses the Agent CLI default model.',
       optionalArguments: 'Put every model-only flag/value in titleNamer.modelArgs. The complete group is prepended only when a model is selected.',
       acceptedOutput: 'A JSON array or {models, recommendedModel}. Entries may use id, name, or model; optional fields: displayName/display_name, description, isDefault/is_default, isEconomical/is_economical.',
-      automaticSelection: 'Top-level recommendedModel, then the first isEconomical model, then the first isDefault model; otherwise omit modelArgs and use the CLI default. Termdock never guesses price from names or descriptions.',
+      automaticSelection: 'Top-level recommendedModel, then the first isEconomical model, then the first isDefault model; otherwise omit modelArgs and use the CLI default. Veymux never guesses price from names or descriptions.',
       adapters: 'Use command: node plus {pluginDir}/scripts/list-models.mjs when the native CLI output needs normalization. Never hardcode a model catalog.',
-      verify: 'Run td plugin-doctor <slug> --json. This explicit command probes models but never spends a title-generation request.',
+      verify: 'Run veymux plugin-doctor <slug> --json. This explicit command probes models but never spends a title-generation request.',
     },
     migrationV1: {
       errorCode: 'AGENT_PLUGIN_MANIFEST_V1_UNSUPPORTED',
-      guideCommand: 'td agent-plugin --json',
-      aiPrompt: 'Please migrate the attached Termdock Agent plugin manifest from v1 to v2. Preserve slug, displayName, aliases, accentColor, iconMode, hooks.target, and resume. Add statuses[] entries with id, phase (idle|working|waiting|done), label, indicator, and tone. Add a status reference to each relevant hooks.events[] mapping while keeping its core event value. Use the output of `td agent-plugin --json` as the authoritative schema. Return only the corrected manifest JSON.',
+      guideCommand: 'veymux agent-plugin --json',
+      aiPrompt: 'Please migrate the attached Veymux Agent plugin manifest from v1 to v2. Preserve slug, displayName, aliases, accentColor, iconMode, hooks.target, and resume. Add statuses[] entries with id, phase (idle|working|waiting|done), label, indicator, and tone. Add a status reference to each relevant hooks.events[] mapping while keeping its core event value. Use the output of `veymux agent-plugin --json` as the authoritative schema. Return only the corrected manifest JSON.',
     },
     hookPayload: {
       stdin: 'Optional JSON object.',
       recognizedFields: ['session_id', 'sessionId', 'message', 'cwd'],
-      promptSubmitForwarding: 'For prompt-submit events, Termdock forwards raw stdin without assuming an Agent-specific schema. The wire cap is 64000 characters; the user-configurable title-context cap defaults to 12000.',
-      example: 'printf \'%s\' \'{"session_id":"abc","message":"Indexing"}\' | td agent-event my-agent prompt-submit thinking',
+      promptSubmitForwarding: 'For prompt-submit events, Veymux forwards raw stdin without assuming an Agent-specific schema. The wire cap is 64000 characters; the user-configurable title-context cap defaults to 12000.',
+      example: 'printf \'%s\' \'{"session_id":"abc","message":"Indexing"}\' | veymux agent-event my-agent prompt-submit thinking',
     },
     integrationSteps: [
       'Create a repository with manifest.json at its root; icon.svg and helper files are optional.',
-      'Publish the repository, then install it with td plugin-install <git-url>. Public/private HTTPS, HTTP, SSH and local directories are supported.',
-      'For manifest-only development, td plugin-create <manifest-file> remains available.',
+      'Publish the repository, then install it with veymux plugin-install <git-url>. Public/private HTTPS, HTTP, SSH and local directories are supported.',
+      'For manifest-only development, veymux plugin-create <manifest-file> remains available.',
       'Ask the user to open Settings > Detection Rules and click Install for this Agent. They can uninstall it there later.',
-      'If the Agent hook format is not a Claude-style hooks map, configure native hooks to call td agent-event directly.',
+      'If the Agent hook format is not a Claude-style hooks map, configure native hooks to call veymux agent-event directly.',
       'Map the completed-turn hook to event "stop"; this is also the automatic-title trigger when the user enables titles for the Agent.',
       'Optionally declare titleNamer so this Agent can generate titles and dynamically publish its own model catalog.',
       'Optionally declare capabilities so users and peer Agents can see what this Agent is suited for.',
       'Put optional model flags in titleNamer.modelArgs; keep the always-present prompt invocation in titleNamer.args.',
-      'Run td plugin-doctor <slug> --json and fix every warning before sharing the repository.',
+      'Run veymux plugin-doctor <slug> --json and fix every warning before sharing the repository.',
       'Tell the user that enabling a plugin title provider executes that plugin\'s declared CLI; installation alone never does.',
-      'Run td plugin-list to verify registration.',
+      'Run veymux plugin-list to verify registration.',
     ],
     manifest: AGENT_PLUGIN_EXAMPLE,
   }, null, 2));
@@ -2276,14 +2276,14 @@ function runAgentEvent(input: { slug: string; event: string; status?: string }):
 
 function runPluginInit(): void {
   console.log(`\
-${c.bold('Termdock Agent Integration Protocol v2')}
+${c.bold('Veymux Agent Integration Protocol v2')}
 ${c.dim('──────────────────────────────────────')}
 
 Machine-readable form for an Agent to inspect itself:
 
-  ${c.cyan('td agent-plugin --json')}
+  ${c.cyan('veymux agent-plugin --json')}
 
-A plugin is a directory under ${c.cyan('~/.termdock/agent-plugins/<slug>/')} containing:
+A plugin is a directory under ${c.cyan('~/.veymux/agent-plugins/<slug>/')} containing:
 
   ${c.cyan('manifest.json')}    required – agent identity, hooks, and resume config
   ${c.cyan('icon.svg')}         optional – brand icon (rendered as mask silhouette or native)
@@ -2329,10 +2329,10 @@ ${c.dim('───────────────────')}
   ${c.dim('// ── optional: hook installation (bring your own hooks.json surface) ──')}
   "hooks": {
     ${c.dim("// JSON path under ~/ only; symlink traversal is rejected.")}
-    ${c.dim('// termdock inserts marker-carrying entries; leaves user entries untouched.')}
+    ${c.dim('// veymux inserts marker-carrying entries; leaves user entries untouched.')}
     "target": "~/.custom-agent/settings.json",
 
-    ${c.dim('// Event mappings: agent-native hook name → termdock sentinel event.')}
+    ${c.dim('// Event mappings: agent-native hook name → veymux sentinel event.')}
     ${c.dim('// Optional matcher narrows the subscription (e.g. permission type).')}
     "events": [
       { "hook": "SessionStart",       "event": "session-start" },
@@ -2382,25 +2382,25 @@ ${c.bold('Creating a plugin')}
 ${c.dim('──────────────────')}
 
   ${c.dim('# Inject the Agent definition; it appears in the UI immediately')}
-  td plugin-create ./custom-agent-manifest.json
+  veymux plugin-create ./custom-agent-manifest.json
 
   ${c.dim('# Or install a complete, updateable package from a public or private Git repository')}
-  td plugin-install https://github.com/owner/custom-agent-termdock-plugin
+  veymux plugin-install https://github.com/owner/custom-agent-veymux-plugin
 
   ${c.dim('# The user then opens Settings > Detection Rules and clicks Install.')}
   ${c.dim('# The same UI button can uninstall the hooks later.')}
 
   ${c.dim('# Verify registration')}
-  td plugin-list --json
+  veymux plugin-list --json
 
   ${c.dim('# Manage the package and its hooks independently')}
-  td plugin-check custom-agent
-  td plugin-update custom-agent
-  td plugin-doctor custom-agent --json
-  td plugin-hooks custom-agent install
+  veymux plugin-check custom-agent
+  veymux plugin-update custom-agent
+  veymux plugin-doctor custom-agent --json
+  veymux plugin-hooks custom-agent install
 
   ${c.dim('# Remove')}
-  td plugin-remove custom-agent
+  veymux plugin-remove custom-agent
 
 ${c.bold('Direct event bridge for any hook system')}
 ${c.dim('───────────────────────────────────────')}
@@ -2408,20 +2408,20 @@ ${c.dim('───────────────────────�
   If the Agent does not use a Claude-style hooks JSON file, configure its
   native hooks to invoke this stable public CLI command instead:
 
-  td agent-event custom-agent prompt-submit thinking
-  td agent-event custom-agent permission-request approval
-  td agent-event custom-agent stop complete
+  veymux agent-event custom-agent prompt-submit thinking
+  veymux agent-event custom-agent permission-request approval
+  veymux agent-event custom-agent stop complete
 
-  Hook JSON may be piped on stdin. Termdock recognizes session_id/sessionId,
+  Hook JSON may be piped on stdin. Veymux recognizes session_id/sessionId,
   message, and cwd:
 
-  printf '%s' '{"session_id":"abc","message":"Indexing"}' | td agent-event custom-agent prompt-submit thinking
+  printf '%s' '{"session_id":"abc","message":"Indexing"}' | veymux agent-event custom-agent prompt-submit thinking
 
 ${c.bold('Manifest validation at startup')}
 ${c.dim('───────────────────────────────')}
 
-  Termdock validates every plugin manifest before registration. Errors are logged
-  to ${c.cyan('~/.termdock/server.log')} and visible via ${c.cyan('td plugin-list')}${c.dim('.')}
+  Veymux validates every plugin manifest before registration. Errors are logged
+  to ${c.cyan('~/.veymux/server.log')} and visible via ${c.cyan('veymux plugin-list')}${c.dim('.')}
   Slugs/aliases that collide with built-in agents are skipped.
 
 ${c.bold('Migrating a v1 plugin')}
@@ -2431,7 +2431,7 @@ ${c.dim('─────────────────────')}
   AI-ready repair prompt. Copy that prompt together with the old manifest to
   an AI, or let the AI inspect the current schema directly:
 
-  ${c.cyan('td agent-plugin --json')}
+  ${c.cyan('veymux agent-plugin --json')}
 `);
 }
 
@@ -2488,7 +2488,7 @@ async function runPluginInstall(source: string): Promise<void> {
   }
   console.log(`${ICON.ok} ${c.green(`Plugin "${body.slug}" installed.`)}`);
   if (body.dir) console.log(`  ${c.dim('Directory:')} ${c.cyan(body.dir)}`);
-  console.log(`  ${c.dim('Next:')} ${c.cyan(`td plugin-hooks ${body.slug} install`)} ${c.dim('or use Settings > Detection Rules')}`);
+  console.log(`  ${c.dim('Next:')} ${c.cyan(`veymux plugin-hooks ${body.slug} install`)} ${c.dim('or use Settings > Detection Rules')}`);
 }
 
 async function runPluginList(json = false): Promise<void> {
@@ -2514,7 +2514,7 @@ async function runPluginList(json = false): Promise<void> {
   const plugins = body.plugins ?? [];
   if (plugins.length === 0) {
     console.log(`${c.dim('No plugins installed.')}`);
-    console.log(`  ${c.dim('See:')} ${c.cyan('td agent-plugin')}`);
+    console.log(`  ${c.dim('See:')} ${c.cyan('veymux agent-plugin')}`);
   } else {
     console.log(`${c.bold('Installed plugins')} ${c.dim(`(${plugins.length})`)}`);
     console.log('');
@@ -2625,7 +2625,7 @@ async function runPluginRemove(slug: string): Promise<void> {
       path: url.pathname,
       method: 'DELETE',
       ca,
-      headers: { 'X-Termdock-Local-Token': token },
+      headers: { 'X-Veymux-Local-Token': token },
     }, (res) => {
       let responseBody = '';
       res.setEncoding('utf8');
@@ -2666,16 +2666,16 @@ function warnIfAuthDisabled(host: string): void {
     console.log(c.yellow('  │   ') + c.dim('The server is bound to ') + c.red(host)
       + c.dim(' — reachable from the LAN.') + c.yellow('     │'));
   }
-  console.log(c.yellow('  │   ') + c.dim('Set a password with: ') + c.cyan('td --set-password')
+  console.log(c.yellow('  │   ') + c.dim('Set a password with: ') + c.cyan('veymux --set-password')
     + c.yellow('             │'));
   console.log(c.yellow('  ╰─────────────────────────────────────────────────────────────╯'));
   console.log('');
 }
 
-// ── `td --tls` (a.k.a `td l` / `td ls` / `termdock --tls`) ──
-// Reads termdock metadata directly out of tmux user options. Does not contact
-// the termdock server, so it works over plain ssh on any machine that has
-// termdock-managed tmux sessions on it (even if the termdock daemon is down).
+// ── `veymux --tls` (a.k.a `veymux l` / `veymux ls` / `veymux --tls`) ──
+// Reads veymux metadata directly out of tmux user options. Does not contact
+// the veymux server, so it works over plain ssh on any machine that has
+// veymux-managed tmux sessions on it (even if the veymux daemon is down).
 
 interface TlsRow {
   name: string;
@@ -2756,11 +2756,11 @@ async function ensureTmuxExtendedKeys(): Promise<void> {
 }
 
 async function ensureTmuxScrollbackProfile(sessionName: string): Promise<void> {
-  await execFileAsync('tmux', ['set-option', '-g', 'history-limit', String(TERMDOCK_TMUX_HISTORY_LIMIT)], {
+  await execFileAsync('tmux', ['set-option', '-g', 'history-limit', String(VEYMUX_TMUX_HISTORY_LIMIT)], {
     timeout: 5000,
     maxBuffer: 64 * 1024,
   });
-  await execFileAsync('tmux', ['set-option', '-t', sessionName, 'history-limit', String(TERMDOCK_TMUX_HISTORY_LIMIT)], {
+  await execFileAsync('tmux', ['set-option', '-t', sessionName, 'history-limit', String(VEYMUX_TMUX_HISTORY_LIMIT)], {
     timeout: 5000,
     maxBuffer: 64 * 1024,
   });
@@ -2798,7 +2798,7 @@ async function ensureTmuxCliSessionOptions(sessionName: string): Promise<void> {
 }
 
 async function ensureTmuxColorEnvironment(sessionName?: string): Promise<void> {
-  const forceColor = process.env.TERMDOCK_FORCE_COLOR === '1';
+  const forceColor = process.env.VEYMUX_FORCE_COLOR === '1';
   for (const args of buildTmuxColorEnvironmentCommands(sessionName, forceColor)) {
     await execFileAsync('tmux', args, {
       timeout: 5000,
@@ -2884,7 +2884,7 @@ async function ensureStampedTmuxSession(
       '-e', 'COLORTERM=truecolor',
       '-e', `TERM=${innerTerm}`,
     ];
-    if (process.env.TERMDOCK_FORCE_COLOR === '1') {
+    if (process.env.VEYMUX_FORCE_COLOR === '1') {
       args.push('-e', 'FORCE_COLOR=1');
     }
     if (cwd) {
@@ -2905,16 +2905,16 @@ async function ensureStampedTmuxSession(
   await ensureTmuxColorEnvironment(sessionName);
   await ensureManagedTmuxColorCapabilities(sessionName);
   await ensureTmuxCliSessionOptions(sessionName);
-  await setTmuxOption(sessionName, '@termdock-version', TERMDOCK_VERSION);
-  await setTmuxOption(sessionName, '@termdock-host', TERMDOCK_HOST);
-  await setTmuxOption(sessionName, '@termdock-pid', TERMDOCK_PID);
-  const existingCreatedAt = await getTmuxOption(sessionName, '@termdock-created-at');
+  await setTmuxOption(sessionName, '@veymux-version', VEYMUX_VERSION);
+  await setTmuxOption(sessionName, '@veymux-host', VEYMUX_HOST);
+  await setTmuxOption(sessionName, '@veymux-pid', VEYMUX_PID);
+  const existingCreatedAt = await getTmuxOption(sessionName, '@veymux-created-at');
   if (!existingCreatedAt) {
-    await setTmuxOption(sessionName, '@termdock-created-at', String(Date.now()));
+    await setTmuxOption(sessionName, '@veymux-created-at', String(Date.now()));
   }
   if (!exists && cwd) {
-    await setTmuxOption(sessionName, '@termdock-cwd', cwd);
-    await setTmuxOption(sessionName, '@termdock-label', getCwdLeafName(cwd));
+    await setTmuxOption(sessionName, '@veymux-cwd', cwd);
+    await setTmuxOption(sessionName, '@veymux-label', getCwdLeafName(cwd));
   }
 
   return { sessionName, created: !exists };
@@ -2938,16 +2938,16 @@ const TLS_FIELDS: Array<keyof TlsRow | 'name'> = [
 const TLS_FORMAT = [
   '#{session_name}',
   '#{session_attached}',
-  '#{@termdock-friendly-name}',
-  '#{@termdock-program}',
-  '#{@termdock-cwd}',
-  '#{@termdock-label}',
-  '#{@termdock-client-count}',
-  '#{@termdock-host}',
-  '#{@termdock-pid}',
-  '#{@termdock-version}',
-  '#{@termdock-created-at}',
-  '#{@termdock-last-active-at}',
+  '#{@veymux-friendly-name}',
+  '#{@veymux-program}',
+  '#{@veymux-cwd}',
+  '#{@veymux-label}',
+  '#{@veymux-client-count}',
+  '#{@veymux-host}',
+  '#{@veymux-pid}',
+  '#{@veymux-version}',
+  '#{@veymux-created-at}',
+  '#{@veymux-last-active-at}',
 ].join('\t');
 
 function formatIdle(lastActiveAtRaw: string): string {
@@ -3246,7 +3246,7 @@ function renderCompactTmuxRows(rows: TlsRow[], indent = '  '): string {
   }).join('\n');
 }
 
-// Fetch tmux sessions with termdock metadata. Returns null if tmux is not
+// Fetch tmux sessions with veymux metadata. Returns null if tmux is not
 // running (so callers can decide to print a friendly message and exit).
 // Hard errors (tmux missing, query failure) `process.exit(1)` directly.
 async function fetchTlsRows(): Promise<TlsRow[] | null> {
@@ -3324,8 +3324,8 @@ async function runTls(opts: { all: boolean; json: boolean }): Promise<void> {
     if (opts.all) {
       console.log(`${ICON.info} ${c.dim('No tmux sessions on this host.')}`);
     } else {
-      console.log(`${ICON.info} ${c.dim('No termdock-managed tmux sessions on this host.')}`);
-      console.log(`  ${c.dim('Use')} ${c.cyan('td la')} ${c.dim('to include all tmux sessions.')}`);
+      console.log(`${ICON.info} ${c.dim('No veymux-managed tmux sessions on this host.')}`);
+      console.log(`  ${c.dim('Use')} ${c.cyan('veymux la')} ${c.dim('to include all tmux sessions.')}`);
     }
     return;
   }
@@ -3335,10 +3335,10 @@ async function runTls(opts: { all: boolean; json: boolean }): Promise<void> {
 
 // ── end --tls ──
 
-// ── `td --attach-tmux [name]` / `td a [name]` / `td at [name]` ──
+// ── `veymux --attach-tmux [name]` / `veymux a [name]` / `veymux at [name]` ──
 //
-// Attach to a termdock-managed tmux session. If `name` is provided, attach
-// directly. Otherwise show an interactive picker that lists termdock sessions
+// Attach to a veymux-managed tmux session. If `name` is provided, attach
+// directly. Otherwise show an interactive picker that lists veymux sessions
 // (with -a, all tmux sessions). Replaces the current process with `tmux
 // attach -t <name>` so the user gets a normal tmux experience.
 
@@ -3376,7 +3376,7 @@ async function pickTmuxSession(rows: TlsRow[]): Promise<string | null> {
   }
 
   if (!process.stdin.isTTY) {
-    console.error(`${ICON.err} ${c.red('No TTY — pass a session name explicitly: td --attach-tmux <name>')}`);
+    console.error(`${ICON.err} ${c.red('No TTY — pass a session name explicitly: veymux --attach-tmux <name>')}`);
     return null;
   }
 
@@ -3436,12 +3436,12 @@ async function runAttachTmux(opts: { name?: string; all?: boolean }): Promise<vo
       if (resolved.ambiguous.length > 0) {
         console.error(`${ICON.err} ${c.red(`Ambiguous tmux session: ${opts.name}`)}`);
         console.error(renderCompactTmuxRows(resolved.ambiguous));
-        console.error(`  ${c.dim('Use the raw tmux session name, or run')} ${c.cyan(opts.all ? 'td a --all' : 'td a')} ${c.dim('for the picker.')}`);
+        console.error(`  ${c.dim('Use the raw tmux session name, or run')} ${c.cyan(opts.all ? 'veymux a --all' : 'veymux a')} ${c.dim('for the picker.')}`);
         process.exit(1);
       }
       console.error(`${ICON.err} ${c.red(`No matching tmux session: ${opts.name}`)}`);
       if (!opts.all && allRows.some((row) => row.version.length === 0)) {
-        console.error(`  ${c.dim('Use')} ${c.cyan('td a --all')} ${c.dim('to include unmanaged tmux sessions.')}`);
+        console.error(`  ${c.dim('Use')} ${c.cyan('veymux a --all')} ${c.dim('to include unmanaged tmux sessions.')}`);
       }
       const suggestions = resolved.suggestions.length > 0 ? resolved.suggestions : candidates.slice(0, 6);
       if (suggestions.length > 0) {
@@ -3459,9 +3459,9 @@ async function runAttachTmux(opts: { name?: string; all?: boolean }): Promise<vo
   }
 
   if (candidates.length === 0) {
-    console.log(`${ICON.info} ${c.dim(opts.all ? 'No tmux sessions on this host.' : 'No termdock-managed tmux sessions on this host.')}`);
+    console.log(`${ICON.info} ${c.dim(opts.all ? 'No tmux sessions on this host.' : 'No veymux-managed tmux sessions on this host.')}`);
     if (!opts.all) {
-      console.log(`  ${c.dim('Use')} ${c.cyan('td a --all')} ${c.dim('to include unmanaged tmux sessions.')}`);
+      console.log(`  ${c.dim('Use')} ${c.cyan('veymux a --all')} ${c.dim('to include unmanaged tmux sessions.')}`);
     }
     process.exit(0);
   }
@@ -3491,7 +3491,7 @@ async function runNewTmux(opts: { name?: string; attach?: boolean }): Promise<vo
     console.log(`  ${c.dim('Directory:')} ${c.cyan(cwd)}`);
   }
   if (opts.attach === false) {
-    console.log(`  ${c.dim('Tip: attach with')} ${c.cyan(`td --attach-tmux ${result.sessionName}`)}`);
+    console.log(`  ${c.dim('Tip: attach with')} ${c.cyan(`veymux --attach-tmux ${result.sessionName}`)}`);
     return;
   }
   console.log(`${ICON.info} ${c.dim('Attaching...')}`);
@@ -3513,12 +3513,12 @@ async function promptLine(prompt: string): Promise<string> {
 
 async function runFirstRunWizard(): Promise<void> {
   if (!process.stdin.isTTY || !process.stdout.isTTY || isFirstRunCompleted()) return;
-  console.log(`${ICON.info} ${c.bold('Termdock first-time local access setup')}`);
-  const prefix = await promptLine('  Choose your .termdock.local prefix (e.g. jovn): ');
+  console.log(`${ICON.info} ${c.bold('Veymux first-time local access setup')}`);
+  const prefix = await promptLine('  Choose your .veymux.local prefix (e.g. jovn): ');
   const normalized = normalizeLocalAccessName(prefix);
   if (normalized) {
     setLocalAccessSetting({ name: normalized, source: 'manual' });
-    console.log(`  ${ICON.ok} ${c.dim('Local URL prefix:')} ${c.cyan(`${normalized}.termdock.local`)}`);
+    console.log(`  ${ICON.ok} ${c.dim('Local URL prefix:')} ${c.cyan(`${normalized}.veymux.local`)}`);
   } else {
     console.log(`  ${ICON.warn} ${c.yellow('No valid prefix entered; using generated default for now.')}`);
   }
@@ -3529,10 +3529,10 @@ async function runFirstRunWizard(): Promise<void> {
       await runSetupLocalHttps();
     } catch (error) {
       console.error(error instanceof Error ? error.message : error);
-      console.log(`  ${ICON.info} ${c.dim('You can enable HTTPS later with:')} ${c.cyan('td --setup-local-https')}`);
+      console.log(`  ${ICON.info} ${c.dim('You can enable HTTPS later with:')} ${c.cyan('veymux --setup-local-https')}`);
     }
   } else {
-    console.log(`  ${ICON.info} ${c.dim('You can enable HTTPS later with:')} ${c.cyan('td --setup-local-https')}`);
+    console.log(`  ${ICON.info} ${c.dim('You can enable HTTPS later with:')} ${c.cyan('veymux --setup-local-https')}`);
   }
   markFirstRunCompleted();
   console.log('');
@@ -3570,32 +3570,32 @@ async function refreshDefaultHttpsCertificateSafely(): Promise<boolean> {
   if (custom || ![defaultHttpsCertPath, defaultHttpsKeyPath, defaultHttpsCaPath].some(file => fs.existsSync(file))) return false;
   try { return await ensureDefaultHttpsCertificateFresh(); }
   catch (error) {
-    throw new Error(`Existing local HTTPS configuration could not be repaired; refusing to fall back to HTTP. Run td --setup-local-https. ${String(error)}`, { cause: error });
+    throw new Error(`Existing local HTTPS configuration could not be repaired; refusing to fall back to HTTP. Run veymux --setup-local-https. ${String(error)}`, { cause: error });
   }
 }
 
 async function main(): Promise<void> {
   if (options.update) {
     console.log(`${ICON.info} ${c.dim(`Checking ${OFFICIAL_NPM_REGISTRY} for updates...`)}`);
-    const result = await updateTermdockFromOfficialRegistry(TERMDOCK_VERSION, (stage, error) => {
+    const result = await updateVeymuxFromOfficialRegistry(VEYMUX_VERSION, (stage, error) => {
       const action = stage === 'query' ? 'query' : 'installation';
       console.warn(`${ICON.warn} ${c.yellow(`Official npm registry ${action} failed; retrying with your configured npm registry.`)}`);
       console.warn(`  ${c.dim(error.message)}`);
     });
     if (result.status === 'current') {
-      console.log(`${ICON.ok} ${c.green(`Termdock ${result.currentVersion} is already up to date.`)}`);
+      console.log(`${ICON.ok} ${c.green(`Veymux ${result.currentVersion} is already up to date.`)}`);
       process.exit(0);
     }
     if (result.status === 'newer-than-registry') {
-      console.log(`${ICON.info} ${c.dim(`Installed Termdock ${result.currentVersion} is newer than npm latest ${result.latestVersion}; nothing changed.`)}`);
+      console.log(`${ICON.info} ${c.dim(`Installed Veymux ${result.currentVersion} is newer than npm latest ${result.latestVersion}; nothing changed.`)}`);
       process.exit(0);
     }
 
     const sourceLabel = result.source === 'official' ? 'official npm registry' : 'configured npm registry';
-    console.log(`${ICON.ok} ${c.green(`Updated Termdock ${result.currentVersion} → ${result.latestVersion} via ${sourceLabel}.`)}`);
+    console.log(`${ICON.ok} ${c.green(`Updated Veymux ${result.currentVersion} → ${result.latestVersion} via ${sourceLabel}.`)}`);
     if (getRunningState()) {
       console.log(`${ICON.info} ${c.yellow('The running server is still using the previous version.')}`);
-      console.log(`  ${c.dim('Restart when convenient with:')} ${c.cyan('td --stop && td')}`);
+      console.log(`  ${c.dim('Restart when convenient with:')} ${c.cyan('veymux --stop && veymux')}`);
     }
     process.exit(0);
   }
@@ -3682,11 +3682,11 @@ async function main(): Promise<void> {
   if (options.todo) {
     if (options.todo.action === 'help') { console.log(TODO_HELP); return; }
     const state = getRunningState();
-    if (!state?.localApiToken) { console.error(JSON.stringify({ ok: false, error: 'Termdock is not running' })); process.exitCode = 1; return; }
+    if (!state?.localApiToken) { console.error(JSON.stringify({ ok: false, error: 'Veymux is not running' })); process.exitCode = 1; return; }
     const baseUrl = state.localUrl ?? `${state.scheme ?? 'http'}://${state.host === '0.0.0.0' ? 'localhost' : state.host}:${state.port}`;
     const context = await detectLocalSessionContext();
-    if (process.env.TERMDOCK === '1' && !context.backendSessionId && !context.tmuxSessionName) { console.error(JSON.stringify({ ok: false, error: '无法确认 Termdock 调用会话，请在有效终端中重试' })); process.exitCode = 1; return; }
-    const todoHeaders = { 'X-Termdock-Todo-Context': encodeURIComponent(JSON.stringify(context)) };
+    if (process.env.VEYMUX === '1' && !context.backendSessionId && !context.tmuxSessionName) { console.error(JSON.stringify({ ok: false, error: '无法确认 Veymux 调用会话，请在有效终端中重试' })); process.exitCode = 1; return; }
+    const todoHeaders = { 'X-Veymux-Todo-Context': encodeURIComponent(JSON.stringify(context)) };
     process.exitCode = await executeTodoCommand(options.todo, {
       request: (method, endpoint, body) => method === 'POST'
         ? postLocalJson(baseUrl, state.localApiToken!, endpoint, body, 30_000, todoHeaders)
@@ -3706,7 +3706,7 @@ async function main(): Promise<void> {
     const argv = options.integration;
     if (!argv.length || argv.includes('--help') || argv[0] === 'help') { console.log(INTEGRATION_HELP); return; }
     const state = getRunningState();
-    if (!state?.localApiToken) { console.error(JSON.stringify({ ok: false, code: 'SERVICE_UNAVAILABLE', error: 'Termdock is not running' })); process.exitCode = 1; return; }
+    if (!state?.localApiToken) { console.error(JSON.stringify({ ok: false, code: 'SERVICE_UNAVAILABLE', error: 'Veymux is not running' })); process.exitCode = 1; return; }
     process.exitCode = argv[0] === 'revoke' && argv.length === 2
       ? await revokeIntegration(argv[1], state.port, state.localApiToken, line => console.log(line))
       : await runIntegrationAdmin(argv, state.port, state.localApiToken, line => console.log(line));
@@ -3792,14 +3792,14 @@ async function main(): Promise<void> {
     const supervisorStatus = getSupervisorStatus();
     const runningState = getRunningState();
     if (!runningState && !supervisorStatus) {
-      console.log(`${ICON.info} ${c.dim('Termdock is not running.')}`);
+      console.log(`${ICON.info} ${c.dim('Veymux is not running.')}`);
       process.exit(0);
     }
 
     // supervisor 还活着但服务没起来（重启中 / 已放弃）也必须报出来——
     // 只说"未运行"就把这个功能的意义抹掉了。
     if (runningState) printRunningState(runningState);
-    else console.log(`${ICON.err} ${c.red('Termdock is not running.')}`);
+    else console.log(`${ICON.err} ${c.red('Veymux is not running.')}`);
     printSupervisorState(supervisorStatus, Boolean(runningState));
     process.exit(0);
   }
@@ -3807,8 +3807,8 @@ async function main(): Promise<void> {
   if (options.restart) {
     const supervisorStatus = getSupervisorStatus();
     if (!supervisorStatus?.alive) {
-      console.error(`${ICON.err} ${c.red('Termdock is not supervised, so there is nothing to restart.')}`);
-      console.error(`  ${c.dim('Start it with:')} ${c.cyan('td')} ${c.dim('(or restart it by hand with: td --stop && td)')}`);
+      console.error(`${ICON.err} ${c.red('Veymux is not supervised, so there is nothing to restart.')}`);
+      console.error(`  ${c.dim('Start it with:')} ${c.cyan('veymux')} ${c.dim('(or restart it by hand with: veymux --stop && veymux)')}`);
       process.exit(1);
     }
 
@@ -3824,7 +3824,7 @@ async function main(): Promise<void> {
     const supervisorStatus = getSupervisorStatus();
     const runningState = getRunningState();
     if (!runningState && !supervisorStatus) {
-      console.log(`${ICON.info} ${c.dim('Termdock is not running.')}`);
+      console.log(`${ICON.info} ${c.dim('Veymux is not running.')}`);
       process.exit(0);
     }
 
@@ -3855,19 +3855,19 @@ async function main(): Promise<void> {
       removeSupervisorStateFile();
       // 说实话：到底是"停了服务"还是"只是清了一份记录"，取决于刚才谁还活着。
       const summary = alive
-        ? `Stopped Termdock (supervisor ${supervisorState.pid}${serverPid ? `, server ${serverPid}` : ''}).`
+        ? `Stopped Veymux (supervisor ${supervisorState.pid}${serverPid ? `, server ${serverPid}` : ''}).`
         : orphanWasRunning
-          ? `Stopped Termdock (server ${serverPid}). The supervisor (pid ${supervisorState.pid}) had already stopped.`
+          ? `Stopped Veymux (server ${serverPid}). The supervisor (pid ${supervisorState.pid}) had already stopped.`
           : `Cleared the record of the stopped supervisor (pid ${supervisorState.pid}).`;
       console.log(`${ICON.ok} ${c.green(summary)}`);
       if (bridgeCaffeinateStarted) {
-        console.log(`${ICON.info} ${c.dim(`Keeping macOS awake for up to ${restartBridgeCaffeinateSeconds}s while Termdock restarts.`)}`);
+        console.log(`${ICON.info} ${c.dim(`Keeping macOS awake for up to ${restartBridgeCaffeinateSeconds}s while Veymux restarts.`)}`);
       }
       process.exit(0);
     }
 
     if (!runningState) {
-      console.log(`${ICON.info} ${c.dim('Termdock is not running.')}`);
+      console.log(`${ICON.info} ${c.dim('Veymux is not running.')}`);
       process.exit(0);
     }
 
@@ -3876,7 +3876,7 @@ async function main(): Promise<void> {
 
     // Wait for the process to actually exit — graceful shutdown (session
     // cleanup, server close, port release) takes time.  Without this wait a
-    // subsequent `termdock` start can race the old process and fail to bind.
+    // subsequent `veymux` start can race the old process and fail to bind.
     const graceDeadline = Date.now() + STOP_GRACE_MS;
     while (isProcessRunning(runningState.pid) && Date.now() < graceDeadline) {
       await new Promise<void>((r) => setTimeout(r, 100));
@@ -3887,9 +3887,9 @@ async function main(): Promise<void> {
       await new Promise<void>((r) => setTimeout(r, 200));
     }
 
-    console.log(`${ICON.ok} ${c.green(`Stopped Termdock (PID ${runningState.pid}).`)}`);
+    console.log(`${ICON.ok} ${c.green(`Stopped Veymux (PID ${runningState.pid}).`)}`);
     if (bridgeCaffeinateStarted) {
-      console.log(`${ICON.info} ${c.dim(`Keeping macOS awake for up to ${restartBridgeCaffeinateSeconds}s while Termdock restarts.`)}`);
+      console.log(`${ICON.info} ${c.dim(`Keeping macOS awake for up to ${restartBridgeCaffeinateSeconds}s while Veymux restarts.`)}`);
     }
     process.exit(0);
   }
@@ -3906,7 +3906,7 @@ async function main(): Promise<void> {
     if (existingSupervisor?.alive || runningState) {
       if (runningState) printRunningState(runningState);
       printSupervisorState(existingSupervisor, Boolean(runningState));
-      console.log('Termdock is already running or supervised; no new instance started.');
+      console.log('Veymux is already running or supervised; no new instance started.');
       return;
     }
     // 前台运行 + 受监督：setsid/systemd/docker 部署走这条。这是**正式服务**的路径——
@@ -3918,12 +3918,12 @@ async function main(): Promise<void> {
       childArgs: buildForegroundChildArgs(options, https),
       healthUrl: health.url,
       healthCaPath: https.ca,
-      version: getTermdockVersion(),
+      version: getVeymuxVersion(),
     });
-    console.log(`${ICON.ok} ${c.green('Termdock is under supervision.')}`);
+    console.log(`${ICON.ok} ${c.green('Veymux is under supervision.')}`);
     console.log(`  ${c.dim('Health:')} ${health.url}`);
     console.log(`  ${c.dim('State:')}  ${supervisorStatePath}`);
-    console.log(`  ${c.dim('Stop:')}   ${c.cyan('td --stop')} ${c.dim('(supervisor and server)')}`);
+    console.log(`  ${c.dim('Stop:')}   ${c.cyan('veymux --stop')} ${c.dim('(supervisor and server)')}`);
     return;
   }
 
@@ -3935,14 +3935,14 @@ async function main(): Promise<void> {
     if (!bootChecks.nodePty.ok) throw new Error('Native terminal initialization failed; see the boot check above.');
     warnIfAuthDisabled(options.host ?? DEFAULT_HOST);
     // Dynamic import keeps terminal.ts side-effects (loadClientStatesFromDisk
-    // etc.) out of fast paths like `termdock --tls` / `--status`.
+    // etc.) out of fast paths like `veymux --tls` / `--status`.
     if (resolveSelfEntry().endsWith('/cli.js')) {
       configureSupervisionEnable({
         childEntry: resolveSelfEntry(),
         childArgs: buildForegroundChildArgs(options, https),
         healthUrl: resolveHealthTarget(options, https).url,
         healthCaPath: https.ca,
-        version: getTermdockVersion(),
+        version: getVeymuxVersion(),
       });
     }
     const { startServer } = await import('./entry.js');
@@ -3955,7 +3955,7 @@ async function main(): Promise<void> {
       localApiToken,
       onCertificateRefreshNeeded: isManagedDefaultHttps
         ? async (): Promise<CertificateRefreshResult> => {
-            console.log(`${ICON.info} ${c.dim('Termdock detected network/certificate changes; regenerating certificate and reloading TLS context...')}`);
+            console.log(`${ICON.info} ${c.dim('Veymux detected network/certificate changes; regenerating certificate and reloading TLS context...')}`);
             const refreshed = await refreshDefaultHttpsCertificateSafely();
             if (!refreshed) return { reloaded: false, certificateUpdated: false };
             const state = await localAccessManager.start({
@@ -3983,7 +3983,7 @@ async function main(): Promise<void> {
             return { reloaded: false, certificateUpdated: true, localAccessState: state };
           }
         : () => {
-            console.warn('[cert-watch] certificate is missing current domain/IP SANs; restart Termdock with an updated certificate.');
+            console.warn('[cert-watch] certificate is missing current domain/IP SANs; restart Veymux with an updated certificate.');
             return { reloaded: false, certificateUpdated: false };
           },
     });
@@ -4014,11 +4014,11 @@ async function main(): Promise<void> {
     //
     // 受监督时**不能**在这之后 disconnect：那条 IPC 通道同时是 supervisor 的
     // 存活信号和重启意图通道，而它恰好在就绪这一刻断掉——最糟的时机。
-    // supervisor 通过 env 里的 TERMDOCK_SUPERVISED 告知自己存在。
-    const supervised = process.env.TERMDOCK_SUPERVISED === '1';
+    // supervisor 通过 env 里的 VEYMUX_SUPERVISED 告知自己存在。
+    const supervised = process.env.VEYMUX_SUPERVISED === '1';
     const acknowledgeStartup = () => {
       if (process.connected) {
-        process.send?.({ type: 'termdock-ready' }, () => {
+        process.send?.({ type: 'veymux-ready' }, () => {
           if (process.connected && !supervised) process.disconnect();
         });
       }
@@ -4028,7 +4028,7 @@ async function main(): Promise<void> {
     if (supervised) {
       // supervisor 死了服务还能活（丢监督好过丢服务），但必须留下痕迹。
       process.on('disconnect', () => {
-        recordSupervisorLost(`supervisor pid ${process.env.TERMDOCK_SUPERVISOR_PID ?? 'unknown'} disconnected`);
+        recordSupervisorLost(`supervisor pid ${process.env.VEYMUX_SUPERVISOR_PID ?? 'unknown'} disconnected`);
       });
     }
     return;
@@ -4044,7 +4044,7 @@ async function main(): Promise<void> {
   // 此时再起一个就会有两个 supervisor 抢同一个端口和同一份状态文件。
   const existingSupervisor = getSupervisorStatus();
   if (existingSupervisor?.alive) {
-    console.log(`${ICON.info} ${c.green('Termdock is already supervised.')} ${c.dim(`The service is not up this instant, but supervisor ${existingSupervisor.state.pid} is still working on it.`)}`);
+    console.log(`${ICON.info} ${c.green('Veymux is already supervised.')} ${c.dim(`The service is not up this instant, but supervisor ${existingSupervisor.state.pid} is still working on it.`)}`);
     printSupervisorState(existingSupervisor, false);
     process.exit(0);
   }
@@ -4078,7 +4078,7 @@ async function main(): Promise<void> {
 
   // 默认受管：受 supervisor 盯着的服务才会在崩溃/更新失败后自己回来。
   // 退路留给"我就是要一个裸进程"的场景（调试、被外部进程管理器接管）。
-  const supervised = !options.noSupervisor && process.env.TERMDOCK_SUPERVISOR !== '0';
+  const supervised = !options.noSupervisor && process.env.VEYMUX_SUPERVISOR !== '0';
   const logFileFd = fs.openSync(logFilePath, 'a');
   let startedPid: number | undefined;
 
@@ -4088,7 +4088,7 @@ async function main(): Promise<void> {
       childArgs,
       healthUrl: health.url,
       healthCaPath: activeHttps.ca,
-      version: getTermdockVersion(),
+      version: getVeymuxVersion(),
       logFileFd,
       // 比 CLI 自己盲等的 10s 宽裕：supervisor 会在子进程一失败就回报，
       // 这里只是兜底上限，不该成为慢机器上的假阴性。
@@ -4098,8 +4098,8 @@ async function main(): Promise<void> {
     startedPid = launch.pid;
     if (!launch.ok) {
       const detail = launch.detail ? `${launch.reason}: ${launch.detail}` : String(launch.reason);
-      console.error(`${ICON.err} ${c.red('Termdock startup could not be confirmed.')} ${detail}`);
-      console.error(`  ${c.dim('Note:')} the supervisor keeps retrying in the background — check with: td --status`);
+      console.error(`${ICON.err} ${c.red('Veymux startup could not be confirmed.')} ${detail}`);
+      console.error(`  ${c.dim('Note:')} the supervisor keeps retrying in the background — check with: veymux --status`);
       console.error(`  ${c.dim('Log:')}  ${logFilePath}`);
       console.error(`  Read the startup error with: tail -n 80 ${shellQuote(logFilePath)}`);
       process.exitCode = 1;
@@ -4117,7 +4117,7 @@ async function main(): Promise<void> {
     child.on('error', (error) => { startupError = error; });
     child.on('message', (message: unknown) => {
       if (message && typeof message === 'object' && 'type' in message
-        && message.type === 'termdock-ready') ready = true;
+        && message.type === 'veymux-ready') ready = true;
     });
     const isAlive = () => !startupError && child.pid !== undefined
       && child.exitCode === null && child.signalCode === null && isProcessRunning(child.pid);
@@ -4133,7 +4133,7 @@ async function main(): Promise<void> {
       const detail = startupError?.message ?? (alive
         ? 'Startup timed out; the process is still running but readiness could not be confirmed.'
         : `Background process exited (code: ${child.exitCode ?? 'unknown'}, signal: ${child.signalCode ?? 'none'}).`);
-      console.error(`${ICON.err} ${c.red('Termdock startup could not be confirmed.')} ${detail}`);
+      console.error(`${ICON.err} ${c.red('Veymux startup could not be confirmed.')} ${detail}`);
       console.error(`  ${c.dim('Log:')} ${logFilePath}`);
       console.error(`  Read the startup error with: tail -n 80 ${shellQuote(logFilePath)}`);
       process.exitCode = 1;
@@ -4141,12 +4141,12 @@ async function main(): Promise<void> {
     }
   }
 
-  console.log(`${ICON.ok} ${c.green('Termdock started in background.')}`);
+  console.log(`${ICON.ok} ${c.green('Veymux started in background.')}`);
   console.log(`  ${c.dim('URL:')} ${c.cyan(`${scheme}://${displayHost}:${childPort}`)}`);
   if (scheme === 'https') {
     console.log(`  ${c.dim('HTTPS:')} ${activeHttps.source === 'default' ? c.green('auto') : c.green('enabled')}`);
   } else {
-    console.log(`  ${c.dim('HTTPS:')} ${c.dim('not configured — run td --setup-local-https')}`);
+    console.log(`  ${c.dim('HTTPS:')} ${c.dim('not configured — run veymux --setup-local-https')}`);
   }
   console.log(`  ${c.dim('PID:')} ${startedPid}`);
   console.log(`  ${c.dim('Supervised:')} ${supervised ? c.green('yes') : c.yellow('no — a crash will not be restarted')}`);

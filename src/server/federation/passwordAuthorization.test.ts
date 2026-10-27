@@ -6,7 +6,7 @@ import { AuthorizationStore } from './authorization.js';
 const dirs: string[] = [];
 afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
 function fixture() {
-  const dir = mkdtempSync(join(tmpdir(), 'td-password-grants-')); dirs.push(dir);
+  const dir = mkdtempSync(join(tmpdir(), 'veymux-password-grants-')); dirs.push(dir);
   let credential: string | null = 'a'.repeat(64);
   let now = 1000;
   const store = new AuthorizationStore({ filePath: join(dir, 'grants.json'), serviceId: 'target', now: () => now, passwordCredential: () => credential });

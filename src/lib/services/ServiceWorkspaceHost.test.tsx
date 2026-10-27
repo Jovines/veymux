@@ -12,13 +12,13 @@ const remote = { id: 'remote', targetPeerId: 'remote', url: 'https://remote.exam
 
 beforeEach(() => {
   localStorage.clear(); sessionStorage.clear();
-  delete window.__termdockWorkspaceHost;
+  delete window.__veymuxWorkspaceHost;
   useSidebarStore.setState({ leftOpen: false, rightOpen: false });
 });
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
-  delete window.__termdockWorkspaceHost;
+  delete window.__veymuxWorkspaceHost;
 });
 
 function floatingButtons(desktop: boolean) {

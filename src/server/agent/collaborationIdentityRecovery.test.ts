@@ -5,7 +5,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { CollaborationRoutingStore, assessCollaborationRouteIdentity, type CollaborationBinding, type CollaborationPaneCandidate } from './collaborationRouting.js';
 let directory: string;
-beforeEach(() => { directory = fs.mkdtempSync(path.join(os.tmpdir(), 'td-route-proof-')); });
+beforeEach(() => { directory = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-route-proof-')); });
 afterEach(() => { vi.restoreAllMocks(); fs.rmSync(directory, { recursive: true, force: true }); });
 const original = { serverPid: 100, sessionId: '$1', paneId: '%1', panePid: 200, agentSlug: 'fixture', nativeSessionId: 'original-native' };
 const binding: CollaborationBinding = { sessionId: 'logical', backendSessionId: 'backend', mode: 'tmux', tmuxSessionName: 'original', agentSlug: 'fixture', nativeSessionId: 'original-native', pane: original };
@@ -14,7 +14,7 @@ it('can recover changed physical identities only from verified original native i
   const result = assessCollaborationRouteIdentity(binding, [current], true, false);
   expect(result).toMatchObject({ state: 'ready', pane: current, diagnostics: { expected: original, recovery: 'automatic', reason: null } });
   expect(result.diagnostics.observed[0]).not.toHaveProperty('cwd');
-  expect(result.diagnostics.rebind_command).toBe('td collab --session logical rebind --pane %2');
+  expect(result.diagnostics.rebind_command).toBe('veymux collab --session logical rebind --pane %2');
 });
 it('accepts a live verified foreground resume for ordinary terminals with an older null pane UUID', () => {
   const legacy = { ...binding, pane: { ...original, nativeSessionId: null } };

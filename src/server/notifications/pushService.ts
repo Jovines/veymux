@@ -35,7 +35,7 @@ export interface AgentPushState {
   agent: { displayName: string } | null;
 }
 
-const storeDirectory = path.join(os.homedir(), '.termdock');
+const storeDirectory = path.join(os.homedir(), '.veymux');
 const storePath = path.join(storeDirectory, 'push-notifications.json');
 let store: PushStore | null = null;
 
@@ -78,8 +78,8 @@ function readStore(): PushStore {
   }
   // VAPID subject must be a mailto: or https: contact URI. Configurable for
   // self-hosters; defaults to the project repository instead of a fake mailbox.
-  const vapidSubject = process.env.TERMDOCK_VAPID_SUBJECT?.trim()
-    || 'https://github.com/Jovines/termdock';
+  const vapidSubject = process.env.VEYMUX_VAPID_SUBJECT?.trim()
+    || 'https://github.com/Jovines/veymux';
   webpush.setVapidDetails(vapidSubject, store.vapid.publicKey, store.vapid.privateKey);
   return store;
 }

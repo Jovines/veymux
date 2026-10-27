@@ -9,7 +9,7 @@ type RecordValue = { iv: string; tag: string; ciphertext: string };
 export class ComputerCredentialStore {
   readonly file: string;
   readonly keyFile: string;
-  constructor(private directory = join(homedir(), '.termdock')) {
+  constructor(private directory = join(homedir(), '.veymux')) {
     this.file = join(directory, 'computer-credentials.json');
     this.keyFile = join(directory, 'computer-credentials.key');
   }

@@ -31,7 +31,7 @@ export function TodoItemCard({ todo, runs, workspace, sourceName, sessionName, b
       {!selecting && <button type="button" aria-label={`编辑 ${todo.title}`} title="编辑待办" className="inline-flex min-h-11 w-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-surface-2 hover:text-foreground" disabled={busy || !!handoff} onClick={onEdit}><Pencil size={15} /></button>}
       {!selecting && !!menu.length && <TodoMoreMenu label={`更多操作 ${todo.title}`} items={menu} disabled={busy || !!handoff} />}
     </div>
-    {todo.description && <p className={`termdock-native-select ml-11 whitespace-pre-wrap break-words text-sm leading-6 text-muted-foreground ${expanded ? 'mt-1' : 'line-clamp-2'}`}>{todo.description}</p>}
+    {todo.description && <p className={`veymux-native-select ml-11 whitespace-pre-wrap break-words text-sm leading-6 text-muted-foreground ${expanded ? 'mt-1' : 'line-clamp-2'}`}>{todo.description}</p>}
     {todo.claim && <p className="ml-11 mt-1 text-xs leading-6 text-muted-foreground">{todo.claim.expiresAt > Date.now() ? '已领取' : '领取已过期'} · {sessionName || todo.claim.sessionName}</p>}
     {todo.autoProcessing?.state === 'failed' && <p role="alert" className="ml-11 mt-2 text-sm leading-6 text-destructive">自动交接失败：{todo.autoProcessing.error}。可以手动交给会话。</p>}
     {latest?.error && <p role="alert" className="ml-11 mt-2 break-words text-sm leading-6 text-destructive">{latest.error}</p>}

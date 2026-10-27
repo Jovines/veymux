@@ -20,7 +20,7 @@ export interface PreparedRustMigration {
     target: string;
 }
 export function validateMigrationAsset(asset: RustMigrationAsset): void {
-    if (!/^\d+\.\d+\.\d+$/.test(asset.version) || asset.url !== `https://github.com/Jovines/termdock/releases/download/v${asset.version}/Termdock_${asset.version}_aarch64.dmg` || !/^[a-f0-9]{64}$/.test(asset.sha256) || !Number.isSafeInteger(asset.size) || asset.size <= 0 || asset.size > 1024 ** 3)
+    if (!/^\d+\.\d+\.\d+$/.test(asset.version) || asset.url !== `https://github.com/Jovines/veymux/releases/download/v${asset.version}/Veymux_${asset.version}_aarch64.dmg` || !/^[a-f0-9]{64}$/.test(asset.sha256) || !Number.isSafeInteger(asset.size) || asset.size <= 0 || asset.size > 1024 ** 3)
         throw Error('Invalid Rust migration release asset');
 }
 export async function downloadVerifiedMigration(asset: RustMigrationAsset, destination: string, fetchImpl: typeof fetch = fetch): Promise<void> {
@@ -57,10 +57,10 @@ async function identity(file: string): Promise<string> {
 }
 export async function prepareRustMigration(asset: RustMigrationAsset, currentApp: string): Promise<PreparedRustMigration> {
     validateMigrationAsset(asset);
-    if (process.platform !== 'darwin' || !path.isAbsolute(currentApp) || path.basename(currentApp) !== 'Termdock.app')
-        throw Error('请从已安装的 Termdock.app 执行迁移');
-    await fs.access(path.dirname(currentApp), fs.constants.W_OK).catch(() => { throw Error('应用目录不可写；请下载新版 DMG，由管理员安装 Termdock.app'); });
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'termdock-rust-update-'));
+    if (process.platform !== 'darwin' || !path.isAbsolute(currentApp) || path.basename(currentApp) !== 'Veymux.app')
+        throw Error('请从已安装的 Veymux.app 执行迁移');
+    await fs.access(path.dirname(currentApp), fs.constants.W_OK).catch(() => { throw Error('应用目录不可写；请下载新版 DMG，由管理员安装 Veymux.app'); });
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'veymux-rust-update-'));
     await fs.chmod(root, 0o700);
     const dmg = path.join(root, 'update.dmg'), mount = path.join(root, 'mount');
     let mounted = false;
@@ -75,18 +75,18 @@ export async function prepareRustMigration(asset: RustMigrationAsset, currentApp
         await fs.mkdir(mount);
         await execute('/usr/bin/hdiutil', ['attach', dmg, '-nobrowse', '-readonly', '-mountpoint', mount, '-quiet']);
         mounted = true;
-        const app = path.join(mount, 'Termdock.app');
+        const app = path.join(mount, 'Veymux.app');
         await execute('/usr/bin/codesign', ['--verify', '--deep', '--strict', app]);
         if (await identity(app) !== ownTeam)
             throw Error('正式应用的签名团队不匹配');
-        for (const [key, value] of Object.entries({ CFBundleIdentifier: 'com.jovines.termdock', CFBundleShortVersionString: asset.version, CFBundleExecutable: 'Termdock' })) {
+        for (const [key, value] of Object.entries({ CFBundleIdentifier: 'com.jovines.veymux', CFBundleShortVersionString: asset.version, CFBundleExecutable: 'Veymux' })) {
             const result = await execute('/usr/libexec/PlistBuddy', ['-c', `Print :${key}`, path.join(app, 'Contents/Info.plist')]);
             if (result.stdout.trim() !== value)
                 throw Error('正式应用身份或版本不匹配');
         }
         await execute('/usr/bin/xcrun', ['stapler', 'validate', app]);
         await execute('/usr/sbin/spctl', ['-a', '-t', 'exec', app]);
-        const staged = path.join(root, 'Termdock.app');
+        const staged = path.join(root, 'Veymux.app');
         await execute('/usr/bin/ditto', [app, staged]);
         await execute('/usr/bin/codesign', ['--verify', '--deep', '--strict', staged]);
         await fs.writeFile(path.join(root, 'install.mjs'), await fs.readFile(new URL('./rustMigrationInstaller.js', import.meta.url)), { mode: 0o600 });
@@ -105,7 +105,7 @@ export async function launchRustMigration(prepared: PreparedRustMigration): Prom
     const ready = path.join(prepared.root, 'ready.json'), receipt = path.join(prepared.root, 'receipt.json');
     await fs.rm(ready, { force: true });
     await fs.rm(receipt, { force: true });
-    const locks = path.join(os.homedir(), '.termdock', 'desktop-update-locks');
+    const locks = path.join(os.homedir(), '.veymux', 'desktop-update-locks');
     await fs.mkdir(locks, { recursive: true, mode: 0o700 });
     const lock = path.join(locks, createHash('sha256').update(prepared.target).digest('hex') + '.lock');
     const previous = await fs.readFile(lock, 'utf8').then(JSON.parse).catch(() => null);
@@ -121,7 +121,7 @@ export async function launchRustMigration(prepared: PreparedRustMigration): Prom
                 throw error;
         }
     }
-    const plan = { ...prepared, parentPid: process.pid, ready, receipt, lock, backup: path.join(os.homedir(), '.Trash', `Termdock-before-Rust-${randomUUID()}.app`) };
+    const plan = { ...prepared, parentPid: process.pid, ready, receipt, lock, backup: path.join(os.homedir(), '.Trash', `Veymux-before-Rust-${randomUUID()}.app`) };
     const file = path.join(prepared.root, 'plan.json');
     await fs.writeFile(file, JSON.stringify(plan), { mode: 0o600 });
     const log = openSync(path.join(prepared.root, 'install.log'), 'a', 0o600);

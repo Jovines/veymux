@@ -1,6 +1,6 @@
 /** Text clipboard limits are shared by both renderers and the manual panel. */
 export const COMPUTER_CLIPBOARD_LIMIT = 1_048_576;
-export const COMPUTER_COPY_REQUEST_EVENT = 'termdock:computer-copy';
+export const COMPUTER_COPY_REQUEST_EVENT = 'veymux:computer-copy';
 
 export interface ComputerClipboardOptions {
   paste(text: string, shift: boolean): void;

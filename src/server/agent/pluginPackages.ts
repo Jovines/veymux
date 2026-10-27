@@ -64,7 +64,7 @@ export interface PluginUpdateCheck {
 }
 
 function gitHostAllowed(host: string): boolean {
-  const configured = (process.env.TERMDOCK_PLUGIN_GIT_HOSTS ?? '')
+  const configured = (process.env.VEYMUX_PLUGIN_GIT_HOSTS ?? '')
     .split(',')
     .map((host) => host.trim().toLowerCase())
     .filter(Boolean);
@@ -193,7 +193,7 @@ export async function preparePluginPackage(sourceInput: string, expectedSlug?: s
   const source = sourceInput.trim();
   if (!source) throw new Error('Plugin source is required');
   const remote = normalizeGitPluginSource(source);
-  const temporaryRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'termdock-plugin-'));
+  const temporaryRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'veymux-plugin-'));
   let packageDir: string;
   let type: PluginSourceMetadata['type'];
   let normalizedSource: string;
@@ -303,7 +303,7 @@ export async function checkPluginPackageUpdate(plugin: LoadedPlugin): Promise<Pl
   let latestRevision: string;
   if (metadata.type === 'git') {
     const remote = normalizeGitPluginSource(metadata.source);
-    if (!remote) throw new Error('The stored Git source is invalid or excluded by TERMDOCK_PLUGIN_GIT_HOSTS');
+    if (!remote) throw new Error('The stored Git source is invalid or excluded by VEYMUX_PLUGIN_GIT_HOSTS');
     const { stdout } = await execFileAsync('git', [
       ...GIT_OPTIONS,
       'ls-remote', '--', remote, 'HEAD',

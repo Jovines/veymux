@@ -17,7 +17,7 @@ export function ArchitectureLibraryTools({ root, file, document, active = true, 
   const [pending, setPending] = useState<{ name: string; value: unknown; file: string; revision?: string | null } | null>(null);
   const input = useRef<HTMLInputElement>(null), task = useRef(0);
   const owner = `${root}\0${file}`;
-  const exportJson = useCallback((signal: AbortSignal) => saveDownloadBlob(new Blob([JSON.stringify(document, null, 2)], { type: 'application/json' }), 'termdock-architecture.json', signal), [document]);
+  const exportJson = useCallback((signal: AbortSignal) => saveDownloadBlob(new Blob([JSON.stringify(document, null, 2)], { type: 'application/json' }), 'veymux-architecture.json', signal), [document]);
   const exportOmm = useCallback(async (signal: AbortSignal) => {
     const bundle = await exportOmmArchitecture(root, file, signal);
     if (signal.aborted) return 'canceled' as const;
@@ -39,7 +39,7 @@ export function ArchitectureLibraryTools({ root, file, document, active = true, 
       <button className={button} type="button" disabled={working || !document} onClick={() => void jsonDownload.start()}><Download size={14} />JSON</button>
       <button className={button} type="button" disabled={working || !document} onClick={() => void ommDownload.start()}><Download size={14} />.omm</button>
       <button className={button} type="button" disabled={working} onClick={() => input.current?.click()}><Upload size={14} />{zh ? '导入' : 'Import'}</button>
-      <button className={button} type="button" disabled={working || !document} onClick={() => void perform(async current => { const service = savedConnection(); const url = architectureViewerUrl(window.location.origin, { root, file, ...(service ? { peerId: service.targetPeerId, serviceName: service.serviceName } : {}) }); if (!await writeClipboardText(url, current)) throw new Error(zh ? '复制失败，请重试。' : 'Could not copy. Please try again.'); if (current()) setMessage(zh ? '链接已复制，打开时需要登录此 Termdock 服务。' : 'Link copied. Sign in to this Termdock service to view it.'); })}><Link size={14} />{zh ? '复制查看链接' : 'Copy viewer link'}</button>
+      <button className={button} type="button" disabled={working || !document} onClick={() => void perform(async current => { const service = savedConnection(); const url = architectureViewerUrl(window.location.origin, { root, file, ...(service ? { peerId: service.targetPeerId, serviceName: service.serviceName } : {}) }); if (!await writeClipboardText(url, current)) throw new Error(zh ? '复制失败，请重试。' : 'Could not copy. Please try again.'); if (current()) setMessage(zh ? '链接已复制，打开时需要登录此 Veymux 服务。' : 'Link copied. Sign in to this Veymux service to view it.'); })}><Link size={14} />{zh ? '复制查看链接' : 'Copy viewer link'}</button>
     </div>
     <DownloadFeedback {...jsonDownload} />
     <DownloadFeedback {...ommDownload} />
@@ -48,7 +48,7 @@ export function ArchitectureLibraryTools({ root, file, document, active = true, 
       void perform(async current => {
         if (candidate.size > 5_000_000) throw new Error(zh ? '文档超过 5 MB。' : 'Document exceeds 5 MB.');
         const raw = await candidate.text(); if (!current()) return; const value = JSON.parse(raw);
-        if (value?.format === 'termdock-omm-bundle') { const loaded = await readNativeArchitecture(root, '.omm'); if (!current()) return; setPending({ name: candidate.name, value, file: '.omm', revision: loaded.revision }); return; }
+        if (value?.format === 'veymux-omm-bundle') { const loaded = await readNativeArchitecture(root, '.omm'); if (!current()) return; setPending({ name: candidate.name, value, file: '.omm', revision: loaded.revision }); return; }
         const document = parseArchitecture(raw), destination = document.analysis ? analysisFile(document.analysis) : ARCHITECTURE_FILE;
         const loaded = await readNativeArchitecture(root, destination);
         if (!current()) return; setPending({ name: candidate.name, value: document, file: destination, revision: loaded.revision });

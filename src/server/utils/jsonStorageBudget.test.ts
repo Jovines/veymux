@@ -6,7 +6,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { JsonStorageBudget } from './jsonStorageBudget.js';
 
 let dir: string;
-beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'td-budget-')); });
+beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-budget-')); });
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); fs.rmSync(dir, { recursive: true, force: true }); });
 const full = () => new Error('admission capacity full');
 it('uses exact UTF-8 bytes, rejects growth, and permits control outcomes without inventing free space', () => {

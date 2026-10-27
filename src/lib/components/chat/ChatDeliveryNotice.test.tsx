@@ -51,7 +51,7 @@ it('recovers within the page, retains failed messages and never asks the user to
   const request = vi.fn().mockResolvedValueOnce(Response.json({}, { status: 409 })).mockResolvedValueOnce(Response.json({ ok: true }));
   vi.stubGlobal('fetch', request);
   render(<ChatDeliveryNotice message={message} sessionId="original" canWrite onTerminal={terminal} onRecovered={recovered} />);
-  expect(screen.queryByText(/复制命令|td collab|运行以下命令/)).toBeNull();
+  expect(screen.queryByText(/复制命令|veymux collab|运行以下命令/)).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: '重新连接' }));
   await screen.findByRole('alert'); expect(recovered).not.toHaveBeenCalled(); expect(message.status).toBe('pending');
   fireEvent.click(screen.getByRole('button', { name: '重新连接' }));

@@ -1,8 +1,8 @@
-import type { TermdockUpdateState } from './api';
+import type { VeymuxUpdateState } from './api';
 import type { ServiceUpdateNode, ServiceUpdatePlan } from './serviceUpdatePlan';
 import { compareVersions } from '../utils/version';
 
-export interface ServiceUpdateSnapshot { state?: TermdockUpdateState; error?: string }
+export interface ServiceUpdateSnapshot { state?: VeymuxUpdateState; error?: string }
 export type ServiceUpdateSnapshots = Record<string, ServiceUpdateSnapshot>;
 export interface ServiceUpdateOverview {
   notice: string;

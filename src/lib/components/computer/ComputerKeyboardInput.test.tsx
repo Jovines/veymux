@@ -106,7 +106,7 @@ it('sends consecutive IME candidates once and resets context after remote naviga
     fireEvent.compositionEnd(input); fireEvent.input(input, { target: { value }, inputType: 'insertFromComposition' });
   }
   expect(sendText.mock.calls).toEqual([['你好'], ['世界🙂']]);
-  fireEvent(input, new Event('termdock:computer-input-reset'));
+  fireEvent(input, new Event('veymux:computer-input-reset'));
   fireEvent.input(input, { target: { value: '\u200b新位置' }, inputType: 'insertText' });
   expect(sendText.mock.calls).toEqual([['你好'], ['世界🙂'], ['新位置']]);
   expect(sendKey).not.toHaveBeenCalled();

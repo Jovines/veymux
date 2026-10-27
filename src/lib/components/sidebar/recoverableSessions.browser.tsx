@@ -11,7 +11,7 @@ import type { NewSessionRequestOptions } from '../../terminal/newSessionRequest'
 
 let root: Root | undefined;
 beforeEach(() => {
-  localStorage.clear(); sessionStorage.clear(); localStorage.setItem('termdock:locale', 'en');
+  localStorage.clear(); sessionStorage.clear(); localStorage.setItem('veymux:locale', 'en');
   vi.stubGlobal('fetch', vi.fn(async () => Response.json({ locale: 'en', groups: [], agents: [], sessions: [], tasks: [] })));
 });
 afterEach(() => { root?.unmount(); document.body.replaceChildren(); vi.unstubAllGlobals(); });

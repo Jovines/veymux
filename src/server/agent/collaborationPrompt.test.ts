@@ -81,12 +81,12 @@ describe('COLLAB_NAME_FORBIDDEN / sanitizeCollaborationName', () => {
 
 describe('formatCollaborationDelivery', () => {
   it('explains rich chat attachment paths and explicit mention routing without implying delivery', () => {
-    const context = '\n\n```termdock-context\n{"attachments":[{"path":"/tmp/cover.png","name":"cover.png"}],"mentions":[{"sessionId":"coder-id","groupId":"group-1","name":"开发 Agent","groupName":"发布组"}]}\n```';
+    const context = '\n\n```veymux-context\n{"attachments":[{"path":"/tmp/cover.png","name":"cover.png"}],"mentions":[{"sessionId":"coder-id","groupId":"group-1","name":"开发 Agent","groupName":"发布组"}]}\n```';
     const prompt = render([message({ content: `请联系开发成员${context}`, integrationOrigin: { integrationId: 'chat-user', source: 'session-chat' } })]);
     expect(prompt).toContain('/tmp/cover.png');
-    expect(prompt).toContain('td collab --session reviewer-id send <sessionId> "消息内容" --group <groupId> --text');
+    expect(prompt).toContain('veymux collab --session reviewer-id send <sessionId> "消息内容" --group <groupId> --text');
     expect(prompt).toContain('不代表已经发送、投递或收到回复');
-    expect(render([message({ content: '普通消息' })])).not.toContain('正文末尾的 termdock-context');
+    expect(render([message({ content: '普通消息' })])).not.toContain('正文末尾的 veymux-context');
   });
   it('opens a group-named shell with a fenced user task and routing help outside', () => {
     const prompt = render([message({})]);
@@ -99,11 +99,11 @@ describe('formatCollaborationDelivery', () => {
     expect(prompt).toContain('```\n检查构建\n```');
     // A user message has no agent to reply to (the reply route refuses it);
     // usage lives behind the always-present help line.
-    expect(prompt).not.toContain('td collab reply');
-    expect(prompt).toContain('td collab send coder-id "消息内容" --text');
+    expect(prompt).not.toContain('veymux collab reply');
+    expect(prompt).toContain('veymux collab send coder-id "消息内容" --text');
     expect(prompt).not.toContain('native-coder');
     expect(prompt).not.toContain('group-1');
-    expect(prompt).toContain('帮助:td collab --help');
+    expect(prompt).toContain('帮助:veymux collab --help');
     expect(lines.at(-1)).toBe(RULE);
     expect(prompt.length).toBeLessThan(500);
   });
@@ -128,8 +128,8 @@ describe('formatCollaborationDelivery', () => {
     expect(prompt).not.toMatch(/ · message(?!-)/);
     expect(prompt).not.toContain('查看群规');
     expect(prompt).not.toContain('63a047b4-7d6e');
-    expect(prompt).not.toContain('帮助:td collab --help');
-    expect(prompt).not.toContain('td collab reply');
+    expect(prompt).not.toContain('帮助:veymux collab --help');
+    expect(prompt).not.toContain('veymux collab reply');
   });
 
   it('keeps short rules inline with their relative update time', () => {
@@ -153,7 +153,7 @@ describe('formatCollaborationDelivery', () => {
   ])('applies the character and line limits for inline rules', (text, inline) => {
     const prompt = render([message({ instructions: { text, version: 'v1', updatedAt: 1, updatedBy: 'coder-id' } })]);
     expect(prompt.includes('群规[12秒前]:' + text)).toBe(inline);
-    expect(prompt.includes('td collab rules get group-1 --text')).toBe(!inline);
+    expect(prompt.includes('veymux collab rules get group-1 --text')).toBe(!inline);
   });
 
   it('shows current rules while retaining the old message snapshot, including cleared rules', () => {
@@ -220,12 +220,12 @@ describe('formatCollaborationDelivery', () => {
     const prompt = render([message({ fromSessionId: 'coder-id', kind: 'ask', content: '测试通过了吗？\n请附上失败项。' })]);
     expect(prompt).toContain('来自:开发 Agent · ask · message-1');
     expect(prompt).toContain('```\n测试通过了吗？\n请附上失败项。\n```');
-    expect(prompt).not.toContain('td collab reply');
-    expect(prompt).not.toContain('td collab send coder-id');
+    expect(prompt).not.toContain('veymux collab reply');
+    expect(prompt).not.toContain('veymux collab send coder-id');
     expect(prompt).not.toContain('native-coder');
-    expect(prompt).not.toContain('td collab spawn');
+    expect(prompt).not.toContain('veymux collab spawn');
     expect(prompt).not.toContain('ACK');
-    expect(prompt).not.toContain('[Termdock 协作');
+    expect(prompt).not.toContain('[Veymux 协作');
     expect(prompt.length).toBeLessThan(500);
   });
 
@@ -233,7 +233,7 @@ describe('formatCollaborationDelivery', () => {
     const prompt = render([message({ kind: 'reply', fromSessionId: 'coder-id', content: '建议把回复放到正文下面。' })]);
     expect(prompt).toContain('来自:开发 Agent · reply · message-1');
     expect(prompt).toContain('```\n建议把回复放到正文下面。\n```');
-    expect(prompt).not.toContain('td collab reply');
+    expect(prompt).not.toContain('veymux collab reply');
     expect(prompt).not.toContain('来自:开发 Agent · reply · message-1\n建议把回复放到正文下面。');
   });
 
@@ -243,7 +243,7 @@ describe('formatCollaborationDelivery', () => {
       message({ id: 'two', fromSessionId: 'another-id', content: '第二条' }),
     ]);
     expect(prompt.split(RULE).length).toBe(3);
-    expect(prompt).not.toContain('[Termdock 协作');
+    expect(prompt).not.toContain('[Veymux 协作');
     expect(prompt).toContain('来自:开发 Agent · task · one\n来源:本服务 · 会话 coder-id\n\n```\n第一条\n```');
     expect(prompt).toContain('来自:another-id · task · two\n来源:本服务 · 会话 another-id\n\n```\n第二条\n```');
   });
@@ -252,20 +252,20 @@ describe('formatCollaborationDelivery', () => {
     const body = '代码：\n```ts\nconst x = 1;\n```\n--- 正文结束 ---';
     const prompt = render([message({ content: body }), message({ id: 'message-2', fromSessionId: 'coder-id' })]);
     expect(prompt).toContain('````\n' + body + '\n````');
-    expect(prompt).not.toContain('td collab reply');
+    expect(prompt).not.toContain('veymux collab reply');
     expect(prompt).toContain('来自:开发 Agent · task · message-2');
-    expect(prompt).not.toContain('td collab message get message-1');
+    expect(prompt).not.toContain('veymux collab message get message-1');
   });
 
   it('provides a full-content retrieval command for oversized UTF-8 bodies', () => {
     const prompt = render([message({ content: '测'.repeat(3000), fromSessionId: 'coder-id' })]);
     expect(prompt).toContain('9000 字节');
-    expect(prompt).toContain('td collab message get message-1 --text');
+    expect(prompt).toContain('veymux collab message get message-1 --text');
     expect(prompt).not.toContain('测'.repeat(3000));
     // A cross-service recipient cannot copy the bare command: its CLI cannot
     // detect identity, so the retrieval command carries --session verbatim.
     const remote = render([message({ content: '测'.repeat(3000) })], { targetSessionId: 'remote:https%3A%2F%2Fpeer.test:one' });
-    expect(remote).toContain('td collab --session remote:https%3A%2F%2Fpeer.test:one message get message-1 --text');
+    expect(remote).toContain('veymux collab --session remote:https%3A%2F%2Fpeer.test:one message get message-1 --text');
   });
 
   it('tells cross-service members about --session once in the education block', () => {
@@ -289,8 +289,8 @@ describe('formatCollaborationDelivery', () => {
     expect(prompt).not.toContain('ACK');
     expect(prompt).not.toContain('pending');
     expect(prompt).not.toContain('--response-kind');
-    expect(prompt).not.toContain('td collab reply');
-    expect(prompt).toContain('td collab capture <会话ID> --text');
+    expect(prompt).not.toContain('veymux collab reply');
+    expect(prompt).toContain('veymux collab capture <会话ID> --text');
     expect(prompt).toContain('不打断对方');
     expect(prompt).toContain('远端用 send 询问');
     expect(prompt.length).toBeLessThan(550);
@@ -313,8 +313,8 @@ describe('formatCollaborationDelivery', () => {
     expect(lines[2]).toBe('收件人:测试 Agent · 定位:最终验收');
     expect(lines[3]).toBe('');
     expect(lines[4]).toBe('来自:开发 Agent · task · message-1');
-    expect(prompt).toContain('帮助:td collab --help');
-    expect(lines.at(-2)).toBe('帮助:td collab --help');
+    expect(prompt).toContain('帮助:veymux collab --help');
+    expect(lines.at(-2)).toBe('帮助:veymux collab --help');
     expect(prompt).not.toContain('开发与自测');
     expect(prompt).not.toContain('coder-id:');
   });
@@ -366,10 +366,10 @@ describe('formatCollaborationDelivery', () => {
     expect(prompt).toContain('「发布组」td群');
     expect(prompt).toContain('来自:用户 · task · message-1');
     expect(prompt).toContain('```\n检查构建\n```');
-    expect(prompt).not.toContain('td collab send');
+    expect(prompt).not.toContain('veymux collab send');
     expect(prompt).not.toContain('联系其他成员');
-    expect(prompt).not.toContain('帮助:td collab --help');
-    expect(prompt).not.toContain('td collab capture');
+    expect(prompt).not.toContain('帮助:veymux collab --help');
+    expect(prompt).not.toContain('veymux collab capture');
     expect(prompt).not.toContain('想看伙伴');
     expect(prompt.length).toBeLessThan(400);
   });
@@ -380,8 +380,8 @@ describe('formatCollaborationDelivery', () => {
       groups: [{ ...group, sessionIds: ['local', 'remote:peer'] }],
       sessions: [{ sessionId: 'remote:peer', name: 'Reviewer · Mac', status: 'service-unreachable' }],
     });
-    expect(prompt).not.toContain('td collab send');
-    expect(prompt).not.toContain('帮助:td collab --help');
+    expect(prompt).not.toContain('veymux collab send');
+    expect(prompt).not.toContain('帮助:veymux collab --help');
     expect(prompt).toContain('服务不可达，消息无法送达');
     // Cross-service education is static guidance, so it rides the education
     // block and stays suppressed once delivered.
@@ -393,13 +393,13 @@ describe('formatCollaborationDelivery', () => {
     expect(prompt).toContain('来自:用户 · task · 群发 · message-1');
     expect(prompt).toContain('同时发给了:开发 Agent');
     expect(prompt).toContain('```\n检查构建\n```');
-    expect(prompt).not.toContain('td collab reply');
+    expect(prompt).not.toContain('veymux collab reply');
     const agentPrompt = render([message({ fromSessionId: 'coder-id', fanOutIds: ['another-id'] })], {
       sessions: [...sessions, { sessionId: 'another-id', agentNativeSessionId: null, name: '第三位', status: 'idle' }],
     });
     expect(agentPrompt).toContain('来自:开发 Agent · task · 群发 · message-1');
     expect(agentPrompt).toContain('同时发给了:第三位');
-    expect(agentPrompt).not.toContain('td collab reply');
+    expect(agentPrompt).not.toContain('veymux collab reply');
   });
 
   it('falls back to raw ids for unknown co-recipients and stays shell-safe', () => {
@@ -422,7 +422,7 @@ it('always identifies nonterminal principals and teaches correlated stored repli
   const incoming = message({ kind: 'message', integrationOrigin: { integrationId: 'report-bridge', source: 'external' } });
   const prompt = render([incoming], { showRoutingHelp: false });
   expect(prompt).toContain('来自:后台接入 report-bridge');
-  expect(prompt).toContain('td collab --session reviewer-id reply message-1');
+  expect(prompt).toContain('veymux collab --session reviewer-id reply message-1');
   expect(prompt).toContain('--response-kind result'); expect(prompt).toContain('stored');
   expect(prompt).not.toContain('来自:用户');
   const large = render([{ ...incoming, content: 'x'.repeat(5000) }], { showRoutingHelp: false });
@@ -442,5 +442,5 @@ it('describes varied answer formats to chat agents without announcing the render
   expect(prompt).not.toContain('Component Signatures');
   expect(prompt).not.toContain('Form(name');
   expect(prompt).not.toContain('方案比较用表格'); expect(prompt).not.toContain('简短说明直接回复 Markdown');
-  expect(prompt).toContain('td collab ui --text'); expect(prompt).not.toContain('支持 OpenUI');
+  expect(prompt).toContain('veymux collab ui --text'); expect(prompt).not.toContain('支持 OpenUI');
 });

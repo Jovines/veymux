@@ -3,25 +3,25 @@ import { isAuthEnabled, readAuthFile } from './authProtection.js';
 
 /** Explicit external origin; never infer TLS or trust from forwarded headers. */
 export function getPublicOrigin(): string | null {
-  const raw = process.env.TERMDOCK_PUBLIC_ORIGIN;
+  const raw = process.env.VEYMUX_PUBLIC_ORIGIN;
   if (!raw) return null;
   const url = new URL(raw);
   if (url.protocol !== 'https:' || url.username || url.password || url.pathname !== '/' || url.search || url.hash) {
-    throw new Error('TERMDOCK_PUBLIC_ORIGIN must be an HTTPS origin, e.g. https://term.example.com');
+    throw new Error('VEYMUX_PUBLIC_ORIGIN must be an HTTPS origin, e.g. https://term.example.com');
   }
   return url.origin;
 }
 
 export function assertPublicSecurity(): void {
   if (!getPublicOrigin()) return;
-  if (!isAuthEnabled() || (!process.env.TERMDOCK_PASSWORD && !readAuthFile())) {
-    throw new Error('Public access requires authentication. Run td --set-password before starting.');
+  if (!isAuthEnabled() || (!process.env.VEYMUX_PASSWORD && !readAuthFile())) {
+    throw new Error('Public access requires authentication. Run veymux --set-password before starting.');
   }
-  if (!process.env.TERMDOCK_PASSWORD && (readAuthFile()?.passwordLength ?? 0) < 8) {
-    throw new Error('Public access requires a verified 8-character password. Run td --set-password again.');
+  if (!process.env.VEYMUX_PASSWORD && (readAuthFile()?.passwordLength ?? 0) < 8) {
+    throw new Error('Public access requires a verified 8-character password. Run veymux --set-password again.');
   }
-  if (process.env.TERMDOCK_PASSWORD && process.env.TERMDOCK_PASSWORD.length < 8) {
-    throw new Error('Public access requires TERMDOCK_PASSWORD to contain at least 8 characters.');
+  if (process.env.VEYMUX_PASSWORD && process.env.VEYMUX_PASSWORD.length < 8) {
+    throw new Error('Public access requires VEYMUX_PASSWORD to contain at least 8 characters.');
   }
 }
 
@@ -37,7 +37,7 @@ export const securityHeaders: RequestHandler = (req, res, next) => {
   const workspaceSource = /^[a-z0-9.\-:\[\]]+$/i.test(host) ? `http://${host}/workspace.html https://${host}/workspace.html` : '';
   const shell = req.path === '/preview-shell.html';
   res.setHeader('Content-Security-Policy', shell
-    ? "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline' 'wasm-unsafe-eval' blob: https: http:; style-src 'unsafe-inline' blob: https:; img-src blob: data: https:; font-src blob: data: https:; media-src blob: data: https:; connect-src blob: https: wss:; worker-src blob:; frame-src 'none'; frame-ancestors 'self'; object-src 'none'; base-uri https://termdock-preview.invalid; form-action 'none'"
+    ? "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline' 'wasm-unsafe-eval' blob: https: http:; style-src 'unsafe-inline' blob: https:; img-src blob: data: https:; font-src blob: data: https:; media-src blob: data: https:; connect-src blob: https: wss:; worker-src blob:; frame-src 'none'; frame-ancestors 'self'; object-src 'none'; base-uri https://veymux-preview.invalid; form-action 'none'"
     : preview
     ? "sandbox allow-scripts; frame-ancestors 'self'; object-src 'none'; base-uri 'self'"
     : `script-src 'self' 'wasm-unsafe-eval'; script-src-attr 'none'; worker-src 'self' blob:; frame-src ${shellSource} ${workspaceSource}; frame-ancestors 'self'; object-src 'none'; base-uri 'self'`);

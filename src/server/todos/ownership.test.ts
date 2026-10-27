@@ -12,7 +12,7 @@ let directory: string, store: TodoStore, server: Server, base: string;
 let a: TodoCollector, b: TodoCollector, ta: TodoItem, tb: TodoItem, runs: TodoRun[];
 const config = { agentSlug: 'fixture', command: 'fixture', cwd: '/tmp', prompt: '只收集' };
 beforeEach(async () => {
-  directory = fs.mkdtempSync(path.join(os.tmpdir(), 'td-todo-ownership-'));
+  directory = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-todo-ownership-'));
   store = new TodoStore(path.join(directory, 'todos.json'));
   [a, b] = ['A', 'B'].map(() => store.saveCollector({ name: '同名方向', config }));
   [ta, tb] = [a, b].map(c => store.create({ title: c.id, collectorId: c.id, externalId: 'same', category: 'short' }));
@@ -31,8 +31,8 @@ beforeEach(async () => {
 afterEach(async () => { await new Promise<void>(resolve => server.close(() => resolve())); fs.rmSync(directory, { recursive: true, force: true }); });
 const request = async (suffix: string, body?: unknown, context: unknown = { backendSessionId: 'session-0' }) => {
   const response = await fetch(base + suffix, { method: body === undefined ? 'GET' : 'POST', headers: {
-    'Content-Type': 'application/json', 'X-Termdock-Local-Token': 'fixture',
-    ...(context === undefined ? {} : { 'X-Termdock-Todo-Context': encodeURIComponent(JSON.stringify(context)) }),
+    'Content-Type': 'application/json', 'X-Veymux-Local-Token': 'fixture',
+    ...(context === undefined ? {} : { 'X-Veymux-Todo-Context': encodeURIComponent(JSON.stringify(context)) }),
   }, ...(body === undefined ? {} : { body: JSON.stringify(body && typeof body === 'object' && 'collectorId' in body && !('runId' in body) ? { ...body, runId: runs[(context as { backendSessionId?: string })?.backendSessionId === 'session-1' ? 1 : 0].id } : body) }) });
   return { status: response.status, data: await response.json() };
 };
@@ -73,7 +73,7 @@ it('allows only explicit own updates and preserves conditional revisions and aud
 });
 it('fails closed for legacy local writers, bad caller context and alternative mutation routes', async () => {
   const before = store.snapshot();
-  const legacy = await fetch(base, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Termdock-Local-Token': 'fixture' }, body: JSON.stringify({ title: '旧 CLI' }) });
+  const legacy = await fetch(base, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Veymux-Local-Token': 'fixture' }, body: JSON.stringify({ title: '旧 CLI' }) });
   expect(legacy.status).toBe(403); expect((await legacy.json()).code).toBe('TODO_CALLER_CONTEXT_REQUIRED');
   for (const context of [{ backendSessionId: 'missing' }, [], { sessionId: 'session-0' }, { backendSessionId: 3 }]) expect((await request('', { title: '上下文错误', collectorId: a.id }, context)).status).toBeGreaterThanOrEqual(400);
   for (const suffix of ['/claim', '/handoff', '/defaults', '/collectors', '/' + ta.id + '/run', '/' + ta.id + '/release', '/runs/' + runs[1].id + '/report']) expect((await request(suffix, { collectorId: a.id, revision: 1, status: 'complete', content: '越权' })).status).toBe(403);

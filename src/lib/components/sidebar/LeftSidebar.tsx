@@ -68,7 +68,7 @@ import {
   saveCollaborationGroup,
   type CollaborationGroup,
   type AgentResumeHistoryEntry,
-  type TermdockUpdateState,
+  type VeymuxUpdateState,
   type ServerHealthState,
 } from '../../terminal/api';
 import { NewSessionComposer } from './NewSessionComposer';
@@ -131,7 +131,7 @@ interface LeftSidebarProps {
   onSessionMenu?: (sessionId: string, anchor?: { x: number; y: number }) => void;
   onOpenSettings: () => void;
   onOpenQuota?: () => void;
-  updateState?: TermdockUpdateState | null;
+  updateState?: VeymuxUpdateState | null;
   updateActionPending?: boolean;
   updateContext?: { notice: string; actionLabel: string; available: boolean; busy: boolean };
   updateProgress?: string | null;
@@ -821,8 +821,8 @@ export function LeftSidebar(
       useCollaborationNavigation.getState().terminal();
       closeIfOverlay();
     };
-    window.addEventListener('termdock:open-collaboration-messages', openMessages);
-    return () => window.removeEventListener('termdock:open-collaboration-messages', openMessages);
+    window.addEventListener('veymux:open-collaboration-messages', openMessages);
+    return () => window.removeEventListener('veymux:open-collaboration-messages', openMessages);
   }, [closeIfOverlay]);
   const quickLaunchMode = defaultSessionMode === 'tmux' && !tmuxAvailable ? 'shell' as const : defaultSessionMode;
   const launchSession = (options: NewSessionRequestOptions, fromComposer = false) => {

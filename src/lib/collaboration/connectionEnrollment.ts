@@ -36,7 +36,7 @@ export function installCollaborationEnrollment(): void {
       const services = await Promise.race([listServiceConnections(), new Promise<never>((_, reject) => { directoryTimeout = setTimeout(() => reject(new Error('SERVICE_DIRECTORY_TIMEOUT')), 8000); })]).finally(() => clearTimeout(directoryTimeout));
       if (!services.some(service => service.targetPeerId === selected.targetPeerId)) services.push({ ...selected, id: selected.targetPeerId, label: selected.serviceName || selected.url });
       const unique = [...new Map(services.filter(service => !!service.targetPeerId).map(service => [service.targetPeerId!, service])).values()].slice(0, 64);
-      const bridge = window.termdockDesktop;
+      const bridge = window.veymuxDesktop;
       const sharedDescriptors: Record<string, CollaborationDescriptor> = await bridge?.collaborationDescriptors?.().catch(() => ({})) ?? {};
       const verified: Array<{ service: ServiceConnection; node: Node }> = [];
       // Bounded sequential setup; saved bookmarks never authorize business access
@@ -93,10 +93,10 @@ export function installCollaborationEnrollment(): void {
         }
         finally { client?.close(); }
       }
-      window.dispatchEvent(new CustomEvent('termdock:collaboration-enrollment', { detail: { ok: true } }));
+      window.dispatchEvent(new CustomEvent('veymux:collaboration-enrollment', { detail: { ok: true } }));
       if (pending) schedule(30_000);
     } catch (error) {
-      window.dispatchEvent(new CustomEvent('termdock:collaboration-enrollment', { detail: { ok: false, error: error instanceof Error ? error.message : 'CONNECTION_ENROLLMENT_FAILED' } }));
+      window.dispatchEvent(new CustomEvent('veymux:collaboration-enrollment', { detail: { ok: false, error: error instanceof Error ? error.message : 'CONNECTION_ENROLLMENT_FAILED' } }));
       schedule(30_000);
     } finally { running = false; if (dirty) schedule(100); }
   };
@@ -104,9 +104,9 @@ export function installCollaborationEnrollment(): void {
   const changed = () => { schedule(); };
   const unobserve = observeServiceConnections(changed);
   window.addEventListener(SECURE_STATE_EVENT, changed);
-  window.addEventListener('termdock:collaboration-enroll', changed);
+  window.addEventListener('veymux:collaboration-enroll', changed);
   window.addEventListener('online', changed);
   window.addEventListener('pageshow', changed);
-  window.addEventListener('pagehide', event => { if (event.persisted) return; stopped = true; clearTimeout(timer); unobserve(); window.removeEventListener('termdock:collaboration-enroll', changed); window.removeEventListener(SECURE_STATE_EVENT, changed); window.removeEventListener('online', changed); window.removeEventListener('pageshow', changed); });
+  window.addEventListener('pagehide', event => { if (event.persisted) return; stopped = true; clearTimeout(timer); unobserve(); window.removeEventListener('veymux:collaboration-enroll', changed); window.removeEventListener(SECURE_STATE_EVENT, changed); window.removeEventListener('online', changed); window.removeEventListener('pageshow', changed); });
   schedule();
 }

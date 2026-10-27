@@ -10,7 +10,7 @@ import { restoreTmuxViewMode, TMUX_FRONTEND_SESSION_OPTION, TMUX_VIEW_MODE_OPTIO
 const directories: string[] = [];
 afterEach(() => directories.splice(0).forEach(directory => rmSync(directory, { recursive: true, force: true })));
 function store() {
-  const directory = mkdtempSync(join(tmpdir(), 'td-tmux-view-')); directories.push(directory);
+  const directory = mkdtempSync(join(tmpdir(), 'veymux-tmux-view-')); directories.push(directory);
   return new SessionViewModeStore(join(directory, 'modes.json'));
 }
 
@@ -40,7 +40,7 @@ it('preserves a current explicit terminal choice and does not invent missing pre
 });
 
 it.skipIf(process.platform === 'win32')('retains the view mode in a real surviving tmux session across frontend IDs and a store restart', async () => {
-  const directory = mkdtempSync(join(tmpdir(), 'td-real-tmux-view-')); directories.push(directory);
+  const directory = mkdtempSync(join(tmpdir(), 'veymux-real-tmux-view-')); directories.push(directory);
   const execute = promisify(execFile);
   const run = async (args: string[]) => (await execute('tmux', ['-S', join(directory, 'tmux.sock'), ...args], { timeout: 5000 })).stdout.trim();
   const read = async (name: string, option: string) => (await run(['show-option', '-vqt', name, option])) || null;

@@ -18,7 +18,7 @@ const TERMINAL_FACE_FILES = [
 describe('terminal startup font assets', () => {
   it('preloads normal and bold prompt icons before Maple text is drawn', () => {
     const manifest = JSON.parse(readFileSync(join(fontRoot, 'terminal/manifest.json'), 'utf8'));
-    const icons = manifest.faces.filter((face: { family?: string }) => face.family === 'Termdock Prompt Icons');
+    const icons = manifest.faces.filter((face: { family?: string }) => face.family === 'Veymux Prompt Icons');
     expect(icons).toHaveLength(2);
     for (const face of icons) {
       expect(face.shards).toHaveLength(1);
@@ -26,7 +26,7 @@ describe('terminal startup font assets', () => {
       expect(indexHtml).toContain(face.shards[0].file);
     }
     const css = readFileSync(join(projectRoot, 'src/index.css'), 'utf8');
-    expect(css).toContain("--font-terminal: 'Termdock Prompt Icons', 'Termdock Maple', var(--font-mono)");
+    expect(css).toContain("--font-terminal: 'Veymux Prompt Icons', 'Veymux Maple', var(--font-mono)");
   });
 
   it('ships Maple regular/bold/italic faces and preloads its primary cell metrics', () => {
@@ -34,7 +34,7 @@ describe('terminal startup font assets', () => {
     const faces = manifest.faces.filter((face: { source: string }) => face.source.startsWith('MapleMono-'));
     expect(faces).toHaveLength(4);
     const css = readFileSync(join(here, 'fontFaces.css'), 'utf8');
-    expect(css).toContain('font-family:"Termdock Maple"');
+    expect(css).toContain('font-family:"Veymux Maple"');
     for (const face of faces) {
       expect(existsSync(join(fontRoot, face.source))).toBe(true);
       const ascii = face.shards.find((shard: { group: string }) => shard.group === 'ascii');

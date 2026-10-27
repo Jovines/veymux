@@ -9,7 +9,7 @@
  * 控制文件是 JSON（缺失即全默认）：
  *   {
  *     serve: boolean,            // /health 是否应答（false = 卡死模拟）
- *     ready: boolean,            // 是否发 termdock-ready
+ *     ready: boolean,            // 是否发 veymux-ready
  *     bootExitCode: number|null, // 启动即退出（崩溃循环模拟）
  *     announceIntent: 'restart-after-update' | 'stop' | null,
  *     announceAfterMs: number,   // ready 之后多久发 intent
@@ -86,7 +86,7 @@ server.on('error', (error) => {
 
 server.listen(requestedPort, '127.0.0.1', () => {
   if (portFile) fs.writeFileSync(portFile, String(server.address().port));
-  if (boot.ready !== false) send({ type: 'termdock-ready' });
+  if (boot.ready !== false) send({ type: 'veymux-ready' });
 });
 
 if (boot.announceIntent) {
@@ -98,7 +98,7 @@ if (boot.announceIntent) {
   if (marker && !announced) fs.writeFileSync(marker, '1');
   if (!announced) {
     setTimeout(() => {
-      send({ type: 'termdock-intent', intent: boot.announceIntent });
+      send({ type: 'veymux-intent', intent: boot.announceIntent });
       setTimeout(() => process.exit(boot.intentExitCode), 20);
     }, boot.announceAfterMs);
   }

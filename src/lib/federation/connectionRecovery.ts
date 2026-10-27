@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 
-export const SECURE_READY_EVENT = 'termdock:secure-ready';
+export const SECURE_READY_EVENT = 'veymux:secure-ready';
 export type ConnectionRecovery = 'ready' | 'reconnecting' | 'offline';
 let state: ConnectionRecovery = 'ready';
 const listeners = new Set<() => void>();

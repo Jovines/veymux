@@ -19,19 +19,19 @@
 let terminalFontsReadyPromise: Promise<void> | null = null;
 const TERMINAL_CRITICAL_FONT_PRELOADS = [
   {
-    font: '400 14px "Termdock Maple"',
-    text: 'Termdock 0123456789 ~!@#$%^&*()[]{}',
+    font: '400 14px "Veymux Maple"',
+    text: 'Veymux 0123456789 ~!@#$%^&*()[]{}',
   },
   {
-    font: '700 14px "Termdock Maple"',
-    text: 'Termdock 0123456789 ~!@#$%^&*()[]{}',
+    font: '700 14px "Veymux Maple"',
+    text: 'Veymux 0123456789 ~!@#$%^&*()[]{}',
   },
   {
-    font: '400 14px "Termdock Prompt Icons"',
+    font: '400 14px "Veymux Prompt Icons"',
     text: '\uf179\uf17c\uf31b\uf31c\uf015\uf115\uf07b\uf126\ue0a0\ue0b0',
   },
   {
-    font: '700 14px "Termdock Prompt Icons"',
+    font: '700 14px "Veymux Prompt Icons"',
     text: '\uf179\uf17c\uf31b\uf31c\uf015\uf115\uf07b\uf126\ue0a0\ue0b0',
   },
   {
@@ -43,7 +43,7 @@ const TERMINAL_CRITICAL_FONT_PRELOADS = [
     text: '终端中文路径',
   },
   {
-    font: '400 13px "Termdock Star Symbol"',
+    font: '400 13px "Veymux Star Symbol"',
     text: '✦✧',
   },
   {

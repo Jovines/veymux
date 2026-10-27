@@ -6,7 +6,7 @@ import { parseInviteLink } from '../federation/inviteLink';
 
 // This record crosses the boot service boundary; ordinary storage keys are
 // scoped to "unpaired" before pairing and cannot be read after that reload.
-const pendingKey = 'termdock-secure-desktop-invitation-handoff-v1';
+const pendingKey = 'veymux-secure-desktop-invitation-handoff-v1';
 
 /** One-use bridge across the service-scope reload after explicit acceptance.
  * The next document removes it before use and still verifies the exact grant. */
@@ -26,7 +26,7 @@ export function takeDesktopInvitation(expectedTargetPeerId?: string): Connection
     // 1.4.378 scoped the temporary record by mistake. Remove only that retired
     // handoff key, using the native named-property operation to avoid rescoping.
     for (const key of Object.keys(sessionStorage)) {
-      if (key.startsWith('termdock-service:') && key.endsWith(':termdock-desktop-invitation-handoff-v1')) delete sessionStorage[key];
+      if (key.startsWith('veymux-service:') && key.endsWith(':veymux-desktop-invitation-handoff-v1')) delete sessionStorage[key];
     }
     const raw = sessionStorage.getItem(pendingKey);
     if (!raw || raw.length > 12000) return;
@@ -41,7 +41,7 @@ export function takeDesktopInvitation(expectedTargetPeerId?: string): Connection
 
 export function canOpenDesktopInvitation(): boolean {
   return typeof window !== 'undefined' && typeof navigator !== 'undefined' && /Mac/.test(navigator.platform)
-    && (navigator.maxTouchPoints || 0) < 2 && !window.termdockDesktop;
+    && (navigator.maxTouchPoints || 0) < 2 && !window.veymuxDesktop;
 }
 
 /** OS handoff only. Neither the URL nor a successful launch grants access. */
@@ -49,12 +49,12 @@ export function desktopInvitationUrl(intent: ConnectionIntent): string {
   const invitation = desktopConnectionIntent(intent).invitation;
   if (!invitation) throw new Error('请使用尚未失效的邀请链接');
   const link = new URL(invitation);
-  return `termdock://invite/${link.hash}`;
+  return `veymux://invite/${link.hash}`;
 }
 
 /** Match only this reusable link's grant from an authenticated permissions reply. */
 export function reusableInvitationGrant(intent: ConnectionIntent, grants: Array<{ invitationId?: string }>): boolean {
   if (!intent.pairingCode) return false;
-  const id = bytesToHex(sha256(new TextEncoder().encode(`termdock-invitation-v1:${intent.targetPeerId}:${intent.pairingCode}`)));
+  const id = bytesToHex(sha256(new TextEncoder().encode(`veymux-invitation-v1:${intent.targetPeerId}:${intent.pairingCode}`)));
   return grants.some(grant => grant.invitationId === id);
 }

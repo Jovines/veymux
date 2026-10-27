@@ -12,7 +12,7 @@ const cleanup: Array<() => void> = [];
 afterEach(() => cleanup.splice(0).reverse().forEach(close => close()));
 
 async function fixture(loopback: boolean) {
-  const directory = mkdtempSync(join(tmpdir(), 'td-origin-aliases-'));
+  const directory = mkdtempSync(join(tmpdir(), 'veymux-origin-aliases-'));
   cleanup.push(() => rmSync(directory, { recursive: true, force: true }));
   const identities = await Promise.all([createIdentity(), createIdentity()]);
   const nodes = identities.map((identity, index) => ({ serviceId: identity.peerId,

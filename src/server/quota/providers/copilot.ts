@@ -32,7 +32,7 @@ async function fetchWithAuth(
   const headers: Record<string, string> = {
     Authorization: `Bearer ${token}`,
     Accept: 'application/json',
-    'User-Agent': 'termdock/1.0',
+    'User-Agent': 'veymux/1.0',
     'X-GitHub-Api-Version': '2022-11-28',
   };
 

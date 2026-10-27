@@ -5,15 +5,15 @@ import { SERVICE_DIRECTORY_EVENT } from '../services/serviceDirectory';
 import { flushApplicationDrafts, reloadApplicationAfterServiceUpdate } from '../utils/pwaUpdate';
 import { captureServiceUpdatePlan, type ServiceUpdatePlan } from './serviceUpdatePlan';
 import { runCoordinatedServiceUpdate } from './coordinatedServiceUpdate';
-import type { TermdockUpdateState } from './api';
+import type { VeymuxUpdateState } from './api';
 import { inspectServiceUpdates } from './inspectServiceUpdates';
 import { summarizeServiceUpdates, type ServiceUpdateOverview, type ServiceUpdateSnapshots } from './serviceUpdateOverview';
 
 export interface ServiceUpdateContext extends ServiceUpdateOverview {
-  check(): Promise<TermdockUpdateState | undefined>;
+  check(): Promise<VeymuxUpdateState | undefined>;
 }
 
-export function useServiceUpdatePlan(chinese: boolean, targetState: TermdockUpdateState | null, retry = false): ServiceUpdateContext | undefined {
+export function useServiceUpdatePlan(chinese: boolean, targetState: VeymuxUpdateState | null, retry = false): ServiceUpdateContext | undefined {
   const [plan, setPlan] = useState<ServiceUpdatePlan>();
   const [snapshots, setSnapshots] = useState<ServiceUpdateSnapshots>({});
   const [checking, setChecking] = useState(false);

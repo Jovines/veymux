@@ -16,7 +16,7 @@ import { SESSION_NO_SWIPE, SESSION_SWIPER_FOCUSABLE_ELEMENTS } from './sessionSw
 import { readChatEditor } from './ChatRichEditor';
 
 const backend = vi.hoisted(() => ({ connect: vi.fn(), close: vi.fn(), input: vi.fn(), handlers: undefined as TerminalHandlers | undefined }));
-vi.mock('../../terminal/factory', () => ({ createTermdockAPI: () => ({
+vi.mock('../../terminal/factory', () => ({ createVeymuxAPI: () => ({
   connect: (_id: string, handlers: TerminalHandlers) => {
     backend.connect(); backend.handlers = handlers;
     queueMicrotask(() => {
@@ -40,9 +40,9 @@ afterEach(() => {
   document.body.replaceChildren(); localStorage.clear(); sessionStorage.clear();
   for (const edge of ['top', 'right', 'bottom', 'left']) document.documentElement.style.removeProperty(`--safe-${edge}-inset`);
   document.documentElement.removeAttribute('style');
-  delete document.documentElement.dataset.termdockNativeKeyboard;
-  delete document.documentElement.dataset.termdockNativePan;
-  delete document.documentElement.dataset.termdockTouchViewport;
+  delete document.documentElement.dataset.veymuxNativeKeyboard;
+  delete document.documentElement.dataset.veymuxNativePan;
+  delete document.documentElement.dataset.veymuxTouchViewport;
 });
 function NativeViewport() { useViewportHeight(); return null; }
 async function mount(width: number, height: number, longReply = false, native = false) {
@@ -50,7 +50,7 @@ async function mount(width: number, height: number, longReply = false, native = 
   const sessionId = `touch-peek-${width}-${height}`;
   let mode = 'chat';
   const saveMode = vi.fn();
-  localStorage.setItem(`termdock:session-view:${location.origin}:${sessionId}`, mode);
+  localStorage.setItem(`veymux:session-view:${location.origin}:${sessionId}`, mode);
   vi.stubGlobal('fetch', vi.fn(async (url, init) => {
     if (String(url).includes('/view-mode')) {
       if (init?.body) { mode = JSON.parse(String(init.body)).mode; saveMode(mode); }
@@ -66,7 +66,7 @@ async function mount(width: number, height: number, longReply = false, native = 
   const host = document.createElement('div'); host.className = 'flex h-screen flex-col'; document.body.append(host);
   if (native) { syncInitialViewportCssVars(); host.id = 'root'; host.style.height = `${height}px`; }
   root = createRoot(host);
-  root.render(<>{native && <NativeViewport />}<header data-termdock-window-header="true" className="relative h-10 shrink-0"><SessionModeSwitch sessionId={sessionId} /></header>
+  root.render(<>{native && <NativeViewport />}<header data-veymux-window-header="true" className="relative h-10 shrink-0"><SessionModeSwitch sessionId={sessionId} /></header>
     <main className="min-h-0 flex-1"><Swiper className="h-full" touchStartPreventDefault={false} simulateTouch={false} noSwipingSelector={SESSION_NO_SWIPE} focusableElements={SESSION_SWIPER_FOCUSABLE_ELEMENTS}><SwiperSlide><SessionWorkspace sessionId={sessionId} name="构建检查" active>{(visible, interactive) =>
       <TerminalView sessionId={sessionId} mode="shell" isActive isLayoutVisible={visible} focusSuspended={!interactive} suppressKeyboard={!visible}
         terminalSettings={{ ...getDefaultTerminalSettings(), rendererMode: 'canvas', enableImages: false, fontLigatures: false }} />
@@ -98,7 +98,7 @@ it.each([{ width: 390, height: 844 }, { width: 844, height: 390 }])('touch previ
   expect(rect.left).toBeGreaterThanOrEqual(12); expect(rect.top).toBeGreaterThanOrEqual(12);
   expect(rect.right).toBeLessThanOrEqual(innerWidth - 12); expect(rect.bottom).toBeLessThanOrEqual(innerHeight - 12);
   expect(backend.input).not.toHaveBeenCalled();
-  await page.screenshot({ path: `/tmp/termdock-terminal-peek-touch-${width}.png` });
+  await page.screenshot({ path: `/tmp/veymux-terminal-peek-touch-${width}.png` });
   await commands.peekTap(trigger);
   await expect.poll(() => document.querySelector('[data-terminal-peek]')).toBeNull();
   expect(document.activeElement).toBe(editor);
@@ -129,7 +129,7 @@ const safeLayouts = [
 it.each(safeLayouts)('keeps an oversized saved preview and its controls inside the $name safe area', async layout => {
   await mount(layout.width, layout.height, true);
   for (const edge of ['top', 'right', 'bottom', 'left'] as const) document.documentElement.style.setProperty(`--safe-${edge}-inset`, `${layout[edge]}px`);
-  localStorage.setItem('termdock:terminal-peek-size', JSON.stringify({ width: 2000, height: 1500 }));
+  localStorage.setItem('veymux:terminal-peek-size', JSON.stringify({ width: 2000, height: 1500 }));
   const input = document.querySelector('textarea[data-terminal-input-anchor]');
   await commands.peekTap('[data-chat-terminal-access] [data-terminal-peek-trigger]');
   await expect.element(page.getByRole('dialog', { name: '会话终端预览' })).toBeVisible();
@@ -145,7 +145,7 @@ it.each(safeLayouts)('keeps an oversized saved preview and its controls inside t
     }
   };
   check();
-  await page.screenshot({ path: `/tmp/termdock-terminal-peek-safe-${layout.name}.png` });
+  await page.screenshot({ path: `/tmp/veymux-terminal-peek-safe-${layout.name}.png` });
   const grip = panel.querySelector<HTMLElement>('[aria-label="调整终端预览大小"]')!;
   grip.focus(); await userEvent.keyboard('{ArrowDown}{ArrowRight}'); check();
   document.documentElement.style.setProperty('--safe-top-inset', `${layout.top + 12}px`);
@@ -201,7 +201,7 @@ it('hides the countdown after a real touch and keeps the preview open until dism
   for (const node of document.querySelectorAll('[data-terminal-peek] header > span, [data-terminal-peek] header button')) {
     const rect = node.getBoundingClientRect(); expect(rect.left).toBeGreaterThanOrEqual(header.left); expect(rect.right).toBeLessThanOrEqual(header.right);
   }
-  await page.screenshot({ path: '/tmp/termdock-peek-3s/mobile-countdown.png' });
+  await page.screenshot({ path: '/tmp/veymux-peek-3s/mobile-countdown.png' });
   await commands.peekTap('[data-terminal-peek] header');
   await expect.poll(() => document.querySelector('[data-terminal-peek-countdown]')).toBeNull();
   await new Promise(resolve => setTimeout(resolve, 3300));
@@ -231,7 +231,7 @@ it.each([
     document.documentElement.style.setProperty('--kb-height', `${height - visible}px`);
     await page.viewport(width, visible);
     viewport.dispatchEvent(new Event('resize'));
-    document.dispatchEvent(new CustomEvent('termdock:viewport-keyboard-change', { detail: { isOpen: visible < height } }));
+    document.dispatchEvent(new CustomEvent('veymux:viewport-keyboard-change', { detail: { isOpen: visible < height } }));
   };
   const editor = document.querySelector<HTMLElement>('[data-session-chat] [role="textbox"]')!;
   const draft = alreadyOpen ? '保留多行聊天草稿\n'.repeat(6) : '保留聊天草稿';
@@ -244,7 +244,7 @@ it.each([
   const panel = document.querySelector<HTMLElement>('[data-terminal-peek]')!;
   const input = panel.querySelector<HTMLTextAreaElement>('textarea[data-terminal-input-anchor]')!;
   const workspace = document.querySelector('[data-session-workspace]')!;
-  const mode = localStorage.getItem(`termdock:session-view:${location.origin}:touch-peek-${width}-${height}`);
+  const mode = localStorage.getItem(`veymux:session-view:${location.origin}:touch-peek-${width}-${height}`);
   await commands.peekTap(native ? '[data-terminal-touch-surface]' : '[data-terminal-peek] textarea[data-terminal-input-anchor]');
   await expect.poll(() => document.activeElement).toBe(input);
   if (!alreadyOpen) expect(panel.hasAttribute('data-terminal-peek-input-expanded')).toBe(false);
@@ -294,7 +294,7 @@ it.each([
     expect(document.elementFromPoint(key.left + key.width / 2, key.top + key.height / 2)?.closest('[data-mobile-keyboard]')).not.toBeNull();
     if (native) { expect(document.activeElement).toBe(input); expect(blur).not.toHaveBeenCalled(); }
   }
-  await page.screenshot({ element: panel, path: `/tmp/td-keyboard-review/immersive-preview-keyboard-${native ? 'native' : 'compat'}-${width}${staleInnerHeight ? '-stale' : ''}.png` });
+  await page.screenshot({ element: panel, path: `/tmp/veymux-keyboard-review/immersive-preview-keyboard-${native ? 'native' : 'compat'}-${width}${staleInnerHeight ? '-stale' : ''}.png` });
   await page.elementLocator(input).fill('pwd');
   await expect.poll(() => backend.input.mock.calls.map(call => call[0]).join('')).toContain('pwd');
   expect(readChatEditor(editor).text).toBe(originalDraft);
@@ -305,7 +305,7 @@ it.each([
   expect(document.querySelector('[data-session-chat] [role="textbox"]')).toBe(editor);
   expect(readChatEditor(editor).text).toBe(originalDraft);
   expect(document.activeElement).toBe(editor);
-  expect(localStorage.getItem(`termdock:session-view:${location.origin}:touch-peek-${width}-${height}`)).toBe(mode);
+  expect(localStorage.getItem(`veymux:session-view:${location.origin}:touch-peek-${width}-${height}`)).toBe(mode);
   expect(document.querySelector('textarea[data-terminal-input-anchor]')).toBe(input);
 });
 
@@ -321,7 +321,7 @@ it.each([
   const editor = document.querySelector<HTMLElement>('[data-session-chat] [role="textbox"]')!;
   await page.getByRole('textbox').fill('收键盘后保留的草稿');
   const savedSize = JSON.stringify({ width: 340, height: 210 });
-  localStorage.setItem('termdock:terminal-peek-size', savedSize);
+  localStorage.setItem('veymux:terminal-peek-size', savedSize);
   await commands.peekTap('[data-chat-terminal-access] [data-terminal-peek-trigger]');
   const panel = document.querySelector<HTMLElement>('[data-terminal-peek]')!;
   const bubble = panel.getBoundingClientRect();
@@ -334,7 +334,7 @@ it.each([
     document.documentElement.style.setProperty('--kb-height', `${open ? height - visible : 0}px`);
     await page.viewport(width, open ? visible : height);
     viewport.dispatchEvent(new Event('resize'));
-    document.dispatchEvent(new CustomEvent('termdock:viewport-keyboard-change', { detail: { isOpen: open } }));
+    document.dispatchEvent(new CustomEvent('veymux:viewport-keyboard-change', { detail: { isOpen: open } }));
   };
   for (let cycle = 0; cycle < 2; cycle++) {
     await commands.peekTap(native ? '[data-terminal-touch-surface]' : '[data-terminal-peek] textarea[data-terminal-input-anchor]');
@@ -356,7 +356,7 @@ it.each([
     }
     expect(focus).not.toHaveBeenCalled(); expect(focusEvent).not.toHaveBeenCalled();
     focus.mockRestore();
-    expect(localStorage.getItem('termdock:terminal-peek-size')).toBe(savedSize);
+    expect(localStorage.getItem('veymux:terminal-peek-size')).toBe(savedSize);
     expect(readChatEditor(editor).text).toBe('收键盘后保留的草稿');
     expect(panel.querySelector('textarea[data-terminal-input-anchor]')).toBe(input);
     expect(backend.connect).toHaveBeenCalledOnce(); expect(backend.close).not.toHaveBeenCalled();
@@ -383,7 +383,7 @@ it.each([
     document.documentElement.style.setProperty('--app-base-vh', `${height}px`);
     document.documentElement.style.setProperty('--kb-height', '300px');
     viewport.dispatchEvent(new Event('resize'));
-    document.dispatchEvent(new CustomEvent('termdock:viewport-keyboard-change', { detail: { isOpen: true } }));
+    document.dispatchEvent(new CustomEvent('veymux:viewport-keyboard-change', { detail: { isOpen: true } }));
   }
   await commands.peekTap('[data-chat-terminal-access] [data-terminal-peek-trigger]');
   const panel = document.querySelector<HTMLElement>('[data-terminal-peek]')!;

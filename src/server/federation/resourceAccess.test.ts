@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { directoryResource, resourceHttpAllowed } from './resourceAccess';
-const root = mkdtempSync(join(tmpdir(), 'td-shared-boundary-'));
+const root = mkdtempSync(join(tmpdir(), 'veymux-shared-boundary-'));
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 it('contains shared directories across traversal, symlinks, duplicate inputs, native and Git APIs', () => {
   const shared = join(root, 'shared'); mkdirSync(shared); mkdirSync(join(root, 'shared-sibling')); writeFileSync(join(root, 'secret'), 'private'); writeFileSync(join(shared, 'visible'), 'ok'); symlinkSync(join(root, 'secret'), join(shared, 'escape'));

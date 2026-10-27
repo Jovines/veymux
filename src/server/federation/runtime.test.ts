@@ -19,7 +19,7 @@ import { isRestrictedChatRequest } from './requestContext.js';
 const cleanup: Array<() => void> = [];
 afterEach(() => { for (const close of cleanup.splice(0).reverse()) close(); });
 async function fixture(runtimeOptions: FederationRuntimeOptions = {}, allowOpenAccess = false, onComputer?: (socket: WebSocket) => void, relayed = false) {
-  const directory = mkdtempSync(join(tmpdir(), 'termdock-e2ee-test-'));
+  const directory = mkdtempSync(join(tmpdir(), 'veymux-e2ee-test-'));
   cleanup.push(() => rmSync(directory, { recursive: true, force: true }));
   const app = express(); app.use(express.json());
   const inventory = { clientSessions: [
@@ -105,9 +105,9 @@ async function fixture(runtimeOptions: FederationRuntimeOptions = {}, allowOpenA
 
 describe('federation runtime over real encrypted WebSocket', () => {
   it.each([false, true])('rejects consumed integration tickets after reopening persistent access state (relayed=%s)', async relayed => {
-    const previousPassword = process.env.TERMDOCK_PASSWORD;
-    process.env.TERMDOCK_PASSWORD = 'ticket-replay-test-password';
-    cleanup.push(() => { if (previousPassword === undefined) delete process.env.TERMDOCK_PASSWORD; else process.env.TERMDOCK_PASSWORD = previousPassword; });
+    const previousPassword = process.env.VEYMUX_PASSWORD;
+    process.env.VEYMUX_PASSWORD = 'ticket-replay-test-password';
+    cleanup.push(() => { if (previousPassword === undefined) delete process.env.VEYMUX_PASSWORD; else process.env.VEYMUX_PASSWORD = previousPassword; });
     let access: SessionAccessStore | undefined;
     const f = await fixture({ sessionAccess: () => access }, false, undefined, relayed), guest = await f.connect();
     const file = join(f.directory, 'replay-access.json');
@@ -126,9 +126,9 @@ describe('federation runtime over real encrypted WebSocket', () => {
     expect((await reconnected.http('reconnected-view', 'GET', '/api/terminal/one/health'))[0]).toMatchObject({ type: 'head', status: 200 });
   });
   it.each([false, true])('revokes an observer when a reader ID changes identity without reviving the prior connection (relayed=%s)', async relayed => {
-    const previousPassword = process.env.TERMDOCK_PASSWORD;
-    process.env.TERMDOCK_PASSWORD = 'reader-reassignment-test-password';
-    cleanup.push(() => { if (previousPassword === undefined) delete process.env.TERMDOCK_PASSWORD; else process.env.TERMDOCK_PASSWORD = previousPassword; });
+    const previousPassword = process.env.VEYMUX_PASSWORD;
+    process.env.VEYMUX_PASSWORD = 'reader-reassignment-test-password';
+    cleanup.push(() => { if (previousPassword === undefined) delete process.env.VEYMUX_PASSWORD; else process.env.VEYMUX_PASSWORD = previousPassword; });
     let access: SessionAccessStore | undefined;
     const f = await fixture({ sessionAccess: () => access }, false, undefined, relayed), guest = await f.connect();
     await guest.pair();
@@ -152,9 +152,9 @@ describe('federation runtime over real encrypted WebSocket', () => {
     expect((await fresh.http('new-reader-input', 'POST', '/api/terminal/one/input'))[0]).toMatchObject({ type: 'error', error: 'AUTHORIZATION_DENIED' });
   });
   it.each([false, true])('fences native invitations without interrupting readers or maintenance (relayed=%s)', async relayed => {
-    const previousPassword = process.env.TERMDOCK_PASSWORD;
-    process.env.TERMDOCK_PASSWORD = 'exclusive-writer-test-password';
-    cleanup.push(() => { if (previousPassword === undefined) delete process.env.TERMDOCK_PASSWORD; else process.env.TERMDOCK_PASSWORD = previousPassword; });
+    const previousPassword = process.env.VEYMUX_PASSWORD;
+    process.env.VEYMUX_PASSWORD = 'exclusive-writer-test-password';
+    cleanup.push(() => { if (previousPassword === undefined) delete process.env.VEYMUX_PASSWORD; else process.env.VEYMUX_PASSWORD = previousPassword; });
     let access: SessionAccessStore | undefined;
     const f = await fixture({ sessionAccess: () => access }, false, undefined, relayed), native = await f.connect();
     f.runtime.store.grant({ subjectId: native.identity.peerId, scope: { kind: 'sessions', sessionIds: ['source-one', 'two'] },
@@ -237,7 +237,7 @@ describe('federation runtime over real encrypted WebSocket', () => {
     guest.channel.send({ type: 'session-list', id: 'chat-directory' });
     expect(await guest.take('chat-directory')).toMatchObject({ items: [{ sessionId: 'one', canViewChat: true, canViewTerminal: false, canSendChat: true, canWrite: false, canResize: false, canClearChat: false }] });
     expect((await guest.http('chat-read', 'GET', '/api/terminal/one/chat'))[0]).toMatchObject({ type: 'head', status: 200 });
-    guest.channel.send({ type: 'http', id: 'forged-chat', method: 'POST', path: '/api/terminal/one/chat', headers: { 'x-termdock-chat-only': '0', 'x-termdock-full-service': '1' } });
+    guest.channel.send({ type: 'http', id: 'forged-chat', method: 'POST', path: '/api/terminal/one/chat', headers: { 'x-veymux-chat-only': '0', 'x-veymux-full-service': '1' } });
     guest.channel.send({ type: 'upload-end', id: 'forged-chat' });
     await guest.take('forged-chat', 'head');
     const body = await guest.take('forged-chat', 'chunk');
@@ -367,7 +367,7 @@ describe('federation runtime over real encrypted WebSocket', () => {
     expect((await client.http('narrow-inbox', 'GET', path))[0]).toMatchObject({ type: 'error' });
     expect(list).toHaveBeenCalledOnce();
     client.channel.send({ type: 'http', id: 'spoof-inbox', method: 'GET', path,
-      headers: { 'x-termdock-full-service': '1' } });
+      headers: { 'x-veymux-full-service': '1' } });
     expect(await client.take('spoof-inbox')).toMatchObject({ type: 'error' });
     expect(list).toHaveBeenCalledOnce();
   });
@@ -376,7 +376,7 @@ describe('federation runtime over real encrypted WebSocket', () => {
     const { architectureRoutes } = await import('../architecture/routes.js');
     f.app.use('/api/terminal/architecture', architectureRoutes());
     const { ArchitectureStore } = await import('../architecture/store.js');
-    await new ArchitectureStore(f.directory).save('.termdock/architecture.json', { version: 1, generatedAt: '2026-10-09T09:00:00Z', summary: 'encrypted-architecture-private-content', perspectives: [{ id: 'overall', title: 'Overall', summary: 'Structure', nodes: [{ id: 'server', title: 'Server', summary: 'Server description', files: [] }], edges: [] }] });
+    await new ArchitectureStore(f.directory).save('.veymux/architecture.json', { version: 1, generatedAt: '2026-10-09T09:00:00Z', summary: 'encrypted-architecture-private-content', perspectives: [{ id: 'overall', title: 'Overall', summary: 'Structure', nodes: [{ id: 'server', title: 'Server', summary: 'Server description', files: [] }], edges: [] }] });
     const owner = await f.connect(), reader = await f.connect();
     const route = `/api/terminal/architecture/document?root=${encodeURIComponent(f.directory)}`;
     expect((await reader.http('unpaired-map', 'GET', route))[0]).toMatchObject({ type: 'error', error: 'AUTHORIZATION_DENIED' });
@@ -689,8 +689,8 @@ describe('federation runtime over real encrypted WebSocket', () => {
     expect(await client.take('permissions')).toMatchObject({ fullService: false, grants: [grant] });
   });
   it('authenticates a password inside Noise and prevents another channel from finishing that attempt', async () => {
-    const previous = process.env.TERMDOCK_PASSWORD; process.env.TERMDOCK_PASSWORD = 'relay-password';
-    cleanup.push(() => { if (previous === undefined) delete process.env.TERMDOCK_PASSWORD; else process.env.TERMDOCK_PASSWORD = previous; });
+    const previous = process.env.VEYMUX_PASSWORD; process.env.VEYMUX_PASSWORD = 'relay-password';
+    cleanup.push(() => { if (previous === undefined) delete process.env.VEYMUX_PASSWORD; else process.env.VEYMUX_PASSWORD = previous; });
     const f = await fixture(), client = await f.connect(), attacker = await f.connect();
     client.channel.send({ type: 'password-parameters', id: 'params' });
     const params = await client.take('params');
@@ -958,7 +958,7 @@ it('denies passwordless relay requests even with full device authorization, an i
 });
 
 it('closes an established relay and stops terminal input when the password is removed', async () => {
-  vi.stubEnv('TERMDOCK_PASSWORD', 'relay-password-before-removal'); cleanup.push(() => vi.unstubAllEnvs());
+  vi.stubEnv('VEYMUX_PASSWORD', 'relay-password-before-removal'); cleanup.push(() => vi.unstubAllEnvs());
   const original = authProtection.getPasswordVerifier;
   let configured = true;
   const verifier = vi.spyOn(authProtection, 'getPasswordVerifier').mockImplementation(() => configured ? original() : null);
@@ -976,9 +976,9 @@ it('closes an established relay and stops terminal input when the password is re
 
 describe('shared selection copy authority', () => {
   it.each([false, true])('reads only the bound Session selection without granting tmux control (relayed=%s)', async relayed => {
-    const previousPassword = process.env.TERMDOCK_PASSWORD;
-    process.env.TERMDOCK_PASSWORD = 'selection-copy-test-password';
-    cleanup.push(() => { if (previousPassword === undefined) delete process.env.TERMDOCK_PASSWORD; else process.env.TERMDOCK_PASSWORD = previousPassword; });
+    const previousPassword = process.env.VEYMUX_PASSWORD;
+    process.env.VEYMUX_PASSWORD = 'selection-copy-test-password';
+    cleanup.push(() => { if (previousPassword === undefined) delete process.env.VEYMUX_PASSWORD; else process.env.VEYMUX_PASSWORD = previousPassword; });
     const f = await fixture({}, false, undefined, relayed), client = await f.connect();
     const grant = f.runtime.store.grant({ subjectId: client.identity.peerId, scope: { kind: 'sessions', sessionIds: ['one'] }, actions: ['session.view'] });
     client.channel.send({ type: 'ws-open', id: 'selection', path: '/api/terminal/one/ws' });

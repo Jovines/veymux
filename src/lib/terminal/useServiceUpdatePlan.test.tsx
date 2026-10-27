@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import type { TermdockUpdateState } from './api';
+import type { VeymuxUpdateState } from './api';
 import type { ServiceUpdatePlan } from './serviceUpdatePlan';
 import type { ServiceUpdateSnapshots } from './serviceUpdateOverview';
 const mocks = vi.hoisted(() => ({ capture: vi.fn(), inspect: vi.fn() }));
@@ -15,7 +15,7 @@ const plan: ServiceUpdatePlan = { targetId: 'work', interfaceId: 'entry', nodes:
   { intent: { targetPeerId: 'work', url: 'https://work.example' }, label: 'Work', role: 'target' },
   { intent: { targetPeerId: 'entry', url: 'https://entry.example' }, label: 'Entry', role: 'interface' },
 ] };
-const current: TermdockUpdateState = { status: 'current', currentVersion: '1.0.1', latestVersion: '1.0.1', checkedAt: 1, source: 'official', error: null };
+const current: VeymuxUpdateState = { status: 'current', currentVersion: '1.0.1', latestVersion: '1.0.1', checkedAt: 1, source: 'official', error: null };
 beforeEach(() => { vi.resetAllMocks(); mocks.capture.mockResolvedValue(plan); });
 afterEach(cleanup);
 

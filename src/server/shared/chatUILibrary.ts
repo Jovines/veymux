@@ -23,4 +23,4 @@ const refs = z.union(components.map(component => component.ref) as [typeof compo
 const Form = defineComponent({ name: 'Form', description: 'User question form. Include Input/Select/Checkbox and a Button with @ToAssistant. Never nest forms.', props: z.object({ name, title: short, fields: z.array(refs).max(30) }), component: null });
 const Card = defineComponent({ name: 'Card', description: 'A titled result card, with text, metrics, charts, tables or a form.', props: z.object({ title: short, content: z.array(z.union([refs, Form.ref])).max(30) }), component: null });
 const Stack = defineComponent({ name: 'Stack', description: 'Root vertical layout of answer components.', props: z.object({ content: z.array(z.union([refs, Form.ref, Card.ref])).max(40) }), component: null });
-export const chatUILibrary = createLibrary({ id: 'termdock-chat@1', root: 'Stack', components: [...components, Form, Card, Stack] });
+export const chatUILibrary = createLibrary({ id: 'veymux-chat@1', root: 'Stack', components: [...components, Form, Card, Stack] });

@@ -8,7 +8,7 @@ import { RouteAccess } from './routeAccess.js';
 const directories: string[] = [];
 afterEach(() => { for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true }); });
 function fixture() {
-  const directory = mkdtempSync(join(tmpdir(), 'termdock-route-invite-')); directories.push(directory);
+  const directory = mkdtempSync(join(tmpdir(), 'veymux-route-invite-')); directories.push(directory);
   const filePath = join(directory, 'route-invitations.json');
   let now = 1000, issuerAllowed = true, targetAvailable = true;
   const options = { filePath, serviceId: 'B', now: () => now,

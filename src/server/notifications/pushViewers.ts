@@ -1,7 +1,7 @@
 /**
  * Tracks which push-subscribed clients are actively viewing the app, using
  * their visible terminal sessions as presence signals. Pushes can then skip
- * every client that already has Termdock in the foreground, regardless of
+ * every client that already has Veymux in the foreground, regardless of
  * which session produced the event.
  *
  * The per-terminal WebSocket reports viewing state (session active + document
@@ -35,7 +35,7 @@ export function setClientViewingSession(
   sessions.add(sessionId);
 }
 
-/** Push subscription clientIds that currently have Termdock in the foreground. */
+/** Push subscription clientIds that currently have Veymux in the foreground. */
 export function getForegroundPushClientIds(): Set<string> {
   return new Set(viewingSessionsByClient.keys());
 }

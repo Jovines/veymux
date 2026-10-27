@@ -19,9 +19,9 @@ afterEach(async () => {
   root?.unmount(); root = undefined;
   vi.restoreAllMocks(); vi.unstubAllGlobals(); document.body.replaceChildren();
   document.documentElement.removeAttribute('style');
-  delete document.documentElement.dataset.termdockNativeKeyboard;
-  delete document.documentElement.dataset.termdockNativePan;
-  delete document.documentElement.dataset.termdockTouchViewport;
+  delete document.documentElement.dataset.veymuxNativeKeyboard;
+  delete document.documentElement.dataset.veymuxNativePan;
+  delete document.documentElement.dataset.veymuxTouchViewport;
   await page.viewport(390, 844);
 });
 
@@ -49,7 +49,7 @@ it.each([[0, true], [34, false]] as const)('lets the browser move the real termi
     setTmuxMode = updateTmuxMode;
     const layout = getKeyboardPanelStyles(true);
     return <I18nProvider><div className="flex h-full flex-col overflow-hidden">
-      <header data-termdock-window-header="true" className="relative h-11 shrink-0">终端标题</header>
+      <header data-veymux-window-header="true" className="relative h-11 shrink-0">终端标题</header>
       <Swiper className="min-h-0 w-full flex-1" onSwiper={swiper => { swiper.allowTouchMove = pagerEnabled; }} touchStartPreventDefault={false} simulateTouch={false} noSwipingSelector={SESSION_NO_SWIPE} focusableElements={SESSION_SWIPER_FOCUSABLE_ELEMENTS}>
       <SwiperSlide><section className="flex h-full min-h-0 flex-col overflow-hidden" style={layout.rootStyle}>
         <main className="relative min-h-0 flex-1 overflow-hidden" style={layout.contentStyle}>

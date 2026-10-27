@@ -22,7 +22,7 @@ function WorkspaceFrame({ host, item, visible, active }: { host: WorkspaceHost; 
       try {
         const view = element?.contentWindow;
         const event = view?.document.createEvent('Event');
-        if (event) { event.initEvent('termdock:before-update', false, false); view?.dispatchEvent(event); }
+        if (event) { event.initEvent('veymux:before-update', false, false); view?.dispatchEvent(event); }
       } catch { /* A document can already be navigating or gone. */ }
       host.attach(item.key, null);
     };
@@ -103,7 +103,7 @@ export function ServiceWorkspaceHost({ children }: { children: ReactNode }) {
     if (!host) return;
     const syncTheme = () => {
       try {
-        const theme = JSON.parse(localStorage.getItem('termdock-color-theme') || 'null');
+        const theme = JSON.parse(localStorage.getItem('veymux-color-theme') || 'null');
         if (theme === 'dark' || theme === 'light') { document.documentElement.dataset.theme = theme; syncThemeColorMeta(theme); }
       } catch { /* Optional preference. */ }
     };
@@ -115,20 +115,20 @@ export function ServiceWorkspaceHost({ children }: { children: ReactNode }) {
     const message = (event: MessageEvent) => {
       if (event.source !== navigator.serviceWorker.controller) return;
       const data = event.data;
-      if (data?.type === 'termdock:focus-session' && typeof data.targetPeerId === 'string' && typeof data.sessionId === 'string'
+      if (data?.type === 'veymux:focus-session' && typeof data.targetPeerId === 'string' && typeof data.sessionId === 'string'
         && host.focusSession(data.targetPeerId, data.sessionId)) {
-        event.ports[0]?.postMessage({ type: 'termdock:focus-session-ack' }); event.stopImmediatePropagation();
+        event.ports[0]?.postMessage({ type: 'veymux:focus-session-ack' }); event.stopImmediatePropagation();
       }
     };
     const restoreNotification = async () => {
       if (!('caches' in window)) return;
       try {
-        const cache = await caches.open('termdock-notification-target-v1');
-        const response = await cache.match('/__termdock-notification-target');
+        const cache = await caches.open('veymux-notification-target-v1');
+        const response = await cache.match('/__veymux-notification-target');
         if (!response) return;
         const data = await response.json();
         if (typeof data.targetPeerId === 'string' && typeof data.sessionId === 'string' && Date.now() - data.clickedAt < 30_000
-          && host.focusSession(data.targetPeerId, data.sessionId)) await cache.delete('/__termdock-notification-target');
+          && host.focusSession(data.targetPeerId, data.sessionId)) await cache.delete('/__veymux-notification-target');
       } catch { /* The workspace also consumes the notification after mounting. */ }
     };
     const visible = () => { if (!document.hidden) void restoreNotification(); };

@@ -22,7 +22,7 @@ vi.mock('../terminal/TerminalViewport', async () => ({
     return <textarea ref={input} data-terminal-input-anchor="true" aria-label="Fixture terminal" />;
   }),
 }));
-vi.mock('../../terminal/factory', () => ({ createTermdockAPI: () => ({
+vi.mock('../../terminal/factory', () => ({ createVeymuxAPI: () => ({
   sendInput: env.send,
   connect: (_id: string, handlers: any) => {
     queueMicrotask(() => handlers.onEvent({ type: 'connected' }));

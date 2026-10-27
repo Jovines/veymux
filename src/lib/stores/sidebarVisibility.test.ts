@@ -35,7 +35,7 @@ describe('desktop sidebar visibility', () => {
   });
 
   it('ignores old per-session pin caches when switching directories, sessions and split workspaces', () => {
-    localStorage.setItem('termdock:right-sidebar:pinned-by-session:v1', JSON.stringify({ data: { a: true, b: false } }));
+    localStorage.setItem('veymux:right-sidebar:pinned-by-session:v1', JSON.stringify({ data: { a: true, b: false } }));
     const store = useSidebarStore.getState();
     store.openRight();
     for (const [root, session, split] of [['/a','a',null], ['/b','b',null], ['/b','a','split-1'], ['/a','a',null]] as const) {
@@ -64,8 +64,8 @@ describe('desktop sidebar visibility', () => {
   it('migrates explicit legacy choices once and lets new visibility choices win', () => {
     expect(readDesktopSidebarOpen('left')).toBe(true);
     expect(readDesktopSidebarOpen('right')).toBe(false);
-    localStorage.setItem('termdock-left-sidebar-pinned', '0');
-    localStorage.setItem('termdock-right-sidebar-pinned', '1');
+    localStorage.setItem('veymux-left-sidebar-pinned', '0');
+    localStorage.setItem('veymux-right-sidebar-pinned', '1');
     expect(readDesktopSidebarOpen('left')).toBe(false);
     expect(readDesktopSidebarOpen('right')).toBe(true);
     useSidebarStore.getState().setDesktopSidebarOpen('left', true);

@@ -5,28 +5,28 @@ import { page } from 'vitest/browser';
 import '../../../index.css';
 import { I18nProvider } from '../../i18n';
 import { SettingsSections } from './SettingsSections';
-import { TermdockUpdateSettings } from './TermdockUpdateSettings';
+import { VeymuxUpdateSettings } from './VeymuxUpdateSettings';
 import { summarizeServiceUpdates } from '../../terminal/serviceUpdateOverview';
-import type { TermdockUpdateState } from '../../terminal/api';
+import type { VeymuxUpdateState } from '../../terminal/api';
 import type { ServiceUpdatePlan } from '../../terminal/serviceUpdatePlan';
 
 const plan: ServiceUpdatePlan = { targetId: 'work', interfaceId: 'linux', nodes: [
   { intent: { targetPeerId: 'work', url: 'https://work.example' }, label: 'Work', role: 'target' },
   { intent: { targetPeerId: 'linux', url: 'https://entry.example' }, label: 'Linux', role: 'interface' },
 ] };
-const current: TermdockUpdateState = { status: 'current', currentVersion: '1.4.366', latestVersion: '1.4.366', checkedAt: 1, source: 'official', error: null };
+const current: VeymuxUpdateState = { status: 'current', currentVersion: '1.4.366', latestVersion: '1.4.366', checkedAt: 1, source: 'official', error: null };
 let root: Root;
 afterEach(() => { flushSync(() => root?.unmount()); document.body.innerHTML = ''; vi.unstubAllGlobals(); });
 
 it.each([320, 390, 1280])('checks, inspects versions and confirms only real updates at %i px', async width => {
   await page.viewport(width, 844);
   vi.stubGlobal('fetch', vi.fn(async () => Response.json({ locale: 'en' })));
-  localStorage.setItem('termdock:locale', 'en');
+  localStorage.setItem('veymux:locale', 'en');
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
   const check = vi.fn(), restart = vi.fn();
-  const render = (entry: TermdockUpdateState | undefined, busy = false) => {
+  const render = (entry: VeymuxUpdateState | undefined, busy = false) => {
     const context = { ...summarizeServiceUpdates(plan, { work: { state: current }, linux: { state: entry } }, false), check: async () => undefined, busy };
-    flushSync(() => root.render(<I18nProvider><div className="fixed inset-0 flex flex-col bg-surface text-foreground"><header className="p-4">Settings</header><SettingsSections><div>Appearance</div><div>Controls</div><div><TermdockUpdateSettings state={current} pending={false} onCheck={check} onConfirmRestart={restart} updateContext={context} /><button className="mt-3 min-h-11">Service health</button></div></SettingsSections></div></I18nProvider>));
+    flushSync(() => root.render(<I18nProvider><div className="fixed inset-0 flex flex-col bg-surface text-foreground"><header className="p-4">Settings</header><SettingsSections><div>Appearance</div><div>Controls</div><div><VeymuxUpdateSettings state={current} pending={false} onCheck={check} onConfirmRestart={restart} updateContext={context} /><button className="mt-3 min-h-11">Service health</button></div></SettingsSections></div></I18nProvider>));
   };
   render(current);
   await page.getByRole('tab', { name: 'Service and diagnostics' }).click();

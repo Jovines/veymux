@@ -78,6 +78,83 @@ it('fetches local media before mounting native image nodes and never falls back 
   await screen.findByRole('alert'); expect(failed.container.querySelector('img')).toBeNull();
 });
 
+it('retries failed ImageBlock reads through the authorized reader and releases the resulting URL', async () => {
+  const revoke = vi.fn(); Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: revoke });
+  Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: () => 'blob:retried-image' });
+  vi.mocked(readImagePreviewBlob).mockRejectedValueOnce(new Error('连接已断开')).mockResolvedValue({ blob: new Blob(['image']), path: '/tmp/design.png', size: 5, modified: '', mimeType: 'image/png' });
+  const view = mount('root = Stack([ImageBlock("/tmp/design.png", "设计稿")])');
+  await screen.findByRole('alert'); expect(screen.queryByRole('img')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: '重试读取图片' }));
+  expect((await screen.findByRole('img')).getAttribute('src')).toBe('blob:retried-image');
+  fireEvent.click(screen.getByRole('button', { name: '查看图片：设计稿' }));
+  await waitFor(() => expect(document.querySelector('[data-markdown-image-lightbox]')).toBeTruthy());
+  view.unmount(); expect(revoke).toHaveBeenCalledWith('blob:retried-image');
+});
+
+it('previews and navigates a prepared gallery in a read-only conversation without submitting an action', async () => {
+  let serial = 0; Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: () => `blob:gallery-${++serial}` });
+  vi.mocked(readImagePreviewBlob).mockResolvedValue({ blob: new Blob(['image']), path: '/tmp/design.png', size: 5, modified: '', mimeType: 'image/png' });
+  const onAction = vi.fn();
+  mount('root = Stack([ImageGallery([{src:"/tmp/first.png",alt:"第一版"},{src:"/tmp/second.png",alt:"第二版"}])])', false, onAction);
+  fireEvent.click(await screen.findByRole('button', { name: '查看图片：第一版' }));
+  await waitFor(() => expect(document.querySelector('[data-markdown-image-lightbox]')?.textContent).toContain('1 / 2'));
+  fireEvent.keyDown(document, { key: 'ArrowRight' });
+  await waitFor(() => expect(document.querySelector('[data-markdown-image-lightbox]')?.textContent).toContain('2 / 2'));
+  fireEvent.keyDown(document, { key: 'Escape' });
+  await waitFor(() => expect(document.querySelector('[data-markdown-image-lightbox]')).toBeNull());
+  expect(onAction).not.toHaveBeenCalled();
+  expect([...document.querySelectorAll('img')].every(image => image.src.startsWith('blob:'))).toBe(true);
+});
+
+it('does not read or preview structured images without resource capability', async () => {
+  vi.mocked(readImagePreviewBlob).mockClear();
+  render(<SessionCapabilitiesContext.Provider value={sharedSessionCapabilities({ canWrite: true })}><ChatFullContent message={message('root = Stack([ImageBlock("/tmp/private.png", "私有图片")])')} sessionId="shared-image" canWrite onAction={vi.fn()} /></SessionCapabilitiesContext.Provider>);
+  await screen.findByRole('alert');
+  expect(readImagePreviewBlob).not.toHaveBeenCalled(); expect(screen.queryByRole('img')).toBeNull();
+  expect(screen.queryByRole('button', { name: '查看图片：私有图片' })).toBeNull();
+});
+
+it('rereads a damaged image on retry instead of repeatedly decoding the same blob', async () => {
+  let serial = 0; Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: () => `blob:decoded-${++serial}` });
+  vi.mocked(readImagePreviewBlob).mockClear().mockResolvedValue({ blob: new Blob(['image']), path: '/tmp/damaged.png', size: 5, modified: '', mimeType: 'image/png' });
+  mount('root = Stack([ImageBlock("/tmp/damaged.png", "设计稿")])');
+  const image = await screen.findByRole('img'); expect(image.getAttribute('src')).toBe('blob:decoded-1');
+  fireEvent.error(image); fireEvent.click(screen.getByRole('button', { name: '重试' }));
+  await waitFor(() => expect(screen.getByRole('img').getAttribute('src')).toBe('blob:decoded-2'));
+  expect(readImagePreviewBlob).toHaveBeenCalledTimes(2);
+});
+
+it('keeps sibling text visible when an image read fails and still prepares vendor background images', async () => {
+  vi.mocked(readImagePreviewBlob).mockRejectedValueOnce(new Error('图片暂不可用'));
+  const failed = mount('root = Stack([TextContent("设计思路仍可阅读"), ImageBlock("/tmp/missing.png", "设计稿")])');
+  await screen.findByRole('alert'); expect(screen.getByText('设计思路仍可阅读')).toBeTruthy(); failed.unmount();
+  Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: () => 'blob:background' });
+  vi.mocked(readImagePreviewBlob).mockResolvedValue({ blob: new Blob(['image']), path: '/tmp/background.png', size: 5, modified: '', mimeType: 'image/png' });
+  const view = mount('root = Stack([VisualCardBlock([VisualCardItem(BoldText("text", "第一张"), "one", "/tmp/background.png"), VisualCardItem(BoldText("text", "第二张"), "two", "/tmp/background.png")])])');
+  await screen.findByText('第一张');
+  expect(view.container.innerHTML).toContain('blob:background'); expect(view.container.innerHTML).not.toContain('/tmp/background.png');
+});
+
+it('aborts an unfinished image read when the conversation is unmounted', async () => {
+  let pending: AbortSignal | undefined;
+  vi.mocked(readImagePreviewBlob).mockImplementationOnce((_path, signal) => {
+    pending = signal;
+    return new Promise((_resolve, reject) => signal!.addEventListener('abort', () => reject(signal!.reason)));
+  });
+  const view = mount('root = Stack([ImageBlock("/tmp/pending.png", "加载中")])');
+  await waitFor(() => expect(pending).toBeDefined()); view.unmount();
+  expect(pending?.aborted).toBe(true); expect(document.querySelector('img')).toBeNull();
+});
+
+it('keeps option-card images inside their existing choice action without nesting preview buttons', async () => {
+  Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: () => 'blob:choice-image' });
+  vi.mocked(readImagePreviewBlob).mockResolvedValue({ blob: new Blob(['image']), path: '/tmp/choice.png', size: 5, modified: '', mimeType: 'image/png' });
+  const view = mount('root = Stack([OptionCards("choice", "single", [OptionCard("d", "回流", "流畅", Image("回流图标", "/tmp/choice.png"))])])');
+  expect((await screen.findByRole('img')).getAttribute('src')).toBe('blob:choice-image');
+  expect(view.container.querySelector('button button')).toBeNull();
+  expect(screen.queryByRole('button', { name: '查看图片：回流图标' })).toBeNull();
+});
+
 it('renders the standard stored-message envelope using only its content section', async () => {
   mount(buildMessage({ content: 'root = Stack([TextContent("协议正文")])', context: { private: '不展示的上下文' }, end: true }));
   expect(await screen.findByText('协议正文')).toBeTruthy(); expect(screen.queryByText('不展示的上下文')).toBeNull();

@@ -18,7 +18,7 @@ const functions = ast.statements.filter(node => ts.isFunctionDeclaration(node) &
   .map(node => node.getText(ast)).join('\n');
 
 it.skipIf(process.platform === 'win32')('preserves real tmux mouse, copy, color and multi-window scrollback settings with fewer subprocesses', async () => {
-  const socket = `termdock-launch-config-${process.pid}-${Date.now()}`;
+  const socket = `veymux-launch-config-${process.pid}-${Date.now()}`;
   let activeSocket = socket;
   const exec = promisify(execFile);
   const run = async (args: string[]) => (await exec('tmux', ['-L', activeSocket, ...args], { timeout: 5000 })).stdout;
@@ -26,9 +26,9 @@ it.skipIf(process.platform === 'win32')('preserves real tmux mouse, copy, color 
   const context = vm.createContext({
     console, process, batchTmuxConfiguration, batchTmuxCommands, buildTmuxColorEnvironmentCommands, ensureTmuxColorCapabilities,
     runTmux: (args: string[]) => { calls++; return run(args); },
-    resolveTmuxInnerTerm: async () => 'tmux-256color', TERMDOCK_TMUX_HISTORY_LIMIT: 9876, getErrorMessage: String,
+    resolveTmuxInnerTerm: async () => 'tmux-256color', VEYMUX_TMUX_HISTORY_LIMIT: 9876, getErrorMessage: String,
     getTmuxOption: async (name: string, key: string) => (await run(['show-option', '-vqt', name, key])).trim() || null,
-    TERMDOCK_VERSION: 'test', TERMDOCK_HOST: 'test-host', TERMDOCK_PID: String(process.pid),
+    VEYMUX_VERSION: 'test', VEYMUX_HOST: 'test-host', VEYMUX_PID: String(process.pid),
   });
   vm.runInContext(ts.transpileModule(functions, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, context);
   try {
@@ -67,18 +67,18 @@ it.skipIf(process.platform === 'win32')('preserves real tmux mouse, copy, color 
     calls = 0;
     await context.configureManagedTmuxSessionBatch('target');
     expect(calls).toBe(3); // Window/switch discovery and one configuration submission.
-    const createdAt = await run(['show-option', '-vqt', 'target', '@termdock-created-at']);
+    const createdAt = await run(['show-option', '-vqt', 'target', '@veymux-created-at']);
     expect(createdAt.trim()).toMatch(/^\d+$/);
     expect((await run(['show-option', '-gv', 'focus-events'])).trim()).toBe('off');
     expect((await run(['show-option', '-v', '-t', 'target', 'mouse'])).trim()).toBe('on');
     expect((await run(['show-option', '-v', '-t', 'target', 'status'])).trim()).toBe('off');
-    expect((await run(['show-environment', '-t', 'target', 'TERMDOCK'])).trim()).toBe('TERMDOCK=1');
+    expect((await run(['show-environment', '-t', 'target', 'VEYMUX'])).trim()).toBe('VEYMUX=1');
     expect(await run(['display-message', '-p', '-t', 'target', '#{window_width}x#{window_height}'])).toBe(size);
     expect(await run(['list-keys'])).toBe(original);
     await run(['set-environment', '-t', 'target', 'NO_COLOR', '1']);
     await run(['set-option', '-t', 'target', 'mouse', 'off']);
     await context.configureManagedTmuxSessionBatch('target');
-    expect(await run(['show-option', '-vqt', 'target', '@termdock-created-at'])).toBe(createdAt);
+    expect(await run(['show-option', '-vqt', 'target', '@veymux-created-at'])).toBe(createdAt);
     expect((await run(['show-option', '-v', '-t', 'target', 'mouse'])).trim()).toBe('on');
     await expect(run(['show-environment', '-t', 'target', 'NO_COLOR'])).rejects.toThrow('unknown variable: NO_COLOR');
     await run(['kill-server']);
@@ -88,7 +88,7 @@ it.skipIf(process.platform === 'win32')('preserves real tmux mouse, copy, color 
     await run(['-f', '/dev/null', 'new-session', '-d', '-s', 'target']);
     await context.configureManagedTmuxSessionBatch('target');
     expect((await run(['show-option', '-v', '-t', 'target', 'mouse'])).trim()).toBe('on');
-    expect((await run(['show-environment', '-t', 'target', 'TERMDOCK'])).trim()).toBe('TERMDOCK=1');
+    expect((await run(['show-environment', '-t', 'target', 'VEYMUX'])).trim()).toBe('VEYMUX=1');
     const pty = createRequire(import.meta.url)('node-pty') as typeof import('node-pty');
     const serverPid = (await run(['display-message', '-p', '#{pid}'])).trim();
     for (let i = 0; i < 20; i++) {

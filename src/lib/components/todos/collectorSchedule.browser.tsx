@@ -10,7 +10,7 @@ import type { TodoCollector } from '../../todos/api';
 
 let root: Root;
 const saves: Array<{ input: Partial<TodoCollector>; start: boolean }> = [];
-const config = { agentSlug: 'codex', command: 'codex', cwd: '/projects/termdock', prompt: '' };
+const config = { agentSlug: 'codex', command: 'codex', cwd: '/projects/veymux', prompt: '' };
 const agents: AgentLauncherInfo[] = [{ slug: 'codex', displayName: 'Codex', command: 'codex', accentColor: 'var(--primary)', icon: null }];
 function mount(collector?: TodoCollector) {
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
@@ -53,7 +53,7 @@ it.each([320, 390, 1280])('sets multiple times and weekdays, preserves drafts an
   const dialog = page.getByRole('dialog').element();
   expect(dialog.scrollWidth).toBeLessThanOrEqual(dialog.clientWidth);
   page.getByRole('group', { name: '运行频率', exact: true }).element().scrollIntoView({ block: 'start' });
-  await page.screenshot({ path: `/tmp/termdock-collector-schedule-${width}.png` });
+  await page.screenshot({ path: `/tmp/veymux-collector-schedule-${width}.png` });
 });
 
 it('restores saved schedules, merges duplicates and requires at least one weekday', async () => {

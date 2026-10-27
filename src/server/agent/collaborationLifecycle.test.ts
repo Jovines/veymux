@@ -9,7 +9,7 @@ import { completedExecution, ExecutionArchiveStore, type ExecutionArchive } from
 import { ensureTeam } from './collaborationTeam.js';
 import type { CollaborationTask } from './collaborationTaskTypes.js';
 let dir: string;
-beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'termdock-lifecycle-')); });
+beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-lifecycle-')); });
 afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
 it('creates an empty project over HTTP and retains it and discussions after the last terminal leaves', async () => {
  const store = new CollaborationStore(path.join(dir,'groups.json'));

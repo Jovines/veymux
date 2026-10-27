@@ -14,13 +14,13 @@ vi.mock('node:module', () => ({ createRequire: () => Object.assign((name: string
   : { rebuildNodePty: fixture.rebuild }, { resolve: () => path.join(fixture.root, 'node-pty/package.json') }) }));
 beforeEach(() => {
   vi.resetModules(); vi.resetAllMocks();
-  fixture.root = fs.mkdtempSync(path.join(os.tmpdir(), 'termdock boot '));
+  fixture.root = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux boot '));
   fixture.tmux.mockReturnValue({ ok: true, installed: false, version: 'tmux 3.6' });
 });
 afterEach(() => { fs.rmSync(fixture.root, { recursive: true, force: true }); });
 
 it('rechecks dependencies despite a successful marker from another Node installation', async () => {
-  const marker = path.join(fixture.root, '.termdock/.boot-check-ok');
+  const marker = path.join(fixture.root, '.veymux/.boot-check-ok');
   fs.mkdirSync(path.dirname(marker), { recursive: true });
   fs.writeFileSync(marker, JSON.stringify({ nodePty: { ok: true }, tmux: { ok: true }, runtime: { abi: 'old' } }));
   fixture.tmux.mockReturnValue({ ok: false, installed: false, error: 'removed tmux' });

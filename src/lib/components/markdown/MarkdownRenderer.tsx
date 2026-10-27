@@ -30,8 +30,8 @@ const MARKDOWN_TABLE_BODY_CELL_CLASS = `${MARKDOWN_TABLE_CELL_CLASS} border-bord
 // The sidebar gesture arbiter resolves these against the enclosing swiper and
 // the drawer per touch sequence, so no swiper-no-swiping / gesture-ignore
 // markers are needed — the class only carries the touch-action CSS rule.
-export const FILE_PREVIEW_HORIZONTAL_SCROLL_CLASS = 'termdock-file-preview-horizontal-scroll';
-const MARKDOWN_TABLE_SCROLL_CLASS = `${FILE_PREVIEW_HORIZONTAL_SCROLL_CLASS} termdock-md-table-scroll min-w-0 max-w-full overflow-x-auto overflow-y-hidden rounded-lg border border-border/20 bg-surface`;
+export const FILE_PREVIEW_HORIZONTAL_SCROLL_CLASS = 'veymux-file-preview-horizontal-scroll';
+const MARKDOWN_TABLE_SCROLL_CLASS = `${FILE_PREVIEW_HORIZONTAL_SCROLL_CLASS} veymux-md-table-scroll min-w-0 max-w-full overflow-x-auto overflow-y-hidden rounded-lg border border-border/20 bg-surface`;
 
 function isMarkdownHorizontalRule(line: string): boolean {
   const compact = line.trim().replace(/\s+/g, '');
@@ -607,7 +607,7 @@ function MarkdownImage({ src, alt, title, requestedWidthPx }: { src: string; alt
           alt={alt}
           title={title}
           decoding="async"
-          className={`${isVector ? '' : 'termdock-fade-in '}block max-h-[480px] max-w-full object-contain`}
+          className={`${isVector ? '' : 'veymux-fade-in '}block max-h-[480px] max-w-full object-contain`}
           style={box ? { width: box.width, height: box.height } : undefined}
           onLoad={(event) => {
             // Headers are only an estimate (e.g. EXIF rotation). Decoded
@@ -1852,7 +1852,7 @@ function MarkdownMermaidBlock({
     loadMermaid()
       .then(async (mermaid) => {
         initializeMermaid(mermaid);
-        const id = `termdock-md-mermaid-${blockKey.replace(/[^a-zA-Z0-9_-]/g, '-')}-${instanceId.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+        const id = `veymux-md-mermaid-${blockKey.replace(/[^a-zA-Z0-9_-]/g, '-')}-${instanceId.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
         const { svg: renderedSvg } = await mermaid.render(id, code);
         if (cancelled) return;
         setSvg(normalizeMermaidSvgSize(renderedSvg));
@@ -1943,7 +1943,7 @@ function MarkdownCodeBlock({ code, lang, blockKey, codeStartLine, lineRange }: M
   return (
     <div className="overflow-hidden rounded-lg border border-border/20 bg-surface shadow-sm">
       {lang && <div className="border-b border-border/15 bg-surface-2 px-3 py-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">{lang}</div>}
-      <pre data-markdown-native-scroll tabIndex={0} className={`${FILE_PREVIEW_HORIZONTAL_SCROLL_CLASS} termdock-code max-w-full overflow-auto p-3 text-[11px] leading-relaxed text-foreground`}><code>{perLine.map((lineNodes, lineIndex) => {
+      <pre data-markdown-native-scroll tabIndex={0} className={`${FILE_PREVIEW_HORIZONTAL_SCROLL_CLASS} veymux-code max-w-full overflow-auto p-3 text-[11px] leading-relaxed text-foreground`}><code>{perLine.map((lineNodes, lineIndex) => {
         const lineNo = codeStartLine != null ? codeStartLine + lineIndex : null;
         const selected = Boolean(lineRange && lineNo != null && lineNo >= lineRange.start && lineNo <= lineRange.end);
         return (
@@ -3069,7 +3069,7 @@ export function MarkdownRenderer({
     <>
       <div
         ref={previewRootRef}
-        className="termdock-markdown relative min-w-0 max-w-full"
+        className="veymux-markdown relative min-w-0 max-w-full"
         data-markdown-variant={variant}
         onClickCapture={(event) => {
           const anchor = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>('a[href]') : null;

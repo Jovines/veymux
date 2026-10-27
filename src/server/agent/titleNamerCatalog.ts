@@ -11,7 +11,7 @@ const CACHE_FRESH_MS = 24 * 60 * 60_000;
 const PROBE_TIMEOUT_MS = 10_000;
 const TITLE_TIMEOUT_MS = 45_000;
 const TITLE_MAX_OUTPUT_BYTES = 256 * 1024;
-const CACHE_FILE = path.join(os.homedir(), '.termdock', 'title-namer-catalog.json');
+const CACHE_FILE = path.join(os.homedir(), '.veymux', 'title-namer-catalog.json');
 
 function pluginCommandEnv(): NodeJS.ProcessEnv {
   const allowed = ['PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL', 'LANG', 'TERM', 'TMPDIR', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_DATA_HOME'];
@@ -26,12 +26,12 @@ function pluginCommandEnv(): NodeJS.ProcessEnv {
 }
 
 /** Native title CLIs need the user's normal auth/provider environment, but
- * must never inherit Termdock's terminal-routing markers. Otherwise their own
+ * must never inherit Veymux's terminal-routing markers. Otherwise their own
  * hooks write back into the pane that launched the server and recursively
  * trigger more title jobs. */
 export function nativeTitleCommandEnv(source: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...source, NO_COLOR: '1', TERM: 'dumb' };
-  delete env.TERMDOCK;
+  delete env.VEYMUX;
   delete env.TMUX;
   delete env.TMUX_PANE;
   return env;
@@ -241,7 +241,7 @@ async function listCodexModels(): Promise<TitleNamerModel[]> {
     child.stdin.write(`${JSON.stringify({
       id: 1,
       method: 'initialize',
-      params: { clientInfo: { name: 'termdock', version: '1' } },
+      params: { clientInfo: { name: 'veymux', version: '1' } },
     })}\n`);
   });
 }
@@ -258,7 +258,7 @@ export function parseClaudeSupportedModels(output: string): TitleNamerModel[] {
 
 async function listClaudeModels(): Promise<TitleNamerModel[]> {
   try {
-    await execFileAsync('claude', ['--model', '__termdock_model_probe__', '--no-session-persistence', '-p', 'x'], {
+    await execFileAsync('claude', ['--model', '__veymux_model_probe__', '--no-session-persistence', '-p', 'x'], {
       timeout: PROBE_TIMEOUT_MS,
       maxBuffer: 128 * 1024,
       env: { ...process.env, NO_COLOR: '1', TERM: 'dumb' },
@@ -436,7 +436,7 @@ export async function probePluginTitleNamer(slug: string): Promise<PluginTitleNa
       selectionBehavior: 'This plugin cannot generate titles until manifest.titleNamer is added.',
       warnings: ['manifest.json has no titleNamer declaration.'],
       error: null,
-      nextSteps: ['Run `td agent-plugin --json`, add manifest.titleNamer, then update/reinstall the plugin.'],
+      nextSteps: ['Run `veymux agent-plugin --json`, add manifest.titleNamer, then update/reinstall the plugin.'],
     };
   }
   const warnings: string[] = [];
@@ -452,7 +452,7 @@ export async function probePluginTitleNamer(slug: string): Promise<PluginTitleNa
       status: 'cli-default',
       models: [],
       recommendedModel: null,
-      selectionBehavior: 'Termdock will omit all model arguments and use the Agent CLI default model.',
+      selectionBehavior: 'Veymux will omit all model arguments and use the Agent CLI default model.',
       warnings,
       error: null,
       nextSteps: ['Optional: add titleNamer.models to expose selectable models; otherwise the CLI default is used.'],
@@ -477,7 +477,7 @@ export async function probePluginTitleNamer(slug: string): Promise<PluginTitleNa
       recommendedModel: catalog.recommendedModel,
       selectionBehavior: catalog.recommendedModel
         ? `Automatic selection will pass model ${catalog.recommendedModel}.`
-        : 'No recommended model was declared; Termdock will omit model arguments and use the Agent CLI default model.',
+        : 'No recommended model was declared; Veymux will omit model arguments and use the Agent CLI default model.',
       warnings: catalog.models.length === 0
         ? [...warnings, 'The model command succeeded but returned no usable models.']
         : warnings,

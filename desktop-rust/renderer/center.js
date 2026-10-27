@@ -13,7 +13,7 @@ async function run(action) {
 async function refresh() {
   const snapshot = await api('snapshot');
   const list = document.querySelector('#connections'); list.replaceChildren();
-  if (!snapshot.connections.length) { const p = document.createElement('p'); p.textContent = '添加服务地址，或连接本机已启动的 Termdock。'; list.append(p); }
+  if (!snapshot.connections.length) { const p = document.createElement('p'); p.textContent = '添加服务地址，或连接本机已启动的 Veymux。'; list.append(p); }
   for (const connection of snapshot.connections) {
     const row = document.createElement('div'); row.className = 'service';
     const info = document.createElement('div'); const name = document.createElement('strong'); name.textContent = connection.label;
@@ -37,7 +37,7 @@ document.querySelector('#connection-form').addEventListener('submit', event => {
     let connection = { id: form.dataset.id || crypto.randomUUID(), url: values.url, label: values.label, routes: [] };
     for (const field of ['targetPeerId','serviceOrigin','entryServiceId']) if (values[field]) connection[field] = values[field];
     if (values.invitation) {
-      const invite = new URL(values.invitation); const prefix = 'termdock-invite=';
+      const invite = new URL(values.invitation); const prefix = 'veymux-invite=';
       if (!invite.hash.slice(1).startsWith(prefix)) throw new Error('邀请链接格式不正确');
       const raw = invite.hash.slice(1 + prefix.length).replaceAll('-', '+').replaceAll('_', '/');
       const descriptor = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(raw), c => c.charCodeAt(0))));
@@ -51,5 +51,5 @@ document.querySelector('#local').addEventListener('click', () => run(() => api('
 document.querySelector('#config').addEventListener('click', () => run(() => api('revealConfig')));
 document.querySelector('#certificate-form').addEventListener('submit', event => { event.preventDefault(); run(() => api('trustCertificate', Object.fromEntries(new FormData(event.target)))); });
 document.querySelector('#revoke').addEventListener('click', () => run(() => api('revokeCertificate', { origin: document.querySelector('#certificate-form').elements.origin.value })));
-window.addEventListener('termdock:preview-connections', () => { void refresh().catch(error => { status.textContent = String(error); }); });
+window.addEventListener('veymux:preview-connections', () => { void refresh().catch(error => { status.textContent = String(error); }); });
 void refresh().catch(error => { status.textContent = String(error); status.dataset.error = 'true'; });

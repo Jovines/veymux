@@ -232,8 +232,8 @@ function renderFilePreview(filePath: string) {
       onInsertReference={() => {}}
       onInsertText={() => {}}
       onInsertFeature={(text) => {
-        // 模拟 RightSidebar 的接线: 普通引用走 termdock-insert-reference 事件
-        window.dispatchEvent(new CustomEvent('termdock-insert-reference', { detail: { text } }));
+        // 模拟 RightSidebar 的接线: 普通引用走 veymux-insert-reference 事件
+        window.dispatchEvent(new CustomEvent('veymux-insert-reference', { detail: { text } }));
       }}
       onReferenceCopied={() => {}}
       isMobile={false}
@@ -486,11 +486,11 @@ describe('right sidebar 3D model preview', () => {
     const handler = (e: Event) => {
       inserted = (e as CustomEvent<{ text?: string }>).detail?.text ?? '';
     };
-    window.addEventListener('termdock-insert-reference', handler);
+    window.addEventListener('veymux-insert-reference', handler);
     fireEvent.click(screen.getByRole('button', { name: 'Insert reference' }));
     expect(inserted).toContain('面A: Part A·Feature 1');
     expect(inserted).toContain('面B: Part B·Feature 2');
-    window.removeEventListener('termdock-insert-reference', handler);
+    window.removeEventListener('veymux-insert-reference', handler);
     fireEvent.click(screen.getByRole('button', { name: 'Features' }));
   });
 });

@@ -16,7 +16,7 @@ describe('TD-initiated Agent launch before terminal delivery', () => {
   let group: string;
   beforeEach(() => {
     vi.useFakeTimers();
-    directory = fs.mkdtempSync(path.join(os.tmpdir(), 'td-launch-check-'));
+    directory = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-launch-check-'));
     store = new CollaborationStore(path.join(directory, 'messages.json'));
     group = store.save({ name: 'launch', sessionIds: ['sender', 'recipient'] }).id;
     check = { id: 'generation-one', agentSlug: 'fixture', nativeSessionId: null, deadline: Date.now() + 120_000 };

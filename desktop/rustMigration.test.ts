@@ -8,14 +8,14 @@ import { replaceInstalledBundle } from './rustMigrationInstaller.js';
 const roots: string[] = [];
 afterEach(async () => { for (const root of roots.splice(0))
     await fs.rm(root, { recursive: true, force: true }); });
-async function directory() { const root = await fs.mkdtemp(path.join(os.tmpdir(), 'termdock-migration-test-')); roots.push(root); return root; }
+async function directory() { const root = await fs.mkdtemp(path.join(os.tmpdir(), 'veymux-migration-test-')); roots.push(root); return root; }
 const bytes = Buffer.from('signed notarized payload bytes');
-const asset = { version: '1.4.358', url: 'https://github.com/Jovines/termdock/releases/download/v1.4.358/Termdock_1.4.358_aarch64.dmg', size: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') };
+const asset = { version: '1.4.358', url: 'https://github.com/Jovines/veymux/releases/download/v1.4.358/Veymux_1.4.358_aarch64.dmg', size: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') };
 it('only selects the exact versioned official DMG and verifies streamed bytes before mounting', async () => {
     const root = await directory(), target = path.join(root, 'update.dmg');
     await downloadVerifiedMigration(asset, target, async () => new Response(bytes));
     expect(await fs.readFile(target)).toEqual(bytes);
-    for (const url of ['http://github.com/Jovines/termdock/releases/download/v1.4.358/Termdock_1.4.358_aarch64.dmg', asset.url + '?other=1', asset.url.replace('github.com', 'other.test')])
+    for (const url of ['http://github.com/Jovines/veymux/releases/download/v1.4.358/Veymux_1.4.358_aarch64.dmg', asset.url + '?other=1', asset.url.replace('github.com', 'other.test')])
         expect(() => validateMigrationAsset({ ...asset, url })).toThrow();
 });
 it('rejects truncation, extra bytes and same-length corruption while preserving existing files', async () => {
@@ -31,7 +31,7 @@ it('rejects truncation, extra bytes and same-length corruption while preserving 
     expect(await fs.readFile(existing, 'utf8')).toBe('preserve');
 });
 it('replaces a complete bundle and restores the original when the final rename fails', async () => {
-    const root = await directory(), target = path.join(root, 'Termdock.app'), staged = path.join(root, 'new.app'), rollback = path.join(root, 'old.app');
+    const root = await directory(), target = path.join(root, 'Veymux.app'), staged = path.join(root, 'new.app'), rollback = path.join(root, 'old.app');
     await fs.mkdir(target);
     await fs.writeFile(path.join(target, 'identity'), 'electron');
     await fs.mkdir(staged);

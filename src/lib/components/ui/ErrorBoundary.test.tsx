@@ -16,7 +16,7 @@ describe('ErrorBoundary diagnostics', () => {
     error.stack = 'TypeError: bridge.onServiceActivity is not a function\n    at DesktopServiceSwitcher';
     const diagnostic = buildErrorDiagnostic(error, 'at DesktopServiceSwitcher', {
       url: 'https://localhost:9834/',
-      userAgent: 'Termdock Desktop',
+      userAgent: 'Veymux Desktop',
       capturedAt: '2026-08-30T08:00:00.000Z',
     });
     expect(diagnostic).toContain('TypeError: bridge.onServiceActivity is not a function');

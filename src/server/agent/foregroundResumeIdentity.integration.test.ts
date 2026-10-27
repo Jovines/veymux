@@ -12,8 +12,8 @@ import { writeCollaborationTmuxPane } from './collaborationTmuxDelivery';
 
 const exec = promisify(execFile);
 it.skipIf(process.platform !== 'linux')('recovers a real resumed pane, settles a crash journal once, and never replays a partial paste', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'td-foreground-resume-'));
-  const socket = `td-proof-${process.pid}-${Date.now()}`, script = path.join(dir, 'consumer.cjs'), output = path.join(dir, 'input');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-foreground-resume-'));
+  const socket = `veymux-proof-${process.pid}-${Date.now()}`, script = path.join(dir, 'consumer.cjs'), output = path.join(dir, 'input');
   fs.writeFileSync(output, '');
   fs.writeFileSync(script, `const fs = require('node:fs'); process.stdin.setRawMode(true); process.stdin.resume(); process.stdout.write('\\x1b[?2004hREADY'); process.stdin.on('data', data => fs.appendFileSync(${JSON.stringify(output)}, data));`);
   const run = async (args: string[]) => (await exec('tmux', ['-L', socket, ...args], { timeout: 5000 })).stdout;

@@ -81,7 +81,7 @@ it('filters identical collector names by stable ID and follows renamed labels', 
   expect(screen.queryByRole('button', { name: 'B 的事项' })).toBeNull();
   expect(screen.getByRole('button', { name: todo.title })).toBeTruthy();
   data.collectors[0] = { ...data.collectors[0], name: '改名后的 A' };
-  await act(async () => { window.dispatchEvent(new Event('termdock:secure-ready')); });
+  await act(async () => { window.dispatchEvent(new Event('veymux:secure-ready')); });
   await waitFor(() => expect(screen.getByRole('option', { name: '改名后的 A' })).toBeTruthy());
   expect((screen.getByRole('combobox', { name: '按来源筛选' }) as HTMLSelectElement).value).toBe('collector:collector-a');
   expect(screen.getByText('改名后的 A', { selector: 'p' })).toBeTruthy();

@@ -13,7 +13,7 @@ function fixture(frameType = 'top-level') {
     records,
     async prepare() {
       let pending!: Promise<void>, result: { url?: string; error?: string } = {};
-      handlers.message({ source: { id: 'owner' }, data: { type: 'termdock:prepare-download', blob: new Blob(['private bytes']), filename: '测试.txt' }, ports: [{ postMessage: (value: typeof result) => { result = value; }, close() {} }], waitUntil: (value: Promise<void>) => { pending = value; } });
+      handlers.message({ source: { id: 'owner' }, data: { type: 'veymux:prepare-download', blob: new Blob(['private bytes']), filename: '测试.txt' }, ports: [{ postMessage: (value: typeof result) => { result = value; }, close() {} }], waitUntil: (value: Promise<void>) => { pending = value; } });
       await pending; return result;
     },
     async download(url: string) {
@@ -25,7 +25,7 @@ function fixture(frameType = 'top-level') {
 }
 it('serves a one-use local attachment with the original bytes and Unicode name', async () => {
   const f = fixture(), prepared = await f.prepare();
-  expect(prepared.url).toMatch(/^https:\/\/app.test\/__termdock-download\/[a-f0-9-]+$/);
+  expect(prepared.url).toMatch(/^https:\/\/app.test\/__veymux-download\/[a-f0-9-]+$/);
   const response = await f.download(prepared.url!);
   expect(await response.text()).toBe('private bytes');
   expect(response.headers.get('Content-Disposition')).toContain(encodeURIComponent('测试.txt'));
@@ -37,6 +37,6 @@ it('does not let an untrusted preview frame create a top-level download capabili
 });
 it('removes expired attachments instead of ever fetching them from a server', async () => {
   const f = fixture(), prepared = await f.prepare();
-  f.records.get(prepared.url!)!.headers.set('X-Termdock-Expires', '0');
+  f.records.get(prepared.url!)!.headers.set('X-Veymux-Expires', '0');
   expect((await f.download(prepared.url!)).status).toBe(410); expect(f.records.size).toBe(0);
 });

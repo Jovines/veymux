@@ -14,7 +14,7 @@ afterEach(() => { for (const close of cleanup.splice(0).reverse()) close(); });
 /** The service that shared a write invitation exposes exactly the granted
  * sessions to the recipient's service, and nothing else. */
 async function fixture() {
-  const dir = mkdtempSync(join(tmpdir(), 'td-scoped-')); cleanup.push(() => rmSync(dir, { recursive: true, force: true }));
+  const dir = mkdtempSync(join(tmpdir(), 'veymux-scoped-')); cleanup.push(() => rmSync(dir, { recursive: true, force: true }));
   const [self, peer, device] = await Promise.all([createIdentity(), createIdentity(), createIdentity()]);
   const selfOrigin = 'https://self.test', peerOrigin = 'https://peer.test';
   const store = new CollaborationStore(join(dir, 'groups.json'));

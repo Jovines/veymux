@@ -73,8 +73,8 @@ function xdgConfigDir(): string {
   return path.join(homeDir(), '.config');
 }
 
-const OWNED_FILE_STEM_JSON = 'termdock.json';
-const OWNED_FILE_STEM_JS = 'termdock.js';
+const OWNED_FILE_STEM_JSON = 'veymux.json';
+const OWNED_FILE_STEM_JS = 'veymux.js';
 
 function targetPath(agent: HookAgentSlug): string {
   switch (agent) {
@@ -82,7 +82,7 @@ function targetPath(agent: HookAgentSlug): string {
     case 'codex': return path.join(process.env.CODEX_HOME?.trim() || path.join(homeDir(), '.codex'), 'hooks.json');
     case 'copilot': return path.join(homeDir(), '.copilot', 'hooks', OWNED_FILE_STEM_JSON);
     case 'opencode': return path.join(xdgConfigDir(), 'opencode', 'plugins', OWNED_FILE_STEM_JS);
-    case 'pi': return path.join(homeDir(), '.pi', 'agent', 'extensions', 'termdock', 'index.ts');
+    case 'pi': return path.join(homeDir(), '.pi', 'agent', 'extensions', 'veymux', 'index.ts');
     case 'grok': return path.join(homeDir(), '.grok', 'hooks', OWNED_FILE_STEM_JSON);
     case 'kimi': return path.join(homeDir(), '.kimi-code', 'config.toml');
   }
@@ -117,7 +117,7 @@ function hookCommand(agent: HookAgentSlug, event: string): string {
   return `"${process.execPath}" "${script}" agent-hook ${agent} ${event}`;
 }
 
-/** Substring identifying a hook entry / owned file as termdock's. Every
+/** Substring identifying a hook entry / owned file as veymux's. Every
  *  generated command and file embeds `agent-hook <slug>` verbatim. */
 function marker(agent: HookAgentSlug): string {
   return `agent-hook ${agent} `;
@@ -133,7 +133,7 @@ function writeAtomic(file: string, content: string): void {
 
 // ---------------------------------------------------------------------------
 // Hooks-map installer (Claude Code, Codex): a JSON object with a top-level
-// "hooks" key mapping event names to entry lists; termdock owns exactly one
+// "hooks" key mapping event names to entry lists; veymux owns exactly one
 // marker-carrying entry per event and never touches the rest of the file.
 // ---------------------------------------------------------------------------
 
@@ -167,7 +167,7 @@ const CODEX_HOOK_EVENTS: Array<[string, string]> = [
   ['SessionEnd', 'session-end'],
 ];
 
-/** Shared budget for Termdock status emitters, in seconds. */
+/** Shared budget for Veymux status emitters, in seconds. */
 function hookTimeout(event: string): number {
   return event === 'session-end' ? 1 : 5;
 }
@@ -231,7 +231,7 @@ function readJsonObject(file: string): JsonObject | null {
   }
 }
 
-/** The termdock hook command inside one matcher entry
+/** The veymux hook command inside one matcher entry
  *  (`{"matcher": …, "hooks": [{"command": …}]}`), if it carries one. */
 function markerCommand(entry: unknown, mark: string): string | null {
   if (!entry || typeof entry !== 'object') return null;
@@ -289,7 +289,7 @@ function hookMapState(file: string, agent: HookAgentSlug, events: Array<[string,
   return complete ? 'installed' : 'outdated';
 }
 
-/** Merge termdock's hook entries into the file, preserving everything else. */
+/** Merge veymux's hook entries into the file, preserving everything else. */
 function hookMapInstall(file: string, agent: HookAgentSlug, events: Array<[string, string]>): void {
   let root: JsonObject = {};
   try {
@@ -320,7 +320,7 @@ function hookMapInstall(file: string, agent: HookAgentSlug, events: Array<[strin
       hooks[hookEvent] = list;
     }
     if (!Array.isArray(list)) continue; // malformed user config; leave it alone
-    // Drop any previous termdock entry (stale exe path), then append ours.
+    // Drop any previous veymux entry (stale exe path), then append ours.
     const kept = removeOwnedHookHandlers(list, mark);
     const handler: JsonObject = { type: 'command', command };
     handler.timeout = hookTimeout(sentinel);
@@ -331,8 +331,8 @@ function hookMapInstall(file: string, agent: HookAgentSlug, events: Array<[strin
   writeAtomic(file, JSON.stringify(root, null, 2));
 }
 
-/** Remove every termdock hook entry, leaving user-defined hooks untouched.
- *  Sweeps *all* hook events so entries left by an older termdock with a
+/** Remove every veymux hook entry, leaving user-defined hooks untouched.
+ *  Sweeps *all* hook events so entries left by an older veymux with a
  *  different event set are cleaned up too. */
 function hookMapUninstall(file: string, agent: HookAgentSlug): string {
   const root = readJsonObject(file);
@@ -353,7 +353,7 @@ function hookMapUninstall(file: string, agent: HookAgentSlug): string {
       }
     }
   }
-  if (removed === 0) return 'No termdock hooks found; nothing to remove';
+  if (removed === 0) return 'No veymux hooks found; nothing to remove';
   writeAtomic(file, JSON.stringify(root, null, 2));
   return 'Removed';
 }
@@ -377,12 +377,12 @@ function enableCodexHooksFeature(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// Owned-file installer (Copilot, OpenCode, Pi, Grok): termdock writes a whole
+// Owned-file installer (Copilot, OpenCode, Pi, Grok): veymux writes a whole
 // file it owns outright, identified by the marker. Install refuses to clobber
-// a file termdock didn't write; uninstall only ever deletes a marker file.
+// a file veymux didn't write; uninstall only ever deletes a marker file.
 // ---------------------------------------------------------------------------
 
-/** Copilot hook file (~/.copilot/hooks/termdock.json): Copilot auto-loads
+/** Copilot hook file (~/.copilot/hooks/veymux.json): Copilot auto-loads
  *  every JSON file in that directory. Event names are Copilot's camelCase
  *  vocabulary. `notification` is passed through and filtered in the emitter. */
 function copilotHooksJson(): string {
@@ -403,7 +403,7 @@ function copilotHooksJson(): string {
   }, null, 2);
 }
 
-/** Grok Build hook file (~/.grok/hooks/termdock.json). Grok loads every JSON
+/** Grok Build hook file (~/.grok/hooks/veymux.json). Grok loads every JSON
  *  file there and global hooks need no folder-trust grant. Same wiring as
  *  CLAUDE_HOOK_EVENTS in owned-file form, with the Notification matcher. */
 function grokHooksJson(): string {
@@ -422,20 +422,20 @@ function grokHooksJson(): string {
   return JSON.stringify({ hooks }, null, 2);
 }
 
-/** OpenCode plugin (~/.config/opencode/plugins/termdock.js). OpenCode has no
+/** OpenCode plugin (~/.config/opencode/plugins/veymux.js). OpenCode has no
  *  declarative hooks — its extensibility surface is JS plugins auto-loaded
  *  from that directory — so the plugin bridges its events onto the same
- *  emitter. Inert outside termdock (both the JS guard and the emitter check
- *  TERMDOCK). */
+ *  emitter. Inert outside veymux (both the JS guard and the emitter check
+ *  VEYMUX). */
 export function opencodePluginJs(): string {
   const node = JSON.stringify(process.execPath);
   const script = JSON.stringify(resolveHookScript().script);
-  return `// termdock agent-hook opencode bridge — generated by termdock, do not edit.
-// Bridges OpenCode plugin events onto the termdock agent-hook emitter,
-// which is inert outside termdock (gated on the TERMDOCK env var).
+  return `// veymux agent-hook opencode bridge — generated by veymux, do not edit.
+// Bridges OpenCode plugin events onto the veymux agent-hook emitter,
+// which is inert outside veymux (gated on the VEYMUX env var).
 import { execFile } from "node:child_process";
-export const TermdockPresence = async () => {
-  if (!process.env["TERMDOCK"]) return {}
+export const VeymuxPresence = async () => {
+  if (!process.env["VEYMUX"]) return {}
   const exe = ${node}
   const script = ${script}
   const announced = new Set()
@@ -510,13 +510,13 @@ export const TermdockPresence = async () => {
 `;
 }
 
-/** Pi extension (~/.pi/agent/extensions/termdock/index.ts). Pi auto-loads TS
+/** Pi extension (~/.pi/agent/extensions/veymux/index.ts). Pi auto-loads TS
  *  extensions from per-directory index.ts files; this one forwards Pi's
- *  lifecycle events to the emitter. Inert outside termdock. */
+ *  lifecycle events to the emitter. Inert outside veymux. */
 function piExtensionTs(): string {
   const script = JSON.stringify(resolveHookScript().script);
   const node = JSON.stringify(process.execPath);
-  return `/* termdock agent-hook pi bridge — generated by termdock, do not edit. */
+  return `/* veymux agent-hook pi bridge — generated by veymux, do not edit. */
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { spawnSync } from "node:child_process";
 
@@ -534,7 +534,7 @@ function emit(event: string): void {
 }
 
 export default function (pi: ExtensionAPI) {
-  if (!process.env["TERMDOCK"]) return;
+  if (!process.env["VEYMUX"]) return;
   // Extension load = the agent is running in this pane; Pi has no separate
   // session-start event.
   emit("session-start");
@@ -563,7 +563,7 @@ function ownedFileState(file: string, expected: string, mark: string): HooksStat
     return 'not-installed';
   }
   if (contents === expected) return 'installed';
-  // termdock wrote it (the marker survives), but from another binary or an
+  // veymux wrote it (the marker survives), but from another binary or an
   // older version of the content.
   if (contents.includes(mark)) return 'outdated';
   return 'not-installed';
@@ -573,7 +573,7 @@ function ownedFileInstall(file: string, content: string, mark: string): void {
   try {
     const existing = fs.readFileSync(file, 'utf8');
     if (!existing.includes(mark)) {
-      throw new Error(`${file} exists but wasn't written by termdock; not touching it`);
+      throw new Error(`${file} exists but wasn't written by veymux; not touching it`);
     }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
@@ -592,12 +592,12 @@ function ownedFileUninstall(file: string, mark: string): string {
     throw error;
   }
   if (!contents.includes(mark)) {
-    throw new Error(`${file} wasn't written by termdock; not touching it`);
+    throw new Error(`${file} wasn't written by veymux; not touching it`);
   }
   fs.unlinkSync(file);
   // Pi's extension lives in its own directory; sweep it if now empty.
   const parent = path.dirname(file);
-  if (path.basename(parent) === 'termdock') {
+  if (path.basename(parent) === 'veymux') {
     try { fs.rmdirSync(parent); } catch { /* non-empty dir is the user's */ }
   }
   return 'Removed';
@@ -608,7 +608,7 @@ function ownedFileUninstall(file: string, mark: string): string {
 // tables inside ~/.kimi-code/config.toml — free-form TOML we must NOT rewrite
 // wholesale (comments, ordering, other tables are the user's). So instead of
 // parsing, the file is treated as a sequence of *sections* (a `[table]` /
-// `[[array]]` header line plus the lines up to the next header); termdock
+// `[[array]]` header line plus the lines up to the next header); veymux
 // owns exactly the sections whose command carries the marker, appends fresh
 // `[[hooks]]` blocks at the end of the file, and never touches the rest.
 // ---------------------------------------------------------------------------
@@ -638,13 +638,13 @@ function tomlSectionEvent(section: string): string | null {
 }
 
 /** The `command = '…'` value of a `[[hooks]]` section (literal-string form —
- *  the only form termdock writes; the command embeds double quotes). */
+ *  the only form veymux writes; the command embeds double quotes). */
 function tomlSectionCommand(section: string): string | null {
   const m = section.match(/^\s*command\s*=\s*'(.*)'\s*(?:#.*)?$/m);
   return m ? m[1] : null;
 }
 
-/** One `[[hooks]]` block as termdock writes it. Kimi allows exactly the
+/** One `[[hooks]]` block as veymux writes it. Kimi allows exactly the
  *  fields event/matcher/command/timeout. */
 function tomlHookBlock(hookEvent: string, command: string, sentinel: string): string {
   return `[[hooks]]\nevent = "${hookEvent}"\ncommand = '${command}'\ntimeout = ${hookTimeout(sentinel)}`;
@@ -677,12 +677,12 @@ export function tomlHooksState(file: string, agent: HookAgentSlug, events: Array
   return 'installed';
 }
 
-/** Merge termdock's `[[hooks]]` blocks into config.toml, preserving
+/** Merge veymux's `[[hooks]]` blocks into config.toml, preserving
  *  everything else (including the user's own hooks) byte-for-byte. */
 export function tomlHooksInstall(file: string, agent: HookAgentSlug, events: Array<[string, string]>): void {
   const text = readTextFile(file) ?? '';
   const mark = marker(agent);
-  // Drop any previous termdock blocks (stale exe path / older event set)…
+  // Drop any previous veymux blocks (stale exe path / older event set)…
   const kept = splitTomlSections(text).filter((s) => !s.includes(mark));
   let out = kept.join('\n');
   // …then append the fresh set at the end of the file, where new
@@ -696,7 +696,7 @@ export function tomlHooksInstall(file: string, agent: HookAgentSlug, events: Arr
   writeAtomic(file, out);
 }
 
-/** Remove every termdock `[[hooks]]` block, leaving the rest of the file
+/** Remove every veymux `[[hooks]]` block, leaving the rest of the file
  *  (user hooks included) untouched. */
 export function tomlHooksUninstall(file: string, agent: HookAgentSlug): string {
   const text = readTextFile(file);
@@ -704,7 +704,7 @@ export function tomlHooksUninstall(file: string, agent: HookAgentSlug): string {
   const mark = marker(agent);
   const sections = splitTomlSections(text);
   const removed = sections.filter((s) => s.includes(mark)).length;
-  if (removed === 0) return 'No termdock hooks found; nothing to remove';
+  if (removed === 0) return 'No veymux hooks found; nothing to remove';
   const out = sections
     .filter((s) => !s.includes(mark))
     .join('\n')
@@ -799,7 +799,7 @@ async function codexRuntimeHooksState(): Promise<HooksState> {
         }
       }
     });
-    child.stdin.write(`${JSON.stringify({ id: 1, method: 'initialize', params: { clientInfo: { name: 'termdock', version: '1' } } })}\n`);
+    child.stdin.write(`${JSON.stringify({ id: 1, method: 'initialize', params: { clientInfo: { name: 'veymux', version: '1' } } })}\n`);
   });
   codexRuntimeStateCache = { at: Date.now(), key, state };
   return state;
@@ -840,7 +840,7 @@ export async function installHooks(agent: HookAgentSlug): Promise<InstallResult>
     codexRuntimeStateCache = null;
     try {
       await enableCodexHooksFeature();
-      return { summary: 'Installed — open /hooks in Codex and approve any new Termdock hooks', devMode };
+      return { summary: 'Installed — open /hooks in Codex and approve any new Veymux hooks', devMode };
     } catch (error) {
       return {
         summary: `Installed, but couldn't run \`codex features enable hooks\` (${(error as Error).message}) — run it once manually`,
@@ -1093,14 +1093,14 @@ function uninstallPluginHooks(slug: string, file: string): string {
       }
     }
   }
-  if (removed === 0) return 'No termdock hooks found; nothing to remove';
+  if (removed === 0) return 'No veymux hooks found; nothing to remove';
   writeAtomic(file, JSON.stringify(root, null, 2));
   return 'Removed';
 }
 
 /**
  * Startup keeper: rewrite any integration that is installed but stale so
- * hooks keep pointing at a real termdock after the package moves or updates.
+ * hooks keep pointing at a real veymux after the package moves or updates.
  * Covers both built-in and plugin agents. Returns how many were refreshed.
  */
 export function refreshStaleHooksAtLaunch(): number {

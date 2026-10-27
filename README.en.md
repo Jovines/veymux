@@ -1,25 +1,25 @@
-# Termdock
+# Veymux
 
 <p align="center">
-  <img src="public/pwa-192x192.png" alt="Termdock icon" width="96" />
+  <img src="public/pwa-192x192.png" alt="Veymux icon" width="96" />
 </p>
 
 **Bring your terminal and AI coding workspace to your phone, browser, and Mac.**
 
-[![npm](https://img.shields.io/npm/v/termdock)](https://www.npmjs.com/package/termdock)
-[![Downloads](https://img.shields.io/npm/dm/termdock)](https://www.npmjs.com/package/termdock)
-[![macOS Download](https://img.shields.io/github/v/release/Jovines/termdock?label=macOS)](https://github.com/Jovines/termdock/releases)
+[![npm](https://img.shields.io/npm/v/veymux)](https://www.npmjs.com/package/veymux)
+[![Downloads](https://img.shields.io/npm/dm/veymux)](https://www.npmjs.com/package/veymux)
+[![macOS Download](https://img.shields.io/github/v/release/Jovines/veymux?label=macOS)](https://github.com/Jovines/veymux/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
 [简体中文](README.md) · English
 
-Termdock is a self-hosted web terminal and AI Agent workspace. Run Claude Code, Codex, Gemini CLI, or your usual shell tools on your computer, then reconnect to the same tmux session from your phone. Connect multiple machines, exchange messages between Agent sessions, review changes, and inspect files from one workspace.
+Veymux is a self-hosted web terminal and AI Agent workspace. Run Claude Code, Codex, Gemini CLI, or your usual shell tools on your computer, then reconnect to the same tmux session from your phone. Connect multiple machines, exchange messages between Agent sessions, review changes, and inspect files from one workspace.
 
-Commands run on the machine hosting the Termdock service. The browser, PWA, and macOS app connect to that service. Install and authenticate your preferred AI CLI separately on the service machine; model accounts and usage charges belong to the respective providers.
+Commands run on the machine hosting the Veymux service. The browser, PWA, and macOS app connect to that service. Install and authenticate your preferred AI CLI separately on the service machine; model accounts and usage charges belong to the respective providers.
 
 [Quick start](#quick-start) · [Features](#features) · [AI and collaboration](#ai-and-collaboration) · [FAQ](#faq) · [Documentation](#documentation) · [Contributing](#contributing)
 
-## Why Termdock
+## Why Veymux
 
 - **Continue away from your desk.** Read output, send instructions, and answer Agent questions from your phone. tmux sessions keep running when you close the client.
 - **Use a terminal designed for touch.** Customizable shortcut bars, touch scrolling, session swiping, and iOS keyboard adjustments make terminal interaction easier on small screens.
@@ -37,7 +37,7 @@ Commands run on the machine hosting the Termdock service. The browser, PWA, and 
 | Runtime | **Node.js 22+** and npm |
 | Persistent sessions | `tmux` available in `PATH` |
 | Web client | A current Chrome, Edge, Firefox, or Safari; use HTTPS for phone access and PWA installation |
-| macOS app | The current packaging target is Apple Silicon / arm64; see [Releases](https://github.com/Jovines/termdock/releases) |
+| macOS app | The current packaging target is Apple Silicon / arm64; see [Releases](https://github.com/Jovines/veymux/releases) |
 
 Installation checks native terminal dependencies and tmux and attempts repairs when needed. To prepare tmux manually:
 
@@ -55,7 +55,7 @@ If `node-pty` needs compilation, install Xcode Command Line Tools on macOS (`xco
 On macOS, installation, startup repair, and automatic updates resolve the SDK, `clang`, and `clang++` from the selected Xcode / Command Line Tools, preserving explicit `DEVELOPER_DIR`, `SDKROOT`, `CC`, and `CXX` settings. To select Xcode for one installation without changing the global selection:
 
 ```bash
-DEVELOPER_DIR="/Applications/Xcode.app/Contents/Developer" npm install -g termdock --foreground-scripts
+DEVELOPER_DIR="/Applications/Xcode.app/Contents/Developer" npm install -g veymux --foreground-scripts
 ```
 
 For `tapi error` / `unknown architecture`, check the toolchain paths in the failure log, `xcode-select -p`, and `xcrun --sdk macosx --show-sdk-path`. Explicit SDK or compiler overrides must also belong to a compatible toolchain.
@@ -63,41 +63,41 @@ For `tapi error` / `unknown architecture`, check the toolchain paths in the fail
 ### Install and launch
 
 ```bash
-npm install -g termdock
+npm install -g veymux
 
 # Set a password before starting the service
-td --set-password
-td
+veymux --set-password
+veymux
 
 # Find the actual URLs and service status
-td --status
+veymux --status
 ```
 
-`td` and `termdock` are aliases for the same CLI. First launch may guide you through a local hostname and HTTPS setup. Open the URL printed in the startup log or `td --status`, sign in, and create a terminal.
+`veymux` and `veymux` are aliases for the same CLI. First launch may guide you through a local hostname and HTTPS setup. Open the URL printed in the startup log or `veymux --status`, sign in, and create a terminal.
 
 For a local-only trial:
 
 ```bash
-npx termdock --host 127.0.0.1
+npx veymux --host 127.0.0.1
 ```
 
 Without certificates, the local URL is `http://localhost:9834`. With certificates, use the HTTPS URL reported by the CLI. The default listener is `0.0.0.0:9834`; background mode uses a supervisor to recover from service crashes.
 
 ### macOS app
 
-Download the DMG from [GitHub Releases](https://github.com/Jovines/termdock/releases). The connection center connects to independently running local, LAN, or public Termdock services.
+Download the DMG from [GitHub Releases](https://github.com/Jovines/veymux/releases). The connection center connects to independently running local, LAN, or public Veymux services.
 
-When Node.js 22+ and the CLI are available, the app detects and starts the local service as needed. When the CLI is missing, **安装并启动** installs it into `~/.termdock/cli`. If Node.js is missing or outdated, the connection center offers its official download page. Quitting the app leaves the standalone service running.
+When Node.js 22+ and the CLI are available, the app detects and starts the local service as needed. When the CLI is missing, **安装并启动** installs it into `~/.veymux/cli`. If Node.js is missing or outdated, the connection center offers its official download page. Quitting the app leaves the standalone service running.
 
 The app adds native windows, shortcuts, Finder file interactions, and application updates. See the [macOS guide](docs/macos-desktop.md) for build, signing, and upgrade details.
 
 ### Phone access and HTTPS
 
 ```bash
-td --set-password
-td --setup-local-https
-td
-td --status
+veymux --set-password
+veymux --setup-local-https
+veymux
+veymux --status
 ```
 
 The HTTPS setup checks mkcert; on macOS it can install mkcert through Homebrew. You can also supply your own certificate and key with `--https-cert` and `--https-key`.
@@ -105,7 +105,7 @@ The HTTPS setup checks mkcert; on macOS it can install mkcert through Homebrew. 
 On the same reachable network, open the onboarding URL printed by the service, install and trust its local CA, then open the reported HTTPS URL:
 
 ```text
-https://<name>.termdock.local:9834
+https://<name>.veymux.local:9834
 ```
 
 On iPhone, use Safari's **Share → Add to Home Screen**. On Android, use the browser's app installation action. mDNS may be blocked by guest Wi-Fi, client isolation, or a VPN. An alternative hostname or IP address must also be covered by the certificate.
@@ -125,31 +125,31 @@ On iPhone, use Safari's **Share → Add to Home Screen**. On Android, use the br
 | Clients | Browser, installable PWA, and macOS desktop app; English and Chinese UI; Flexoki dark and light themes |
 | Access | OPAQUE password authorization, Noise encrypted transport, device invitations, revocation, and configured encrypted relays |
 
-Desktop control supports RDP and VNC. Ubuntu/Linux and Windows default to RDP; macOS defaults to built-in VNC Screen Sharing. RDP requires a local `guacd` backend on the Termdock service computer, bound only to `127.0.0.1:4822`. Enter the target’s Remote Desktop credentials and port (usually 3389; Ubuntu Desktop Sharing may use 3390). Credentials travel through the encrypted Termdock channel and are never stored or placed in URLs. VNC uses port 5900; keep the service-to-VNC connection on a trusted LAN or VPN. See the [desktop-control instructions](README.md#电脑控制) for setup.
+Desktop control supports RDP and VNC. Ubuntu/Linux and Windows default to RDP; macOS defaults to built-in VNC Screen Sharing. RDP requires a local `guacd` backend on the Veymux service computer, bound only to `127.0.0.1:4822`. Enter the target’s Remote Desktop credentials and port (usually 3389; Ubuntu Desktop Sharing may use 3390). Credentials travel through the encrypted Veymux channel and are never stored or placed in URLs. VNC uses port 5900; keep the service-to-VNC connection on a trusted LAN or VPN. See the [desktop-control instructions](README.md#电脑控制) for setup.
 
 PWA caching lets you reopen the cached interface offline. Terminal input, file access, and device control still need a working service connection. Phones may pause background clients; tmux continues on the service host.
 
 ## AI and collaboration
 
-Open an Agent in your project terminal, then select **Map → Generate** in the right sidebar. Review the built-in analysis prompt, insert it into the current input or context draft, and send it to the Agent. Choose the entire project, selected directories/modules (multiple relative paths), or a feature flow across directories. Optional controls set dependency depth and analysis requirements; large projects do not need a full overview first. Wide workspaces reuse the Files tree beside the analysis form; expand folders, search and use its reference buttons to add whole folders or files while writing your question. Phones and narrow sidebars use **Choose folders or files** and return to the form after confirmation. You can also use the folder currently open in Files, the current file, or paste file, line and diff references, which become project-relative paths. To analyze one feature within a module, choose **Feature flow**, describe the feature and select its module folder. Boundary mode explains the implementation within those paths; dependency mode follows only necessary outside calls. Write your own question in **Analysis request and constraints**; the generated prompt combines it with the selected scope. The overview uses `.termdock/architecture.json`; scoped maps are saved independently under `.termdock/architectures/`. Switch with **Saved analyses**. **Update** targets only the selected map; **Analyze this module in detail** prepares its source paths directly. Encrypted file watchers refresh saved changes with a 300 ms debounce, backed by ten-second polling for unsubscribed directories and disconnections. Analysis uses the current Agent's time and allowance. Maps and source files use the selected service's encrypted transport, including remote projects reached through an entry relay. On phones, module cards open a separate reading panel that preserves list position. Ordinary and fullscreen graphs share a reading flow: wide workspaces show details beside the canvas, while narrow workspaces start with a compact two-line preview and let you expand or collapse details explicitly. Layout follows the available panel space, including narrow desktop sidebars. Source and detailed analysis in the ordinary view open a reading page inside the workspace; returning preserves the map position. Reading panes reserve space for the canvas, preserve zoom, and keep the selected node visible. Follow related modules and step back through them; preview source at its referenced line within the map, then return to the module in one action. Switch perspectives and explore submodules without leaving fullscreen. Diagrams also support drag-to-pan and pinch-to-zoom, with readable labels by default. Long analysis notes, path lists and limitations are kept in collapsible sections.
+Open an Agent in your project terminal, then select **Map → Generate** in the right sidebar. Review the built-in analysis prompt, insert it into the current input or context draft, and send it to the Agent. Choose the entire project, selected directories/modules (multiple relative paths), or a feature flow across directories. Optional controls set dependency depth and analysis requirements; large projects do not need a full overview first. Wide workspaces reuse the Files tree beside the analysis form; expand folders, search and use its reference buttons to add whole folders or files while writing your question. Phones and narrow sidebars use **Choose folders or files** and return to the form after confirmation. You can also use the folder currently open in Files, the current file, or paste file, line and diff references, which become project-relative paths. To analyze one feature within a module, choose **Feature flow**, describe the feature and select its module folder. Boundary mode explains the implementation within those paths; dependency mode follows only necessary outside calls. Write your own question in **Analysis request and constraints**; the generated prompt combines it with the selected scope. The overview uses `.veymux/architecture.json`; scoped maps are saved independently under `.veymux/architectures/`. Switch with **Saved analyses**. **Update** targets only the selected map; **Analyze this module in detail** prepares its source paths directly. Encrypted file watchers refresh saved changes with a 300 ms debounce, backed by ten-second polling for unsubscribed directories and disconnections. Analysis uses the current Agent's time and allowance. Maps and source files use the selected service's encrypted transport, including remote projects reached through an entry relay. On phones, module cards open a separate reading panel that preserves list position. Ordinary and fullscreen graphs share a reading flow: wide workspaces show details beside the canvas, while narrow workspaces start with a compact two-line preview and let you expand or collapse details explicitly. Layout follows the available panel space, including narrow desktop sidebars. Source and detailed analysis in the ordinary view open a reading page inside the workspace; returning preserves the map position. Reading panes reserve space for the canvas, preserve zoom, and keep the selected node visible. Follow related modules and step back through them; preview source at its referenced line within the map, then return to the module in one action. Switch perspectives and explore submodules without leaving fullscreen. Diagrams also support drag-to-pan and pinch-to-zoom, with readable labels by default. Long analysis notes, path lists and limitations are kept in collapsible sections.
 
-The workspace reads oh-my-mermaid `.omm` directories, supports an all-perspective overview, nested levels, cross-perspective references and seven Markdown document fields. Edit node or perspective documents with version history and optimistic conflict protection. History, import and sharing provides changes, JSON / `.omm` bundles and private viewer links bound to the target service. `td architecture --help` exposes native commands and project-local Agent skill setup. Authentication and synchronization use Termdock services and device grants rather than the upstream hosted SaaS. See the [capability comparison and validation boundaries](docs/architecture-parity.md).
+The workspace reads oh-my-mermaid `.omm` directories, supports an all-perspective overview, nested levels, cross-perspective references and seven Markdown document fields. Edit node or perspective documents with version history and optimistic conflict protection. History, import and sharing provides changes, JSON / `.omm` bundles and private viewer links bound to the target service. `veymux architecture --help` exposes native commands and project-local Agent skill setup. Authentication and synchronization use Veymux services and device grants rather than the upstream hosted SaaS. See the [capability comparison and validation boundaries](docs/architecture-parity.md).
 
 ### Use your preferred CLI
 
-Install and sign in to an Agent CLI on the service host, then launch it inside a Termdock terminal, for example `claude`, `codex`, or `gemini`. You can continue using the same terminal from another client. Ordinary shell programs such as Vim and htop also work.
+Install and sign in to an Agent CLI on the service host, then launch it inside a Veymux terminal, for example `claude`, `codex`, or `gemini`. You can continue using the same terminal from another client. Ordinary shell programs such as Vim and htop also work.
 
 ### Collaborate across sessions and machines
 
 Create a collaboration group and add Agent sessions. Use its workspace to send messages, create goals, answer questions, review deliverables, and accept results. Automatic collaboration supports a coordinator, separate execution directories, and independent review.
 
-Inside a Termdock-managed terminal:
+Inside a Veymux-managed terminal:
 
 ```bash
-td collab --help
-td collab status
-td collab send <recipient-session-id> 'Please review the changes and reply with your findings'
-td collab inbox --json
+veymux collab --help
+veymux collab status
+veymux collab send <recipient-session-id> 'Please review the changes and reply with your findings'
+veymux collab inbox --json
 ```
 
 Collaboration relies on terminal delivery and explicit replies rather than provider-specific hooks. After service identity registration, cross-service delivery and retries run in the service background without an open browser. **Written to a terminal does not mean read by an Agent or completed.** Reports retain their original text and timestamps; outcomes require explicit review or acceptance.
@@ -159,27 +159,27 @@ See the [collaboration guide](docs/collaboration.md) and [encrypted access and r
 ### Progress reminders and scheduled prompts
 
 ```bash
-td notify 'Tests passed; ready for review' --title 'Milestone'
-td automation create --name 'Review current work' --every 30 --self \
+veymux notify 'Tests passed; ready for review' --title 'Milestone'
+veymux automation create --name 'Review current work' --every 30 --self \
   --prompt 'Review the current work and report what needs attention'
-td automation list
-td automation pause <automation-id>
-td automation --help
+veymux automation list
+veymux automation pause <automation-id>
+veymux automation --help
 ```
 
-`td n` is the short alias for `td notify`. Progress reminders require a connected Termdock page and are not stored offline. Existing-session scheduled prompts require an Agent running when the schedule fires. Schedules use the service timezone and run while the service is running; successful dispatch is not proof of task completion.
+`veymux n` is the short alias for `veymux notify`. Progress reminders require a connected Veymux page and are not stored offline. Existing-session scheduled prompts require an Agent running when the schedule fires. Schedules use the service timezone and run while the service is running; successful dispatch is not proof of task completion.
 
 ### Agent plugins
 
 A plugin repository contains a root `manifest.json` and may include icons or helper scripts:
 
 ```bash
-td plugin-install https://github.com/owner/my-agent-termdock-plugin
-td plugin-list --json
-td plugin-doctor my-agent --json
-td plugin-update my-agent
-td plugin-remove my-agent
-td agent-plugin --json
+veymux plugin-install https://github.com/owner/my-agent-veymux-plugin
+veymux plugin-list --json
+veymux plugin-doctor my-agent --json
+veymux plugin-update my-agent
+veymux plugin-remove my-agent
+veymux agent-plugin --json
 ```
 
 Install only repositories you trust. Plugin installation and Agent hook installation have separate lifecycles; installing a plugin does not automatically install hooks. The [Chinese README](README.md#分享和安装-agent-插件) includes manifest examples and model selection rules.
@@ -187,27 +187,27 @@ Install only repositories you trust. Plugin installation and Agent hook installa
 ## Service management and configuration
 
 ```bash
-td --status              # Inspect the background service
-td --stop                # Stop the supervisor and service
-td --restart             # Restart a supervised service
-td --foreground          # Run in the foreground for diagnosis
-td update                # Update the globally installed CLI
-td --help                # Full CLI reference
+veymux --status              # Inspect the background service
+veymux --stop                # Stop the supervisor and service
+veymux --restart             # Restart a supervised service
+veymux --foreground          # Run in the foreground for diagnosis
+veymux update                # Update the globally installed CLI
+veymux --help                # Full CLI reference
 ```
 
 The CLI also checks for updates in the background. Installing an update does not automatically restart the running service; apply it through the explicit restart action. macOS app updates are separate from service updates.
 
 Configuration examples live in [.env.example](.env.example); configuration loading, timeouts, supervision, and public access are documented in the [configuration guide](docs/configuration.md).
 
-State lives under `~/.termdock`, including `auth.json`, `server.json`, `server.log`, `crash.log`, certificates, and federation identity and authorization data. Treat this directory as private.
+State lives under `~/.veymux`, including `auth.json`, `server.json`, `server.log`, `crash.log`, certificates, and federation identity and authorization data. Treat this directory as private.
 
-The terminal has the permissions of the system account running the service. Public access requires a strong password, trusted HTTPS, and a correctly configured `TERMDOCK_PUBLIC_ORIGIN`; see [public access configuration](docs/configuration.md#公网安全模式). Application authentication and path checks do not provide multi-tenant OS isolation. A PWA still requires a trusted frontend code source.
+The terminal has the permissions of the system account running the service. Public access requires a strong password, trusted HTTPS, and a correctly configured `VEYMUX_PUBLIC_ORIGIN`; see [public access configuration](docs/configuration.md#公网安全模式). Application authentication and path checks do not provide multi-tenant OS isolation. A PWA still requires a trusted frontend code source.
 
 ## Development
 
 ```bash
-git clone https://github.com/Jovines/termdock.git
-cd termdock
+git clone https://github.com/Jovines/veymux.git
+cd veymux
 npm install
 npm run dev
 ```
@@ -226,11 +226,11 @@ The stack includes React, TypeScript, Vite, xterm.js, Zustand, Tailwind CSS, Exp
 
 ## FAQ
 
-**Which URL should I open on my phone?** Use the reachable HTTPS URL from `td --status`. `localhost` on your phone refers to the phone itself. Complete CA trust through the onboarding page first.
+**Which URL should I open on my phone?** Use the reachable HTTPS URL from `veymux --status`. `localhost` on your phone refers to the phone itself. Complete CA trust through the onboarding page first.
 
 **Will closing the client stop my work?** Not in tmux mode. Destroying a session, killing its process, or shutting down the host does stop it.
 
-**Why does terminal creation fail?** Check `node --version`, `tmux -V`, `td --status`, and `~/.termdock/server.log`. Common causes are an old Node.js runtime, missing tmux, or a failed native `node-pty` installation.
+**Why does terminal creation fail?** Check `node --version`, `tmux -V`, `veymux --status`, and `~/.veymux/server.log`. Common causes are an old Node.js runtime, missing tmux, or a failed native `node-pty` installation.
 
 **Why do I still see the old UI after updating?** Restart the service after the CLI update, accept the page update, and reload. If the phone PWA retains older resources, fully close and reopen it.
 
@@ -252,19 +252,18 @@ Some detailed guides are currently in Chinese.
 
 ## Contributing
 
-Bug reports, feature discussions, translations, device feedback, Agent plugins, and pull requests are welcome. English and Chinese are both welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md), [Issues](https://github.com/Jovines/termdock/issues), or [Pull Requests](https://github.com/Jovines/termdock/pulls).
+Bug reports, feature discussions, translations, device feedback, Agent plugins, and pull requests are welcome. English and Chinese are both welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md), [Issues](https://github.com/Jovines/veymux/issues), or [Pull Requests](https://github.com/Jovines/veymux/pulls).
 
-If Termdock helps your workflow, consider starring the repository or sharing it with someone who needs a mobile terminal or self-hosted AI workspace. Remove passwords, invitation links, keys, and private paths before sharing logs or screenshots.
+If Veymux helps your workflow, consider starring the repository or sharing it with someone who needs a mobile terminal or self-hosted AI workspace. Remove passwords, invitation links, keys, and private paths before sharing logs or screenshots.
 
 ## License and acknowledgments
 
-Termdock uses the [MIT License](LICENSE). Bundled dependencies and fonts retain their own licenses; see [third-party notices](public/third-party-notices.txt).
+Veymux uses the [MIT License](LICENSE). Bundled dependencies and fonts retain their own licenses; see [third-party notices](public/third-party-notices.txt).
 
-Thanks to [xterm.js](https://github.com/xtermjs/xterm.js), [tmux](https://github.com/tmux/tmux), [node-pty](https://github.com/microsoft/node-pty), [noVNC](https://github.com/novnc/noVNC), and the other open-source projects that make Termdock possible. The interface uses [Flexoki](https://stephango.com/flexoki).
+Thanks to [xterm.js](https://github.com/xtermjs/xterm.js), [tmux](https://github.com/tmux/tmux), [node-pty](https://github.com/microsoft/node-pty), [noVNC](https://github.com/novnc/noVNC), and the other open-source projects that make Veymux possible. The interface uses [Flexoki](https://stephango.com/flexoki).
 
 <details>
 <summary>Project naming note</summary>
 
-Termcove is a tentative future name. The application, npm package, and CLI currently remain Termdock / `termdock`; no migration is needed.
 
 </details>

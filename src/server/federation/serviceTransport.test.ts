@@ -12,7 +12,7 @@ import { openServiceSocket, createServiceSocket, serviceTlsOptions } from './ser
 const cleanups: (() => void)[] = [];
 afterEach(() => { for (const close of cleanups.splice(0).reverse()) close(); });
 async function fixture(mode: 'ready' | 'invalid' | 'hold' = 'ready') {
-  const dir = mkdtempSync(join(tmpdir(), 'td-service-transport-')); cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+  const dir = mkdtempSync(join(tmpdir(), 'veymux-service-transport-')); cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
   execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1', '-keyout', join(dir, 'key.pem'), '-out', join(dir, 'cert.pem'), '-subj', '/CN=localhost', '-addext', 'subjectAltName=IP:127.0.0.1,DNS:localhost'], { stdio: 'ignore' });
   const ca = readFileSync(join(dir, 'cert.pem'));
   const server = createServer({ cert: ca, key: readFileSync(join(dir, 'key.pem')) });

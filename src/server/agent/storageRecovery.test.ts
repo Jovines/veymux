@@ -8,7 +8,7 @@ import { TodoStore } from '../todos/store.js';
 import { CollaborationStore } from './collaborationStore.js';
 
 let dir: string;
-beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'td-recovery-capacity-')); });
+beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-recovery-capacity-')); });
 afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); fs.rmSync(dir, { recursive: true, force: true }); });
 const owner = `12D3KooW${'a'.repeat(40)}`;
 const taskInput = { groupId: 'group', title: 'Task', spec: 'Work', idempotencyKey: 'original-request' };

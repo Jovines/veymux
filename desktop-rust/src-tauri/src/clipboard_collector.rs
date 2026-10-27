@@ -20,7 +20,7 @@ pub fn arguments(image: bool, directory: &Path) -> [OsString; 3] {
 pub fn private_directory(parent: Option<&Path>) -> std::io::Result<tempfile::TempDir> {
     use std::os::unix::fs::PermissionsExt;
     let mut builder = tempfile::Builder::new();
-    builder.prefix("termdock-preview-clipboard-").permissions(std::fs::Permissions::from_mode(0o700));
+    builder.prefix("veymux-preview-clipboard-").permissions(std::fs::Permissions::from_mode(0o700));
     let directory = match parent { Some(parent) => builder.tempdir_in(parent), None => builder.tempdir() }?;
     if !valid_private_directory(directory.path()) { return Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, "Private clipboard directory was not created securely")); }
     Ok(directory)
@@ -29,7 +29,7 @@ pub fn private_directory(parent: Option<&Path>) -> std::io::Result<tempfile::Tem
 pub fn valid_private_directory(directory: &Path) -> bool {
     use std::os::unix::fs::PermissionsExt;
     directory.is_absolute()
-        && directory.file_name().is_some_and(|name| name.to_string_lossy().starts_with("termdock-preview-clipboard-"))
+        && directory.file_name().is_some_and(|name| name.to_string_lossy().starts_with("veymux-preview-clipboard-"))
         && directory.symlink_metadata().is_ok_and(|entry| entry.is_dir() && !entry.file_type().is_symlink() && entry.permissions().mode() & 0o777 == 0o700)
 }
 pub struct Budget {
@@ -122,7 +122,7 @@ pub async fn collect(
 )->Result<Vec<u8>,String>{
     collect_report(executable,arguments,current,resident,budget).await.map(|value|value.bytes).map_err(|error|{
         // Keep process diagnostics in the host log, never in transient UI text.
-        eprintln!("Termdock clipboard collector: {error}");error.user_message().to_owned()
+        eprintln!("Veymux clipboard collector: {error}");error.user_message().to_owned()
     })
 }
 pub async fn collect_report(
@@ -180,13 +180,13 @@ mod tests {
         assert_eq!(directory.path().metadata().unwrap().permissions().mode()&0o777,0o700);
         assert!(valid_private_directory(directory.path()));
         let nested=private_directory(Some(directory.path())).unwrap();assert!(valid_private_directory(nested.path()));
-        let link=directory.path().join("termdock-preview-clipboard-link");symlink(nested.path(),&link).unwrap();assert!(!valid_private_directory(&link));
+        let link=directory.path().join("veymux-preview-clipboard-link");symlink(nested.path(),&link).unwrap();assert!(!valid_private_directory(&link));
         std::fs::set_permissions(nested.path(),std::fs::Permissions::from_mode(0o755)).unwrap();assert!(!valid_private_directory(nested.path()));
-        assert!(!valid_private_directory(Path::new("termdock-preview-clipboard-relative")));
+        assert!(!valid_private_directory(Path::new("veymux-preview-clipboard-relative")));
     }
     #[test]
     fn helper_image_and_file_modes_and_private_directory_are_separate_literal_arguments() {
-        let path = Path::new("/tmp/termdock-preview-clipboard-name with spaces");
+        let path = Path::new("/tmp/veymux-preview-clipboard-name with spaces");
         for image in [true, false] {
             let args = arguments(image, path);
             assert_eq!(args.len(), 3);

@@ -28,14 +28,14 @@ const text = () => readChatEditor(editor()).text;
 function type(value: string) { const node = editor(); node.replaceChildren(document.createTextNode(value)); setChatEditorCaret(node, value.length); fireEvent.input(node); }
 async function mount(active = true, canWrite = true) { const view = render(<SessionChatView sessionId="context-reference" active={active} canWrite={canWrite} onTerminal={() => {}} />); await screen.findByText('想一起完成什么？'); return view; }
 function insert(reference: ContextReference, extra: object = {}) {
-  fireEvent(window, new CustomEvent('termdock-insert-reference', { detail: { sessionId: 'context-reference', text: reference.text, reference, ...extra } }));
+  fireEvent(window, new CustomEvent('veymux-insert-reference', { detail: { sessionId: 'context-reference', text: reference.text, reference, ...extra } }));
 }
 
 it('keeps typed/pasted paths, code and lookalike labels as text; only explicit metadata creates a block', async () => {
   await mount();
   const ordinary = `${code.text}\n【文件1】 【代码1】 user@example.com`;
   type(ordinary); expect(document.querySelector('[data-chat-inline-token]')).toBeNull();
-  fireEvent(window, new CustomEvent('termdock-insert-reference', { detail: { sessionId: 'context-reference', text: file.text } }));
+  fireEvent(window, new CustomEvent('veymux-insert-reference', { detail: { sessionId: 'context-reference', text: file.text } }));
   expect(document.querySelector('[data-chat-inline-token]')).toBeNull();
   expect(text()).toContain(ordinary);
   insert(file);
@@ -79,11 +79,11 @@ it('preserves the original terminal payload while carrying optional chat metadat
     expect(detail.text).toBe(code.text);
     expect(detail.reference).toMatchObject({ ...code, text: code.text });
     expect(detail.submitAfterPaste).toBe(false);
-    window.dispatchEvent(new CustomEvent('termdock-insert-reference-ack', { detail: { nonce: detail.nonce, ok: true } }));
+    window.dispatchEvent(new CustomEvent('veymux-insert-reference-ack', { detail: { nonce: detail.nonce, ok: true } }));
   });
-  window.addEventListener('termdock-insert-reference', receive);
+  window.addEventListener('veymux-insert-reference', receive);
   try { expect(await requestReferenceInsertion(code.text, 'terminal', () => true, source, { reference: code })).toBe(true); expect(receive).toHaveBeenCalledOnce(); }
-  finally { window.removeEventListener('termdock-insert-reference', receive); source.remove(); }
+  finally { window.removeEventListener('veymux-insert-reference', receive); source.remove(); }
 });
 
 it('requires the matching session, permission and owned input scope', async () => {
@@ -98,7 +98,7 @@ it('requires the matching session, permission and owned input scope', async () =
   view.rerender(<SessionChatView sessionId="context-reference" onTerminal={() => {}} />);
   const source = document.createElement('button'); document.body.append(source);
   const owned = createOwnedTerminalPasteRequest(source, 'context-reference', file.text)!;
-  try { act(() => window.dispatchEvent(new CustomEvent('termdock-insert-reference', { detail: { ...owned, reference: file } }))); expect(screen.getByRole('button', { name: '预览文件 login.ts' })).toBeTruthy(); }
+  try { act(() => window.dispatchEvent(new CustomEvent('veymux-insert-reference', { detail: { ...owned, reference: file } }))); expect(screen.getByRole('button', { name: '预览文件 login.ts' })).toBeTruthy(); }
   finally { releaseOwnedTerminalPasteRequest(owned.nonce); source.remove(); }
 });
 
@@ -113,7 +113,7 @@ it('opens captured code independently of changed files and dismisses it without 
 });
 
 it('preserves literal metadata examples as user text, including after sending', async () => {
-  const literal = '```termdock-context\n' + JSON.stringify({ attachments: [{ path: file.path, name: 'login.ts', reference: '文件1', context: file }], mentions: [] }) + '\n```';
+  const literal = '```veymux-context\n' + JSON.stringify({ attachments: [{ path: file.path, name: 'login.ts', reference: '文件1', context: file }], mentions: [] }) + '\n```';
   const result = parseChatDraft(composeChatDraft(literal, [], []));
   expect(result.text).toBe(literal);
   expect(result.attachments).toEqual([]);

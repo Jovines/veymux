@@ -39,7 +39,7 @@ const feedMock = vi.hoisted(() => ({
   > => ({
     status: 200 as const,
     body: JSON.stringify({
-      url: 'https://github.com/Jovines/termdock/releases/download/v1.4.82/update.zip',
+      url: 'https://github.com/Jovines/veymux/releases/download/v1.4.82/update.zip',
     }),
   })),
   startGitHubUpdateFeedServer: vi.fn(async () => ({
@@ -75,8 +75,8 @@ describe('desktop updater', () => {
   it('prepares a notarized Rust migration and quits through the dedicated installer without Squirrel',async()=>{
     const updater=await import('./updater.js');
     updater.configureDesktopUpdater(vi.fn(async()=>({response:1,checkboxChecked:false})));
-    feedMock.buildGitHubUpdateFeed.mockResolvedValueOnce({status:200,body:JSON.stringify({rustMigration:true,version:'1.4.358',name:'Termdock 1.4.358'})});
-    migrationMock.prepareRustMigration.mockResolvedValue({root:'/owned',target:'/Applications/Termdock.app',staged:'/owned/Termdock.app'});
+    feedMock.buildGitHubUpdateFeed.mockResolvedValueOnce({status:200,body:JSON.stringify({rustMigration:true,version:'1.4.358',name:'Veymux 1.4.358'})});
+    migrationMock.prepareRustMigration.mockResolvedValue({root:'/owned',target:'/Applications/Veymux.app',staged:'/owned/Veymux.app'});
     expect(await updater.checkForDesktopUpdates()).toMatchObject({status:'ready',latestVersion:'1.4.358'});
     expect(electronMock.autoUpdater.checkForUpdates).not.toHaveBeenCalled();
     updater.installDownloadedDesktopUpdate();await Promise.resolve();
@@ -138,7 +138,7 @@ describe('desktop updater', () => {
     electronMock.emit('update-available');
     await expect(check).resolves.toMatchObject({ status: 'downloading' });
 
-    electronMock.emit('update-downloaded', {}, '', 'Termdock v1.4.82', new Date(), '');
+    electronMock.emit('update-downloaded', {}, '', 'Veymux v1.4.82', new Date(), '');
     expect(updater.getDesktopUpdateState()).toMatchObject({
       status: 'ready',
       latestVersion: '1.4.82',

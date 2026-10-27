@@ -13,10 +13,10 @@ afterEach(async () => {
   document.body.replaceChildren();
   document.body.removeAttribute('style');
   document.documentElement.removeAttribute('style');
-  delete document.documentElement.dataset.termdockNativeKeyboard;
-  delete document.documentElement.dataset.termdockTouchViewport;
-  delete document.documentElement.dataset.termdockIpadPwa;
-  delete window.__termdockWorkspaceHost;
+  delete document.documentElement.dataset.veymuxNativeKeyboard;
+  delete document.documentElement.dataset.veymuxTouchViewport;
+  delete document.documentElement.dataset.veymuxIpadPwa;
+  delete window.__veymuxWorkspaceHost;
   localStorage.clear(); sessionStorage.clear();
   await page.viewport(390, 844);
 });
@@ -33,9 +33,9 @@ it.each([
   // entry, while keeping the retained workspace a real nested browser frame.
   vi.spyOn(window, 'parent', 'get').mockReturnValue(window);
   const html = document.documentElement;
-  html.dataset.termdockNativeKeyboard = String(native);
-  html.dataset.termdockTouchViewport = String(width <= 820);
-  html.dataset.termdockIpadPwa = String(ipad);
+  html.dataset.veymuxNativeKeyboard = String(native);
+  html.dataset.veymuxTouchViewport = String(width <= 820);
+  html.dataset.veymuxIpadPwa = String(ipad);
   html.style.setProperty('--safe-top-inset', `${top}px`);
   html.style.setProperty('--safe-bottom-inset', `${bottom}px`);
   html.style.setProperty('--app-base-vh', `${height}px`);
@@ -63,9 +63,9 @@ it.each([
   const css = child.createElement('style');
   css.textContent = Array.from(document.styleSheets).flatMap(sheet => Array.from(sheet.cssRules, rule => rule.cssText)).join('\n');
   child.head.append(css);
-  child.documentElement.dataset.termdockNativeKeyboard = String(native);
-  child.documentElement.dataset.termdockTouchViewport = String(width <= 820);
-  child.documentElement.dataset.termdockIpadPwa = String(ipad);
+  child.documentElement.dataset.veymuxNativeKeyboard = String(native);
+  child.documentElement.dataset.veymuxTouchViewport = String(width <= 820);
+  child.documentElement.dataset.veymuxIpadPwa = String(ipad);
   child.documentElement.style.cssText = html.style.cssText;
   child.body.innerHTML = '<div id="root"><div class="flex h-full flex-col"><header class="h-11 shrink-0">Terminal</header><main class="min-h-0 flex-1">Terminal content</main><footer class="h-14 shrink-0">Input</footer></div></div><aside class="fixed inset-y-0" style="padding-top:var(--safe-top-inset);padding-bottom:var(--safe-bottom-inset)"><header>Sessions</header></aside>';
   const assertGeometry = (pan = 0) => {

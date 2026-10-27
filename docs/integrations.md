@@ -2,7 +2,7 @@
 
 principal 改名/显式关闭要求 **CLI / 实际服务均至少 1.4.315**（见文末契约）。
 
-最低 CLI / 运行服务版本：**termdock 1.4.300**，两者都必须升级并重启服务。
+最低 CLI / 运行服务版本：**veymux 1.4.300**，两者都必须升级并重启服务。
 启动输入条件与保留凭据的策略更新要求 **CLI / 实际运行服务均至少 1.4.301**；协议仍为 1。
 插件原生 ID 的前台 argv 回读及服务重启后的运行中 restore 核验修复要求
 **实际运行服务至少 1.4.302**。退出后的重复原生会话检查修复要求
@@ -27,7 +27,7 @@ TD 提供受限身份、持久事件推送、关联咨询回复，以及会话�
 事件使用分段存储；API 仍是协议 **1**，`event_id`、每组 sequence、opaque cursor
 和 `durable_received` 语义保持不变。磁盘格式版本不是 API 协议版本。
 
-`~/.termdock/integration-state/<port>/integrations.json` 是版本 2 的原子索引，保存
+`~/.veymux/integration-state/<port>/integrations.json` 是版本 2 的原子索引，保存
 principal、来源去重版本、sequence、保留下界、consumer 水位及分段引用；事件在同目录的
 `integrations.json.segments/*.jsonl` 中。分段不可变，每段有字节数、事件数和 SHA-256。
 先持久写分段，再原子提交索引；没有被已提交索引引用的文件不参与重放。
@@ -45,11 +45,11 @@ ACK、凭据撤销及策略更新只提交索引，不重写事件段，也不�
 
 | 配置 | 默认 | 含义 |
 | --- | ---: | --- |
-| `TERMDOCK_INTEGRATION_EVENT_MAX_BYTES` | 536870912（512 MiB） | 所有当前事件段的逻辑字节预算 |
-| `TERMDOCK_INTEGRATION_EVENT_GROUP_MAX_BYTES` | min(总预算, 134217728)，即最多 128 MiB | 每组事件预算，隔离单组积压 |
-| `TERMDOCK_INTEGRATION_EVENT_SEGMENT_BYTES` | 1048576（1 MiB） | 分段目标大小；单个大事件单独成段，仍受事件预算约束 |
-| `TERMDOCK_INTEGRATION_EVENT_WARN_PERCENT` | 80 | 总量或任一组的告警百分比，范围 1–100 |
-| `TERMDOCK_INTEGRATION_METADATA_WARN_BYTES` | 16777216（16 MiB） | 索引元数据独立预警，不作为 ACK 的硬上限 |
+| `VEYMUX_INTEGRATION_EVENT_MAX_BYTES` | 536870912（512 MiB） | 所有当前事件段的逻辑字节预算 |
+| `VEYMUX_INTEGRATION_EVENT_GROUP_MAX_BYTES` | min(总预算, 134217728)，即最多 128 MiB | 每组事件预算，隔离单组积压 |
+| `VEYMUX_INTEGRATION_EVENT_SEGMENT_BYTES` | 1048576（1 MiB） | 分段目标大小；单个大事件单独成段，仍受事件预算约束 |
+| `VEYMUX_INTEGRATION_EVENT_WARN_PERCENT` | 80 | 总量或任一组的告警百分比，范围 1–100 |
+| `VEYMUX_INTEGRATION_METADATA_WARN_BYTES` | 16777216（16 MiB） | 索引元数据独立预警，不作为 ACK 的硬上限 |
 
 预算统计使用实际 UTF-8 JSONL 字节，包含换行；不是事件条数或字符串字符数。
 预算不含迁移备份、暂存段、索引及文件系统开销，维护时仍须预留磁盘空间并监控磁盘。
@@ -74,8 +74,8 @@ sequence 和事件都不提交。同轮其他组可在各自预算及总预算�
 管理员只读诊断：
 
 ```sh
-td integration storage
-td integration consumers
+veymux integration storage
+veymux integration consumers
 ```
 
 容量阈值跨越及启动告警写入 `[integration-storage]` 日志，不包含正文或凭据。
@@ -90,7 +90,7 @@ td integration consumers
 确认某 consumer 永久停用并完成对账后，管理员才可显式结束它的保留保护：
 
 ```sh
-td integration consumer retire --principal <原principal> --consumer <原consumer> \
+veymux integration consumer retire --principal <原principal> --consumer <原consumer> \
   --expected-sequence <刚读取的确认序号> --idempotency-key <本次稳定操作键>
 ```
 
@@ -100,13 +100,13 @@ td integration consumer retire --principal <原principal> --consumer <原consume
 
 协作投递器只为有待投递消息的目标解析路由、挂载 runtime；历史组成员不会因服务重启
 或后台 tick 被整批挂载。tmux 丢失后的 Agent 整批自动恢复默认关闭，需要该行为时才
-显式设置 `TD_TMUX_AUTO_RECOVERY=1`；用户提交过的恢复队列仍按原意图续跑。
+显式设置 `VEYMUX_TMUX_AUTO_RECOVERY=1`；用户提交过的恢复队列仍按原意图续跑。
 恢复队列沿用并发、内存和 Agent 数量门禁，并增加以下启动时配置：
 
 | 配置 | 默认 | 含义 |
 | --- | --- | --- |
-| `TD_TMUX_RECOVERY_MAX_CLIENTS` | 96 | 当前 tmux client 数量加运行中恢复预留量及本次 3 个 client，不得超过此值 |
-| `TD_TMUX_RECOVERY_MAX_LOAD_PER_CPU` | 0.9 | 主机一分钟 load average 除以可用 CPU 数，达到阈值暂停恢复 |
+| `VEYMUX_TMUX_RECOVERY_MAX_CLIENTS` | 96 | 当前 tmux client 数量加运行中恢复预留量及本次 3 个 client，不得超过此值 |
+| `VEYMUX_TMUX_RECOVERY_MAX_LOAD_PER_CPU` | 0.9 | 主机一分钟 load average 除以可用 CPU 数，达到阈值暂停恢复 |
 
 主机负载门禁不等同于 tmux 单线程 CPU 利用率测量。门禁失败保留恢复队列及暂停原因，
 后续复查资源；不会为了通过门禁主动终止现有终端。未聚焦终端的浏览器元数据采样至少
@@ -140,12 +140,12 @@ ACK 对应同一事件，再独立验证原请求的明确接收及实际新业�
 
 | 配置 | 默认 | 新工作与收尾的边界 |
 | --- | ---: | --- |
-| `TERMDOCK_TASK_STORAGE_MAX_BYTES` | 67108864（64 MiB） | 新任务/普通内容受预算；已建立任务的明确 ACK、结果/评审/验收、暂停/关闭及投递回执可继续保存 |
-| `TERMDOCK_SESSION_STORAGE_MAX_BYTES` | 67108864（64 MiB） | 新建/新恢复/冷重试/改名须先保存预算内意图，超额不启动；已受理启动结果、原身份对账、关闭/释放及原操作的幂等结果可保存 |
-| `TERMDOCK_TODO_STORAGE_MAX_BYTES` | 33554432（32 MiB） | 新待办/普通内容/新启动受预算；原启动回执、结果、完成/忽略、领取释放/续期及重启后的中断对账可保存 |
-| `TERMDOCK_MESSAGE_STORAGE_MAX_BYTES` | 536870912（512 MiB） | 新消息和流式正文增长受预算；已有消息的投递结果、原消费水位和显式投递决定保留 |
-| `TERMDOCK_MESSAGE_HISTORY_BYTES` | 67108864（64 MiB） | 已结束且无幂等保护的消息历史字节目标，同时沿用 2,000 条目标 |
-| `TERMDOCK_STORAGE_WARN_PERCENT` | 80 | 上述 JSON 存储的预警百分比，范围 1–100 |
+| `VEYMUX_TASK_STORAGE_MAX_BYTES` | 67108864（64 MiB） | 新任务/普通内容受预算；已建立任务的明确 ACK、结果/评审/验收、暂停/关闭及投递回执可继续保存 |
+| `VEYMUX_SESSION_STORAGE_MAX_BYTES` | 67108864（64 MiB） | 新建/新恢复/冷重试/改名须先保存预算内意图，超额不启动；已受理启动结果、原身份对账、关闭/释放及原操作的幂等结果可保存 |
+| `VEYMUX_TODO_STORAGE_MAX_BYTES` | 33554432（32 MiB） | 新待办/普通内容/新启动受预算；原启动回执、结果、完成/忽略、领取释放/续期及重启后的中断对账可保存 |
+| `VEYMUX_MESSAGE_STORAGE_MAX_BYTES` | 536870912（512 MiB） | 新消息和流式正文增长受预算；已有消息的投递结果、原消费水位和显式投递决定保留 |
+| `VEYMUX_MESSAGE_HISTORY_BYTES` | 67108864（64 MiB） | 已结束且无幂等保护的消息历史字节目标，同时沿用 2,000 条目标 |
+| `VEYMUX_STORAGE_WARN_PERCENT` | 80 | 上述 JSON 存储的预警百分比，范围 1–100 |
 
 超过预算的旧文件仍可读取；缩小文件的合法操作不因“缩小后仍超额”而被挡住。
 收尾通路不会因为容量满被反向锁死，但真实 I/O 错误仍会拒绝确认；不确定 rename/fsync
@@ -167,7 +167,7 @@ ACK 对应同一事件，再独立验证原请求的明确接收及实际新业�
 消息仍沿用已有历史保留边界，增量读取须核对 `retention_gap`；它不同于 integration
 事件的 consumer 最小 ACK 保护，不得混用两种承诺。
 
-`td integration storage` 的 `related` 中包含任务、恢复记录和消息的实际字节与预算；
+`veymux integration storage` 的 `related` 中包含任务、恢复记录和消息的实际字节与预算；
 待办状态可由 `TodoStore.storageStatus()` 回读。各存储在启动、跨阈值及拒绝新增时输出
 `[storage-capacity]`，仅含容量事实，不含消息正文或凭据。
 搜索缓存/日志已具有字节回收或轮转；网络帧、传输窗口、单条消息和依赖包的上限是输入或
@@ -181,7 +181,7 @@ ACK 对应同一事件，再独立验证原请求的明确接收及实际新业�
 purpose 是可选任务能力，不是机器人接入的前置要求。已有 task/attempt/session 和外部根帖
 保持原记录，不自动迁移、重建、重投或重跑。
 
-管理员为现有身份补权限后用 `td integration update --file /private/policy.json`：
+管理员为现有身份补权限后用 `veymux integration update --file /private/policy.json`：
 
 ```json
 "permissions": ["message.send", "message.read", "events.read", "session.create", "session.read", "session.restore"]
@@ -196,18 +196,18 @@ purpose 是可选任务能力，不是机器人接入的前置要求。已有 ta
 先回读实际运行服务，再检查三个能力均为 true：
 
 ```sh
-export TERMDOCK_INTEGRATION_CREDENTIAL_FILE=/private/bridge-credential.json
-td collab --principal report-bridge capabilities
+export VEYMUX_INTEGRATION_CREDENTIAL_FILE=/private/bridge-credential.json
+veymux collab --principal report-bridge capabilities
 # cli_version / server_version >= 1.4.308, integration_protocol = 1
 # integration_message_send / integration_message_reply / integration_message_history = true
 
-td collab --principal report-bridge send <TD成员ID> --file /private/prompt.txt --idempotency-key run:2026-10-10
+veymux collab --principal report-bridge send <TD成员ID> --file /private/prompt.txt --idempotency-key run:2026-10-10
 # 保存输出 message_id、thread_id；status=pending 表示已持久入队
 # 可附 --source external-system --external-actor '{"id":"external-user"}' --external-message-id <external-id>
 
-td collab --principal report-bridge events subscribe --consumer bridge-inbox --jsonl
+veymux collab --principal report-bridge events subscribe --consumer bridge-inbox --jsonl
 # 按 event_id 去重；先将事件落盘，再 ACK 已连续持久接收的位置
-td collab --principal report-bridge events ack <cursor> --consumer bridge-inbox
+veymux collab --principal report-bridge events ack <cursor> --consumer bridge-inbox
 ```
 
 CLI 在发送前检查运行服务 capability；旧服务返回 `INTEGRATION_MESSAGING_UNSUPPORTED`，
@@ -217,8 +217,8 @@ CLI 在发送前检查运行服务 capability；旧服务返回 `INTEGRATION_MES
 接收 Agent 在**原终端**使用明确回复（投递提示每次都附原消息 ID 与此用法）：
 
 ```sh
-td collab --session <自己的TD成员ID> reply <原消息ID> "收到" --response-kind ack --idempotency-key run:ack
-td collab --session <自己的TD成员ID> reply <原消息ID> --file /private/result.txt --response-kind result --idempotency-key run:result
+veymux collab --session <自己的TD成员ID> reply <原消息ID> "收到" --response-kind ack --idempotency-key run:ack
+veymux collab --session <自己的TD成员ID> reply <原消息ID> --file /private/result.txt --response-kind result --idempotency-key run:result
 # 进展也可 --response-kind progress；不推断 Agent 内部进度或整个会话忙闲
 ```
 
@@ -236,10 +236,10 @@ td collab --session <自己的TD成员ID> reply <原消息ID> --file /private/re
 用 message_id/thread_id 与 reply_to 关联。外部追问可以回复自己的原发送或收到的 Agent 回复：
 
 ```sh
-td collab --principal report-bridge reply <原发送ID或Agent回复ID> "解释一下" --idempotency-key followup:external-id
-td collab --principal report-bridge message get <消息ID> --text
-td collab --principal report-bridge message list --thread <话题ID> --limit 50
-td collab --principal report-bridge message list --thread <话题ID> --after-id <上一页next_after_id> --limit 50
+veymux collab --principal report-bridge reply <原发送ID或Agent回复ID> "解释一下" --idempotency-key followup:external-id
+veymux collab --principal report-bridge message get <消息ID> --text
+veymux collab --principal report-bridge message list --thread <话题ID> --limit 50
+veymux collab --principal report-bridge message list --thread <话题ID> --after-id <上一页next_after_id> --limit 50
 ```
 
 追问固定回原成员及原 thread，原成员不在授权组时返回 NO_REPLY_TARGET，不悄悄新建会话。
@@ -259,14 +259,14 @@ after-id 不在本组保留记录中返回 MESSAGE_NOT_FOUND；前缀不唯一�
 
 ## 管理员配置身份
 
-接口只监听本机 Unix socket `~/.termdock/integration-<port>.sock`（0600）。
+接口只监听本机 Unix socket `~/.veymux/integration-<port>.sock`（0600）。
 用户目录过长时自动使用 `/tmp` 下按用户与目录摘要隔离的私有短路径（目录 0700）；CLI 会自动解析同一路径。
 不暴露 HTTP 业务接口，不使用网页转发。首版身份绑定**一个本机协作组**，
 不支持跨服务组。先在 TD 建立本机组，再查询其 ID：
 
 ```sh
-td integration groups
-td integration list
+veymux integration groups
+veymux integration list
 ```
 
 管理员保存策略文件；实际可执行文件、插件 slug 和目录由本机管理员填写：
@@ -303,19 +303,19 @@ profile（可执行文件/包装器路径、argv、模型参数、cwd、恢复�
 前台包装器或其他进程尚在运行时拒绝重复启动。包装器文件本身由管理员维护，TD 不备份其代码或密钥。
 
 ```sh
-td integration create --file /private/policy.json --credential-file /private/bridge-credential.json
-export TERMDOCK_INTEGRATION_CREDENTIAL_FILE=/private/bridge-credential.json
-td collab --principal report-bridge capabilities
+veymux integration create --file /private/policy.json --credential-file /private/bridge-credential.json
+export VEYMUX_INTEGRATION_CREDENTIAL_FILE=/private/bridge-credential.json
+veymux collab --principal report-bridge capabilities
 ```
 
 输出文件必须不存在；TD 创建 0600 文件，只打印身份及文件路径，不打印 token。
-运行方只能通过 `TERMDOCK_INTEGRATION_CREDENTIAL_FILE` 注入同用户、私有、非符号链接
+运行方只能通过 `VEYMUX_INTEGRATION_CREDENTIAL_FILE` 注入同用户、私有、非符号链接
 的文件。不要把 token 放入 argv、消息、日志或 profile。策略与凭据不入库。
-管理员 `td integration revoke report-bridge` 会拒绝后续请求并关闭已有订阅；
+管理员 `veymux integration revoke report-bridge` 会拒绝后续请求并关闭已有订阅；
 恢复授权需新建身份，不会静默替换原凭据。
 
 CLI 使用当前运行服务的端口，默认 9834。每个端口的身份、游标、事件、会话记录
-分别保存在 `~/.termdock/integration-state/<port>/`，通过原子写入及 fsync 持久化。
+分别保存在 `~/.veymux/integration-state/<port>/`，通过原子写入及 fsync 持久化。
 这是 TD 接口的权限边界，不是同一操作系统用户下的进程沙箱。
 
 ### 启动输入条件与策略更新（1.4.301）
@@ -351,7 +351,7 @@ TD 至少两次观察到匹配画面，间隔达到 `stableMs` 后放行；中�
 在现有**完整策略文件**中加入条件，再由本机管理员执行：
 
 ```sh
-td integration update --file /private/policy.json
+veymux integration update --file /private/policy.json
 ```
 
 `update` 替换完整权限/profile 策略，保留身份 ID、本机组、凭据和历史；不能改组，
@@ -371,10 +371,10 @@ td integration update --file /private/policy.json
 
 ```sh
 # 先由持有该会话的身份回读当前 generation
-td collab --principal report-bridge session get <TD-session-id>
+veymux collab --principal report-bridge session get <TD-session-id>
 # 本机管理员执行，不使用 principal 凭据；generation 必须取当前实际值
-td integration clear-startup-input <TD-session-id> --generation <N>
-td collab --principal report-bridge session get <TD-session-id>
+veymux integration clear-startup-input <TD-session-id> --generation <N>
+veymux collab --principal report-bridge session get <TD-session-id>
 ```
 
 最低 CLI / 实际服务版本均为 **1.4.310**；先回读能力
@@ -407,15 +407,15 @@ restore 幂等键的历史结果保持不变，以 get 为当前状态依据。
 ## 版本与能力核验
 
 ```sh
-td --version
-td collab --principal report-bridge capabilities
+veymux --version
+veymux collab --principal report-bridge capabilities
 ```
 
 第二条回读实际服务 `server_version`、本机 `cli_version`、`integration_protocol`、
 `local_only`、支持的权限名称与功能布尔值；`principal` 回读本身份的组、实际授予权限
 及允许的 profile ID / Agent slug / cwd roots，不返回完整启动配置。要求协议 1；缺 socket、鉴权失败或协议不兼容
 会直接失败，不回退到旧会话身份/公开 HTTP。协议兼容是运行判断依据，不能只比较
-已安装 npm 版本。普通 `td collab --session <id> capabilities` 同样返回 CLI/服务版本。
+已安装 npm 版本。普通 `veymux collab --session <id> capabilities` 同样返回 CLI/服务版本。
 
 使用启动条件时，还须确认 `startup_input_conditions=true`、
 `integration_policy_update=true`，以及
@@ -424,7 +424,7 @@ td collab --principal report-bridge capabilities
 
 ## 后台自动化执行记录（1.4.307）
 
-`td automation` 是已有定时投递入口：`list/create/show/run/pause/resume/delete`。
+`veymux automation` 是已有定时投递入口：`list/create/show/run/pause/resume/delete`。
 它的 run `success` 只表示投递，记录不包含结果版本或关联咨询，最多保留 100 条；
 它不是本节的后台执行记录。外部定时器继续由接入方管理。
 
@@ -453,11 +453,11 @@ CLI 对带 purpose 的操作和 configure 会先探测能力，缺失返回
 新建后台执行记录（使用既有私有凭据文件注入）：
 
 ```sh
-td collab --principal report-bridge task create --group <本机组ID> \
+veymux collab --principal report-bridge task create --group <本机组ID> \
   --purpose automation --title '本期报告' --content '完整执行要求' \
   --assignee <原TD-session-id> --idempotency-key <本次创建键>
-td collab --principal report-bridge task list --purpose automation
-td collab --principal report-bridge task get <task-id>
+veymux collab --principal report-bridge task list --purpose automation
+veymux collab --principal report-bridge task get <task-id>
 ```
 
 automation 的完整与摘要响应均提供 `execution`：
@@ -481,13 +481,13 @@ revise 使旧一轮 execution 失效，再次 complete 产生新 artifact。历�
 `reportedAt` 是原 report 事件时间，execution 为回读投影，不写回或伪造原报告。
 
 已有普通任务原地迁移，不重跑：管理员先在原策略的 permissions 中**追加** `task.configure`，
-保留 id/groupId/其他权限/profile/启动条件，用 `td integration update --file <原策略.json>` 更新。
+保留 id/groupId/其他权限/profile/启动条件，用 `veymux integration update --file <原策略.json>` 更新。
 该操作保留凭据；仍需核对 principal.permissions，不能把服务支持的 permissions 当实际授权。
 然后读取原记录的最新 revision：
 
 ```sh
-td collab --principal report-bridge task get <原task-id>
-td collab --principal report-bridge task configure <原task-id> \
+veymux collab --principal report-bridge task get <原task-id>
+veymux collab --principal report-bridge task configure <原task-id> \
   --purpose automation --revision <刚回读的revision> \
   --idempotency-key <此记录的用途迁移键>
 ```
@@ -528,13 +528,13 @@ configure 需要本机管理员（既有受权任务 API）或授权组内持有
 `comment` 追加到提交时的当前 attempt，并返回真实原事件和投递关联，不覆盖结果。
 
 ```sh
-td collab --principal report-bridge task create --group <group-id> --title '报告' \
+veymux collab --principal report-bridge task create --group <group-id> --title '报告' \
   --content '完整要求' --assignee <TD-session-id> --idempotency-key <business-key> \
   --source external --external-actor '{"id":"external-user-id"}' --external-message-id <external-message-id>
-td collab --principal report-bridge task comment <task-id> --content '请解释结果' --idempotency-key <comment-key>
-td collab --principal report-bridge task get <task-id>
-td collab --principal report-bridge task revise <task-id> --revision <revision> --content '变更要求' --idempotency-key <revision-key>
-td collab --principal report-bridge task answer <task-id> --decision <decision-id> --content '答复条件' --idempotency-key <answer-key>
+veymux collab --principal report-bridge task comment <task-id> --content '请解释结果' --idempotency-key <comment-key>
+veymux collab --principal report-bridge task get <task-id>
+veymux collab --principal report-bridge task revise <task-id> --revision <revision> --content '变更要求' --idempotency-key <revision-key>
+veymux collab --principal report-bridge task answer <task-id> --decision <decision-id> --content '答复条件' --idempotency-key <answer-key>
 ```
 
 来源同时记录 `source=integration`、`origin.integrationId` 和外部 actor / 消息 ID / metadata，
@@ -542,12 +542,12 @@ td collab --principal report-bridge task answer <task-id> --decision <decision-i
 咨询消息关联 `replyToEventId`，执行成员收到命令提示：
 
 ```sh
-td collab --session <original-assignee-id> task respond <task-id> \
+veymux collab --session <original-assignee-id> task respond <task-id> \
   --attempt <original-attempt-id> --to-event <comment-event-id> --content '解释' --idempotency-key <response-key>
 ```
 
 `respond` 只新增回复事件，不改 report、artifact 或 accepted。对咨询投递消息使用
-普通 `td collab reply <message-id> ...`（不带任务 status）同样存为关联 `respond`；
+普通 `veymux collab reply <message-id> ...`（不带任务 status）同样存为关联 `respond`；
 明确带 status 才是任务报告。修改要求后，负责人需明确提交新的 `complete`，产生新
 `artifact_id` 并重新验收。历史版本始终保留，外部业务校验按 artifact ID 存储。
 
@@ -559,8 +559,8 @@ td collab --session <original-assignee-id> task respond <task-id> \
 ## 主动事件与 ACK
 
 ```sh
-td collab --principal report-bridge events subscribe --consumer bridge-main --jsonl
-td collab --principal report-bridge events ack <cursor> --consumer bridge-main
+veymux collab --principal report-bridge events subscribe --consumer bridge-main --jsonl
+veymux collab --principal report-bridge events ack <cursor> --consumer bridge-main
 ```
 
 这是持续连接的主动推送，不是轮询收件箱。业务方读取 JSONL 调用自己的处理器。
@@ -615,10 +615,10 @@ TD 检查 cursor 属于授权组、没有回退、已经发送，但无法替业
 ## 会话创建、绑定与恢复
 
 ```sh
-td collab --principal report-bridge session create --launch-profile report-agent \
+veymux collab --principal report-bridge session create --launch-profile report-agent \
   --cwd /absolute/path/to/runs/current --idempotency-key <session-create-key>
-td collab --principal report-bridge session get <session-id>
-td collab --principal report-bridge session restore <session-id> --idempotency-key <restore-key>
+veymux collab --principal report-bridge session get <session-id>
+veymux collab --principal report-bridge session restore <session-id> --idempotency-key <restore-key>
 ```
 
 公开记录包含 `operation_id,session_id,group_id,principal_id,agent_slug,
@@ -769,15 +769,15 @@ conversation/job/task 或裸 UUID 导入。现有用户关闭、最近关闭列�
 
 ```sh
 # 管理员将 session.release 追加到原身份的 permissions，凭据保持不变。
-td integration update --file /private/path/policy.json
+veymux integration update --file /private/path/policy.json
 # 后台从 get 获取当前 generation（不能硬编码，也不能仅沿用旧事件中的代次）。
-td collab --principal report-bridge session get <session-id>
-td collab --principal report-bridge session release <session-id> \
+veymux collab --principal report-bridge session get <session-id>
+veymux collab --principal report-bridge session release <session-id> \
   --generation <current-generation> --idempotency-key <this-release-key>
 # 下一条外部消息先持久接收，显式恢复，再 send/reply。
-td collab --principal report-bridge session restore <session-id> \
+veymux collab --principal report-bridge session restore <session-id> \
   --idempotency-key <this-restore-key>
-td collab --principal report-bridge reply <retained-original-message-id> \
+veymux collab --principal report-bridge reply <retained-original-message-id> \
   --file /private/path/followup.txt --idempotency-key <this-message-key>
 ```
 
@@ -842,10 +842,10 @@ reply 返回 `MESSAGE_NOT_FOUND`，不能伪造旧 reply_to。是否用同恢复
 和插件恢复语义，再明确授权当前配置用于原历史恢复：
 
 ```sh
-td integration resume-configuration <session-id>
+veymux integration resume-configuration <session-id>
 # 返回 generation, recorded_fingerprint（旧记录为 null）, current_fingerprint,
 # confirmation_required。无 shell/PTY/状态改变，不返回文件正文或凭据。
-td integration confirm-resume <session-id> \
+veymux integration confirm-resume <session-id> \
   --generation <returned-generation> --fingerprint <current_fingerprint>
 ```
 
@@ -889,7 +889,7 @@ CLI 对旧服务先检查能力，失败为 `SESSION_RELEASE_UNSUPPORTED`，不�
 本机管理员执行：
 
 ```sh
-td integration diagnostics <TD-session-id>
+veymux integration diagnostics <TD-session-id>
 ```
 
 命令经原私有 Unix socket 和本机管理员凭据读取报告，不使用 `--principal`。
@@ -947,7 +947,7 @@ no-op restore 不创建新检查。报告跟随会话保存并可在服务重启
 `*_min_version` 均为 `1.4.314`。CLI 遇到不支持重试的服务返回
 `SESSION_COLD_RETRY_UNSUPPORTED`，不发出重试请求。
 
-管理员沿用 `td integration diagnostics <TD-session-id>`，同一响应新增
+管理员沿用 `veymux integration diagnostics <TD-session-id>`，同一响应新增
 `launch_diagnostics`（可为 null）与 `launch_diagnostics_history`（最多 16 个此前实际
 启动操作）。旧 `diagnostics` 原生所有者报告字段保持兼容；该入口仅回读持久记录，
 不重新扫描进程、不挂接终端、不发送输入。313 及更早启动没有新增报告，不能从升级
@@ -981,9 +981,9 @@ argv、命令正文、stdout/stderr、环境变量或凭据。报告历史受上
 正式冷重试命令：
 
 ```sh
-td collab --principal <id> session get <TD-session-id>
-td integration diagnostics <TD-session-id>
-td collab --principal <id> session retry-cold <TD-session-id> \
+veymux collab --principal <id> session get <TD-session-id>
+veymux integration diagnostics <TD-session-id>
+veymux collab --principal <id> session retry-cold <TD-session-id> \
   --generation <get返回的generation> --idempotency-key <本次操作唯一键>
 ```
 
@@ -1080,16 +1080,16 @@ PID/start_id、实际 FD/inode 与内核 flock 一致的私有原生所有权证
 `SESSION_RENAME_UNSUPPORTED / SESSION_CLOSE_UNSUPPORTED`，不降级借用终端身份。
 
 管理员在原完整策略中按需追加独立权限 `session.rename`、`session.close`，通过
-`td integration update --file <policy.json>` 更新；旧身份不会自动获得这两个权限。
+`veymux integration update --file <policy.json>` 更新；旧身份不会自动获得这两个权限。
 同一凭据、组、profile 和其他权限保留。后台 principal 不需要绑定终端，已有未删除的
 本机授权组允许零活动成员；创建、恢复也不要求额外保留空管理成员。组的首次创建与
 授权仍由管理员完成。普通手动创建的管理终端不属于 principal，不纳入这两个权限。
 
 ```sh
-td collab --principal <id> session get <sid>
-td collab --principal <id> session rename <sid> \
+veymux collab --principal <id> session get <sid>
+veymux collab --principal <id> session rename <sid> \
   --generation <session-get-generation> --name 'Fast model' --idempotency-key <key>
-td collab --principal <id> session close <sid> \
+veymux collab --principal <id> session close <sid> \
   --generation <session-get-generation> --idempotency-key <key>
 # 每次新操作前回读当前generation；同一请求重试保持相同参数与key。
 ```
@@ -1188,12 +1188,12 @@ TD 生命周期锁不排他控制外部 tmux 命令/手工进程替换，最终�
 成员来源、网页裸 HTTP 或私有文件写入。
 
 ```sh
-td integration group create --name 'Case A' --idempotency-key case-a:group
+veymux integration group create --name 'Case A' --idempotency-key case-a:group
 # 返回 {"group":{"id":"...","name":"Case A","sessionIds":[],
 #              "federated":false,"createdAt":...,"updatedAt":...}}
-td integration groups   # 回读现有本机组的id/name
+veymux integration groups   # 回读现有本机组的id/name
 # 使用返回的group.id填入新的独立policy.groupId：
-td integration create --file case-a-policy.json --credential-file case-a-credential.json
+veymux integration create --file case-a-policy.json --credential-file case-a-credential.json
 ```
 
 本机 Unix socket 管理路由 `POST /admin/groups`，JSON 只接受
@@ -1257,11 +1257,11 @@ consumer、task 或看板任务；Case/组/principal/session/message 映射由�
 CLI 返回 `ADMIN_LOCAL_GROUP_RENAME_UNSUPPORTED`，不回退到成员身份、网页接口或私有文件。
 
 ```sh
-td integration group get <精确group-id>
+veymux integration group get <精确group-id>
 # {"group":{"id":"...","name":"原名称","updatedAt":1790000000000}}
-td integration group rename <精确group-id> --name '短标题' \
+veymux integration group rename <精确group-id> --name '短标题' \
   --expected-updated-at 1790000000000 --idempotency-key stable-group-rename-key
-td integration groups   # 列表保留id/name，追加updatedAt
+veymux integration groups   # 列表保留id/name，追加updatedAt
 ```
 
 沿用本机 Unix socket 管理员鉴权，无终端来源、无新 principal 权限。管理路由：
@@ -1327,15 +1327,15 @@ TD/native session ID、消息/reply、事件/consumer 历史。没有 Agent 启�
 
 最低 CLI/实际服务均为 **1.4.321**；普通协作协议仍为 2，integration protocol 仍为 1。
 当前 CLI 版本不能替代实际服务版本；普通成员使用
-`td collab --session <自身ID> capabilities --json` 回读 `server_version`、
+`veymux collab --session <自身ID> capabilities --json` 回读 `server_version`、
 `route_diagnostics=true`、`route_identity_recovery=true`、
 `route_identity_recovery_min_version=1.4.321`。
 
 ```sh
-td collab --session <自身ID> route get <精确本地目标ID> --json
-td collab --session <自身ID> message get <原消息ID> --receipt-only --json
+veymux collab --session <自身ID> route get <精确本地目标ID> --json
+veymux collab --session <自身ID> message get <原消息ID> --receipt-only --json
 # 只有目标拥有者在自己的真实终端确认“当前承载就是目标”后执行：
-td collab --session <目标自身ID> rebind --pane <当前pane-ID> --json
+veymux collab --session <目标自身ID> rebind --pane <当前pane-ID> --json
 ```
 
 `route get` 为只读 `GET /operations/orchestration/route/:id`，只允许自身或共享组的本地
@@ -1429,7 +1429,7 @@ IntegrationSession 的数值 `generation` 分别记录。同一 backend 在启�
 管理员沿现有入口读取已保存的诊断：
 
 ```sh
-td integration diagnostics <TD-session-id>
+veymux integration diagnostics <TD-session-id>
 ```
 
 `launch_diagnostics.steps` 追加可选阶段 `guard_captured / runtime_resolving / runtime_resolved`；
@@ -1462,12 +1462,12 @@ runtime_resolved / queue_acquired / before_paste / before_submit`。时间是 TD
 `ADMIN_LOCAL_GROUP_ARCHIVE_UNSUPPORTED`。
 
 ```sh
-td integration group get <精确group-id>
-td integration group archive <精确group-id> \
+veymux integration group get <精确group-id>
+veymux integration group archive <精确group-id> \
   --expected-updated-at <当前updatedAt> --idempotency-key case-archive:v1
-td integration groups                         # 默认不列出归档组
-td integration groups --include-archived       # 显式查看
-td integration group unarchive <精确group-id> \
+veymux integration groups                         # 默认不列出归档组
+veymux integration groups --include-archived       # 显式查看
+veymux integration group unarchive <精确group-id> \
   --expected-updated-at <当前updatedAt> --idempotency-key case-restore:v1
 ```
 
@@ -1534,13 +1534,13 @@ fail-closed，旧绑定与原消息保留，`session get` 仍报告身份错误�
 }
 ```
 
-目录是示例，必须按实际 Agent 的持锁协议填写。支持管理员指定的绝对目录、`~/` 目录，以及仅以前缀 `{cwd}/` 锚定的模板；模板不允许 `..` 或其它变量，解析后的目录须在 TD 服务用户 home 内。调用现有 `td integration update --file <完整policy.json>`，不增加权限、不重建 principal 或凭据。CLI 在旧服务/非 Linux 服务上拒绝该配置，不能静默忽略。原有不配置此项的 profile 保持插件缺省行为。
+目录是示例，必须按实际 Agent 的持锁协议填写。支持管理员指定的绝对目录、`~/` 目录，以及仅以前缀 `{cwd}/` 锚定的模板；模板不允许 `..` 或其它变量，解析后的目录须在 TD 服务用户 home 内。调用现有 `veymux integration update --file <完整policy.json>`，不增加权限、不重建 principal 或凭据。CLI 在旧服务/非 Linux 服务上拒绝该配置，不能静默忽略。原有不配置此项的 profile 保持插件缺省行为。
 
 wrapper 负责实际设置 Agent 自己的数据目录、准备 hooks/参数，并最终运行真正的 Agent；这个字段只声明 TD 的核验目录，不设置环境、不执行脚本、不创建目录，不自动读取 Agent 专用环境变量。TD 仍检查目录与文件权限、进程 starttime、前台关系、实际 FD/inode 和当前内核 flock，要求唯一 native UUID。显式 profile 目录不可证明时不降级到 argv/hook/旧 UUID，多个持锁 UUID 仍拒绝。目录语义纳入恢复配置指纹，保存至启动代次；服务重启、metadata 更新、check 解除不会丢失它。
 
 该配置只用于之后创建的 session；旧 session 保留原 profile 快照，policy update 不迁移旧记录或修改运行 Agent。不要为旧未知结果自动 create 新 ID 或 retry-cold。原 UUID 恢复、重复 owner 保护、关闭仍遵守现有身份/代次/幂等门禁；独立数据目录不构成对同 UID 进程的安全隔离。
 
-启动失败管理员用 `td integration diagnostics <原TD-ID>` 回读；shell 等待失败新增 `shell_check={samples,waited_ms,reason,binding,pgid,tpgid}`，不包含 argv/env/终端正文。`SESSION_TARGET_NOT_SHELL` 表示有限核验未通过，不表示 wrapper 已执行；`paste/submit=not_attempted` 与后续 `runtime_present` 现场回读分开保存。失败不自动再次启动，只有符合原 `session retry-cold` 所有条件才可明确重试。
+启动失败管理员用 `veymux integration diagnostics <原TD-ID>` 回读；shell 等待失败新增 `shell_check={samples,waited_ms,reason,binding,pgid,tpgid}`，不包含 argv/env/终端正文。`SESSION_TARGET_NOT_SHELL` 表示有限核验未通过，不表示 wrapper 已执行；`paste/submit=not_attempted` 与后续 `runtime_present` 现场回读分开保存。失败不自动再次启动，只有符合原 `session retry-cold` 所有条件才可明确重试。
 
 用 stdin 文件给启动命令附带业务 prompt 是接入方的 bootstrap：TD 不为其中业务副作用提供消息幂等或执行确认；无 TD message 历史也不等于没有业务执行。冷启动与精确 resume 应分开处理，恢复时不得重放初始业务文件。host 收取 final/hook receipt 是 host 侧证据，不伪造成 TD 明确 reply。仍只粘贴一次、等待 50ms、写一次 CR。
 
@@ -1586,7 +1586,7 @@ wrapper 负责实际设置 Agent 自己的数据目录、准备 hooks/参数，�
 管理员正式只读入口：
 
 ```sh
-td integration close-diagnostics <原TD-session-id>
+veymux integration close-diagnostics <原TD-session-id>
 ```
 
 走原本机管理员 Unix socket，`GET /admin/sessions/:id/close-diagnostics`，返回：
@@ -1616,7 +1616,7 @@ td integration close-diagnostics <原TD-session-id>
 }
 ```
 
-这是字段示例，不代表某一现场已核验。诊断不调用 session get/refresh、不改变 descriptor/代次/路由/组，不启动或终止进程、不输入按键。`target` 只包含原 pane、当前进程实例和已证明 UUID，不读/返回 argv、环境或终端正文。记录在异步观察期间变化时丢弃 target，返回 `SESSION_CLOSE_TARGET_CHANGED`。`target_confirmed` 只表示本次目标核验通过，不等于后续关闭授权/成功；pending、进行中生命周期、当前代次等仍由真正 close 独立检查。观察失败保留 `target=null` 和准确 code；无法观察运行存在性时为 null，不假装已消失。已有 `td integration diagnostics` 仍只读原 launch/restore 持久诊断。
+这是字段示例，不代表某一现场已核验。诊断不调用 session get/refresh、不改变 descriptor/代次/路由/组，不启动或终止进程、不输入按键。`target` 只包含原 pane、当前进程实例和已证明 UUID，不读/返回 argv、环境或终端正文。记录在异步观察期间变化时丢弃 target，返回 `SESSION_CLOSE_TARGET_CHANGED`。`target_confirmed` 只表示本次目标核验通过，不等于后续关闭授权/成功；pending、进行中生命周期、当前代次等仍由真正 close 独立检查。观察失败保留 `target=null` 和准确 code；无法观察运行存在性时为 null，不假装已消失。已有 `veymux integration diagnostics` 仍只读原 launch/restore 持久诊断。
 
 缺活动登记时，现有显式 `session close` 只在以下证据全部满足后工作：
 
@@ -1665,7 +1665,7 @@ td integration close-diagnostics <原TD-session-id>
 
 前端恢复界面和中性错误保留最低为 **1.4.351**。入口服务 1.4.351 支持完整稳定错误码与服务端自目标防护；最终目标服务可保持原兼容版本。本次实际 PWA 页面来自维护 Linux，不能把“工作=Mac”或 npm CLI 文件版本当成静态来源。发布后按原维护流程核对页面主 JS、实际服务版本和当前入口能力；不要为此重启目标 Agent/DevBox/Arena。需要入口新协议时，由入口所有者协调该入口的维护窗；不改运行快照或清 PWA 身份存储。
 
-能力探测：`/api/meta.capabilities` 含 `relay-access-recovery-v1`、`relay-self-target-guard-v1`；`td collab --session <自身ID> capabilities --json` 回读 `relay_authorization_errors=true`、`relay_self_target_guard=true`，两者 `_min_version=1.4.351`。认证 Noise `permissions` 同时返回 `relayAuthorizationErrors` 与 `relaySelfTargetGuard` 布尔。它们只描述此服务端能力，不证明手机已加载新页面或当前设备获授权。
+能力探测：`/api/meta.capabilities` 含 `relay-access-recovery-v1`、`relay-self-target-guard-v1`；`veymux collab --session <自身ID> capabilities --json` 回读 `relay_authorization_errors=true`、`relay_self_target_guard=true`，两者 `_min_version=1.4.351`。认证 Noise `permissions` 同时返回 `relayAuthorizationErrors` 与 `relaySelfTargetGuard` 布尔。它们只描述此服务端能力，不证明手机已加载新页面或当前设备获授权。
 
 回归包括真实 Noise/中转授权撤回后的错误传播、网络与授权区分、其它合法路线成功、目标拒绝不绕过、零权限写入的展示/取消、窄中转授权明确确认及写后重读、管理员拒绝、精确目标登录、原终端/草稿保留、旧 client/目标/页面晚回执、同身份多地址/重复项/同名不同身份及 self-relay 兼容。发布工作流纳入相关服务管理组件与工作空间测试。原有总路由预算测试曾在未改动 350 基线复现计时器提前触发导致多试备用 provider；本版按原绝对 deadline 重核，不放宽超时预算或修改断言。
 
@@ -1776,7 +1776,7 @@ Keep the configured native-identity mechanism working for both launch and exact
 resume; merely seeing an Agent TUI is not proof that TD has captured its identity.
 
 For a Claude profile using TD's hooks, back up the private Agent settings and run
-`td plugin-hooks claude install` against the running local service. The installer
+`veymux plugin-hooks claude install` against the running local service. The installer
 merges TD-owned hooks with existing settings. Verify that the selected CLI accepts
 the configured hook events. If an older CLI rejects an event such as `StopFailure`,
 select a compatible installed CLI or upgrade it through the device's usual process;

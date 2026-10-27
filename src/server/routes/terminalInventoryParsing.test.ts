@@ -31,7 +31,7 @@ function fixture(run: (args: string[]) => Promise<string>) {
     globalSessionState: { sessions: [record], updatedAt: 1 },
     runTmux: run, terminalSessions: new Map(), inventoryTmuxLiveness: new WeakMap(),
     getTmuxStatus: async () => ({ available: true }),
-    isTermdockManagedTmuxSession: () => false, observeTmuxServerGeneration: observe,
+    isVeymuxManagedTmuxSession: () => false, observeTmuxServerGeneration: observe,
     dynamicTmuxMetadata: { retain }, getTmuxRecoveryView: () => null,
     tmuxRecoveryState: { incident: null },
     todoStore: { collectionSessions: () => new Map() }, sessionViewModes: new Map(),
@@ -43,8 +43,8 @@ function fixture(run: (args: string[]) => Promise<string>) {
   // runTmux is supplied for unit cases; its actual wrappers are tested below.
   const listCode = routeCode(new Set([...functions].filter(name => name !== 'runTmux' && name !== 'runTmuxStdin')));
   vm.runInContext(ts.transpileModule(`const TMUX_DELIMITER = '\\x1f';
-    const TERMDOCK_GUI_DETACHED_AT_OPTION = '@termdock-gui-detached-at';
-    const TERMDOCK_FRONTEND_SESSION_ID_OPTION = '@termdock-frontend-session-id';
+    const VEYMUX_GUI_DETACHED_AT_OPTION = '@veymux-gui-detached-at';
+    const VEYMUX_FRONTEND_SESSION_ID_OPTION = '@veymux-frontend-session-id';
     let reconcileInFlight = null;
     ${listCode}`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, context);
   context.getSessionInventorySnapshot = () => context.buildSessionInventory();
@@ -101,8 +101,8 @@ it('preserves state after a command failure, then prunes only after a valid empt
 
 const exec = promisify(execFile);
 it.skipIf(process.platform === 'win32')('keeps real tmux inventory and stdin-command delimiters without a UTF-8 locale or TMUX environment', async () => {
-  const binary = process.env.TERMDOCK_TEST_TMUX_BIN ?? 'tmux';
-  const socket = `td-inventory-${process.pid}-${Date.now()}`;
+  const binary = process.env.VEYMUX_TEST_TMUX_BIN ?? 'tmux';
+  const socket = `veymux-inventory-${process.pid}-${Date.now()}`;
   const env: NodeJS.ProcessEnv = { ...process.env, LC_ALL: 'C', LC_CTYPE: 'C', LANG: 'C' };
   delete env.TMUX;
   const execute = (file: string, args: string[], options: object) => exec(file, ['-L', socket, ...args], options);
@@ -118,7 +118,7 @@ it.skipIf(process.platform === 'win32')('keeps real tmux inventory and stdin-com
   try {
     await run(['-f', '/dev/null', 'new-session', '-d', '-s', 'task', '/bin/sleep', '120']);
     await run(['new-session', '-d', '-s', '任务_one', '/bin/sleep', '120']);
-    await run(['set-option', '-t', 'task', '@termdock-friendly-name', '项目 名称']);
+    await run(['set-option', '-t', 'task', '@veymux-friendly-name', '项目 名称']);
     Object.assign(f.record, { name: '项目 名称', customName: true });
     for (let scan = 0; scan < 3; scan++) {
       await f.context.reconcileClientState();

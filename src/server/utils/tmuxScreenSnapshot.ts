@@ -1,4 +1,4 @@
-export const TMUX_CURSOR_MARKER = '__TERMDOCK_CURSOR__';
+export const TMUX_CURSOR_MARKER = '__VEYMUX_CURSOR__';
 
 export interface TmuxPaneSnapshot {
   content: string;

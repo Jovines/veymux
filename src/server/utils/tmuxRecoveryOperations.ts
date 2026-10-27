@@ -441,7 +441,7 @@ export class TmuxRecoveryOperationStore {
   }
 }
 
-export function configuredTmuxRecoveryConcurrency(value = process.env.TD_TMUX_RECOVERY_CONCURRENCY): number {
+export function configuredTmuxRecoveryConcurrency(value = process.env.VEYMUX_TMUX_RECOVERY_CONCURRENCY): number {
   if (value === undefined || value.trim() === '') return 3;
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed < 1 || parsed > 16) throw new Error('Recovery concurrency must be an integer from 1 to 16');

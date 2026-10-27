@@ -16,9 +16,9 @@ afterEach(async () => {
   root?.unmount(); root = undefined;
   clearChatSnapshots(); sessionStorage.clear(); vi.restoreAllMocks(); vi.unstubAllGlobals();
   document.body.replaceChildren(); document.documentElement.removeAttribute('style');
-  delete document.documentElement.dataset.termdockNativeKeyboard;
-  delete document.documentElement.dataset.termdockNativePan;
-  delete document.documentElement.dataset.termdockTouchViewport;
+  delete document.documentElement.dataset.veymuxNativeKeyboard;
+  delete document.documentElement.dataset.veymuxNativePan;
+  delete document.documentElement.dataset.veymuxTouchViewport;
   await page.viewport(390, 844);
 });
 const frame = () => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
@@ -62,7 +62,7 @@ async function mount(mode: 'resize' | 'pan', safeBottom = 0, messages: object[] 
   function App() {
     useViewportHeight();
     return <div className="flex h-full flex-col overflow-hidden">
-      <header data-termdock-window-header="true" className="relative h-11 shrink-0">会话标题</header>
+      <header data-veymux-window-header="true" className="relative h-11 shrink-0">会话标题</header>
       <main className="min-h-0 flex-1 overflow-hidden" style={{ position: 'relative', zIndex: 1, background: 'var(--chrome-bg)' }}>
         <Swiper className="h-full" touchStartPreventDefault={false} simulateTouch={false} noSwipingSelector={SESSION_NO_SWIPE} focusableElements={SESSION_SWIPER_FOCUSABLE_ELEMENTS}>
           <SwiperSlide><SessionChatView sessionId="native-focus-production" onTerminal={() => {}} /></SwiperSlide>

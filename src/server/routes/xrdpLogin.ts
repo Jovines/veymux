@@ -61,7 +61,7 @@ export async function observeLocalXrdpLogin(address: string, port: number, resul
     })) return null;
   } catch { return null; }
   // NetBIOS client names are limited to 15 characters.
-  const clientName = `td-${randomBytes(6).toString('hex')}`;
+  const clientName = `veymux-${randomBytes(6).toString('hex')}`;
   const child = spawn('journalctl', ['--unit=xrdp.service', '--output=json', '--follow', '--no-tail',
     `--since=@${Math.floor(Date.now() / 1000) - 1}`, '--no-pager'], { stdio: ['ignore', 'pipe', 'ignore'] });
   const decoder = new StringDecoder('utf8');

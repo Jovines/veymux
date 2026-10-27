@@ -10,7 +10,7 @@ import { TodoRunner, todoRoutes, type TodoRuntime } from './routes.js';
 
 let directory: string, store: TodoStore, runtime: TodoRuntime, server: Server, origin: string;
 beforeEach(async () => {
-  directory = fs.mkdtempSync(path.join(os.tmpdir(), 'td-collector-cli-'));
+  directory = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-collector-cli-'));
   store = new TodoStore(path.join(directory, 'todos.json'));
   runtime = { validate: vi.fn(async config => {
     if (config.agentSlug !== 'fixture') throw new Error('Agent 不可用');

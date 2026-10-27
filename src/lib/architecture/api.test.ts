@@ -10,7 +10,7 @@ import { once } from 'node:events';
 afterEach(() => vi.unstubAllGlobals());
 describe('native architecture project loading', () => {
   it('loads fresh projects and scoped maps through the actual architecture routes, without requiring a service worker', async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'td-architecture-first-load-'));
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'veymux-architecture-first-load-'));
     const app = express(); app.use(express.json()); app.use('/api/terminal/architecture', architectureRoutes());
     const server = app.listen(0, '127.0.0.1'); await once(server, 'listening');
     const address = server.address(); if (!address || typeof address === 'string') throw new Error('No test server address');
@@ -32,7 +32,7 @@ describe('native architecture project loading', () => {
   });
   it('filters untrusted paths and rejects invalid and denied libraries', async () => {
     const file = analysisFile({ ...DEFAULT_ANALYSIS, kind: 'feature', target: 'Upload' });
-    const fetch = vi.fn(async () => Response.json({ files: [file, '../secret', '.termdock/architecture.json/extra', null, file] })); vi.stubGlobal('fetch', fetch);
+    const fetch = vi.fn(async () => Response.json({ files: [file, '../secret', '.veymux/architecture.json/extra', null, file] })); vi.stubGlobal('fetch', fetch);
     expect(await listArchitectures('/project', new AbortController().signal)).toEqual([file]);
     fetch.mockResolvedValueOnce(Response.json({ entries: [] })); await expect(listArchitectures('/project', new AbortController().signal)).rejects.toThrow('Invalid');
     fetch.mockResolvedValueOnce(Response.json({ error: 'Access denied' }, { status: 403 })); await expect(listArchitectures('/project', new AbortController().signal)).rejects.toThrow('Access denied');
@@ -48,7 +48,7 @@ describe('native architecture project loading', () => {
     const fetch = vi.fn(async (): Promise<Response> => { throw new Error('Disconnected'); }); vi.stubGlobal('fetch', fetch);
     const signal = new AbortController().signal;
     await expect(readArchitecture('/remote project', signal)).rejects.toThrow('Disconnected'); expect(fetch).toHaveBeenCalledOnce();
-    expect(fetch).toHaveBeenCalledWith('/api/terminal/architecture/document?file=.termdock%2Farchitecture.json&root=%2Fremote+project', { signal, cache: 'no-store' });
+    expect(fetch).toHaveBeenCalledWith('/api/terminal/architecture/document?file=.veymux%2Farchitecture.json&root=%2Fremote+project', { signal, cache: 'no-store' });
     fetch.mockResolvedValueOnce(Response.json({ error: 'Access denied' }, { status: 403 })); await expect(readArchitecture('/project', signal)).rejects.toThrow('Access denied');
   });
 });

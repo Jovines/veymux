@@ -126,7 +126,7 @@ export function FederationAccess({ onConnect, onClose, onConnectWithPassword, on
     } catch { return; }
   })();
   const showInvitationGuide = !!httpsInvite && displayedInvite?.showAccessGuide !== false
-    && !window.termdockDesktop?.openServiceConnection && !inviteFailure && !initialNeedsPassword;
+    && !window.veymuxDesktop?.openServiceConnection && !inviteFailure && !initialNeedsPassword;
   useEffect(() => {
     setInviteDismissed(false); setFailedInvite(undefined); setInviteFailure(undefined);
     setInitialNeedsPassword(false); setInitialPassword('');
@@ -313,7 +313,7 @@ export function FederationAccess({ onConnect, onClose, onConnectWithPassword, on
       finally { setBusy(false); }
     }}>确认撤销邀请</button></div>
   </div> : <button type="button" className={`${button} text-xs text-destructive`} disabled={busy} onClick={() => { setPendingInvitationRevoke(id); setNotice(''); }}>撤销邀请</button>;
-  const title = replacingInvite ? '输入新的邀请链接' : serviceNavigation.title || (editingDevice ? '设备名称' : showDetails ? (tab === 'devices' ? '授权详情' : '连接详情') : selectingSessions ? '选择终端' : inviting ? '分享' : adding && paired ? '添加服务' : paired ? '服务与设备' : '连接 Termdock');
+  const title = replacingInvite ? '输入新的邀请链接' : serviceNavigation.title || (editingDevice ? '设备名称' : showDetails ? (tab === 'devices' ? '授权详情' : '连接详情') : selectingSessions ? '选择终端' : inviting ? '分享' : adding && paired ? '添加服务' : paired ? '服务与设备' : '连接 Veymux');
   const showBack = replacingInvite || !!serviceNavigation.back || !!editingDevice || showDetails || selectingSessions || (paired && (adding || inviting));
   const returnToOverview = () => { if (replacingInvite) { setReplacingInvite(false); setReplacementLink(''); setError(''); return; } if (serviceNavigation.back) { serviceNavigation.back(); return; } if (selectingSessions) setSelectingSessions(false); else back(); };
   const scopeName = (deviceGrants: FederationGrant[]) => deviceGrants.every(grant => grant.routeTargetServiceId) ? `${new Set(deviceGrants.map(grant => grant.routeTargetServiceId)).size} 台服务` : deviceGrants.some(grant => grant.scope.kind === 'service') ? '全部终端' : `${new Set(deviceGrants.flatMap(grant => grant.scope.kind === 'sessions' ? grant.scope.sessionIds : [])).size} 个终端`;
@@ -364,7 +364,7 @@ export function FederationAccess({ onConnect, onClose, onConnectWithPassword, on
           event.preventDefault(); setError('');
           let connection: FederationConnection;
           try { connection = parseInviteLink(replacementLink.trim()); }
-          catch { setError('请输入完整的 Termdock 邀请链接。'); return; }
+          catch { setError('请输入完整的 Veymux 邀请链接。'); return; }
           setReplacingInvite(false); setReplacementLink(''); await connect(connection);
         }}>
           <p className="text-sm leading-6 text-muted-foreground">请粘贴分享者重新生成的邀请链接。</p>

@@ -1,7 +1,7 @@
 // Keep these independent of app releases and Workbox's app-shell caches.
 // The asset URL carries the core version; existing v2 downloads stay reusable.
-const CACHE_NAME = 'termdock-video-compression-v2';
-const DATABASE_NAME = 'termdock-media-plugins';
+const CACHE_NAME = 'veymux-video-compression-v2';
+const DATABASE_NAME = 'veymux-media-plugins';
 const STORE_NAME = 'assets';
 
 function openDatabase(): Promise<IDBDatabase> {

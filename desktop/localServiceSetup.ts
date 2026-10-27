@@ -7,7 +7,7 @@ import { promisify } from 'node:util';
 import type { LocalServiceSetup, LocalServiceStatus } from './types.js';
 
 const execute = promisify(execFile);
-const installPrefix = path.join(os.homedir(), '.termdock', 'cli');
+const installPrefix = path.join(os.homedir(), '.veymux', 'cli');
 
 function versionBins(root: string, suffix = 'bin'): string[] {
   try {
@@ -21,10 +21,10 @@ async function environmentPaths(): Promise<string[]> {
   // Finder does not inherit the user's interactive shell PATH (notably nvm).
   const shell = process.env.SHELL || (process.platform === 'darwin' ? '/bin/zsh' : '/bin/bash');
   try {
-    const result = await execute(shell, ['-ilc', 'printf "\\nTERMDOCK_SETUP_PATH=%s\\n" "$PATH"'], {
+    const result = await execute(shell, ['-ilc', 'printf "\\nVEYMUX_SETUP_PATH=%s\\n" "$PATH"'], {
       timeout: 5_000, maxBuffer: 256 * 1024,
     });
-    loginPath = result.stdout.match(/^TERMDOCK_SETUP_PATH=(.*)$/m)?.[1] || '';
+    loginPath = result.stdout.match(/^VEYMUX_SETUP_PATH=(.*)$/m)?.[1] || '';
   } catch { /* Fall back to standard installation locations. */ }
   const home = os.homedir();
   return [...new Set([
@@ -48,14 +48,14 @@ function realFile(file: string): string | null {
 
 function findCli(dirs: string[]): string | undefined {
   for (const dir of dirs) {
-    const entry = realFile(path.join(dir, 'termdock'));
+    const entry = realFile(path.join(dir, 'veymux'));
     if (!entry || entry.includes('.app/Contents/')) continue;
     // Ignore unrelated commands and legacy app-bundle symlinks.
     try {
       const root = path.resolve(path.dirname(entry), '../..');
       const metadata = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
-      if (metadata.name === 'termdock' && typeof metadata.bin?.termdock === 'string'
-        && realFile(path.resolve(root, metadata.bin.termdock)) === entry) return entry;
+      if (metadata.name === 'veymux' && typeof metadata.bin?.veymux === 'string'
+        && realFile(path.resolve(root, metadata.bin.veymux)) === entry) return entry;
     } catch { /* Try the next installation. */ }
   }
   return undefined;
@@ -109,7 +109,7 @@ export class LocalServiceSetupController {
     }
     if (service.probe || await portInUse(service.state?.port || 9834)) {
       this.update('error', '已有本机进程正在运行，但服务尚不可用。请稍后重试。', {
-        details: service.probe?.error || '端口已被占用；请检查 ~/.termdock/server.log。',
+        details: service.probe?.error || '端口已被占用；请检查 ~/.veymux/server.log。',
       });
       return;
     }
@@ -151,11 +151,11 @@ export class LocalServiceSetupController {
         this.update('needs-install', `Node.js ${nodeVersion} 已就绪，点击下方安装本机服务。`);
         return;
       }
-      this.update('installing', '正在下载并安装 Termdock，首次安装可能需要几分钟…');
+      this.update('installing', '正在下载并安装 Veymux，首次安装可能需要几分钟…');
       fs.mkdirSync(installPrefix, { recursive: true, mode: 0o700 });
       // A user-owned prefix avoids sudo and leaves other global packages alone.
       try {
-        await execute(node, [npm, 'install', '--global', '--prefix', installPrefix, 'termdock', '--no-audit', '--no-fund'], {
+        await execute(node, [npm, 'install', '--global', '--prefix', installPrefix, 'veymux', '--no-audit', '--no-fund'], {
           env, cwd: os.homedir(), timeout: 10 * 60_000, maxBuffer: 8 * 1024 * 1024,
         });
       } catch (error) {
@@ -163,7 +163,7 @@ export class LocalServiceSetupController {
         return;
       }
       cli = findCli([path.join(installPrefix, 'bin')]);
-      if (!cli) throw new Error('安装结束后未找到 Termdock CLI，请检查安装详情。');
+      if (!cli) throw new Error('安装结束后未找到 Veymux CLI，请检查安装详情。');
       this.status = { ...this.status, cliPath: cli };
     }
     // Check again after detection/install: another client may have started it.
@@ -187,7 +187,7 @@ export class LocalServiceSetupController {
       if (!service.running) {
         this.update('error', '尚未确认服务启动成功，请查看启动详情后重试。', {
           details: launchError ? errorDetails(launchError)
-            : service.probe?.error || '请检查 ~/.termdock/server.log；已有后台服务会继续自行恢复。',
+            : service.probe?.error || '请检查 ~/.veymux/server.log；已有后台服务会继续自行恢复。',
         });
         return;
       }

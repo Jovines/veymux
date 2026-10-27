@@ -163,7 +163,7 @@ agent-browser open http://localhost:9833
 agent-browser reload && sleep 0.3 && agent-browser screenshot /tmp/dbg-t300.png
 sleep 0.7 && agent-browser screenshot /tmp/dbg-t1000.png
 # If user has localStorage, query it
-agent-browser eval "Object.keys(localStorage).filter(k => k.startsWith('termdock-'))"
+agent-browser eval "Object.keys(localStorage).filter(k => k.startsWith('veymux-'))"
 # Read the in-memory store
 agent-browser eval "JSON.stringify(Array.from(useTerminalStore.getState().sessions.entries()), null, 2)"
 ```

@@ -1,6 +1,6 @@
 import { useEffect, type RefObject } from 'react';
 import { useTerminalStore } from '../../stores/useTerminalStore';
-import { getTermdockDesktopBridge } from '../../desktop/nativeBridge';
+import { getVeymuxDesktopBridge } from '../../desktop/nativeBridge';
 import { isWorkspaceActive, WORKSPACE_VISIBILITY_EVENT } from '../../services/workspaceHost';
 import { isFocusTargetAvailable } from '../../utils/focusOwnership';
 
@@ -16,7 +16,7 @@ export function useSessionChatReview(sessionId: string, enabled: boolean, conten
     if (!enabled || !pending) return;
     const acknowledge = () => {
       if (document.hidden || !isWorkspaceActive() || !isFocusTargetAvailable(content.current)
-        || getTermdockDesktopBridge() && !document.hasFocus()) return;
+        || getVeymuxDesktopBridge() && !document.hasFocus()) return;
       useTerminalStore.getState().clearAgentNeedsReview(sessionId);
     };
     acknowledge();

@@ -20,15 +20,15 @@ import { buildTmuxDefaultColorReplies } from '../../terminal/tmuxColors';
 import type { TerminalMode, TerminalStreamEvent, TmuxActionPayload, TmuxLayout } from '../../terminal';
 import { TerminalViewport, type RefreshReason, type TerminalController, type TerminalViewportInputOptions } from '../terminal/TerminalViewport';
 import { isTerminalResponse } from '../../terminal/terminalResponse';
-import { getTerminalTheme, type TermdockColorTheme } from '../../terminal';
-import { createTermdockAPI } from '../../terminal/factory';
+import { getTerminalTheme, type VeymuxColorTheme } from '../../terminal';
+import { createVeymuxAPI } from '../../terminal/factory';
 import { TerminalApiError, listDirectory, openSessionInventoryEntry, probeTerminalConnection, reconnectTerminalConnectionNow, sendTerminalFlowControlState, sendTerminalFocusState, sendTerminalViewingState, updateSessionInventoryEntry, uploadFiles } from '../../terminal/api';
 import {
   computeTerminalLogicalFocus,
   computeTerminalLogicalViewing,
   shouldAutoFocusTerminalAfterInsert,
 } from '../../terminal/focus';
-import { getTermdockDesktopBridge } from '../../desktop/nativeBridge';
+import { getVeymuxDesktopBridge } from '../../desktop/nativeBridge';
 import { isTmuxMouseOrFocusInput, shouldConsumeAfterTmuxCopyModeExit } from '../../terminal/copyModeInput';
 import { ErrorBoundary } from '../ui/ErrorBoundary';
 import { MobileKeyboard, getSequenceForKey } from '../terminal/MobileKeyboard';
@@ -64,9 +64,9 @@ import { IMAGE_DIMENSIONS, VIDEO_DIMENSIONS, IMAGE_QUALITY, VIDEO_BITRATE, type 
 import { MediaUploadToast, type MediaUploadResult } from '../terminal/MediaUploadToast';
 
 const MODIFIER_DOUBLE_TAP_WINDOW_MS = 320;
-const MOBILE_KEYBOARD_EXPANDED_STORAGE_KEY = 'termdock:mobile-keyboard-expanded';
-const MOBILE_KEYBOARD_PRESET_MODE_STORAGE_KEY = 'termdock:mobile-keyboard-preset-mode';
-const MOBILE_LONG_PRESS_MODE_STORAGE_KEY = 'termdock:mobile-long-press-mode';
+const MOBILE_KEYBOARD_EXPANDED_STORAGE_KEY = 'veymux:mobile-keyboard-expanded';
+const MOBILE_KEYBOARD_PRESET_MODE_STORAGE_KEY = 'veymux:mobile-keyboard-preset-mode';
+const MOBILE_LONG_PRESS_MODE_STORAGE_KEY = 'veymux:mobile-long-press-mode';
 const CURSOR_POSITION_SETTLE_MS = 80;
 
 function isCompressibleMobileImage(file: File): boolean {
@@ -115,7 +115,7 @@ interface TerminalViewProps {
   mode?: TerminalMode;
   tmuxSessionName?: string | null;
   terminalSettings?: TerminalSettings;
-  colorTheme?: TermdockColorTheme;
+  colorTheme?: VeymuxColorTheme;
   toolbarPresets?: ToolbarPresetDefinition[];
   onConfigureToolbar?: (target: ToolbarConfigurationTarget) => void;
   isActive?: boolean;
@@ -189,7 +189,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   const [fontSize, setFontSize] = React.useState(
     () => (initialSessionId ? getSessionFontSize(initialSessionId) : null) ?? terminalSettings.fontSize,
   );
-  const terminal = React.useMemo(() => createTermdockAPI(), []);
+  const terminal = React.useMemo(() => createVeymuxAPI(), []);
   const debugSession = React.useMemo(() => createDebugLogger('session'), []);
   const debugKeyboard = React.useMemo(() => createDebugLogger('keyboard'), []);
   const lastResumeRequestRef = React.useRef<{ token: number; visible: boolean } | null>(null);
@@ -791,7 +791,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
     documentVisible: isDocumentVisible,
     windowFocused: isWindowFocused,
     streamReady: isStreamReady,
-    isDesktop: getTermdockDesktopBridge() !== null,
+    isDesktop: getVeymuxDesktopBridge() !== null,
   });
 
   // Latest logical focus, kept in a ref so the WS 'connected' handler can
@@ -1227,7 +1227,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
                 // detect 的 activeProgram（terminal.ts:4348-4358 / 4402）。之前
                 // 只写了 cwd，activeProgram 要白等到第一次 active-program 轮询
                 // （1200ms）才到，tab 名会从默认名「迟一拍」跳成程序名。这里补上
-                // 后，WS 一连上 tab 就能显示「customcli termdock」，少一次可见跳变。
+                // 后，WS 一连上 tab 就能显示「customcli veymux」，少一次可见跳变。
                 if (event.activeProgram !== undefined) {
                   setSessionActiveProgram(
                     storeSessionId,
@@ -2062,7 +2062,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       // 让发送方（上下文草稿坞）保留内容
       if (isConnectionTransitionRef.current || !terminalControllerRef.current) {
         if (nonce) {
-          window.dispatchEvent(new CustomEvent('termdock-insert-reference-ack', {
+          window.dispatchEvent(new CustomEvent('veymux-insert-reference-ack', {
             detail: { nonce, ok: false },
           }));
         }
@@ -2076,11 +2076,11 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
           submitAfterPaste: customEvent.detail?.submitAfterPaste, targeted: Boolean(target), ownedPaste: ownedPaste ?? undefined });
       if (nonce) {
         void Promise.resolve(delivery).then(ok => {
-          window.dispatchEvent(new CustomEvent('termdock-insert-reference-ack', {
+          window.dispatchEvent(new CustomEvent('veymux-insert-reference-ack', {
             detail: { nonce, ok: ok === true },
           }));
         }, () => {
-          window.dispatchEvent(new CustomEvent('termdock-insert-reference-ack', { detail: { nonce, ok: false } }));
+          window.dispatchEvent(new CustomEvent('veymux-insert-reference-ack', { detail: { nonce, ok: false } }));
         });
       }
       if (shouldAutoFocusTerminalAfterInsert(isMobileRef.current, customEvent.detail?.focus !== false)) {
@@ -2088,8 +2088,8 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       }
     };
 
-    window.addEventListener('termdock-insert-reference', handleInsertReference);
-    return () => window.removeEventListener('termdock-insert-reference', handleInsertReference);
+    window.addEventListener('veymux-insert-reference', handleInsertReference);
+    return () => window.removeEventListener('veymux-insert-reference', handleInsertReference);
   }, [focusTerminalIfActive, sessionId]);
 
   // 推 resize 给服务端。本组件不再做 debounce / skip-if-same —— 编排器在
@@ -2620,9 +2620,9 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
         force: true,
       });
     };
-    document.addEventListener('termdock:viewport-keyboard-change', handleViewportKeyboardChange);
+    document.addEventListener('veymux:viewport-keyboard-change', handleViewportKeyboardChange);
     return () => {
-      document.removeEventListener('termdock:viewport-keyboard-change', handleViewportKeyboardChange);
+      document.removeEventListener('veymux:viewport-keyboard-change', handleViewportKeyboardChange);
     };
   }, [isActive, isMobile, sessionId]);
   // 基础快捷栏在桌面端常驻，其余 preset 按 showOnDesktop 显示，不再绑 isActive。
@@ -2678,7 +2678,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
 
   return (
     <div className="relative flex h-full min-h-0 flex-col overflow-hidden" style={wrapperStyle}
-      data-owned-terminal-startup={(window as unknown as { __TD_NATIVE_GATE_STATE?: { finished?: boolean; cancelled?: boolean } }).__TD_NATIVE_GATE_STATE
+      data-owned-terminal-startup={(window as unknown as { __VEYMUX_NATIVE_GATE_STATE?: { finished?: boolean; cancelled?: boolean } }).__VEYMUX_NATIVE_GATE_STATE
         ? JSON.stringify({ active: isActive, viewportReady: isViewportInitialized, streamReady: isStreamReady, contentReady: isInitialContentReady, sizeReady: isInitialSizeReady }) : undefined}
     >
       <input

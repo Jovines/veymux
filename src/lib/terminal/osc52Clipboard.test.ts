@@ -3,7 +3,7 @@ import { Terminal } from '@xterm/headless';
 import { afterEach, expect, it, vi } from 'vitest';
 
 const state = vi.hoisted(() => ({ bridge: undefined as any }));
-vi.mock('../desktop/nativeBridge', () => ({ getTermdockDesktopBridge: () => state.bridge }));
+vi.mock('../desktop/nativeBridge', () => ({ getVeymuxDesktopBridge: () => state.bridge }));
 import { createOsc52ClipboardHandler } from './osc52Clipboard';
 
 const terminals: Terminal[] = [];

@@ -11,7 +11,7 @@ import type { DesktopServiceActivity } from '../desktop/nativeBridge';
 const empty: WorkspaceSnapshot = { activeKey: 'root', items: [] };
 const emptySubscribe = () => () => {};
 const emptySnapshot = () => empty;
-export const OPEN_SAVED_SERVICE_EVENT = 'termdock:open-saved-service';
+export const OPEN_SAVED_SERVICE_EVENT = 'veymux:open-saved-service';
 
 function compactServiceLabel(service: ServiceConnection, services: ServiceConnection[]): string {
   try {
@@ -28,7 +28,7 @@ function compactServiceLabel(service: ServiceConnection, services: ServiceConnec
 
 export function useServiceWorkspaceActivity(runningCount: number, reviewCount: number, attentionSessions?: readonly WorkspaceAttentionSession[]): void {
   useEffect(() => {
-    window.termdockDesktop?.reportServiceActivity?.({ runningCount, reviewCount });
+    window.veymuxDesktop?.reportServiceActivity?.({ runningCount, reviewCount });
   }, [runningCount, reviewCount]);
   useEffect(() => {
     reportWorkspace({ runningCount, reviewCount, attentionSessions });
@@ -37,7 +37,7 @@ export function useServiceWorkspaceActivity(runningCount: number, reviewCount: n
 
 /** Native desktop already has independent service windows. */
 export function ServiceSwitcher({ onReselect }: { onReselect?: () => void }) {
-  if (window.termdockDesktop) return null;
+  if (window.veymuxDesktop) return null;
   return <BrowserServiceSwitcher onReselect={onReselect} />;
 }
 
@@ -94,7 +94,7 @@ function BrowserServiceSwitcher({ onReselect }: { onReselect?: () => void }) {
       void listServiceConnections().then(items => {
         if (disposed || request !== revision) return;
         try {
-          const key = 'termdock-secure-service-order';
+          const key = 'veymux-secure-service-order';
           const stored: unknown = JSON.parse(localStorage.getItem(key) || '[]');
           const order = Array.isArray(stored) ? stored.filter((id): id is string => typeof id === 'string') : [];
           const identity = (item: ServiceConnection) => item.targetPeerId || item.id;
@@ -108,7 +108,7 @@ function BrowserServiceSwitcher({ onReselect }: { onReselect?: () => void }) {
     };
     refresh();
     const stop = observeServiceConnections(refresh);
-    const stopNative = window.termdockDesktop?.onServiceActivity?.(setNativeActivity);
+    const stopNative = window.veymuxDesktop?.onServiceActivity?.(setNativeActivity);
     window.addEventListener(SECURE_STATE_EVENT, refresh);
     return () => { disposed = true; stop(); stopNative?.(); window.removeEventListener(SECURE_STATE_EVENT, refresh); };
   }, []);
@@ -129,7 +129,7 @@ function BrowserServiceSwitcher({ onReselect }: { onReselect?: () => void }) {
       return;
     }
     try {
-      const native = window.termdockDesktop;
+      const native = window.veymuxDesktop;
       if (native?.openServiceConnection) {
         const result = await native.openServiceConnection(service);
         if (!result.ok) throw new Error(result.error || '暂时无法打开服务');

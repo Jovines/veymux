@@ -1,17 +1,17 @@
-export const TARGET_KEY = 'termdock-secure-target-v1';
-export const ENTRY_KEY = 'termdock-secure-entry-v1';
-const GLOBAL_KEYS = new Set([TARGET_KEY, ENTRY_KEY, 'termdock-color-theme', 'termdock:locale', 'termdock.federation.connections.v1']);
+export const TARGET_KEY = 'veymux-secure-target-v1';
+export const ENTRY_KEY = 'veymux-secure-entry-v1';
+const GLOBAL_KEYS = new Set([TARGET_KEY, ENTRY_KEY, 'veymux-color-theme', 'veymux:locale', 'veymux.federation.connections.v1']);
 const rawGet = typeof Storage === 'undefined' ? undefined : Storage.prototype.getItem;
 const rawSet = typeof Storage === 'undefined' ? undefined : Storage.prototype.setItem;
-const LEGACY_OWNER_KEY = 'termdock-secure-legacy-owner';
+const LEGACY_OWNER_KEY = 'veymux-secure-legacy-owner';
 export interface SavedTarget { viewMode?: 'terminal' | 'chat'; viewLayout?: 'split'; url: string; targetPeerId: string; serviceName?: string; serviceOrigin?: string; entryServiceId?: string; routes?: { url: string; targetPeerId: string }[] }
 export const IS_WORKSPACE_DOCUMENT = typeof window !== 'undefined' && window.parent !== window && location.pathname === '/workspace.html';
 export function readSelectedTarget(): SavedTarget | null {
   if (typeof window === 'undefined') return null;
   try {
     if (IS_WORKSPACE_DOCUMENT) {
-      const serviceId = new URLSearchParams(location.search).get('termdock-workspace');
-      const directory = JSON.parse(localStorage.getItem('termdock.federation.connections.v1') || '[]');
+      const serviceId = new URLSearchParams(location.search).get('veymux-workspace');
+      const directory = JSON.parse(localStorage.getItem('veymux.federation.connections.v1') || '[]');
       const value = Array.isArray(directory) ? directory.find(item => item?.targetPeerId === serviceId) : undefined;
       return value && typeof value.url === 'string' && typeof value.targetPeerId === 'string'
         ? { ...value, serviceName: value.label || value.serviceName } : null;
@@ -46,7 +46,7 @@ export function clearSelectedTarget(): void {
   localStorage.removeItem(TARGET_KEY); sessionStorage.removeItem(TARGET_KEY); localStorage.removeItem(ENTRY_KEY);
 }
 export function scopedStorageKey(key: string, serviceId = BOOT_SERVICE_ID): string {
-  return GLOBAL_KEYS.has(key) || key.startsWith('termdock-secure-') ? key : `termdock-service:${serviceId}:${key}`;
+  return GLOBAL_KEYS.has(key) || key.startsWith('veymux-secure-') ? key : `veymux-service:${serviceId}:${key}`;
 }
 /** Bind pre-upgrade browser state once, only after authenticating this origin's direct service. */
 export function migrateLegacyServiceState(serviceId: string): void {
@@ -58,7 +58,7 @@ export function migrateLegacyServiceState(serviceId: string): void {
     for (const storage of [localStorage, sessionStorage]) {
       const keys = Array.from({ length: storage.length }, (_, index) => storage.key(index)).filter((key): key is string => !!key);
       for (const key of keys) {
-        if (key.startsWith('termdock-service:') || scopedStorageKey(key, serviceId) === key) continue;
+        if (key.startsWith('veymux-service:') || scopedStorageKey(key, serviceId) === key) continue;
         const target = scopedStorageKey(key, serviceId);
         const value = rawGet.call(storage, key);
         if (value !== null && rawGet.call(storage, target) === null) rawSet.call(storage, target, value);

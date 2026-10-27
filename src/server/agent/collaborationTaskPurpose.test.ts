@@ -19,7 +19,7 @@ import type { CollaborationTask, TaskCreateInput, TaskOperation } from './collab
 
 let directory: string, file: string, store: CollaborationTaskStore;
 const owner = `12D3KooW${'a'.repeat(40)}`, worker = { serviceId: owner, sessionId: 'worker' };
-beforeEach(() => { directory = fs.mkdtempSync(path.join(tmpdir(), 'td-purpose-')); file = path.join(directory, 'tasks.json'); store = new CollaborationTaskStore(file); });
+beforeEach(() => { directory = fs.mkdtempSync(path.join(tmpdir(), 'veymux-purpose-')); file = path.join(directory, 'tasks.json'); store = new CollaborationTaskStore(file); });
 afterEach(() => { fs.rmSync(directory, { recursive: true, force: true }); vi.useRealTimers(); });
 const create = (input: Partial<TaskCreateInput> = {}) => store.create(owner, { idempotencyKey: randomUUID(), groupId: 'group', title: 'Background report', spec: 'Gather evidence', assignee: worker, ...input }, null);
 const apply = (task: CollaborationTask, input: Partial<TaskOperation> & { kind: TaskOperation['kind'] }, actor: typeof worker | null = null) => store.apply(task.id,

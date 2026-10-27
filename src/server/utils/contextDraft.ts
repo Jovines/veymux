@@ -2,7 +2,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
-const DRAFT_DIR = path.join(os.homedir(), '.termdock');
+const DRAFT_DIR = path.join(os.homedir(), '.veymux');
 const DRAFT_FILE = path.join(DRAFT_DIR, 'context-draft.json');
 // 草稿是纯文本提示词，200k 上限足够宽裕，也避免异常请求写爆磁盘
 export const CONTEXT_DRAFT_MAX_LENGTH = 200_000;

@@ -6,7 +6,7 @@ export function installWorkerBridge(getClient: () => Promise<SecureClient>): () 
   if (!('serviceWorker' in navigator)) return () => {};
   const active = new Set<() => void>();
   const receive = (event: MessageEvent) => {
-    if (event.source !== navigator.serviceWorker.controller || event.data?.type !== 'termdock-secure-fetch' || event.ports.length !== 1) return;
+    if (event.source !== navigator.serviceWorker.controller || event.data?.type !== 'veymux-secure-fetch' || event.ports.length !== 1) return;
     const port = event.ports[0];
     const { path, method, headers, body, expectedTargetPeerId, previewPrefix } = event.data;
     let url: URL;

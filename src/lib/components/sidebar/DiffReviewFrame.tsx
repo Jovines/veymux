@@ -8,7 +8,7 @@ import 'swiper/css';
 import { flushCacheThrottled, readCache, writeCache, writeCacheThrottled } from '../../utils/localStorageCache';
 import { useI18n } from '../../i18n';
 
-const DESKTOP_LIST_WIDTH_STORAGE_KEY = 'termdock:diff-review:list-width:v1';
+const DESKTOP_LIST_WIDTH_STORAGE_KEY = 'veymux:diff-review:list-width:v1';
 const DESKTOP_LIST_WIDTH_WRITE_MS = 120;
 const DEFAULT_DESKTOP_LIST_WIDTH_PX = 320;
 const MIN_DESKTOP_LIST_WIDTH_PX = 220;
@@ -180,7 +180,7 @@ export function DiffReviewFrame({
             <div
               className={detailOwnsScroll
                 ? 'min-h-0 flex-1 overflow-hidden'
-                : 'termdock-diff-stream-scroller min-h-0 flex-1 overflow-y-auto overscroll-contain'}
+                : 'veymux-diff-stream-scroller min-h-0 flex-1 overflow-y-auto overscroll-contain'}
               onScroll={detailOwnsScroll ? undefined : (event) => onDetailScroll?.(event.currentTarget)}
             >
               {detail}
@@ -196,7 +196,7 @@ export function DiffReviewFrame({
   if (desktopLayout === 'stacked') {
     if (detailOwnsScroll) {
       return (
-        <div className="termdock-native-select min-h-0 flex-1 overflow-hidden px-2 pb-[calc(env(safe-area-inset-bottom)+4.5rem)]">
+        <div className="veymux-native-select min-h-0 flex-1 overflow-hidden px-2 pb-[calc(env(safe-area-inset-bottom)+4.5rem)]">
           {desktopListHeader && (
             <div className="sticky top-0 z-10 border-b border-border/15 bg-surface px-2 py-2">
               {desktopListHeader}
@@ -211,7 +211,7 @@ export function DiffReviewFrame({
     }
     return (
       <div
-        className="termdock-native-select termdock-diff-stream-scroller min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-[calc(env(safe-area-inset-bottom)+4.5rem)]"
+        className="veymux-native-select veymux-diff-stream-scroller min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-[calc(env(safe-area-inset-bottom)+4.5rem)]"
         onScroll={(event) => onDetailScroll?.(event.currentTarget)}
       >
         {desktopListHeader && (
@@ -261,7 +261,7 @@ export function DiffReviewFrame({
       <div
         className={detailOwnsScroll
           ? 'min-w-0 flex-1 overflow-hidden'
-          : 'termdock-diff-stream-scroller min-w-0 flex-1 overflow-y-auto overscroll-contain'}
+          : 'veymux-diff-stream-scroller min-w-0 flex-1 overflow-y-auto overscroll-contain'}
         onScroll={detailOwnsScroll ? undefined : (event) => onDetailScroll?.(event.currentTarget)}
       >
         {detail}

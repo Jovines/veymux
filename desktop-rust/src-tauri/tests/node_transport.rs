@@ -1,5 +1,5 @@
 use std::{collections::BTreeMap, path::PathBuf, process::Stdio};
-use termdock_preview::{config::Connection, proxy};
+use veymux_preview::{config::Connection, proxy};
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     process::Command,
@@ -10,7 +10,7 @@ async fn actual_node_noise_direct_relay_reconnect() {
     let home = tempfile::tempdir().unwrap();
     let mut child = Command::new("node")
         .env("HOME", home.path())
-        .env_remove("TERMDOCK_PASSWORD")
+        .env_remove("VEYMUX_PASSWORD")
         .arg("--import")
         .arg("tsx")
         .arg(root.join("desktop-rust/scripts/transport-fixture.ts"))

@@ -10,7 +10,7 @@ let directory: string, file: string, store: TodoStore, runtime: TodoRuntime, run
 const config = { agentSlug: 'fixture', command: 'fixture', cwd: '/tmp', prompt: '只收集，明确来源覆盖范围' };
 const originalTZ = process.env.TZ;
 beforeEach(() => {
-  directory = fs.mkdtempSync(path.join(os.tmpdir(), 'td-collection-'));
+  directory = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-collection-'));
   file = path.join(directory, 'todos.json'); store = new TodoStore(file);
   runtime = { validate: vi.fn(async c => c), launch: vi.fn(async (run, _prompt, created) => created('terminal-' + run.id)),
     collectionSessions: { observe: vi.fn(async () => null), reuse: vi.fn(async () => {}), close: vi.fn(async () => false) } };

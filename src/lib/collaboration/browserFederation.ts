@@ -9,7 +9,7 @@ interface BrowserCollaboration {
   peers(origin: string): Promise<CollaborationPeers>;
   save(origin: string, input: CollaborationGroupInput): Promise<{ group: CollaborationGroup }>;
 }
-declare global { interface Window { __termdockCollaboration?: BrowserCollaboration } }
+declare global { interface Window { __veymuxCollaboration?: BrowserCollaboration } }
 
 function waitForClient(pending: Promise<SecureClient>, signal: AbortSignal): Promise<SecureClient> {
   if (signal.aborted) return Promise.reject(signal.reason);
@@ -23,8 +23,8 @@ function waitForClient(pending: Promise<SecureClient>, signal: AbortSignal): Pro
 /** One relay for all retained workspaces. Each destination has its own pinned
  * encrypted client; no cookies, credentials, or active target are switched. */
 export function installBrowserCollaboration(): BrowserCollaboration | undefined {
-  if (window.termdockDesktop || window.parent !== window) return;
-  if (window.__termdockCollaboration) return window.__termdockCollaboration;
+  if (window.veymuxDesktop || window.parent !== window) return;
+  if (window.__veymuxCollaboration) return window.__veymuxCollaboration;
   const clients = new Map<string, Promise<SecureClient>>();
   let services: FederationService[] = [];
   let stopped = false;
@@ -100,7 +100,7 @@ export function installBrowserCollaboration(): BrowserCollaboration | undefined 
     if (services.length < 2) return;
     await federation.refresh().catch(() => {});
   };
-  window.__termdockCollaboration = bridge;
+  window.__veymuxCollaboration = bridge;
   const timer = window.setInterval(() => void synchronize(), 2000);
   document.addEventListener('visibilitychange', synchronize);
   window.addEventListener('online', synchronize);
@@ -116,11 +116,11 @@ export function installBrowserCollaboration(): BrowserCollaboration | undefined 
 }
 
 export function browserCollaboration(): BrowserCollaboration | undefined {
-  if (window.termdockDesktop) return;
+  if (window.veymuxDesktop) return;
   try {
     if (window.parent === window) return installBrowserCollaboration();
     if (location.pathname === '/workspace.html' && window.parent.location.origin === location.origin) {
-      return window.parent.__termdockCollaboration;
+      return window.parent.__veymuxCollaboration;
     }
   } catch { /* Opaque previews cannot participate in the application relay. */ }
 }

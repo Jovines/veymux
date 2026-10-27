@@ -24,7 +24,7 @@ describe('native Agent hook updates', () => {
   let dir: string;
 
   beforeEach(() => {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'termdock-native-hooks-'));
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-native-hooks-'));
     vi.spyOn(os, 'homedir').mockReturnValue(dir);
     vi.stubEnv('CODEX_HOME', path.join(dir, 'custom-codex'));
     vi.stubEnv('CLAUDE_CONFIG_DIR', path.join(dir, 'custom-claude'));
@@ -110,7 +110,7 @@ describe('toml hooks installer (kimi)', () => {
   let file: string;
 
   beforeEach(() => {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'termdock-kimi-hooks-'));
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-kimi-hooks-'));
     file = path.join(dir, 'config.toml');
   });
 
@@ -118,7 +118,7 @@ describe('toml hooks installer (kimi)', () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  it('reports not-installed when the file is missing or has no termdock block', () => {
+  it('reports not-installed when the file is missing or has no veymux block', () => {
     expect(tomlHooksState(file, 'kimi', KIMI_HOOK_EVENTS)).toBe('not-installed');
     fs.writeFileSync(file, USER_CONFIG);
     expect(tomlHooksState(file, 'kimi', KIMI_HOOK_EVENTS)).toBe('not-installed');
@@ -166,7 +166,7 @@ describe('toml hooks installer (kimi)', () => {
     expect(tomlHooksState(file, 'kimi', KIMI_HOOK_EVENTS)).toBe('installed');
   });
 
-  it('uninstall removes only termdock blocks and keeps user hooks', () => {
+  it('uninstall removes only veymux blocks and keeps user hooks', () => {
     fs.writeFileSync(file, USER_CONFIG);
     tomlHooksInstall(file, 'kimi', KIMI_HOOK_EVENTS);
     expect(tomlHooksUninstall(file, 'kimi')).toBe('Removed');
@@ -177,7 +177,7 @@ describe('toml hooks installer (kimi)', () => {
   it('uninstall is a no-op message when nothing is installed', () => {
     expect(tomlHooksUninstall(file, 'kimi')).toBe('Nothing installed; nothing to remove');
     fs.writeFileSync(file, USER_CONFIG);
-    expect(tomlHooksUninstall(file, 'kimi')).toBe('No termdock hooks found; nothing to remove');
+    expect(tomlHooksUninstall(file, 'kimi')).toBe('No veymux hooks found; nothing to remove');
     expect(fs.readFileSync(file, 'utf8')).toBe(USER_CONFIG);
   });
 });
@@ -191,7 +191,7 @@ describe('plugin JSON hook-map installer', () => {
   ];
 
   beforeEach(() => {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'termdock-plugin-hooks-'));
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'veymux-plugin-hooks-'));
     file = path.join(dir, 'hooks.json');
   });
 

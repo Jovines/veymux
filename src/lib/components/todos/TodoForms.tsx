@@ -175,6 +175,6 @@ function CollectorSessionFields({ session, sessions, onChange }: { session: NonN
 }
 export function IntegrationHelp() {
   const [copied, setCopied] = useState(false);
-  const command = 'td todo add --title "检查项目依赖" --description "核实升级影响" --source "项目巡检" --external-id "deps-review"';
-  return <FormBody><p className="text-sm leading-7 text-muted-foreground">外部程序或 Agent 可以在服务所在机器，通过 CLI 写入待办。相同来源与外部标识会去重。</p><pre className="overflow-x-auto rounded-lg bg-surface-2 p-4 text-xs leading-6"><code>{command}</code></pre><button className={todoSecondary} onClick={() => { void writeClipboardText(command).then(setCopied); }}>{copied ? '已复制' : '复制命令'}</button><p className="text-xs leading-6 text-muted-foreground">完整用法：<code>td todo --help</code>。API：<code className="break-all">POST /api/terminal/operations/todos</code>，沿用当前服务的鉴权和加密连接。</p></FormBody>;
+  const command = 'veymux todo add --title "检查项目依赖" --description "核实升级影响" --source "项目巡检" --external-id "deps-review"';
+  return <FormBody><p className="text-sm leading-7 text-muted-foreground">外部程序或 Agent 可以在服务所在机器，通过 CLI 写入待办。相同来源与外部标识会去重。</p><pre className="overflow-x-auto rounded-lg bg-surface-2 p-4 text-xs leading-6"><code>{command}</code></pre><button className={todoSecondary} onClick={() => { void writeClipboardText(command).then(setCopied); }}>{copied ? '已复制' : '复制命令'}</button><p className="text-xs leading-6 text-muted-foreground">完整用法：<code>veymux todo --help</code>。API：<code className="break-all">POST /api/terminal/operations/todos</code>，沿用当前服务的鉴权和加密连接。</p></FormBody>;
 }

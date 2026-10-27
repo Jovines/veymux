@@ -8,24 +8,24 @@ import { isValidAndroidSerial } from '../routes/android';
 const serial = '[fdbd:ff1:ce00:580:10:76:222:117]:33265';
 let directory: string;
 beforeEach(() => {
-  directory = mkdtempSync(join(tmpdir(), 'td-adb-'));
+  directory = mkdtempSync(join(tmpdir(), 'veymux-adb-'));
   const binary = join(directory, 'adb');
   writeFileSync(binary, `#!/usr/bin/env node
 const args = process.argv.slice(2);
 if (args[0] === 'devices') {
-  console.log('List of devices attached\\n${serial} ' + (process.env.TD_TEST_OFFLINE === '1' ? 'offline' : 'device') + ' product:PTP-AN00 model:PTP_AN00 device:HNPLP transport_id:6');
+  console.log('List of devices attached\\n${serial} ' + (process.env.VEYMUX_TEST_OFFLINE === '1' ? 'offline' : 'device') + ' product:PTP-AN00 model:PTP_AN00 device:HNPLP transport_id:6');
 } else if (args[0] === '-s' && args[1] === '${serial}' && args.slice(2).join(' ') === 'shell getprop') {
-  if (process.env.TD_TEST_PROP_MODE === 'failure') process.exit(1);
-  if (process.env.TD_TEST_PROP_MODE === 'diagnostic') console.log('getprop: Max 2 arguments');
+  if (process.env.VEYMUX_TEST_PROP_MODE === 'failure') process.exit(1);
+  if (process.env.VEYMUX_TEST_PROP_MODE === 'diagnostic') console.log('getprop: Max 2 arguments');
   else console.log('[ro.build.version.sdk]: [35]\\n[unrelated]: [ignore]\\n[ro.product.model]: [PTP-AN00]\\n[ro.build.version.release]: [15]');
-  if (process.env.TD_TEST_PROP_MODE === 'identity') console.log('[ro.serialno]: [test-hardware-serial]');
-  if (process.env.TD_TEST_PROP_MODE === 'fallback') console.log('[ro.serialno]: [unknown]\\n[ro.boot.serialno]: [test-hardware-serial]');
-  if (process.env.TD_TEST_PROP_MODE === 'placeholder') console.log('[ro.serialno]: [unknown]\\n[ro.boot.serialno]: [00000000]');
+  if (process.env.VEYMUX_TEST_PROP_MODE === 'identity') console.log('[ro.serialno]: [test-hardware-serial]');
+  if (process.env.VEYMUX_TEST_PROP_MODE === 'fallback') console.log('[ro.serialno]: [unknown]\\n[ro.boot.serialno]: [test-hardware-serial]');
+  if (process.env.VEYMUX_TEST_PROP_MODE === 'placeholder') console.log('[ro.serialno]: [unknown]\\n[ro.boot.serialno]: [00000000]');
 } else if (['connect', 'disconnect'].includes(args[0]) && args[1] === '${serial}') {
   console.log(args.join(' '));
 } else { console.error('unexpected adb arguments: ' + JSON.stringify(args)); process.exit(1); }
 `, { mode: 0o755 });
-  vi.stubEnv('TERMDOCK_ADB_BIN', binary);
+  vi.stubEnv('VEYMUX_ADB_BIN', binary);
   vi.resetModules();
 });
 afterEach(() => { vi.unstubAllEnvs(); rmSync(directory, { recursive: true, force: true }); });
@@ -44,19 +44,19 @@ describe('Android IPv6 devices', () => {
     expect(await listDevices()).toEqual([expect.objectContaining({ serial, isNetwork: true, model: 'PTP-AN00', androidVersion: '15', sdk: 35 })]);
   });
   it.each(['failure', 'diagnostic'])('keeps the adb model when getprop returns %s', async mode => {
-    vi.stubEnv('TD_TEST_PROP_MODE', mode);
+    vi.stubEnv('VEYMUX_TEST_PROP_MODE', mode);
     const { listDevices } = await import('./adb');
     expect(await listDevices()).toEqual([expect.objectContaining({ model: 'PTP AN00' })]);
   });
   it.each(['identity', 'fallback'])('provides a private physical grouping key from %s', async mode => {
-    vi.stubEnv('TD_TEST_PROP_MODE', mode);
+    vi.stubEnv('VEYMUX_TEST_PROP_MODE', mode);
     const { listDevices } = await import('./adb');
     const devices = await listDevices();
     expect(devices[0].physicalId).toMatch(/^[a-f0-9]{64}$/);
     expect(JSON.stringify(devices)).not.toContain('test-hardware-serial');
   });
   it('does not assign a shared identity for placeholder hardware properties', async () => {
-    vi.stubEnv('TD_TEST_PROP_MODE', 'placeholder');
+    vi.stubEnv('VEYMUX_TEST_PROP_MODE', 'placeholder');
     const { listDevices } = await import('./adb');
     expect((await listDevices())[0].physicalId).toBeUndefined();
   });
@@ -72,11 +72,11 @@ describe('Android IPv6 devices', () => {
 });
 
 it('retains only recent offline identity hints and revalidates every live address', async () => {
-  vi.stubEnv('TD_TEST_PROP_MODE', 'identity');
+  vi.stubEnv('VEYMUX_TEST_PROP_MODE', 'identity');
   const { listDevices } = await import('./adb');
   const online = (await listDevices())[0];
-  vi.stubEnv('TD_TEST_OFFLINE', '1');
+  vi.stubEnv('VEYMUX_TEST_OFFLINE', '1');
   expect((await listDevices())[0]).toMatchObject({ state: 'offline', physicalId: online.physicalId });
-  vi.stubEnv('TD_TEST_OFFLINE', '0'); vi.stubEnv('TD_TEST_PROP_MODE', 'placeholder');
+  vi.stubEnv('VEYMUX_TEST_OFFLINE', '0'); vi.stubEnv('VEYMUX_TEST_PROP_MODE', 'placeholder');
   expect((await listDevices())[0].physicalId).toBeUndefined();
 });

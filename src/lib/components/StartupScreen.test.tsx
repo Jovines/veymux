@@ -13,7 +13,7 @@ beforeEach(() => {
   setConnectionRecovery('ready');
   useFeedbackStore.setState({ items: [] });
   surface = document.createElement('div');
-  surface.id = 'termdock-startup';
+  surface.id = 'veymux-startup';
   surface.innerHTML = '<div role="status"><span data-startup-status></span></div><p data-startup-detail hidden></p><button data-startup-action hidden></button>';
   root = document.createElement('div');
   root.id = 'root';

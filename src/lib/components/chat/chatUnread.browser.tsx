@@ -46,7 +46,7 @@ it.each([1280, 390])('highlights actual unseen replies, acknowledges exposure an
   await expect.poll(() => document.querySelectorAll('[data-chat-unread]').length).toBeGreaterThan(0);
   await expect.poll(() => attention().unreadIds.length).toBe(0);
   expect(document.querySelector('[data-chat-highlight]')).not.toBeNull();
-  await page.screenshot({ path: `/tmp/termdock-chat-unread-after-${width}.png` });
+  await page.screenshot({ path: `/tmp/veymux-chat-unread-after-${width}.png` });
   root!.unmount(); root = undefined;
   useTerminalStore.getState().clearAllTerminalSessions(); clearChatSnapshots();
   document.body.replaceChildren();
@@ -82,7 +82,7 @@ it.each([1280, 390])('does not clear overscanned replies or pull a reader away f
   expect(getComputedStyle(previewButton).backgroundColor).toBe(surface);
   expect(getComputedStyle(unreadButton).borderRadius).toBe(getComputedStyle(previewButton).borderRadius);
   expect(Math.abs(unreadButton.getBoundingClientRect().height - previewButton.getBoundingClientRect().height)).toBeLessThanOrEqual(1);
-  await page.screenshot({ path: `/tmp/termdock-worksite-layer-${width}.png` });
+  await page.screenshot({ path: `/tmp/veymux-worksite-layer-${width}.png` });
   await page.getByRole('button', { name: '1 条未读消息' }).click();
   await expect.element(page.getByText(messages[12].content)).toBeVisible();
   await expect.poll(() => attention().unreadIds).toEqual([]);
@@ -92,7 +92,7 @@ it.each([1280, 390])('opens the first unseen reply beyond the latest page and le
   const f = await mount(width, messages, messages.slice(0, 3).map(message => message.id));
   await expect.poll(() => f.requests.some(query => query.includes('around=reply-4'))).toBe(true);
   await expect.element(page.getByText(messages[3].content)).toBeVisible();
-  await page.screenshot({ path: `/tmp/termdock-first-unread-${width}.png` });
+  await page.screenshot({ path: `/tmp/veymux-first-unread-${width}.png` });
   const viewport = document.querySelector('.session-chat-scroll')!.getBoundingClientRect();
   const row = document.querySelector('[data-chat-viewport-row="reply-4"]')!.getBoundingClientRect();
   expect(Math.abs(row.top - viewport.top - 12)).toBeLessThanOrEqual(1);
@@ -217,7 +217,7 @@ it.each([1280, 390])('shows the beginning of a long live reply instead of skippi
   await pause(1000);
   const scroll = document.querySelector<HTMLElement>('.session-chat-scroll')!;
   const row = document.querySelector<HTMLElement>('[data-chat-viewport-row="reply-9"]')!;
-  await page.screenshot({ path: `/tmp/termdock-long-live-reply-${width}.png` });
+  await page.screenshot({ path: `/tmp/veymux-long-live-reply-${width}.png` });
   expect(Math.abs(row.getBoundingClientRect().top - scroll.getBoundingClientRect().top - 12)).toBeLessThanOrEqual(1);
   await expect.poll(() => attention().unreadIds).toEqual([]);
   expect(document.querySelector('[data-chat-new-message-prompt]')?.textContent).not.toContain('查看新消息');
@@ -276,7 +276,7 @@ it.each([1280, 390])('groups multiple new replies with a quiet rail and stable a
   }
   const labels = [...document.querySelectorAll('[data-chat-unread-label]')];
   expect(labels.filter(label => getComputedStyle(label).visibility === 'visible')).toHaveLength(1);
-  await page.screenshot({ path: `/tmp/termdock-chat-unread-rail-${width}.png` });
+  await page.screenshot({ path: `/tmp/veymux-chat-unread-rail-${width}.png` });
   hidden.mockReturnValue(false); document.dispatchEvent(new Event('visibilitychange'));
   await expect.poll(() => attention().unreadIds.length).toBe(0);
   expect(rows.map(row => row.getBoundingClientRect().height)).toEqual(before);
@@ -318,5 +318,5 @@ it.each([1280, 390, 320])('shows a restrained question label for replies to diff
     expect(getComputedStyle(label).backgroundColor).toBe('rgba(0, 0, 0, 0)');
     expect(label.getBoundingClientRect().right).toBeLessThanOrEqual(innerWidth);
   }
-  await page.screenshot({ path: `/tmp/termdock-reply-context-${width}.png` });
+  await page.screenshot({ path: `/tmp/veymux-reply-context-${width}.png` });
 });

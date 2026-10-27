@@ -1825,7 +1825,7 @@ async function runGitActionCommand(
     return execGit(['add', '-A'], gitRoot, undefined, GIT_ACTION_TIMEOUT_MS);
   }
   if (action === 'stash-all') {
-    const stashMessage = getStashMessage(message, `Termdock stash all ${now}`);
+    const stashMessage = getStashMessage(message, `Veymux stash all ${now}`);
     return execGit(['stash', 'push', '--include-untracked', '-m', stashMessage], gitRoot, undefined, GIT_ACTION_TIMEOUT_MS);
   }
   if (action === 'commit') {
@@ -1858,7 +1858,7 @@ async function runGitActionCommand(
     return execGit(['--literal-pathspecs', 'restore', '--staged', '--', pathspec], gitRoot, undefined, GIT_ACTION_TIMEOUT_MS);
   }
   if (action === 'stash-file') {
-    const stashMessage = getStashMessage(message, `Termdock stash ${pathspec} ${now}`);
+    const stashMessage = getStashMessage(message, `Veymux stash ${pathspec} ${now}`);
     return execGit(['--literal-pathspecs', 'stash', 'push', '--include-untracked', '-m', stashMessage, '--', pathspec], gitRoot, undefined, GIT_ACTION_TIMEOUT_MS);
   }
   if (action === 'restore-worktree-file') {
@@ -3187,9 +3187,9 @@ router.get('/list', async (req: Request, res: Response) => {
       return { resolvedPath, entries, total: visibleDirents.length };
     })(), FS_ROUTE_TIMEOUT_MS, 'Directory listing took too long. The folder may be on a slow disk or network mount.', 'FS_LIST_TIMEOUT');
 
-    res.setHeader('X-Termdock-FS-List-Duration-Ms', String(Date.now() - startedAt));
-    res.setHeader('X-Termdock-FS-List-Total', String(result.total));
-    res.setHeader('X-Termdock-FS-List-Returned', String(result.entries.length));
+    res.setHeader('X-Veymux-FS-List-Duration-Ms', String(Date.now() - startedAt));
+    res.setHeader('X-Veymux-FS-List-Total', String(result.total));
+    res.setHeader('X-Veymux-FS-List-Returned', String(result.entries.length));
     logFsIo({ id: requestId, action, op: 'fs.list', startedAt, status: 'ok', path: result.resolvedPath, count: result.entries.length, total: result.total, truncated: result.total > result.entries.length, extra: { requestSlotId } });
     res.json({ path: result.resolvedPath, entries: result.entries, truncated: result.total > result.entries.length, total: result.total });
   } catch (error) {
@@ -3716,7 +3716,7 @@ router.get('/eda-preview', async (req: Request, res: Response) => {
     res.setHeader('Cache-Control', 'private, no-cache');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Eda-View', requestedView);
-    res.setHeader('X-Termdock-Source-Path', encodeURIComponent(resolvedPath));
+    res.setHeader('X-Veymux-Source-Path', encodeURIComponent(resolvedPath));
     if (requestAcceptsEtag(req.headers['if-none-match'], etag)) {
       res.setHeader('X-Eda-Cache', 'revalidated');
       res.status(304).end();
@@ -3734,7 +3734,7 @@ router.get('/eda-preview', async (req: Request, res: Response) => {
       return;
     }
 
-    tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'termdock-eda-preview-'));
+    tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'veymux-eda-preview-'));
     let outputPath: string;
     let mimeType: string;
     if (isSchematic) {
@@ -4116,7 +4116,7 @@ router.get('/video', async (req: Request, res: Response) => {
 // inherits that token from the document URL, so css/js/images load without
 // cookies while the sandbox keeps previewed scripts on a separate origin.
 // The frontend renders this in a sandboxed iframe (no allow-same-origin), so
-// previewed scripts never gain the termdock origin.
+// previewed scripts never gain the veymux origin.
 const PREVIEW_TOKEN_TTL_MS = 30 * 60 * 1000;
 const previewTokens = new Map<string, { root: string; expiresAt: number; ownerSession?: string; ownerSubject?: string }>();
 
@@ -4386,7 +4386,7 @@ router.get('/download', async (req: Request, res: Response) => {
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Content-Disposition', buildContentDisposition('attachment', path.basename(resolvedPath)));
-    res.setHeader('X-Termdock-Source-Path', encodeURIComponent(resolvedPath));
+    res.setHeader('X-Veymux-Source-Path', encodeURIComponent(resolvedPath));
 
     const stream = fs.createReadStream(resolvedPath);
     stream.on('error', (error) => {
@@ -5506,7 +5506,7 @@ router.get('/local-open-availability', (req: Request, res: Response) => {
 router.post('/open-in-file-browser', async (req: Request, res: Response) => {
   try {
     if (!isLocalBrowserRequest(req)) {
-      res.status(403).json({ error: 'Only available from the Termdock host machine', code: 'NOT_LOCAL_BROWSER' });
+      res.status(403).json({ error: 'Only available from the Veymux host machine', code: 'NOT_LOCAL_BROWSER' });
       return;
     }
     const requestedPath = typeof req.body?.path === 'string' ? req.body.path : '';

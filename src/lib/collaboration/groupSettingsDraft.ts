@@ -14,7 +14,7 @@ export interface GroupSettingsDraft {
 
 // null records a failed removal so an older stored draft cannot reappear.
 const fallbackDrafts = new Map<string, GroupSettingsDraft | null>();
-const storageKey = (id: string) => `termdock-group-settings:${window.location.origin}:${id}`;
+const storageKey = (id: string) => `veymux-group-settings:${window.location.origin}:${id}`;
 export function groupSettingsDirty(draft: GroupSettingsDraft): boolean {
   return draft.name !== draft.savedName || draft.rules !== draft.savedRules;
 }

@@ -23,7 +23,7 @@ export function adbSearchPath(): string {
 }
 
 function adbCandidates(): string[] {
-  const override = process.env.TERMDOCK_ADB_BIN;
+  const override = process.env.VEYMUX_ADB_BIN;
   const candidates: string[] = [];
   if (override) candidates.push(override);
   const names = process.platform === 'win32' ? ['adb.exe', 'adb'] : ['adb'];

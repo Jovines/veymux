@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { IMAGE_DIMENSIONS, VIDEO_DIMENSIONS, IMAGE_QUALITY, VIDEO_BITRATE, type ImageDimension, type VideoDimension } from './mediaCompressionOptions';
 
 // Device preferences: deliberately independent of a terminal, service or build.
-const STORAGE_KEY = 'termdock:mobile-media-compression-v1';
+const STORAGE_KEY = 'veymux:mobile-media-compression-v1';
 
 export type MediaCompressionPreferences = {
   showResultToast: boolean;

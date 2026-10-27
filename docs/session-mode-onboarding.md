@@ -19,7 +19,7 @@
 
 ## 本机记忆
 
-`termdock:onboarding:terminal-chat-hint` 独立于 Session、目标服务和普通应用版本，
+`veymux:onboarding:terminal-chat-hint` 独立于 Session、目标服务和普通应用版本，
 不纳入服务端状态同步。记录首次曝光时间及关闭原因。用户主动选择一个明确命名的模式时，
 也记为已了解入口，避免刚从空白页切入终端就再次介绍。
 该记录只表示用户见过或主动选择过入口，不表示模式保存成功、消息已读或 Agent 内部状态。

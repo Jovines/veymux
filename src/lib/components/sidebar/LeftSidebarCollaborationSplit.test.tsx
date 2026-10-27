@@ -419,7 +419,7 @@ it('collapses every member, keeps the active terminal and group entry, and remem
   fireEvent.click(collapse);
   expect(group.querySelector('[data-collaboration-member]')).toBeNull();
   expect(screen.getByRole('button', { name: '展开 Release team 的成员会话' }).getAttribute('aria-expanded')).toBe('false');
-  expect(JSON.parse(localStorage.getItem('termdock-sidebar-collapsed-folder-groups')!)).toContain('collaboration:team');
+  expect(JSON.parse(localStorage.getItem('veymux-sidebar-collapsed-folder-groups')!)).toContain('collaboration:team');
   expect(switchTerminal).not.toHaveBeenCalled();
   expect(handlers.onCloseSession).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: '打开协作工作区：Release team' }));
@@ -427,7 +427,7 @@ it('collapses every member, keeps the active terminal and group entry, and remem
   expect(group.querySelector('[data-collaboration-member]')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: '展开 Release team 的成员会话' }));
   expect(group.querySelectorAll('[data-collaboration-member]')).toHaveLength(3);
-  expect(JSON.parse(localStorage.getItem('termdock-sidebar-collapsed-folder-groups')!)).not.toContain('collaboration:team');
+  expect(JSON.parse(localStorage.getItem('veymux-sidebar-collapsed-folder-groups')!)).not.toContain('collaboration:team');
   window.removeEventListener('switch-terminal-session', switchTerminal);
 });
 

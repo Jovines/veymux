@@ -13,7 +13,7 @@ pub fn verified_local(home: &Path, pinned: Option<&str>, requested: Option<&str>
     let Some(peer) = pinned.filter(|p| Some(*p) == requested) else {
         return false;
     };
-    let Ok(file) = open_regular(&home.join(".termdock/federation/identity.key")) else {
+    let Ok(file) = open_regular(&home.join(".veymux/federation/identity.key")) else {
         return false;
     };
     let mut encoded = String::new();
@@ -521,11 +521,11 @@ mod tests {
     #[test]
     fn local_paths_require_current_pinned_public_identity_and_remote_paths_are_never_returned() {
         let dir = tempfile::tempdir().unwrap();
-        fs::create_dir_all(dir.path().join(".termdock/federation")).unwrap();
+        fs::create_dir_all(dir.path().join(".veymux/federation")).unwrap();
         let mut key = vec![8, 1, 18, 64];
         key.extend([7; 64]);
         fs::write(
-            dir.path().join(".termdock/federation/identity.key"),
+            dir.path().join(".veymux/federation/identity.key"),
             base64::engine::general_purpose::STANDARD.encode(&key),
         )
         .unwrap();

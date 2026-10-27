@@ -3,7 +3,7 @@ import { useI18n } from '../../i18n';
 export function FileTreeLoadingSkeleton() {
   const { t } = useI18n();
   return (
-    <div role="status" className="td-loading-skeleton overflow-hidden px-3 py-2">
+    <div role="status" className="veymux-loading-skeleton overflow-hidden px-3 py-2">
       <span className="sr-only">{t('common.loading')}</span>
       <div aria-hidden="true">
         {['w-2/5', 'w-3/5', 'w-1/3', 'w-1/2', 'w-2/5', 'w-1/3'].map((width, index) => (

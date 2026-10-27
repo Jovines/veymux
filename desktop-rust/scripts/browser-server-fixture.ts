@@ -11,7 +11,7 @@ import { pathToFileURL } from 'node:url';
 import express from 'express';
 import { WebSocket, WebSocketServer } from 'ws';
 import { createReactTerminalFixture } from './react-terminal-fixture';
-const oldRoot = process.env.TD_PREVIEW_OLD_SERVER_ROOT;
+const oldRoot = process.env.VEYMUX_PREVIEW_OLD_SERVER_ROOT;
 if (!oldRoot) throw Error('Supply an immutable 79feaf2 server source archive');
 const oldSourceHashes = {
   'passwordLoginRoutes.ts': '17c214fdfbc87002d987d540487a7e94ac16cf18156978f7c52bb569156f94c2',
@@ -22,12 +22,12 @@ for (const [file, hash] of Object.entries(oldSourceHashes)) assert.equal(createH
 const load = (file: string) => import(pathToFileURL(join(oldRoot, file)).href);
 const { createFederationRuntime } = await load('src/server/federation/runtime.ts');
 const { isEncryptedRequest } = await load('src/server/federation/requestContext.ts');
-const { TERMDOCK_PROTOCOL_VERSION, TERMDOCK_CAPABILITIES, getTermdockVersion } = await load('src/server/utils/version.ts');
+const { VEYMUX_PROTOCOL_VERSION, VEYMUX_CAPABILITIES, getVeymuxVersion } = await load('src/server/utils/version.ts');
 const { createPasswordLoginRouter } = await load('src/server/federation/passwordLoginRoutes.ts');
 const { RelayRouter } = await load('src/server/federation/relay.ts');
 const { createInviteLink } = await load('src/lib/federation/inviteLink.ts');
-process.env.TERMDOCK_PASSWORD = 'preview-bundle-test-password';
-delete process.env.TERMDOCK_PUBLIC_ORIGIN;
+process.env.VEYMUX_PASSWORD = 'preview-bundle-test-password';
+delete process.env.VEYMUX_PUBLIC_ORIGIN;
 const relay = process.argv.includes('--relay');
 const nativeReact = process.argv.includes('--native-react');
 const nativeInput=process.argv.includes('--native-input');
@@ -45,10 +45,10 @@ const react = nativeReact ? createReactTerminalFixture({userFixes:process.argv.i
 let ordinary = 0, secureReads = 0, secureUploads = 0;
 const peers: Array<any> = [];
 async function peer(options = {}) {
-  const dir = mkdtempSync(join(tmpdir(), 'td-preview-bundle-server-'));
+  const dir = mkdtempSync(join(tmpdir(), 'veymux-preview-bundle-server-'));
   const app = express(); let publicPort = 0;
   app.get('/', (_req, res) => res.type('html').send('OLD HTML MUST NEVER APPEAR'));
-  app.get('/api/meta', (_req, res) => res.json({ product: 'termdock', version: getTermdockVersion(), protocolVersion: TERMDOCK_PROTOCOL_VERSION, capabilities: TERMDOCK_CAPABILITIES }));
+  app.get('/api/meta', (_req, res) => res.json({ product: 'veymux', version: getVeymuxVersion(), protocolVersion: VEYMUX_PROTOCOL_VERSION, capabilities: VEYMUX_CAPABILITIES }));
   app.get('/api/auth/status', (_req, res) => res.json({ enabled: true, authenticated: false }));
   app.get('/api/auth/open/parameters', (_req, res) => res.status(403).json({ error: 'Password required' }));
   app.use((req, res, next) => { if (req.path.startsWith('/api/terminal') && req.socket.localPort === publicPort) {ordinary++;if(nativeReact){res.status(403).json({error:'Controlled business requires authenticated Noise'});return;}} next(); });

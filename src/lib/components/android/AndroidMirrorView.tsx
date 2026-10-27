@@ -36,7 +36,7 @@ import { RecordingSaveDialog } from './RecordingSaveDialog';
 
 export const ANDROID_DOCK_GROUP = 'android-mirror';
 const DOCK_GROUP = ANDROID_DOCK_GROUP;
-const QUALITY_STORAGE_KEY = 'termdock:android:quality:v1';
+const QUALITY_STORAGE_KEY = 'veymux:android:quality:v1';
 // ⋯ 菜单浮层：宽度固定，高度只用来做贴底越界钳制。
 const MORE_MENU_WIDTH = 176;
 const MORE_MENU_ESTIMATED_HEIGHT = 204;
@@ -1548,7 +1548,7 @@ export function AndroidMirrorView({ sessionId, dockOnly = false, onInsertPrompt,
           <span
             key={item.id}
             aria-hidden="true"
-            className="termdock-tap-fade pointer-events-none absolute h-4 w-4 rounded-full bg-primary"
+            className="veymux-tap-fade pointer-events-none absolute h-4 w-4 rounded-full bg-primary"
             style={{ left: item.left, top: item.top }}
           />
         ))}
@@ -1794,15 +1794,15 @@ function DependencyFixButton({ label, onClick, enabled }: { label: string; onCli
 function buildAndroidFixPrompt(kind: 'adb' | 'scrcpy', detail: string): string {
   const what = kind === 'adb' ? 'adb（Android platform-tools）' : 'scrcpy / scrcpy-server';
   return [
-    `Termdock 的“设备投屏”在当前服务端不可用：未找到 ${what}${detail ? `（错误：${detail}）` : ''}。`,
-    '请在本机安装并让 Termdock 恢复可用：',
+    `Veymux 的“设备投屏”在当前服务端不可用：未找到 ${what}${detail ? `（错误：${detail}）` : ''}。`,
+    '请在本机安装并让 Veymux 恢复可用：',
     '1) 安装依赖：',
     '   - macOS: brew install android-platform-tools scrcpy',
     '   - Ubuntu/Debian: sudo apt install adb scrcpy',
     '   - Windows: winget install Google.PlatformTools && winget install Genymobile.scrcpy',
-    '2) 若不在 PATH，请在 ~/.termdock/.env 指定 TERMDOCK_ADB_BIN / TERMDOCK_SCRCPY_BIN / TERMDOCK_SCRCPY_SERVER。',
-    '3) 完成后重启 Termdock 服务，并用 adb version、scrcpy --version 验证。',
-    '边界：只做本机环境安装与配置，不要改动 Termdock 仓库代码。',
+    '2) 若不在 PATH，请在 ~/.veymux/.env 指定 VEYMUX_ADB_BIN / VEYMUX_SCRCPY_BIN / VEYMUX_SCRCPY_SERVER。',
+    '3) 完成后重启 Veymux 服务，并用 adb version、scrcpy --version 验证。',
+    '边界：只做本机环境安装与配置，不要改动 Veymux 仓库代码。',
   ].join('\n');
 }
 

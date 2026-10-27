@@ -22,12 +22,12 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 /* Arc / LinearDots adapted from loading.dev; see public/licenses/loading-dev.txt. */
-.td-loading-spinner.animate-spin {
+.veymux-loading-spinner.animate-spin {
   flex-shrink: 0;
-  animation: td-loading-rotate 800ms linear infinite;
+  animation: veymux-loading-rotate 800ms linear infinite;
 }
 
-.td-loading-dots {
+.veymux-loading-dots {
   display: inline-flex;
   flex-shrink: 0;
   align-items: center;
@@ -35,26 +35,26 @@ SOFTWARE.
   height: 20px;
 }
 
-.td-loading-dots > span {
+.veymux-loading-dots > span {
   width: 4px;
   height: 4px;
   border-radius: 50%;
   background: currentColor;
-  animation: td-loading-fade 1200ms linear infinite;
+  animation: veymux-loading-fade 1200ms linear infinite;
 }
 
-@keyframes td-loading-rotate {
+@keyframes veymux-loading-rotate {
   to { transform: rotate(360deg); }
 }
 
-@keyframes td-loading-fade {
+@keyframes veymux-loading-fade {
   0%, 100% { opacity: 1; }
   66.67% { opacity: 0.5; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .td-loading-spinner.animate-spin,
-  .td-loading-dots > span {
+  .veymux-loading-spinner.animate-spin,
+  .veymux-loading-dots > span {
     animation: none;
   }
 }

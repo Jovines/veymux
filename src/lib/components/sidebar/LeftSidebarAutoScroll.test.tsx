@@ -182,7 +182,7 @@ describe('active sidebar session visibility', () => {
     expect(localStorage.getItem(SIDEBAR_SCROLL_POSITION_KEY)).toBe('510');
     list().scrollTop = 540;
     fireEvent.scroll(list());
-    fireEvent(window, new Event('termdock:before-update'));
+    fireEvent(window, new Event('veymux:before-update'));
     expect(localStorage.getItem(SIDEBAR_SCROLL_POSITION_KEY)).toBe('540');
   });
 

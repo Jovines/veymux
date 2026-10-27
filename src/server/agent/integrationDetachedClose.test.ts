@@ -136,7 +136,7 @@ it('keeps the registered failed cold-shell close path, while refusing that shell
 });
 
 it.skipIf(process.platform !== 'linux')('tears down only the exact isolated real tmux after proof; leaves its neighbour alive', async () => {
-  const exec = promisify(execFile), socket = `td-close-${process.pid}-${Date.now()}`;
+  const exec = promisify(execFile), socket = `veymux-close-${process.pid}-${Date.now()}`;
   const run = async (args: string[]) => (await exec('tmux', ['-L', socket, ...args], { timeout: 5000 })).stdout;
   try {
     await run(['new-session', '-d', '-s', 'wt-integration-fixture', '/bin/sleep', '120']);
