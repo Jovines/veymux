@@ -19,14 +19,14 @@ beforeEach(async () => {
 afterEach(async () => { await new Promise<void>(resolve => server.close(() => resolve())); fs.rmSync(directory, { recursive: true, force: true }); });
 const post = async (body: unknown) => { const response = await fetch(base + '/handoff', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); return { status: response.status, body: await response.json() }; };
 it('sends a batch and optional instruction once to an existing session without a new launch or report protocol', async () => {
-  const todos = ['检查输入法', '检查上传'].map(title => store.create({ title, description: title + '的背景', sourceUrl: 'https://example.com/reference' }));
+  const todos = ['检查输入法', '检查上传'].map(title => store.create({ title, description: title + '的背景', sourceUrl: 'https://source.invalid/reference' }));
   const input = { todoIds: todos.map(todo => todo.id), sessionId: 'existing', note: '先分析，不要改代码', idempotencyKey: 'batch-once' };
   const [one, two] = await Promise.all([post(input), post(input)]);
   expect(one.status).toBe(200); expect(two.body.run.id).toBe(one.body.run.id);
   await vi.waitFor(() => expect(store.run(one.body.run.id).status).toBe('delivered'));
   expect(runtime.launch).not.toHaveBeenCalled(); expect(runtime.deliver).toHaveBeenCalledOnce();
   const prompt = vi.mocked(runtime.deliver!).mock.calls[0][1];
-  for (const text of ['检查输入法', '检查上传', '先分析，不要改代码', 'https://example.com/reference']) expect(prompt).toContain(text);
+  for (const text of ['检查输入法', '检查上传', '先分析，不要改代码', 'https://source.invalid/reference']) expect(prompt).toContain(text);
   expect(prompt).not.toContain('td todo report'); expect(todos.every(todo => store.get(todo.id).status === 'open')).toBe(true);
   expect((await post({ ...input, note: '不同要求' })).status).toBe(409);
   vi.mocked(runtime.target!).mockRejectedValue(new Error('会话已关闭'));

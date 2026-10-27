@@ -88,7 +88,7 @@ Collector 应传入上次读取的 `--revision`；过期更新以退出码 1 拒
 
 重复 `add` 继续按 collector/source + externalId 返回原条目，不覆盖描述、分类或状态；显式 `update` 才修改，不增加隐式 upsert。完成、忽略、重新打开均保留分类与来源。收集提示词包含这些规则，`processing.mode=manual` 继续只存入清单。
 
-工作日 12:00、16:00、20:00、23:00 的收集计划可用 `--at 12:00,16:00,20:00,23:00 --weekdays 1,2,3,4,5` 或 collector JSON 配置；11:00 汇总提醒可使用独立 `td automation`。本次增加原生待办能力，不创建真实文档服务收集方向或定时提醒。
+工作日 12:00、16:00、20:00、23:00 的收集计划可用 `--at 12:00,16:00,20:00,23:00 --weekdays 1,2,3,4,5` 或 collector JSON 配置；11:00 汇总提醒可使用独立 `td automation`。本次增加原生待办能力，不创建真实外部来源收集方向或定时提醒。
 
 ## Collector 命名空间与所有权
 
@@ -131,8 +131,8 @@ td todo collector finish <run-id> --revision <collection.revision> --file outcom
 {
   "status": "success",
   "summary": "声明的来源已完整扫描，无新增候选",
-  "coverage": [{"sourceKey": "document:chat", "status": "success"}],
-  "checkpoints": [{"sourceKey": "document:chat", "expectedRevision": 0, "cursor": {"lastMessageId": "opaque-id"}}]
+  "coverage": [{"sourceKey": "source:sample", "status": "success"}],
+  "checkpoints": [{"sourceKey": "source:sample", "expectedRevision": 0, "cursor": {"lastMessageId": "opaque-id"}}]
 }
 ```
 
@@ -209,7 +209,7 @@ CLI 与服务端需要一起升级到 >=1.4.386。新 CLI 在发送 collector �
 
 - 2026-10-27 所有权补充：168 项回归通过（含 Todo、真实 CLI 子进程、调用会话上下文、相邻 automation/notify CLI、传输/色板/层级守卫），覆盖 A/B 同 external-id、显式及伪装目标归属越权拒绝、漏传 collector、不泄露被拒条目的 revision、重命名、条件更新、独立计数、旧 CLI 拒写、替代写入入口及收集会话防串用。分类/来源筛选的真实浏览器 320/390/1280 宽度测试 3 项通过，前一轮收集计划浏览器 5 项继续适用。TypeScript、完整构建通过，隔离版已重新部署到 9834，健康状态、受管进程、前端资源字节一致性及正式 CLI 分类/来源只读查询通过；未在正式清单中写入测试事项。原有并行 WIP 经比对保留。
 
-- 2026-10-27 分类与更新：148 项 Todo/传输边界/配色/层级回归通过，包含实际 CLI 经本机凭据访问隔离 HTTP 服务的 add/list/update、旧 revision 冲突、重复 add 不覆盖、complete/reopen；320、390、1280 宽度的分类编辑/分组浏览器测试 3 项及收集时间浏览器回归 5 项通过。TypeScript 与完整构建通过，已部署到 9834，health、受管进程、前端资源内容与构建产物一致性及正式 CLI 只读分类筛选通过。浏览器使用隔离数据和 API 替身；尚未实测真实文档服务来源抓取、iOS/macOS 客户端。
+- 2026-10-27 分类与更新：148 项 Todo/传输边界/配色/层级回归通过，包含实际 CLI 经本机凭据访问隔离 HTTP 服务的 add/list/update、旧 revision 冲突、重复 add 不覆盖、complete/reopen；320、390、1280 宽度的分类编辑/分组浏览器测试 3 项及收集时间浏览器回归 5 项通过。TypeScript 与完整构建通过，已部署到 9834，health、受管进程、前端资源内容与构建产物一致性及正式 CLI 只读分类筛选通过。浏览器使用隔离数据和 API 替身；尚未实测真实外部来源抓取、iOS/macOS 客户端。
 
 - 首轮修复部署使用隔离源码副本，完整生产构建与 64 项回归通过。副本以本轮修复开始时的可构建快照为基础，加入最新 Todo 改动；没有改写其他并行源码。最终构建当时，另一组并行中的共享资源改动触发 `src/server/federation/requestContext.ts` → `src/shared/shareResources.ts` 的 TS6059/rootDir 错误，因此没有把这组未完成改动纳入部署。回归覆盖默认清单保留执行中及已报告事项、记住配置一键处理、新增并处理、收集方向保存并运行、目录快捷选择、跨刷新恢复选择、慢加载保留草稿、不同项目批量处理及重试、切换服务后的迟到响应，以及侧栏、加密边界、配色和层级守卫。
 - 在隔离服务中，从实际界面配置真实 Codex：保存并收集 → CLI 写入待办 → 点击处理 → 新建真实 tmux/PTY → 打开关联终端并返回 → 收到 `TD_TODO_EXEC_OK` 结果 → 用户标记完成并在已完成中找到。测试使用当前机器已有的 Codex 登录和权限配置，没有改动正式服务的用户待办。

@@ -20,7 +20,7 @@ it('deduplicates injection durably by source/external ID, rejects mismatched req
 });
 it('persists categories and partial updates without replacing IDs, provenance or manual processing', async () => {
   const collector = store.saveCollector({ name: '每日 TODO', config, processing: { mode: 'manual', sessionId: null, config: null, note: '' } });
-  const original = store.create({ title: '两个缺陷', category: 'short', collectorId: collector.id, externalId: 'issue', sourceUrl: 'https://example.com/issue' });
+  const original = store.create({ title: '两个缺陷', category: 'short', collectorId: collector.id, externalId: 'issue', sourceUrl: 'https://source.invalid/issue' });
   vi.spyOn(Date, 'now').mockReturnValue(original.updatedAt + 1000);
   const updated = store.update(original.id, { revision: original.revision, description: '已 RESOLVED，待合入并通知', category: 'delegated' });
   expect(updated).toMatchObject({ id: original.id, title: original.title, category: 'delegated', revision: 2, updatedAt: original.updatedAt + 1000, createdAt: original.createdAt, collectorId: collector.id, externalId: 'issue', sourceUrl: original.sourceUrl, status: 'open' });
@@ -40,7 +40,7 @@ it('rejects stale revisions, unsafe updates and external ID collisions atomicall
     expect(() => store.update(a.id, { revision: 1, title: '不得部分修改', ...patch } as never)).toThrow();
     expect(store.get(a.id)).toEqual(a);
   }
-  const updated = store.update(a.id, { revision: 1, title: 'A2', category: 'long', sourceUrl: 'https://example.com/new', externalId: 'renamed' });
+  const updated = store.update(a.id, { revision: 1, title: 'A2', category: 'long', sourceUrl: 'https://source.invalid/new', externalId: 'renamed' });
   try { store.update(a.id, { revision: 1, description: '过期覆盖' }); throw new Error('expected conflict'); }
   catch (error) { expect(error).toMatchObject({ status: 409, currentRevision: 2 }); }
   expect(store.get(a.id)).toEqual(updated);

@@ -1,6 +1,6 @@
 /** tmux window activity is updated by pane output, unlike the display PTY,
  * which also emits status-line redraws. Read every window, including hidden ones.
- * https://github.com/tmux/tmux/blob/master/window.c (window_update_activity)
+ * tmux window.c: window_update_activity
  */
 export async function readCollectionOutputTime(run: (args: string[]) => Promise<string>, sessionId: string, windows: string[]): Promise<number> {
   const text = await run(['list-windows', '-t', sessionId, '-F', '#{window_id}\t#{window_activity}']);

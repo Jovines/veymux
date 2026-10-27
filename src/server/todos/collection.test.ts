@@ -19,7 +19,7 @@ beforeEach(() => {
 afterEach(() => { fs.rmSync(directory, { recursive: true, force: true }); vi.restoreAllMocks(); if (originalTZ === undefined) delete process.env.TZ; else process.env.TZ = originalTZ; });
 function finish(run: TodoRun, overrides: Partial<CollectorFinishInput> = {}) {
   return store.finishCollection(run.id, { revision: store.run(run.id).collection!.revision, idempotencyKey: 'commit-' + run.id,
-    status: 'success', summary: '声明来源已完整扫描，无候选', coverage: [{ sourceKey: 'document-chat', status: 'success' }], ...overrides });
+    status: 'success', summary: '声明来源已完整扫描，无候选', coverage: [{ sourceKey: 'source-a', status: 'success' }], ...overrides });
 }
 it('serializes concurrent manual/schedule/webhook requests through the entire run, independently for each collector', async () => {
   const a = store.saveCollector({ name: 'A', config }), b = store.saveCollector({ name: 'B', config });
@@ -80,10 +80,10 @@ it('commits all source CAS updates with outcome atomically and preserves opaque 
 it('does not advance checkpoints on partial/failed results, incomplete coverage or text reports', async () => {
   const c = store.saveCollector({ name: '来源', config });
   let run = await runner.start('collect', c.id, undefined, 'first');
-  for (const status of ['partial', 'failed'] as const) expect(() => finish(run, { status, coverage: [{ sourceKey: 'document-chat', status }], checkpoints: [{ sourceKey: 'document-chat', expectedRevision: 0, cursor: 'skip' }] })).toThrow('只有显式成功');
+  for (const status of ['partial', 'failed'] as const) expect(() => finish(run, { status, coverage: [{ sourceKey: 'source-a', status }], checkpoints: [{ sourceKey: 'source-a', expectedRevision: 0, cursor: 'skip' }] })).toThrow('只有显式成功');
   expect(() => finish(run, { coverage: [] })).toThrow('声明来源');
-  expect(() => finish(run, { coverage: [{ sourceKey: 'document-chat', status: 'partial' }] })).toThrow('声明来源');
-  finish(run, { status: 'partial', summary: '来源 A 无权限，来源 B 已查看', coverage: [{ sourceKey: 'docs', status: 'failed', note: 'FORBIDDEN' }, { sourceKey: 'document-chat', status: 'success' }] });
+  expect(() => finish(run, { coverage: [{ sourceKey: 'source-a', status: 'partial' }] })).toThrow('声明来源');
+  finish(run, { status: 'partial', summary: '来源 A 无权限，来源 B 已查看', coverage: [{ sourceKey: 'docs', status: 'failed', note: 'FORBIDDEN' }, { sourceKey: 'source-a', status: 'success' }] });
   expect(store.checkpoints(c.id)).toEqual([]);
   run = await runner.start('collect', c.id, undefined, 'second');
   store.report(run.id, 'complete', '新增零条；普通文字报告没有完整扫描承诺');
