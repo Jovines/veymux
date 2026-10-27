@@ -1595,7 +1595,7 @@ function updateGitBundleCachesWithUntracked(repoRoot: string, files: GitChangedF
   }
 }
 
-async function buildWorkspaceGitBundle(resolvedCwd: string, gitRoot: string, includeNested: boolean, signal?: AbortSignal, options: { gitTimeoutMs?: number | null; discoverOnly?: boolean } = {}): Promise<GitBundlePayload> {
+async function buildWorkspaceGitBundle(resolvedCwd: string, gitRoot: string, includeNested: boolean, signal?: AbortSignal, options: { gitTimeoutMs?: number | null; discoverOnly?: boolean; rescan?: boolean } = {}): Promise<GitBundlePayload> {
   if (!includeNested) {
     if (signal) throwIfAborted(signal, 'git.bundle');
     const bundle = await buildGitBundle(resolvedCwd, gitRoot, signal, options);
@@ -1628,7 +1628,11 @@ async function buildWorkspaceGitBundle(resolvedCwd: string, gitRoot: string, inc
   }
 
   if (signal) throwIfAborted(signal, 'git.bundle');
-  const { repositories: nestedRepositories, truncated } = await getCachedNestedGitRoots(gitRoot, { refresh: true, signal });
+  // Status refreshes use the last discovered repository list, even after its TTL.
+  // Only discovery/rescan is allowed to walk the filesystem for new repos.
+  const { repositories: nestedRepositories, truncated } = options.rescan === false
+    ? nestedGitRootsCache.get(gitRoot)?.result ?? { repositories: [], truncated: false }
+    : await getCachedNestedGitRoots(gitRoot, { refresh: true, signal });
   if (signal) throwIfAborted(signal, 'git.bundle');
   const nestedDisplayRoots = buildNestedRepoDisplayRootSet(gitRoot, nestedRepositories);
   // Discovery-only: read the root repo, but do not run `git status` against
@@ -1683,7 +1687,7 @@ async function buildWorkspaceGitBundle(resolvedCwd: string, gitRoot: string, inc
   };
 }
 
-async function getCachedGitBundle(resolvedCwd: string, gitRoot: string, includeNested: boolean, refresh: boolean, allowStale = false, signal?: AbortSignal, discoverOnly = false): Promise<GitBundlePayload> {
+async function getCachedGitBundle(resolvedCwd: string, gitRoot: string, includeNested: boolean, refresh: boolean, allowStale = false, signal?: AbortSignal, discoverOnly = false, rescan = true): Promise<GitBundlePayload> {
   const cacheKey = getGitBundleCacheKey(gitRoot, includeNested, discoverOnly);
   const now = Date.now();
   if (signal) throwIfAborted(signal, 'git.bundle');
@@ -1706,7 +1710,7 @@ async function getCachedGitBundle(resolvedCwd: string, gitRoot: string, includeN
     return { ...bundle, cached: true, stale: false, cacheAgeMs: 0 };
   }
 
-  const promise = buildWorkspaceGitBundle(resolvedCwd, gitRoot, includeNested, signal, { discoverOnly })
+  const promise = buildWorkspaceGitBundle(resolvedCwd, gitRoot, includeNested, signal, { discoverOnly, rescan })
     .then((bundle) => {
       const updatedAt = Date.now();
       gitBundleCache.set(cacheKey, { bundle, expiresAt: updatedAt + GIT_BUNDLE_CACHE_TTL_MS, updatedAt });
@@ -1719,9 +1723,11 @@ async function getCachedGitBundle(resolvedCwd: string, gitRoot: string, includeN
   return promise;
 }
 
-async function refreshGitBundleCacheDetached(resolvedCwd: string, gitRoot: string, includeNested: boolean, options: { gitTimeoutMs?: number | null; discoverOnly?: boolean } = {}): Promise<GitBundlePayload> {
+async function refreshGitBundleCacheDetached(resolvedCwd: string, gitRoot: string, includeNested: boolean, options: { gitTimeoutMs?: number | null; discoverOnly?: boolean; rescan?: boolean } = {}): Promise<GitBundlePayload> {
   const cacheKey = getGitBundleCacheKey(gitRoot, includeNested, options.discoverOnly === true);
-  const pending = gitBundleBuildPromises.get(cacheKey);
+  // A status-only request must not satisfy an explicit rescan (or vice versa).
+  const pendingKey = options.rescan === false ? `${cacheKey}\u0000status` : cacheKey;
+  const pending = gitBundleBuildPromises.get(pendingKey);
   if (pending) return pending;
   const promise = buildWorkspaceGitBundle(resolvedCwd, gitRoot, includeNested, undefined, options)
     .then((bundle) => {
@@ -1730,9 +1736,9 @@ async function refreshGitBundleCacheDetached(resolvedCwd: string, gitRoot: strin
       return { ...bundle, cacheUpdatedAt: updatedAt };
     })
     .finally(() => {
-      if (gitBundleBuildPromises.get(cacheKey) === promise) gitBundleBuildPromises.delete(cacheKey);
+      if (gitBundleBuildPromises.get(pendingKey) === promise) gitBundleBuildPromises.delete(pendingKey);
     });
-  gitBundleBuildPromises.set(cacheKey, promise);
+  gitBundleBuildPromises.set(pendingKey, promise);
   return promise;
 }
 
@@ -4788,14 +4794,9 @@ router.get('/untracked-files', async (req: Request, res: Response) => {
       return;
     }
 
-    let nestedDisplayRoots = new Set<string>();
-    try {
-      const discovered = await getCachedNestedGitRoots(gitRoot);
-      nestedDisplayRoots = buildNestedRepoDisplayRootSet(gitRoot, discovered.repositories);
-    } catch {
-      // Best-effort only. The untracked scan should still return useful data
-      // even if nested repository discovery is cancelled or times out.
-    }
+    // Loading file changes must not launch a separate repository discovery.
+    const discovered = nestedGitRootsCache.get(gitRoot)?.result;
+    const nestedDisplayRoots = buildNestedRepoDisplayRootSet(gitRoot, discovered?.repositories ?? []);
     const payload = startUntrackedJob(gitRoot, nestedDisplayRoots);
     logFsIo({
       id: requestId,
@@ -4913,6 +4914,7 @@ router.get('/git-bundle', async (req: Request, res: Response) => {
     // Without nested repos there is nothing to defer, and honoring it here would
     // build a `single discover` cache slot that nothing else reads or writes.
     const discoverOnly = includeNested && req.query.discoverOnly === 'true';
+    const rescan = req.query.rescan !== 'false';
     if (!cwd) {
       res.json({ available: false, files: [], context: null, error: 'No cwd provided' });
       return;
@@ -4971,9 +4973,9 @@ router.get('/git-bundle', async (req: Request, res: Response) => {
     }
 
     const bundle = cachedBundle ?? (refresh
-      ? await refreshGitBundleCacheDetached(resolvedCwd, gitRoot, effectiveIncludeNested, { gitTimeoutMs: null, discoverOnly })
+      ? await refreshGitBundleCacheDetached(resolvedCwd, gitRoot, effectiveIncludeNested, { gitTimeoutMs: null, discoverOnly, rescan })
       : await withTimeout(
-        getCachedGitBundle(resolvedCwd, gitRoot, effectiveIncludeNested, false, allowStale, controller.signal, discoverOnly),
+        getCachedGitBundle(resolvedCwd, gitRoot, effectiveIncludeNested, false, allowStale, controller.signal, discoverOnly, rescan),
         GIT_ROUTE_TIMEOUT_MS,
         'Git status refresh took too long. The repository may be busy, on slow storage, or locked by another Git process.',
         'GIT_BUNDLE_TIMEOUT',

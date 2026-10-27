@@ -2828,6 +2828,7 @@ export function RightSidebar(
   const [gitContext, setGitContext] = useState<GitContext | null>(null);
   const [gitRepositories, setGitRepositories] = useState<GitRepositoryBundle[]>([]);
   const [gitRepoFilters, setGitRepoFilters] = useState<GitRepositoryFilter[]>([]);
+  const [gitRescanRoot, setGitRescanRoot] = useState<string | null>(null);
   // Held in the store rather than local state: the choice is keyed by context
   // key, so it follows the session across clients and survives the pane being
   // unmounted by a pin toggle. The context key is the store's own, which in a
@@ -2958,6 +2959,7 @@ export function RightSidebar(
   const rightTab = useSidebarStore((s) => s.rightTab);
   const setRightTab = useSidebarStore((s) => s.setRightTab);
   const rootPath = useSidebarStore((s) => s.rootPath);
+  const gitRescanning = gitRescanRoot !== null && gitRescanRoot === rootPath;
   const explorerRoot = useSidebarStore((s) => s.explorerRoot);
   const pinnedExplorerRootsCache = useSidebarStore((s) => s.pinnedExplorerRootsCache);
   const hydratePinnedExplorerRoots = useSidebarStore((s) => s.hydratePinnedExplorerRoots);
@@ -3012,7 +3014,8 @@ export function RightSidebar(
   const gitBundleRequestIdRef = useRef(0);
   const [gitBundleComponentId] = useState(() => ++gitBundleComponentSeq);
   const gitBundleAbortRef = useRef<AbortController | null>(null);
-  const gitBundlePendingRef = useRef<{ cwd: string; includeNested: boolean; refresh: boolean; cacheOnly: boolean; discoverOnly: boolean; promise: Promise<GitBundleResponse | null> } | null>(null);
+  const gitBundleFailedRescanRef = useRef(false);
+  const gitBundlePendingRef = useRef<{ cwd: string; includeNested: boolean; refresh: boolean; cacheOnly: boolean; discoverOnly: boolean; rescan?: boolean; promise: Promise<GitBundleResponse | null> } | null>(null);
   const untrackedRequestSeqRef = useRef(0);
   const untrackedRequestIdsRef = useRef<Map<string, number>>(new Map());
   const untrackedAbortControllersRef = useRef<Map<string, AbortController>>(new Map());
@@ -3356,11 +3359,15 @@ export function RightSidebar(
     // that came back with real data.
     const isDiscoverOnly = repositories.some((repo) => repo.deferred);
     if (isDiscoverOnly && !options.replaceWorkspace) {
+      const discoveredRoots = new Set(repositories.map((repo) => repo.root));
       const loadedRoots = new Set(
         repositories.filter((repo) => !repo.deferred || repo.root === rootPath).map((repo) => repo.root),
       );
       const kept = Array.from(currentChangedFiles.values())
-        .filter((file) => !loadedRoots.has(getChangedFileRepoRoot(file, rootPath) ?? ''));
+        .filter((file) => {
+          const repoRoot = getChangedFileRepoRoot(file, rootPath) ?? '';
+          return discoveredRoots.has(repoRoot) && !loadedRoots.has(repoRoot);
+        });
       files = [...kept, ...bundle.files];
     }
     const currentNestedCount = countNestedChangedFiles(currentChangedFiles.values(), rootPath);
@@ -3579,7 +3586,7 @@ export function RightSidebar(
     deferredRepoLoadRef.current.clear();
   }, [resetGitBundleLoading, rootPath]);
 
-  const loadGitBundle = useCallback(async (cwd: string | undefined = rootPath ?? undefined, options: { reloadDiff?: boolean; includeNested?: boolean; background?: boolean; refresh?: boolean; cacheOnly?: boolean; replaceRepoRoot?: string; discoverOnly?: boolean; replaceWorkspace?: boolean } = {}) => {
+  const loadGitBundle = useCallback(async (cwd: string | undefined = rootPath ?? undefined, options: { reloadDiff?: boolean; includeNested?: boolean; background?: boolean; refresh?: boolean; cacheOnly?: boolean; replaceRepoRoot?: string; discoverOnly?: boolean; replaceWorkspace?: boolean; rescan?: boolean } = {}) => {
     if (!cwd) return null;
     const expectedRootPath = rootPath;
     // Both preferences live server-side, so a cold client must read them before
@@ -3603,9 +3610,10 @@ export function RightSidebar(
     // The server keys its cache on (nested?, discover?) — a `single discover` slot
     // would be written but never read, so discovery only ever applies to nested.
     const discoverOnly = includeNested && (options.discoverOnly ?? false);
+    const rescan = options.rescan;
     if (refresh) untrackedCompletedRootsRef.current.clear();
     const pending = gitBundlePendingRef.current;
-    if (pending && pending.cwd === cwd && pending.includeNested === includeNested && pending.refresh === refresh && pending.cacheOnly === cacheOnly && pending.discoverOnly === discoverOnly) {
+    if (pending && pending.cwd === cwd && pending.includeNested === includeNested && pending.refresh === refresh && pending.cacheOnly === cacheOnly && pending.discoverOnly === discoverOnly && pending.rescan === rescan) {
       logGitBundleClientEvent('reuse_pending', { cwd, includeNested, refresh, cacheOnly, discoverOnly });
       return pending.promise;
     }
@@ -3646,7 +3654,8 @@ export function RightSidebar(
         refresh,
         cacheOnly,
         discoverOnly,
-        action: refresh ? 'manual_git_refresh' : 'open_sidebar_git_refresh',
+        rescan,
+        action: rescan === true ? 'rescan_git_repositories' : refresh ? 'manual_git_refresh' : 'open_sidebar_git_refresh',
         requestSlotId,
         requestTimeoutMs: refresh ? null : undefined,
       });
@@ -3682,7 +3691,7 @@ export function RightSidebar(
       });
       return bundle;
     })();
-    gitBundlePendingRef.current = { cwd, includeNested, refresh, cacheOnly, discoverOnly, promise };
+    gitBundlePendingRef.current = { cwd, includeNested, refresh, cacheOnly, discoverOnly, rescan, promise };
     try {
       const result = await promise;
       if (gitBundleRequestIdRef.current === requestId && result && isCurrentSidebarRoot(expectedRootPath)) {
@@ -3718,6 +3727,7 @@ export function RightSidebar(
         message: err instanceof Error ? err.message : String(err),
       });
       if (!background) {
+        gitBundleFailedRescanRef.current = rescan === true;
         setGitContext(null);
         setGitBundleError(err instanceof Error ? err.message : 'Failed to load Git changes');
       }
@@ -3734,17 +3744,34 @@ export function RightSidebar(
 
   const refreshGitState = useCallback(async () => {
     if (!rootPath) return;
-    // Always refresh through the workspace root. A nested repository may have
-    // been discovered through a symlink, while its canonical root lives
-    // outside the workspace path. Requesting that canonical root directly
-    // loses the workspace-scoped authorization and makes Retry fail with an
-    // access error. The full workspace bundle preserves the selected repo and
-    // refreshes both direct and symlinked children in one pass.
+    // Preserve workspace-scoped access to linked repos, but only update the
+    // known repository list. Discovering additions/removals is a separate action.
     await loadGitBundle(rootPath, {
       reloadDiff: true,
       refresh: true,
+      rescan: false,
     });
   }, [loadGitBundle, rootPath]);
+
+  const rescanGitRepositories = useCallback(async () => {
+    const requestRoot = rootPath;
+    if (!requestRoot) return;
+    setGitRescanRoot(requestRoot);
+    try {
+      await loadGitBundle(requestRoot, {
+        includeNested: true,
+        refresh: true,
+        discoverOnly: true,
+        rescan: true,
+      });
+    } finally {
+      setGitRescanRoot((current) => current === requestRoot ? null : current);
+    }
+  }, [loadGitBundle, rootPath]);
+
+  const retryGitState = useCallback(() => (
+    gitBundleFailedRescanRef.current ? rescanGitRepositories() : refreshGitState()
+  ), [refreshGitState, rescanGitRepositories]);
 
   const loadGitDetails = useCallback(async (cwd: string | undefined = rootPath ?? undefined) => {
     if (!cwd) return null;
@@ -7680,13 +7707,27 @@ export function RightSidebar(
       <button
         type="button"
         onClick={() => void refreshGitState()}
-        disabled={gitBundleLoading}
-        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition hover:bg-surface-2 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 active:scale-95"
+        disabled={gitBundleLoading || gitRescanning}
+        aria-busy={gitBundleLoading && !gitRescanning}
+        className="inline-flex h-8 shrink-0 items-center justify-center gap-1 rounded-md px-2 text-[11px] text-muted-foreground transition hover:bg-surface-2 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 active:scale-95 [@media(pointer:coarse)]:min-h-11"
         aria-label={t('rightSidebar.refreshGit')}
         title={t('rightSidebar.refreshGit')}
       >
-        <RiRefresh size={13} className={gitBundleLoading ? 'animate-spin' : ''} />
+        <RiRefresh size={13} className={gitBundleLoading && !gitRescanning ? 'animate-spin' : ''} />
+        <span>{t('rightSidebar.refreshGitShort')}</span>
       </button>
+      {nestedGitScanEnabled && <button
+        type="button"
+        onClick={() => void rescanGitRepositories()}
+        disabled={gitBundleLoading || gitRescanning}
+        aria-busy={gitRescanning}
+        className="inline-flex h-8 shrink-0 items-center justify-center gap-1 rounded-md px-2 text-[11px] text-muted-foreground transition hover:bg-surface-2 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 active:scale-95 [@media(pointer:coarse)]:min-h-11"
+        aria-label={t('rightSidebar.rescanGit')}
+        title={t('rightSidebar.rescanGit')}
+      >
+        {gitRescanning ? <RiLoader size={13} className="animate-spin" /> : <RiFolderSearch size={13} />}
+        <span>{t('rightSidebar.rescanGitShort')}</span>
+      </button>}
     </div>
   ) : null;
 
@@ -8368,7 +8409,7 @@ export function RightSidebar(
             ) : gitBundleLoading ? (
               <GitChangesLoadingState slow={gitBundleSlow} />
             ) : gitBundleError ? (
-              <GitChangesErrorState message={gitBundleError} onRetry={() => void refreshGitState()} />
+              <GitChangesErrorState message={gitBundleError} onRetry={() => void retryGitState()} />
             ) : isConfirmedNonGitContext(gitContext) ? (
               <div className="px-3 py-6 text-center text-xs text-muted-foreground">
                 {rootPath ? t('rightSidebar.gitUnavailable') : t('fileTree.noWorkingDir')}
@@ -8625,7 +8666,7 @@ export function RightSidebar(
               aiContent={showChangeAiMode ? ((controls) => renderChangeWalkthroughPanel(controls)) : undefined}
               emptyContent={(
                 initialGitChangesLoading ? null : gitBundleError && changedFiles.size === 0 ? (
-                  <GitChangesErrorState message={gitBundleError} onRetry={() => void refreshGitState()} />
+                  <GitChangesErrorState message={gitBundleError} onRetry={() => void retryGitState()} />
                 ) : changedFiles.size === 0 ? (
                   <div className="px-3 py-6 text-center text-xs text-muted-foreground">
                     {t('rightSidebar.noChanges')}
@@ -8770,7 +8811,7 @@ export function RightSidebar(
                   aiContent={showChangeAiMode ? ((controls) => renderChangeWalkthroughPanel(controls)) : undefined}
                   emptyContent={(
                     initialGitChangesLoading ? null : gitBundleError && changedFiles.size === 0 ? (
-                      <GitChangesErrorState message={gitBundleError} onRetry={() => void refreshGitState()} />
+                      <GitChangesErrorState message={gitBundleError} onRetry={() => void retryGitState()} />
                     ) : changedFiles.size === 0 ? (
                       <div className="px-3 py-6 text-center text-xs text-muted-foreground">
                         {t('rightSidebar.noChanges')}
@@ -8808,18 +8849,7 @@ export function RightSidebar(
                           <span className="font-mono text-[12px] leading-none">Aa</span>
                           <span>{diffWrap ? t('rightSidebar.wrapOn') : t('rightSidebar.wrapOff')}</span>
                         </button>
-                        {rootPath && (
-                          <button
-                            type="button"
-                            onClick={() => void refreshGitState()}
-                            disabled={gitBundleLoading}
-                            aria-label={t('rightSidebar.refreshGit')}
-                            title={t('rightSidebar.refreshGit')}
-                            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface-2 text-muted-foreground transition hover:bg-surface-elevated hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 active:scale-95"
-                          >
-                            <RiRefresh size={14} className={gitBundleLoading ? 'animate-spin' : ''} />
-                          </button>
-                        )}
+                        {diffRefreshButton}
                       </div>
                     </div>
                   )}

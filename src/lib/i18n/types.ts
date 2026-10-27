@@ -536,6 +536,9 @@ export type TranslationDictionary = {
     browsingOutsideProjectHint: string;
     toggleSearch: string;
     refreshGit: string;
+    refreshGitShort: string;
+    rescanGit: string;
+    rescanGitShort: string;
     gitLastUpdated: (params: TranslatorParams) => string;
     close: string;
     filterChanges: string;
