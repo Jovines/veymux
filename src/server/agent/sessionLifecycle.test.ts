@@ -56,6 +56,17 @@ it('releases all runtime facts, keeps exact identity, and restores with a new pa
   expect(f.api.release).toHaveBeenCalledTimes(1);
   expect(await f.sessions.get(f.p, released.session_id)).toMatchObject({ state: 'ready', generation: 3 });
 });
+it('persists release at quota and rejects a new restore before starting another runtime', async () => {
+  const f = await fixture(); f.sessions.close(); f.exit();
+  const full = new IntegrationSessions(f.file, f.api, 120000, { maxBytes: 1 }); closers.push(() => full.close());
+  const released = await full.release(f.p, f.created.session_id, 1, 'release-original');
+  expect(released).toMatchObject({ state: 'released', generation: 2, runtime_present: false, session_id: f.created.session_id, agent_native_session_id: 'native-uuid' });
+  await expect(full.restore(f.p, f.created.session_id, 'new-restore')).rejects.toMatchObject({ code: 'SESSION_STORAGE_FULL' });
+  expect(f.api.restore).not.toHaveBeenCalled();
+  full.close(); const restarted = new IntegrationSessions(f.file, f.api); closers.push(() => restarted.close());
+  expect(await restarted.release(f.p, f.created.session_id, 1, 'release-original')).toEqual(released);
+  expect(f.api.release).toHaveBeenCalledTimes(1);
+});
 it('reconciles a proven tmux recovery binding on get without launching or redelivering', async () => {
   const f = await fixture();
   const old = f.created.terminal_binding!;

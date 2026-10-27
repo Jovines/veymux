@@ -8,6 +8,19 @@ let dir: string, file: string;
 beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'td-group-rename-')); file = path.join(dir, 'groups.json'); });
 afterEach(() => { vi.restoreAllMocks(); fs.rmSync(dir, { recursive: true, force: true }); });
 const metadata = (group: { id: string; name: string; updatedAt: number }) => ({ id: group.id, name: group.name, updatedAt: group.updatedAt });
+it('does not overwrite externally changed state when reconfirming an uncertain rename receipt', () => {
+  const store = new CollaborationStore(file), group = store.save({ name: 'Original', sessionIds: [] }), original = fs.fsyncSync;
+  const failure = vi.spyOn(fs, 'fsyncSync').mockImplementation(fd => {
+    if (fs.fstatSync(fd).isDirectory()) throw new Error('directory fsync failed');
+    original(fd);
+  });
+  expect(() => store.renameLocalGroup(group.id, 'Short', group.updatedAt, 'rename-key')).toThrow('directory fsync failed');
+  failure.mockRestore();
+  const external = JSON.parse(fs.readFileSync(file, 'utf8')); external.groups[0].name = 'External update';
+  const bytes = JSON.stringify(external); fs.writeFileSync(file, bytes);
+  expect(() => store.renameLocalGroup(group.id, 'Short', group.updatedAt, 'rename-key')).toThrow('persisted state changed');
+  expect(fs.readFileSync(file, 'utf8')).toBe(bytes);
+});
 it('changes only display metadata, preserves original create receipt and separates historical/current rename results after restart', () => {
   const store = new CollaborationStore(file), created = store.createEmptyLocalGroup('Long original', 'create-key');
   store.save({ id: created.id, name: created.name, sessionIds: ['fast', 'slow'] });

@@ -39,6 +39,18 @@ it('renames durably, preserves launch identity/configuration and deduplicates ac
   expect(f.api.rename).toHaveBeenCalledTimes(1); expect(f.api.create).toHaveBeenCalledTimes(1); expect(f.api.restore).not.toHaveBeenCalled();
   await expect(f.sessions.rename(f.p, id, 1, 'Slow', 'rename')).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
 });
+it('blocks new launch/name work at quota while preserving close outcome, identity and idempotency across restart', async () => {
+  const f = await fixture(); f.sessions.close();
+  const full = new IntegrationSessions(f.file, f.api, 120000, { maxBytes: 1 }); instances.push(full);
+  await expect(full.create(f.p, { profile: 'agent', cwd: dir, idempotencyKey: 'new-create' })).rejects.toMatchObject({ code: 'SESSION_STORAGE_FULL' });
+  await expect(full.rename(f.p, f.created.session_id, 1, 'New name', 'new-name')).rejects.toMatchObject({ code: 'SESSION_STORAGE_FULL' });
+  expect(f.api.create).toHaveBeenCalledTimes(1); expect(f.api.rename).not.toHaveBeenCalled();
+  const closed = await full.closeSession(f.p, f.created.session_id, 1, 'original-close');
+  expect(closed).toMatchObject({ state: 'closed', generation: 2, session_id: f.created.session_id, agent_native_session_id: 'native-original' });
+  full.close(); const restarted = new IntegrationSessions(f.file, f.api); instances.push(restarted);
+  expect(await restarted.closeSession(f.p, f.created.session_id, 1, 'original-close')).toEqual(closed);
+  expect(f.api.closeRuntime).toHaveBeenCalledTimes(1);
+});
 it('reconciles a failed name synchronization without launching or incrementing again', async () => {
   const f = await fixture(); vi.mocked(f.api.rename!).mockRejectedValueOnce(new Error('sync down'));
   const result = await f.sessions.rename(f.p, f.created.session_id, 1, 'Fast', 'rename');

@@ -6,6 +6,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { directLocalId, directRemoteAddress } from './collaborationDirectProtocol.js';
 import { hasUnconfirmedTerminalWrite } from './collaborationProtocol.js';
+import { JsonStorageBudget, type JsonStorageOptions } from '../utils/jsonStorageBudget.js';
 import { chatPresentation, validChatUIValues, type ChatUIState } from '../shared/chatPresentation.js';
 import { COLLAB_NAME_FORBIDDEN, COLLAB_LIMITS, CollaborationError, STATUS_RANK, canonicalShortId, drawCollaborationId, newCollaborationId, resolveIdPrefix, validateExtras, type IdResolution, type MessageExtras, type MessageFragment, type TransportDiagnostic } from './collaborationProtocol.js';
 
@@ -100,6 +101,8 @@ export interface CollaborationMessage extends MessageExtras {
   sequence?: number;
   shellConfirmed?: boolean;
   failureReason?: string | null;
+  /** Storage grace for a newly settled transport outcome; never a read receipt. */
+  retainUntil?: number;
   /** Post-write capture of the recipient terminal, taken right after delivery; lets the sender see the message landed. */
   snapshot?: string | null;
   readSource?: 'explicit' | 'legacy_or_unspecified';
@@ -126,7 +129,7 @@ export interface CollaborationMessage extends MessageExtras {
 
 /** Public collaboration facts never expose legacy read guesses. */
 export function terminalMessage(message: CollaborationMessage, raw = false) {
-  const { readAt: _readAt, readSource: _readSource, ...body } = message;
+  const { readAt: _readAt, readSource: _readSource, retainUntil: _retainUntil, ...body } = message;
   const legacyConsumption = message.deliverySource === 'consumer_read';
   return { ...body, status: legacyConsumption ? 'pending' as const : message.status === 'read' ? 'delivered' as const : message.status,
     deliveredAt: legacyConsumption ? null : message.deliveredAt,
@@ -200,11 +203,20 @@ export class CollaborationStore {
   private groupCreationAvailable = true;
   private groupRenamesAvailable = true;
   private groupArchivesAvailable = true;
+  private storage: JsonStorageBudget;
+  private committedMessageIds = new Set<string>();
+  private committedPendingIds = new Set<string>();
+  private historyBytes: number;
 
   /** `drawId` is the random source behind newCollaborationId. It is a
    *  constructor seam so tests can force a collision and prove the guard
    *  below actually skips it; production always uses the CSPRNG default. */
-  constructor(private readonly filePath: string, private readonly drawId: () => string = drawCollaborationId) {
+  constructor(private readonly filePath: string, private readonly drawId: () => string = drawCollaborationId,
+    options: JsonStorageOptions & { historyBytes?: number } = {}) {
+    this.storage = new JsonStorageBudget(filePath, 'collaboration-messages', 'TERMDOCK_MESSAGE_STORAGE_MAX_BYTES', 512 * 1024 * 1024,
+      () => new CollaborationError('MESSAGE_STORAGE_FULL', '消息新增内容达到容量预算；待投递消息、投递确认和消费水位保留，请消费已有消息或调整 TERMDOCK_MESSAGE_STORAGE_MAX_BYTES', 503), options);
+    this.historyBytes = options.historyBytes ?? Number(process.env.TERMDOCK_MESSAGE_HISTORY_BYTES ?? 64 * 1024 * 1024);
+    if (!Number.isSafeInteger(this.historyBytes) || this.historyBytes < 1) throw new CollaborationError('INVALID_STORAGE_CONFIG', 'TERMDOCK_MESSAGE_HISTORY_BYTES must be a positive safe integer');
     let initializeChatAttention = false;
     try {
       const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8')) as Partial<CollaborationDocument>;
@@ -291,10 +303,13 @@ export class CollaborationStore {
         && message.toPrincipalId && !chatPresentation(message.content, message.metadata).ui?.streaming).map(message => message.id);
     }
     this.persistedDocument = JSON.stringify(this.document);
+    this.committedMessageIds = new Set(this.document.messages.map(message => message.id));
+    this.committedPendingIds = new Set(this.document.messages.filter(message => message.status === 'pending').map(message => message.id));
     // Persist before serving any indices so an idle restart cannot move the
     // baseline forward and swallow replies received since the first migration.
     if (initializeChatAttention) this.persist(true);
   }
+  storageStatus() { return { ...this.storage.status(), history_target_bytes: this.historyBytes }; }
 
   list(): CollaborationGroup[] {
     return this.document.groups.filter((group) => !group.deleted && !group.sessionChatSessionId).sort((a, b) => b.updatedAt - a.updatedAt);
@@ -384,7 +399,7 @@ export class CollaborationStore {
       if (!current || current.deleted || current.federated) throw new CollaborationError('GROUP_CREATE_TARGET_UNAVAILABLE', 'Original local group was deleted or changed; this key cannot create a replacement', 409);
       // A previous directory-fsync failure may have committed the key without
       // confirming durability. Reconfirm the current group+key before ACK.
-      this.persist(true);
+      this.persistLocalGroup();
       return structuredClone(previous.group);
     }
     if (Object.keys(this.document.localGroupRequests ?? {}).length >= 2000) throw new CollaborationError('GROUP_CREATE_LIMIT', 'Administrator group creation journal has reached its 2000-record limit', 409);
@@ -394,8 +409,32 @@ export class CollaborationStore {
       ...this.document.localGroupRequests, [requestKey]: { hash, group: structuredClone(group) } } };
     // persist restores the last committed document on failure. A post-rename
     // fsync failure retains the committed request so retries cannot duplicate.
-    this.persist(true);
+    this.persistLocalGroup();
     return structuredClone(group);
+  }
+
+  private persistLocalGroup(): void {
+    const proposed = this.document;
+    try {
+      if (!this.storage.status().commit_unconfirmed) { this.persist(true); return; }
+      const serialized = JSON.stringify(proposed);
+      this.storage.reconfirm(serialized);
+      this.persistedDocument = serialized;
+      this.committedMessageIds = new Set(proposed.messages.map(message => message.id));
+      this.committedPendingIds = new Set(proposed.messages.filter(message => message.status === 'pending').map(message => message.id));
+      for (const listener of this.changeListeners) { try { listener(); } catch { /* A durable receipt can be replayed again. */ } }
+    } catch (error) {
+      // Keep a post-rename request visible for idempotent retry, but never
+      // report success or admit another write before its durability is confirmed.
+      this.document = JSON.parse(this.persistedDocument) as CollaborationDocument;
+      try {
+        const serialized = JSON.stringify(proposed);
+        if (fs.readFileSync(this.filePath, 'utf8') === serialized) {
+          this.document = proposed; this.persistedDocument = serialized;
+        }
+      } catch { /* Retain the normal rollback when the replacement is not proven. */ }
+      throw error;
+    }
   }
 
   /** Exact local lookup; no prefix/name resolution or private group configuration. */
@@ -428,7 +467,7 @@ export class CollaborationStore {
       const target = this.getGroup(id);
       if (!target || target.deleted || target.federated) throw new CollaborationError('GROUP_ARCHIVE_TARGET_UNAVAILABLE', 'Original local archive target is unavailable; no replacement is created', 409);
       const group = this.getLocalGroupMetadata(id);
-      this.persist(true);
+      this.persistLocalGroup();
       return { group, applied: { ...previous.applied }, replayed: true };
     }
     const current = this.getLocalGroupMetadata(id);
@@ -444,7 +483,7 @@ export class CollaborationStore {
     this.document = { ...this.document, groups: this.document.groups.map(group => group.id === id
       ? { ...group, updatedAt, ...(archivedAt !== undefined ? { archivedAt } : { archivedAt: undefined }) } : group),
     localGroupArchives: { ...this.document.localGroupArchives, [requestKey]: { hash, applied } } };
-    this.persist(true);
+    this.persistLocalGroup();
     return { group: { ...applied }, applied: { ...applied }, replayed: false };
   }
 
@@ -464,7 +503,7 @@ export class CollaborationStore {
       const target = this.getGroup(id);
       if (!target || target.deleted || target.federated) throw new CollaborationError('GROUP_RENAME_TARGET_UNAVAILABLE', 'Original local rename target is unavailable; no replacement is created', 409);
       const group = this.getLocalGroupMetadata(id);
-      this.persist(true);
+      this.persistLocalGroup();
       return { group, applied: { ...previous.applied }, replayed: true };
     }
     const current = this.getLocalGroupMetadata(id);
@@ -476,7 +515,7 @@ export class CollaborationStore {
     const applied: LocalGroupMetadata = { id, name, updatedAt, ...(target.archivedAt !== undefined ? { archivedAt: target.archivedAt } : {}) };
     this.document = { ...this.document, groups: this.document.groups.map(group => group.id === id ? { ...group, name, updatedAt } : group),
       localGroupRenames: { ...this.document.localGroupRenames, [requestKey]: { hash, applied } } };
-    this.persist(true);
+    this.persistLocalGroup();
     return { group: { ...applied }, applied: { ...applied }, replayed: false };
   }
 
@@ -849,7 +888,7 @@ export class CollaborationStore {
     reply.metadata = { ...reply.metadata, ...extras.metadata, openui: { ...(extras.metadata?.openui as object), version: 2, patch: false, revision: Number(revision) + 1 } };
     reply.responseKind = next.streaming ? 'progress' : 'result';
     (this.document.idempotency ??= {})[key] = { hash, ids: [reply.id], expiresAt: Date.now() + COLLAB_LIMITS.idempotency_retention_ms };
-    this.persist(true); return reply;
+    this.persist(true, true); return reply;
   }
 
   /** References only: callers can select a bounded page before projecting bodies. */
@@ -966,7 +1005,7 @@ export class CollaborationStore {
     message.shellConfirmed = true;
     const diagnostic = this.diagnostic(messageId);
     if (diagnostic) this.recordTransport(messageId, { ...diagnostic, next_retry_at: null });
-    this.persist();
+    this.persist(true);
   }
 
   markDelivered(messageIds: string[]): CollaborationMessage[] {
@@ -994,7 +1033,7 @@ export class CollaborationStore {
       changed.push(updated);
       return updated;
     });
-    if (changed.length > 0) this.persist();
+    if (changed.length > 0) this.persist(true);
     return changed;
   }
 
@@ -1267,13 +1306,16 @@ export class CollaborationStore {
 
   commitCursor(sessionId: string, cursor: string, consumer: string): void {
     if (!consumer || consumer.length > 128) throw new CollaborationError('INVALID_CONSUMER', 'consumer must contain 1–128 characters');
+    let key: string, sequence: number;
     try {
       const decoded = JSON.parse(Buffer.from(cursor, 'base64url').toString());
       if (JSON.parse(decoded.scope)[0] !== sessionId || !Number.isSafeInteger(decoded.sequence) || decoded.sequence < 0 || decoded.sequence > (this.document.sequence ?? 0)) throw new Error();
-      const key = JSON.stringify([decoded.scope, consumer]);
-      (this.document.consumers ??= {})[key] = Math.max(this.document.consumers?.[key] ?? 0, decoded.sequence);
-      this.persist();
+      key = JSON.stringify([decoded.scope, consumer]); sequence = decoded.sequence;
     } catch { throw new CollaborationError('INVALID_CURSOR', 'Invalid consumption cursor'); }
+    const previous = this.document.consumers?.[key];
+    if (previous !== undefined && sequence <= previous) return;
+    (this.document.consumers ??= {})[key] = sequence;
+    this.persist(true);
   }
 
   acceptFragment(fragment: MessageFragment): { message_id: string; received: number; total: number; complete: boolean } {
@@ -1306,12 +1348,24 @@ export class CollaborationStore {
     return { message_id: fragment.message_id, received, total: state.total, complete: received === state.total };
   }
 
-  private persist(durable = false): void {
+  private persist(durable = false, contentGrowth = false): void {
     const now = Date.now();
+    try {
     for (const [key, record] of Object.entries(this.document.idempotency ?? {})) if (record.expiresAt <= now) delete this.document.idempotency![key];
     const protectedIds = new Set(Object.values(this.document.idempotency ?? {}).flatMap((record) => record.ids));
+    for (const message of this.document.messages) {
+      if (message.status !== 'pending' && this.committedPendingIds.has(message.id)) message.retainUntil = now + 5 * 60_000;
+      if ((message.retainUntil ?? 0) > now) protectedIds.add(message.id);
+    }
     const history = this.document.messages.filter((message) => message.status !== 'pending' && !protectedIds.has(message.id)).slice(-MAX_MESSAGES);
     const retained = new Set(history.map((message) => message.id));
+    const sizes = new Map(this.document.messages.map(message => [message.id, Buffer.byteLength(JSON.stringify(message)) + 1]));
+    let messageBytes = this.document.messages.reduce((sum, message) => sum + (message.status === 'pending' || protectedIds.has(message.id) || retained.has(message.id) ? sizes.get(message.id)! : 0), 0);
+    // Existing count retention also needs a byte target. Pending messages and
+    // unexpired deduplication receipts are never sacrificed to meet it.
+    for (const message of history) if (messageBytes > this.historyBytes) {
+      retained.delete(message.id); messageBytes -= sizes.get(message.id)!;
+    }
     this.document.messages = this.document.messages.filter((message) => {
       if (message.status === 'pending' || protectedIds.has(message.id) || retained.has(message.id)) return true;
       (this.document.prunedThrough ??= {})[message.toSessionId] = Math.max(this.document.prunedThrough?.[message.toSessionId] ?? 0, message.sequence ?? 0);
@@ -1327,19 +1381,24 @@ export class CollaborationStore {
       else this.document.sessionChatViewed![id] = ids.filter(messageId => messageIds.has(messageId));
     }
     const temporaryPath = `${this.filePath}.${process.pid}.tmp`;
-    try {
       fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
       const serialized = JSON.stringify(this.document);
+      const newMessage = this.document.messages.some(message => !this.committedMessageIds.has(message.id));
+      this.storage.admit(serialized, !newMessage && !contentGrowth);
+      // Enqueue success must survive a crash before a delivery worker runs.
+      durable ||= newMessage || contentGrowth;
       const descriptor = fs.openSync(temporaryPath, 'w', 0o600);
       try { fs.writeFileSync(descriptor, serialized); if (durable) fs.fsyncSync(descriptor); } finally { fs.closeSync(descriptor); }
       fs.renameSync(temporaryPath, this.filePath);
-      this.persistedDocument = serialized;
       if (durable) {
         const directory = fs.openSync(path.dirname(this.filePath), 'r');
         try { fs.fsyncSync(directory); } finally { fs.closeSync(directory); }
       }
+      this.persistedDocument = serialized; this.storage.committed(serialized);
+      this.committedMessageIds = new Set(this.document.messages.map(message => message.id));
+      this.committedPendingIds = new Set(this.document.messages.filter(message => message.status === 'pending').map(message => message.id));
       for (const listener of this.changeListeners) { try { listener(); } catch { /* Journal retries from durable source records. */ } }
-    } catch (error) { this.document = JSON.parse(this.persistedDocument) as CollaborationDocument; throw error; }
+    } catch (error) { this.storage.failed(); this.document = JSON.parse(this.persistedDocument) as CollaborationDocument; throw error; }
   }
 }
 

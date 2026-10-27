@@ -95,7 +95,8 @@ export class IntegrationRuntime {
       const given = Buffer.from(String(req.headers['x-termdock-local-token'] ?? '')), expected = Buffer.from(options.adminToken ?? '');
       if (!expected.length || given.length !== expected.length || !timingSafeEqual(given, expected)) integrationError('INTEGRATION_ADMIN_REQUIRED', 'Local administration credential is required', 401);
     };
-    app.get('/admin/storage', run(req => { admin(req); return this.store.storageStatus(); }));
+    app.get('/admin/storage', run(req => { admin(req); return { ...this.store.storageStatus(),
+      related: { sessions: this.sessions.storageStatus(), tasks: options.taskStore.storageStatus(), messages: options.messages.storageStatus() } }; }));
     app.get('/admin/consumers', run(req => { admin(req); return { consumers: this.store.consumerStatus() }; }));
     app.post('/admin/consumers/retire', run(req => {
       admin(req);

@@ -1,7 +1,7 @@
 import { GOAL_EXPERIENCE_GUIDE } from './collaborationTaskGuidance.js';
 import { randomBytes, createHash } from 'node:crypto';
-import { readFileSync, writeFileSync, mkdirSync, renameSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { JsonStorageBudget, type JsonStorageOptions } from '../utils/jsonStorageBudget.js';
 import { collaborationResultPresentation } from './collaborationResultPresentation.js';
 import { taskExecution, taskPurpose } from './collaborationTaskPurpose.js';
 import { CollaborationError } from './collaborationProtocol.js';
@@ -103,14 +103,18 @@ export class CollaborationTaskStore {
   subscribe(listener: () => void): () => void { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
   snapshot(): CollaborationTask[] { return structuredClone(this.document.tasks); }
   private document: TaskDocument = { version: 1, tasks: [], outbox: [], requests: {} };
-  constructor(private file: string) {
+  private storage: JsonStorageBudget;
+  constructor(file: string, options: JsonStorageOptions = {}) {
+    this.storage = new JsonStorageBudget(file, 'collaboration-tasks', 'TERMDOCK_TASK_STORAGE_MAX_BYTES', 64 * 1024 * 1024,
+      () => new CollaborationError('TASK_STORAGE_FULL', '任务新增内容达到容量预算；已有任务仍可确认、收尾或关闭，管理员可配置 TERMDOCK_TASK_STORAGE_MAX_BYTES', 409), options);
     try {
       const doc = JSON.parse(readFileSync(file, 'utf8')) as TaskDocument;
       if (doc.version !== 1 || !Array.isArray(doc.tasks) || !Array.isArray(doc.outbox) || !doc.requests) throw new Error('任务记录格式无效');
       this.document = doc;
     } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
   }
-  private transaction<T>(mutate: (doc: TaskDocument) => T, origin?: TaskOrigin): T {
+  storageStatus() { return this.storage.status(); }
+  private transaction<T>(mutate: (doc: TaskDocument) => T, origin?: TaskOrigin, control = false): T {
     const next = structuredClone(this.document);
     const result = mutate(next);
     if (origin) {
@@ -119,10 +123,7 @@ export class CollaborationTaskStore {
     }
     if (next.tasks.some(task => Buffer.byteLength(JSON.stringify(task)) > 512_000)) throw new CollaborationError('TASK_HISTORY_LIMIT', '此任务记录达到 500 KiB，请建立后续任务并保留本任务为历史', 409);
     const serialized = JSON.stringify(next);
-    if (Buffer.byteLength(serialized) > 64 * 1024 * 1024) throw new CollaborationError('TASK_STORAGE_FULL', '任务记录已达到保存上限，请导出历史后整理', 409);
-    mkdirSync(dirname(this.file), { recursive: true, mode: 0o700 });
-    const temporary = `${this.file}.${process.pid}.tmp`;
-    writeFileSync(temporary, serialized, { mode: 0o600 }); renameSync(temporary, this.file);
+    this.storage.write(serialized, control);
     this.document = next;
     for (const listener of this.listeners) { try { listener(); } catch { /* Durable sources allow the integration journal to retry. */ } }
     return structuredClone(result);
@@ -468,7 +469,8 @@ export class CollaborationTaskStore {
       if (task.workflow && ['blocked', 'failed'].includes(input.status ?? '')) task.automationIssue = content.slice(0, 1000);
       if (task.workflow && input.kind === 'report' && ['ack', 'working', 'complete'].includes(input.status ?? '')) delete task.automationIssue;
       doc.requests[request.key] = { hash: request.hash, taskId, eventId: task.events.at(-1)?.id }; return task;
-    }, origin);
+    }, origin, ['close', 'pause', 'accept', 'review'].includes(input.kind)
+      || input.kind === 'report' && ['ack', 'complete', 'failed', 'blocked'].includes(input.status ?? ''));
   }
   private touchParent(doc: TaskDocument, task: CollaborationTask, content: string) {
     const root = task.workflow?.rootTaskId ? doc.tasks.find(t => t.id === task.workflow!.rootTaskId) : undefined;
@@ -618,7 +620,7 @@ export class CollaborationTaskStore {
       } else if (receipt.status === 'delivered' && task.automationIssue?.startsWith('消息投递')
         && !doc.outbox.some(o => o.taskId === task.id && o.lastError)
         && !task.deliveries.some(d => d.attemptId === task.activeAttemptId && ['failed', 'expired'].includes(d.status))) delete task.automationIssue;
-    });
+    }, undefined, true);
   }
   failed(outboxId: string, error: string): void {
     const current = this.document.outbox.find(o => o.id === outboxId);
@@ -636,6 +638,6 @@ export class CollaborationTaskStore {
         task.revision++; task.updatedAt = Math.max(Date.now(), task.updatedAt + 1);
         if (task.workflow && !task.automationIssue) { task.automationIssue = `消息投递正在重试：${outbox.lastError}`; this.touchParent(doc, task, task.automationIssue); }
       }
-    });
+    }, undefined, true);
   }
 }

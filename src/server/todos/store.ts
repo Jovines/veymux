@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import { canClaimTodo } from './claimEligibility.js';
-import path from 'node:path';
+import { JsonStorageBudget, type JsonStorageOptions } from '../utils/jsonStorageBudget.js';
 import { randomUUID, randomBytes, createHash } from 'node:crypto';
 import { nextAutomationRunAt, normalizeAutomationSchedule } from '../agent/automationStore.js';
 import type { TodoCollector, TodoCreateInput, TodoHandoffInput, TodoItem, TodoLaunchConfig, TodoProcessing, TodoRun, TodoSessionPolicy, TodoSnapshot } from './types.js';
@@ -35,7 +35,10 @@ export function collectionSessionPolicy(input?: Partial<TodoSessionPolicy>): Tod
 const blank = (): Document => ({ version: 1, todos: [], collectors: [], runs: [], requests: {}, defaults: { agentSlug: '', command: '', cwd: '', prompt: '' } });
 export class TodoStore {
   private doc: Document = blank();
-  constructor(private readonly file: string) {
+  private storage: JsonStorageBudget;
+  constructor(file: string, options: JsonStorageOptions = {}) {
+    this.storage = new JsonStorageBudget(file, 'todos', 'TERMDOCK_TODO_STORAGE_MAX_BYTES', 32 * 1024 * 1024,
+      () => new TodoError('待办新增内容已达容量上限；可完成或释放已有工作，或调整 TERMDOCK_TODO_STORAGE_MAX_BYTES', 409), options);
     try {
       const doc = JSON.parse(fs.readFileSync(file, 'utf8')) as Document;
       if (doc.version !== 1 || !Array.isArray(doc.todos) || !Array.isArray(doc.collectors) || !Array.isArray(doc.runs) || !doc.requests || !doc.defaults) throw new Error('无效的 Todo 数据文件');
@@ -43,20 +46,14 @@ export class TodoStore {
       // Never replay a launch after a crash: it might already have reached a terminal.
       if (doc.runs.some(r => r.status === 'launching')) this.transaction(next => {
         for (const run of next.runs) if (run.status === 'launching') { run.status = 'failed'; run.error = '服务重启中断了启动确认，请检查已有终端后重新发起'; run.updatedAt = Date.now(); }
-      });
+      }, true);
     } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
   }
-  private transaction<T>(change: (doc: Document) => T): T {
+  storageStatus() { return this.storage.status(); }
+  private transaction<T>(change: (doc: Document) => T, control = false): T {
     const next = structuredClone(this.doc), result = change(next);
     const bytes = JSON.stringify(next);
-    if (Buffer.byteLength(bytes) > 32 * 1024 * 1024) throw new TodoError('待办记录已达容量上限，请整理后重试', 409);
-    fs.mkdirSync(path.dirname(this.file), { recursive: true, mode: 0o700 });
-    const temporary = `${this.file}.${process.pid}.tmp`;
-    const fd = fs.openSync(temporary, 'w', 0o600);
-    try { fs.writeFileSync(fd, bytes); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
-    fs.renameSync(temporary, this.file);
-    const directory = fs.openSync(path.dirname(this.file), 'r');
-    try { fs.fsyncSync(directory); } finally { fs.closeSync(directory); }
+    this.storage.write(bytes, control);
     this.doc = next; return structuredClone(result);
   }
   openCount(): number { return this.doc.todos.filter(t => t.status === 'open').length; }
@@ -99,7 +96,7 @@ export class TodoStore {
       if (input.description !== undefined) todo.description = string(input.description, 40000);
       if (input.status !== undefined) { if (!['open', 'completed', 'ignored'].includes(input.status)) throw new TodoError('待办状态无效'); todo.status = input.status; if (input.status !== 'open') todo.claim = null; }
       todo.revision++; todo.updatedAt = Date.now(); return todo;
-    });
+    }, input.title === undefined && input.description === undefined && (input.status === 'completed' || input.status === 'ignored'));
   }
   defaults(input: Partial<TodoLaunchConfig>): TodoLaunchConfig { const config = launchConfig(input, this.doc.defaults); return this.transaction(doc => doc.defaults = config); }
   saveCollector(input: Partial<TodoCollector> & { name: string; config: TodoLaunchConfig }): TodoCollector {
@@ -174,18 +171,19 @@ export class TodoStore {
     return this.hash({ todoIds: input.todoIds, note: input.note, sessionId: input.sessionId ?? null, config: input.sessionId ? null : input.config });
   }
   mark(id: string, update: { sessionId?: string; status?: 'delivered' | 'failed'; error?: string }): TodoRun {
+    if (update.error) update = { ...update, error: update.error.slice(0, 4000) };
     return this.transaction(doc => {
       const run = doc.runs.find(r => r.id === id); if (!run) throw new TodoError('执行记录不存在', 404);
       if (update.sessionId) run.sessionId = update.sessionId;
       // An Agent can submit its report before launch delivery acknowledgement returns.
       if (run.status === 'launching') { if (update.status) run.status = update.status; if (update.error) run.error = update.error; }
       run.updatedAt = Date.now(); return run;
-    });
+    }, true);
   }
   automaticFailed(id: string, error: string): void {
     this.transaction(doc => { const todo = doc.todos.find(t => t.id === id); if (todo?.status === 'open' && todo.autoProcessing?.state === 'pending') {
-      todo.autoProcessing.state = 'failed'; todo.autoProcessing.error = error; todo.updatedAt = Date.now(); todo.revision++;
-    } });
+      todo.autoProcessing.state = 'failed'; todo.autoProcessing.error = error.slice(0, 4000); todo.updatedAt = Date.now(); todo.revision++;
+    } }, true);
   }
   claim(input: { source?: string; collectorId?: string; todoId?: string; sessionId: string; sessionName: string; config: TodoLaunchConfig; leaseMinutes: number; requestId: string }): { todo: TodoItem | null; run: TodoRun | null } {
     if (![input.source, input.collectorId, input.todoId].some(value => typeof value === 'string' && value.trim())) throw new TodoError('请先向用户确认领取来源或具体待办，再指定 --source、--collector 或 --todo');
@@ -219,7 +217,7 @@ export class TodoStore {
       if (token && todo.claim?.id !== token) throw new TodoError('领取已变化，不能释放其他领取', 409);
       if (todo.claim) { const run = doc.runs.find(r => r.id === todo.claim!.runId); if (run && !run.result) { run.status = 'failed'; run.error = '领取已释放'; run.updatedAt = Date.now(); } }
       todo.claim = null; todo.revision++; todo.updatedAt = Date.now(); return todo;
-    });
+    }, true);
   }
   renewClaim(id: string, token: string, minutes: number): TodoItem {
     if (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440) throw new TodoError('续期时间无效');
@@ -227,24 +225,24 @@ export class TodoStore {
       const todo = doc.todos.find(t => t.id === id); if (!todo) throw new TodoError('待办不存在', 404);
       if (!todo.claim || todo.claim.id !== token || todo.claim.expiresAt <= Date.now()) throw new TodoError('领取已过期或已变化，请重新领取', 409);
       todo.claim.expiresAt = Date.now() + minutes * 60_000; todo.revision++; todo.updatedAt = Date.now(); return todo;
-    });
+    }, true);
   }
   bindCollectionSession(sessionId: string, runtimeIdentity: string): void {
     this.transaction(doc => { for (const run of doc.runs) if (run.kind === 'collect' && run.sessionId === sessionId && run.collectionSession?.owned !== false && !run.collectionSession?.recycledAt) {
       run.collectionSession = { ...collectionSessionPolicy(run.collectionSession), ...run.collectionSession, owned: true, runtimeIdentity };
-    } });
+    } }, true);
   }
   recycled(sessionId: string): void {
     this.transaction(doc => { for (const run of doc.runs) if (run.kind === 'collect' && run.sessionId === sessionId && run.collectionSession?.owned !== false) {
       run.collectionSession = { ...collectionSessionPolicy(run.collectionSession), owned: true, recycledAt: Date.now() };
-    } });
+    } }, true);
   }
   report(id: string, status: 'complete' | 'blocked' | 'failed', content: string): TodoRun {
     if (!['complete', 'blocked', 'failed'].includes(status)) throw new TodoError('结果状态无效');
     const result = string(content, 40000); if (!result) throw new TodoError('请填写结果');
     return this.transaction(doc => { const run = doc.runs.find(r => r.id === id); if (!run) throw new TodoError('执行记录不存在', 404);
       if (run.result && (run.status !== status || run.result !== result)) throw new TodoError('此轮已有结果，请发起新一轮执行', 409);
-      run.status = status; run.result = result; run.updatedAt = Date.now(); return run; });
+      run.status = status; run.result = result; run.updatedAt = Date.now(); return run; }, true);
   }
   private hash(value: unknown): string { return createHash('sha256').update(JSON.stringify(value)).digest('hex'); }
 }

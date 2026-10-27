@@ -119,6 +119,11 @@ jobs:
           src/server/agent/integrationObservation.test.ts
           src/server/agent/integrationTmuxObservation.test.ts
           src/server/agent/integrationPersistence.test.ts
+          src/server/agent/integrationStorage.test.ts
+          src/server/agent/storageRecovery.test.ts
+          src/server/utils/jsonStorageBudget.test.ts
+          src/server/agent/localGroupCreation.test.ts
+          src/server/agent/localGroupRename.test.ts
           src/server/agent/integrationDetachedClose.test.ts
           src/server/agent/sessionManagement.test.ts
           src/server/utils/tmuxLayoutReader.test.ts

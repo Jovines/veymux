@@ -3,7 +3,8 @@ import { cleanMemberName } from './collaborationRoutes.js';
 import type { SessionCloseTarget } from './sessionManagement.js';
 import path from 'node:path';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { atomicJson, integrationError, type IntegrationPrincipal, type LaunchProfile, type StartupInputCondition } from './integrationStore.js';
+import { integrationError, type IntegrationPrincipal, type LaunchProfile, type StartupInputCondition } from './integrationStore.js';
+import { JsonStorageBudget, type JsonStorageOptions } from '../utils/jsonStorageBudget.js';
 import { SessionLifecycleCoordinator, assertMessageRuntime, assertReleaseFacts, assertReleaseGeneration, type SessionLifecycleDescriptor } from './sessionLifecycle.js';
 import { resumeConfigurationFingerprint } from './sessionResumeConfiguration.js';
 import type { CollaborationPaneBinding } from './collaborationRouting.js';
@@ -125,7 +126,10 @@ export class IntegrationSessions {
   private observeAgain = false;
   private observationTimer?: ReturnType<typeof setTimeout>;
   private stopped = false;
-  constructor(private file: string, private adapter: IntegrationSessionAdapter, private bindingTimeout = 120000) {
+  private storage: JsonStorageBudget;
+  constructor(file: string, private adapter: IntegrationSessionAdapter, private bindingTimeout = 120000, options: JsonStorageOptions = {}) {
+    this.storage = new JsonStorageBudget(file, 'integration-sessions', 'TERMDOCK_SESSION_STORAGE_MAX_BYTES', 64 * 1024 * 1024,
+      () => new CollaborationError('SESSION_STORAGE_FULL', 'New recovery operations exceed capacity; existing outcomes and close/release remain recordable. Configure TERMDOCK_SESSION_STORAGE_MAX_BYTES', 503), options);
     try {
       const doc = JSON.parse(fs.readFileSync(file, 'utf8')) as Document;
       if (doc.version !== 1 || !Array.isArray(doc.sessions) || !doc.requests) throw new Error('Invalid integration session store'); this.doc = doc;
@@ -159,15 +163,16 @@ export class IntegrationSessions {
     const record = this.doc.sessions.find(s => s.session_id === id && s.principal_id === principalId);
     return !!record && !['closed','closing','released','releasing'].includes(record.state);
   }
-  private save(): void {
-    if (Buffer.byteLength(JSON.stringify(this.doc)) > 64 * 1024 * 1024) integrationError('SESSION_STORAGE_FULL', 'Recovery descriptor journal is full; no new operation was committed', 503);
-    atomicJson(this.file, this.doc); for (const listener of this.listeners) { try { listener(); } catch { /* Durable session state is reconciled on restart. */ } } }
-  private saveRecord(record: IntegrationSession): void {
+  storageStatus() { return this.storage.status(); }
+  private save(admission = false): void {
+    this.storage.write(JSON.stringify(this.doc), !admission);
+    for (const listener of this.listeners) { try { listener(); } catch { /* Durable session state is reconciled on restart. */ } } }
+  private saveRecord(record: IntegrationSession, admission = false): void {
     const before = this.doc.sessions;
     const seen = before.find(s => s.session_id === record.session_id)?.message_history_seen;
     this.doc.sessions = [...before.filter(s => s.session_id !== record.session_id), structuredClone({ ...record,
       ...(seen ? { message_history_seen: true } : {}) })];
-    try { this.save(); } catch (error) { this.doc.sessions = before; throw error; }
+    try { this.save(admission); } catch (error) { this.doc.sessions = before; throw error; }
   }
   private lookup(principal: IntegrationPrincipal, id: string): IntegrationSession {
     const record = this.doc.sessions.find(s => s.session_id === id && s.group_id === principal.groupId && s.principal_id === principal.id);
@@ -197,7 +202,7 @@ export class IntegrationSessions {
     record.launch_diagnostics = beginLaunchDiagnostics(record.operation_id, 1, 'cold_start');
     record.startup_input = startupInput(record, now);
     this.doc.requests[request.scoped] = { hash: request.hash, sessionId: record.session_id };
-    try { this.saveRecord(record); } catch (error) { delete this.doc.requests[request.scoped]; throw error; }
+    try { this.saveRecord(record, true); } catch (error) { delete this.doc.requests[request.scoped]; throw error; }
     return this.launch(record, false);
   }
   private launch(record: IntegrationSession, restoring: boolean, retryCold = false): Promise<IntegrationSession> {
@@ -343,7 +348,7 @@ export class IntegrationSessions {
         record.restore_diagnostics = undefined; record.startup_input = startupInput(record, Date.now());
         record.launch_diagnostics = beginLaunchDiagnostics(record.operation_id, record.generation, 'cold_retry');
         this.doc.requests[request.scoped] = { hash: request.hash, sessionId: id, operationId: record.operation_id, generation: record.generation };
-        try { this.saveRecord(record); } catch (error) { delete this.doc.requests[request.scoped]; throw error; }
+        try { this.saveRecord(record, true); } catch (error) { delete this.doc.requests[request.scoped]; throw error; }
         const result = await this.launch(record, false, true);
         result.cold_retry_pending = false; this.saveRecord(result);
         return result;
@@ -371,7 +376,7 @@ export class IntegrationSessions {
       if (observed.running) {
         if (observed.agentSlug !== record.agent_slug || observed.nativeId !== record.agent_native_session_id) integrationError('SESSION_IDENTITY_MISMATCH', 'Existing process does not prove the exact native binding', 409);
         this.doc.requests[request.scoped] = { hash: request.hash, sessionId: id, operationId: record.operation_id, generation: record.generation };
-        try { this.save(); } catch (error) { delete this.doc.requests[request.scoped]; throw error; }
+        try { this.save(true); } catch (error) { delete this.doc.requests[request.scoped]; throw error; }
         return record;
       }
       if (['starting', 'restoring', 'binding_pending'].includes(record.state)) integrationError('SESSION_OPERATION_IN_PROGRESS', 'Prior launch outcome is not yet resolved; inspect the original session', 409);
@@ -388,7 +393,7 @@ export class IntegrationSessions {
       if (!record.startup_input_disabled && !record.profile.startupInput && !record.startup_condition) record.startup_condition = structuredClone(principal.launchProfiles.find(profile => profile.id === record.launch_profile)?.startupInput);
       record.startup_input = startupInput(record, Date.now());
       this.doc.requests[request.scoped] = { hash: request.hash, sessionId: id, operationId: record.operation_id, generation: record.generation };
-      try { this.saveRecord(record); } catch (error) { delete this.doc.requests[request.scoped]; throw error; }
+      try { this.saveRecord(record, true); } catch (error) { delete this.doc.requests[request.scoped]; throw error; }
       return await this.launch(record, true);
     } finally { releaseNative?.(); }
   }
@@ -457,7 +462,7 @@ export class IntegrationSessions {
       record.name = name; record.name_updated_at = Date.now(); record.updated_at = record.name_updated_at;
       record.generation = generation + 1; record.name_generation = record.generation; record.name_operation_id = record.operation_id; record.rename_pending = true;
       this.doc.requests[request.scoped] = { hash: request.hash, sessionId: id, operationId: record.operation_id, generation: record.generation };
-      try { this.saveRecord(record); } catch (error) { delete this.doc.requests[request.scoped]; throw error; }
+      try { this.saveRecord(record, true); } catch (error) { delete this.doc.requests[request.scoped]; throw error; }
       try { await this.adapter.rename(record); record.rename_pending = false; this.saveRecord(record); }
       catch { /* Durable intent is retried by get/restart; no runtime is created. */ }
       return this.lookup(principal, id);

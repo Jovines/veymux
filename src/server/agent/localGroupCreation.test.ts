@@ -84,3 +84,18 @@ it('a same-key retry must not ACK success while directory fsync is still failing
   expect(store.createEmptyLocalGroup('Case', 'key')).toEqual(created);
   expect(confirm).toHaveBeenCalledTimes(2); expect(new CollaborationStore(file).createEmptyLocalGroup('Case', 'key')).toEqual(created);
 });
+
+it('blocks a different creation while durability is uncertain without retaining an uncommitted group', () => {
+  const store = new CollaborationStore(file), original = fs.fsyncSync;
+  const failure = vi.spyOn(fs, 'fsyncSync').mockImplementation(fd => {
+    if (fs.fstatSync(fd).isDirectory()) throw new Error('directory fsync failed');
+    original(fd);
+  });
+  expect(() => store.createEmptyLocalGroup('Original', 'original-key')).toThrow('directory fsync failed');
+  failure.mockRestore();
+  const created = store.list()[0], bytes = fs.readFileSync(file);
+  expect(() => store.createEmptyLocalGroup('Different', 'different-key')).toThrow('persisted state changed');
+  expect(store.list()).toEqual([created]); expect(fs.readFileSync(file)).toEqual(bytes);
+  expect(store.createEmptyLocalGroup('Original', 'original-key')).toEqual(created);
+  expect(store.createEmptyLocalGroup('Different', 'different-key').id).not.toBe(created.id);
+});
