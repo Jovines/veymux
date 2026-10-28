@@ -198,6 +198,31 @@ async function runtimeFixture(sessionAdapter?: IntegrationSessionAdapter, eventS
   };
   return { runtime, messages, group, taskStore, request, stream, options: { ...options, serviceId }, issued };
 }
+it('streams a multi-turn backlog without skipping cursors at yield or drain boundaries', async () => {
+  const f = await runtimeFixture(); f.runtime.sync();
+  f.runtime.store.append(Array.from({ length: 250 }, (_, index) => ({ sourceKey: `backlog:${index}`, sourceVersion: '1',
+    event: { group_id: f.group.id, kind: 'task.report', created_at: index + 1, payload: { index, text: 'x'.repeat(500) } } })));
+  const stream = f.stream();
+  const received = [];
+  for (let index = 0; index < 250; index++) received.push(await stream.next());
+  expect(received.map(event => event.payload.index)).toEqual(Array.from({ length: 250 }, (_, index) => index));
+  expect(new Set(received.map(event => event.cursor)).size).toBe(250);
+  expect((await f.request('POST', '/events/ack', { consumer: 'inbox', cursor: received.at(-1).cursor })).status).toBe(200);
+});
+
+it('coalesces a burst of journal notifications and yields before reconciling', async () => {
+  const f = await runtimeFixture(); f.runtime.sync();
+  const snapshot = vi.spyOn(f.messages, 'snapshotMessagesWithReceipts');
+  try {
+    for (let i = 0; i < 5; i++) f.messages.send({ groupId: f.group.id, fromSessionId: null, toSessionIds: ['worker'], kind: 'message', content: `burst-${i}` });
+    expect(snapshot).not.toHaveBeenCalled();
+    await new Promise<void>(resolve => setImmediate(resolve));
+    expect(snapshot).toHaveBeenCalledOnce();
+    const events = f.runtime.store.page(f.runtime.store.authenticate('bridge', f.issued.token), 'burst').events;
+    expect(events.filter(event => event.kind === 'message.queued')).toHaveLength(5);
+  } finally { snapshot.mockRestore(); }
+});
+
 it('reconciles only changed source domains and preserves dirty work across append failures', async () => {
   const f = await runtimeFixture(); f.runtime.sync();
   const messages = vi.spyOn(f.messages, 'snapshotMessagesWithReceipts');
@@ -207,11 +232,13 @@ it('reconciles only changed source domains and preserves dirty work across appen
     f.runtime.sync(); f.runtime.sync();
     expect(messages).not.toHaveBeenCalled(); expect(tasks).not.toHaveBeenCalled(); expect(sessions).not.toHaveBeenCalled();
     await f.runtime.sessions.create(f.runtime.store.authenticate('bridge', f.issued.token), { profile: 'agent', cwd: dir, idempotencyKey: 'domain' });
+    await new Promise<void>(resolve => setImmediate(resolve));
     expect(messages).not.toHaveBeenCalled(); expect(tasks).not.toHaveBeenCalled(); expect(sessions).toHaveBeenCalled();
     sessions.mockClear();
     const append = vi.spyOn(f.runtime.store, 'append').mockImplementationOnce(() => { throw new Error('temporary write failure'); });
     try {
       const [message] = f.messages.send({ groupId: f.group.id, fromSessionId: null, toSessionIds: ['worker'], kind: 'message', content: 'Durable retry' });
+      await new Promise<void>(resolve => setImmediate(resolve));
       f.runtime.sync();
       expect(messages).toHaveBeenCalledTimes(2); expect(tasks).not.toHaveBeenCalled(); expect(sessions).not.toHaveBeenCalled();
       expect(f.runtime.store.page(f.runtime.store.authenticate('bridge', f.issued.token), 'domain-test').events.some(event => event.message_id === message!.id)).toBe(true);

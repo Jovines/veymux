@@ -58,7 +58,8 @@ describe('Markdown preview failure recovery', () => {
   });
 
   it('shows a parse error and literal source, ends loading, and keeps source controls usable', async () => {
-    const content = `search_id [x](https://example.com/${'a'.repeat(20_000)}`;
+    const content = 'search_id [x](https://example.com/)';
+    vi.spyOn(MarkdownParseBudget.prototype, 'check').mockImplementation(() => { throw new MarkdownParseError('timeout'); });
     vi.mocked(readFileContent).mockResolvedValue({ path: props.filePath, content, size: content.length, modified: '', binary: false });
     const view = render(<I18nProvider><FilePreview {...props} /></I18nProvider>);
     await screen.findByRole('alert');
@@ -67,6 +68,7 @@ describe('Markdown preview failure recovery', () => {
       expect.objectContaining({ message: 'FILE_PREVIEW_LOADING end', data: expect.objectContaining({ reason: 'text_loaded' }) }),
       expect.objectContaining({ message: 'FILE_PREVIEW_LOADING markdown_error', data: expect.objectContaining({ fallback: 'plain_text' }) }),
     ]));
+    vi.restoreAllMocks();
     fireEvent.click(screen.getByRole('button', { name: 'Source' }));
     await waitFor(() => expect(view.container.querySelector('[data-file-preview-line]')).toBeTruthy());
     expect(screen.queryByRole('alert')).toBeNull();

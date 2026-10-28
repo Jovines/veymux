@@ -70,6 +70,12 @@ export function formatSvgAnnotation(filePath: string, viewLabel: string, pick: S
 }
 
 function sanitizeSvg(source: string): string {
+  // Avoid building/sanitizing a huge inline DOM in the page's WebKit process.
+  if (source.length > 256 * 1024) throw new Error('SVG is too large for interactive preview. Download the file to view it.');
+  let tags = 0;
+  for (let i = 0; i < source.length; i++) if (source[i] === '<' && ++tags > 2000) {
+    throw new Error('SVG is too complex for interactive preview. Download the file to view it.');
+  }
   const document = new DOMParser().parseFromString(source, 'image/svg+xml');
   const svg = document.documentElement;
   if (svg.nodeName.toLowerCase() !== 'svg' || document.querySelector('parsererror')) {
@@ -146,8 +152,12 @@ export function SvgInspectionPreview({
     setPick(null);
     setZoom(1);
     fetch(blobUrl, { signal: controller.signal })
-      .then((response) => response.text())
-      .then((text) => setMarkup(sanitizeSvg(text)))
+      .then(async response => {
+        const blob = await response.blob();
+        if (blob.size > 256 * 1024) throw new Error('SVG is too large for interactive preview. Download the file to view it.');
+        return blob.text();
+      })
+      .then((text) => { if (!controller.signal.aborted) setMarkup(sanitizeSvg(text)); })
       .catch((reason) => {
         if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : 'SVG preview failed');
       });

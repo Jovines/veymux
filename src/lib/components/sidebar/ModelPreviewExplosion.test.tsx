@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { BoxGeometry, Group, Mesh, MeshStandardMaterial, Vector3 } from 'three';
-import ModelPreview from './ModelPreview';
+import { BoxGeometry, Group, Mesh, MeshStandardMaterial, Vector3, Texture } from 'three';
+import ModelPreview, { disposeModelResources } from './ModelPreview';
 import { Sidebar } from './Sidebar';
 
 const fixture = vi.hoisted(() => ({ root: null as unknown, part: null as unknown }));
@@ -200,4 +200,14 @@ describe('assembly viewer controls', () => {
     await waitFor(() => expect(screen.getByText('Dimensions: 40.0 × 2.0 × 30.0')).toBeTruthy());
     expect(screen.queryByRole('button', { name: 'Exploded view' })).toBeNull();
   });
+});
+
+it('releases shared GPU resources and decoded bitmaps exactly once', () => {
+  const geometry = new BoxGeometry(), texture = new Texture(), bitmap = { close: vi.fn() };
+  texture.image = bitmap;
+  const material = new MeshStandardMaterial({ map: texture });
+  const root = new Group(); root.add(new Mesh(geometry, material), new Mesh(geometry, material));
+  const disposeGeometry = vi.spyOn(geometry, 'dispose'), disposeMaterial = vi.spyOn(material, 'dispose'), disposeTexture = vi.spyOn(texture, 'dispose');
+  disposeModelResources(root);
+  expect(disposeGeometry).toHaveBeenCalledOnce(); expect(disposeMaterial).toHaveBeenCalledOnce(); expect(disposeTexture).toHaveBeenCalledOnce(); expect(bitmap.close).toHaveBeenCalledOnce();
 });

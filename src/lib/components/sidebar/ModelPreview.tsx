@@ -23,6 +23,7 @@ import {
   Group,
   LineBasicMaterial,
   Material,
+  Texture,
   Mesh,
   MeshStandardMaterial,
   type Object3D,
@@ -328,6 +329,25 @@ function GlossaryPanel({ locale, onClose }: { locale: 'en' | 'zh'; onClose: () =
   );
 }
 
+/** Materials do not own/dispose their textures; close decoded bitmaps too. */
+export function disposeModelResources(root: Object3D): void {
+  const resources = new Set<{ dispose(): void }>();
+  const images = new Set<{ close(): void }>();
+  root.traverse(node => {
+    if (!(node instanceof Mesh)) return;
+    resources.add(node.geometry);
+    for (const material of Array.isArray(node.material) ? node.material : [node.material]) {
+      resources.add(material);
+      for (const value of Object.values(material)) if (value instanceof Texture) {
+        resources.add(value);
+        if (typeof value.image?.close === 'function') images.add(value.image);
+      }
+    }
+  });
+  for (const resource of resources) resource.dispose();
+  for (const image of images) image.close();
+}
+
 async function parseModel(buffer: ArrayBuffer, kind: Model3dLoaderKind): Promise<ParsedModel> {
   if (kind === 'stl') {
     return { kind: 'stl', geometry: new STLLoader().parse(buffer) };
@@ -412,7 +432,7 @@ function mountModelViewer(
   const camera = new PerspectiveCamera(45, container.clientWidth / Math.max(1, container.clientHeight), 0.1, 10000);
 
   const renderer = new WebGLRenderer({ antialias: true });
-  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(container.clientWidth, container.clientHeight);
   renderer.localClippingEnabled = true;
   container.appendChild(renderer.domElement);
@@ -1026,13 +1046,7 @@ function mountModelViewer(
         (grid.material as LineBasicMaterial).dispose();
         grid = null;
       }
-      scene.traverse((node) => {
-        if (node instanceof Mesh) {
-          node.geometry.dispose();
-          const material = node.material;
-          for (const entry of Array.isArray(material) ? material : [material]) entry.dispose();
-        }
-      });
+      disposeModelResources(scene);
       renderer.dispose();
       renderer.domElement.remove();
     },
@@ -1443,15 +1457,20 @@ export default function ModelPreview({
 
     let cancelled = false;
     let disposeViewer: (() => void) | null = null;
+    const controller = new AbortController();
     setStatus({ kind: 'loading' });
 
     (async () => {
-      const response = await fetch(blobUrl);
+      const response = await fetch(blobUrl, { signal: controller.signal });
       if (!response.ok) throw new Error(`Failed to fetch model blob (${response.status})`);
       const buffer = await response.arrayBuffer();
+      if (cancelled) return;
       const parsed = await parseModel(buffer, kind);
       const container = containerRef.current;
-      if (cancelled || !container) return;
+      if (cancelled || !container) {
+        if (parsed.kind === 'stl') parsed.geometry.dispose(); else disposeModelResources(parsed.object);
+        return;
+      }
       const viewer = mountModelViewer(container, parsed, unitScale, dimensionUnit);
       disposeViewer = viewer.dispose;
       viewerRef.current = viewer;
@@ -1471,6 +1490,7 @@ export default function ModelPreview({
 
     return () => {
       cancelled = true;
+      controller.abort();
       disposeViewer?.();
       viewerRef.current = null;
     };

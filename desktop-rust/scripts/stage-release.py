@@ -27,6 +27,8 @@ def main():
     run('git','push','origin',f'{revision}:refs/tags/{tag}')
     notes=('Final Preview bridge: migrate to Veymux Rust stable with application/configuration backups.' if preview else
            'Veymux Rust 正式版，要求 macOS 14+（Apple Silicon）。\n\n旧 Electron 客户端通过兼容 ZIP 过渡；macOS 12/13 保留现有客户端并提示升级系统。Preview 用户经最后一个 Preview 迁移到同一正式版。服务与终端会话继续运行。')
+    if not preview and metadata.get('legacyBridgeIncluded') is False:
+        notes='Veymux 新品牌 Rust macOS 正式版，要求 macOS 14+（Apple Silicon）。\n\n提供 DMG、ZIP 和签名自动更新包。旧品牌客户端请手动下载安装；首次运行自动迁移本机配置。'
     with tempfile.NamedTemporaryFile(mode='w',suffix='.md') as temporary:
         temporary.write(notes);temporary.flush()
         args=['gh','release','create',tag,'--repo',repo,'--verify-tag','--draft','--latest=false','--title',('Veymux Preview ' if preview else 'Veymux v')+version,'--notes-file',temporary.name]

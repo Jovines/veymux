@@ -16,7 +16,8 @@ import { X as RiCloseLine, ArrowLeft as RiArrowLeft, ArrowRight as RiArrowRight,
 import { useSidebarStore } from '../../stores/useSidebarStore';
 import { buildVideoPreviewUrl, isPreviewableImagePath, isPreviewableVideoPath } from '../../terminal/api';
 import { useI18n } from '../../i18n';
-import { loadRefractor, resolveLanguage, shouldHighlight, highlightToLines } from '../../utils/syntaxHighlight';
+import { resolveLanguage } from '../../utils/syntaxHighlight';
+import { highlightLinesAsync } from '../../utils/asyncSyntaxHighlight';
 import { hasNativeTextSelection } from '../sidebar/referenceSelection';
 import { isBusinessResource, useEncryptedMediaSource } from '../../federation/mediaSource';
 import 'swiper/css';
@@ -1915,27 +1916,13 @@ function MarkdownCodeBlock({ code, lang, blockKey, codeStartLine, lineRange }: M
   const [highlighted, setHighlighted] = useState<ReactNode[][] | null>(null);
 
   useEffect(() => {
-    if (!language || !shouldHighlight(code)) {
-      setHighlighted(null);
-      return;
-    }
-    let cancelled = false;
-    loadRefractor()
-      .then((refractor) => {
-        if (cancelled || !refractor.registered(language)) {
-          if (!cancelled) setHighlighted(null);
-          return;
-        }
-        try {
-          setHighlighted(highlightToLines(refractor, code, language));
-        } catch {
-          if (!cancelled) setHighlighted(null);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setHighlighted(null);
-      });
-    return () => { cancelled = true; };
+    setHighlighted(null);
+    if (!language) return;
+    const controller = new AbortController();
+    void highlightLinesAsync(code, language, controller.signal).then(lines => {
+      if (!controller.signal.aborted) setHighlighted(lines);
+    });
+    return () => controller.abort();
   }, [blockKey, code, language]);
 
   const perLine: ReactNode[][] = highlighted ?? (code || ' ').split('\n').map((line) => [line || ' ']);

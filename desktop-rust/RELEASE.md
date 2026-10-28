@@ -25,6 +25,12 @@ CLI/npm 版本独立。最后一个 Preview 版本取 `desktop-rust/package.json
 
 ## 正常正式发版
 
+新品牌独立仓库没有旧 Electron 兼容桥资产时，设置 `VEYMUX_RUST_ONLY_RELEASE=1`
+构建纯 Rust 正式版。产物保留 DMG、Rust ZIP、签名更新包和正式更新渠道，
+`release.json` 明确记录 `legacyBridgeIncluded: false`；公证与推广仍完整核验所有
+Rust 产物。此模式不提供旧品牌客户端的自动升级，旧用户需手动安装后迁移配置。
+未设置该变量时仍要求并验证原有兼容桥，不能用旧品牌二进制改文件名代替新品牌包。
+
 以后只构建一个 Rust 正式版。兼容桥复用首次发布的不可变资产，不重新编译 Electron；
 Preview 渠道永久保留最后过渡版，不能删除，也不继续发布常规 Preview。
 

@@ -1,3 +1,6 @@
+import { useMemo } from 'react';
+import { needsBoundedTextPreview } from '../../utils/textPreviewBudget';
+import { BoundedTextPreview } from '../sidebar/BoundedTextPreview';
 import { MarkdownRenderer, type MarkdownLocalLinkTarget, type MarkdownRendererProps, type MarkdownVariant } from './MarkdownRenderer';
 import './markdown.css';
 
@@ -36,6 +39,9 @@ const ignoreLineRange = () => {};
  * callers choose typography and optionally provide file navigation controls.
  */
 export function Markdown({ content, variant = 'prose', filePath = null, rootPath = null, onLocalLinkOpen, fileControls, lightbox }: MarkdownProps) {
+  const bounded = useMemo(() => needsBoundedTextPreview(content), [content]);
+  if (bounded) return <BoundedTextPreview content={content} embedded
+    lineRange={fileControls?.lineRange} onLineClick={fileControls?.onLineRangeClick ? (event, line) => fileControls.onLineRangeClick?.(event, line, line) : undefined} />;
   return <MarkdownRenderer
     content={content}
     variant={variant}

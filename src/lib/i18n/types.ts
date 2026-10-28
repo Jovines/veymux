@@ -891,6 +891,11 @@ export type TranslationDictionary = {
     insertReference: (params: TranslatorParams) => string;
     copyReference: (params: TranslatorParams) => string;
     byteCount: (params: TranslatorParams) => string;
+    boundedPreview: string;
+    boundedPreviewHint: string;
+    previousPage: string;
+    nextPage: string;
+    goToLine: string;
     previewTruncated: string;
     branchCandidatesLoading: string;
     includeUncommitted: string;

@@ -150,13 +150,13 @@ export class CollaborationPeerTransport {
   notify(serviceId?: string) {
     for (const b of this.bindings) {
       const key = `${b.groupId}:${b.peer.serviceId}`;
-      if (b.peer.serviceId === serviceId || !this.options.store.federationSnapshot().messages.some(m => m.groupId === b.groupId && m.status === 'pending'
+      if (b.peer.serviceId === serviceId || !this.options.store.groupMessages(b.groupId).some(m => m.status === 'pending'
         && this.options.store.diagnostic(m.id)?.last_error)) this.nextAttempt.delete(key);
     }
     // A queued message may arrive while an empty scan is finishing.
     setImmediate(() => this.wake());
   }
-  start() { this.options.store.onMessageQueued = () => this.notify(); this.timer = setInterval(() => this.wake(), 500); this.timer.unref(); this.wake(); }
+  start() { if (this.timer || this.stopped) return; this.options.store.onMessageQueued = () => this.notify(); this.timer = setInterval(() => this.wake(), 500); this.timer.unref(); this.wake(); }
   close() { this.stopped = true; this.options.store.onMessageQueued = undefined; clearInterval(this.timer); for (const client of this.clients.values()) void client.then(c => c.close()).catch(() => {}); this.clients.clear(); }
   private live(b: Binding) {
     const group = this.options.store.getGroup(b.groupId);
@@ -272,7 +272,7 @@ export class CollaborationPeerTransport {
       void this.sync(b).catch(() => { this.nextAttempt.set(key, Date.now() + 1000); }).finally(() => this.running.delete(key));
     }
     // No registration must be visible, rather than an unexplained zero-attempt queue.
-    for (const group of this.options.store.list()) for (const m of this.options.store.federationSnapshot().messages.filter(message => message.groupId === group.id)) {
+    for (const group of this.options.store.list().filter(group => group.federated)) for (const m of this.options.store.groupMessages(group.id)) {
       if (m.status !== 'pending' || m.fromSessionId?.startsWith('remote:') || !m.toSessionId.startsWith('remote:')) continue;
       if (this.bindings.some(b => b.groupId === group.id && this.live(b) && m.toSessionId.startsWith(`remote:${encodeURIComponent(b.peer.origin)}:`))) continue;
       const prior = this.options.store.diagnostic(m.id);
@@ -301,7 +301,7 @@ export class CollaborationPeerTransport {
   private async sync(b: Binding) {
     const store = this.options.store, key = `${b.groupId}:${b.peer.serviceId}`;
     const scope = this.options.scopeFor?.(b.peer.serviceId);
-    const messages = store.federationSnapshot().messages.filter(m => m.groupId === b.groupId).filter(m => !m.fromSessionId?.startsWith('remote:') && m.fromSessionId !== null
+    const messages = store.groupMessages(b.groupId).filter(m => !m.fromSessionId?.startsWith('remote:') && m.fromSessionId !== null
       && (scope === undefined || scope.includes(m.fromSessionId))
       && m.toSessionId.startsWith(`remote:${encodeURIComponent(b.peer.origin)}:`) && !['failed', 'expired'].includes(m.status)
       && (m.status === 'pending' || !m.snapshot)).sort((a, b) => Number(b.status === 'pending') - Number(a.status === 'pending'));

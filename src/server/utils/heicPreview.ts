@@ -1,5 +1,10 @@
 import { Worker } from 'node:worker_threads';
 
+// Each decoder owns a WASM heap and the full decoded image. Bound workers
+// globally, including workers that are still terminating after cancellation.
+const MAX_CONVERSIONS = 2;
+let activeConversions = 0;
+
 export const HEIC_PREVIEW_MIME_TYPES: Record<string, string> = {
   '.heic': 'image/heic',
   '.heif': 'image/heif',
@@ -12,19 +17,25 @@ export function isHeicPreviewPath(filePath: string): boolean {
 
 export function convertHeicPreview(filePath: string, signal?: AbortSignal): Promise<Buffer> {
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) { reject(signal.reason ?? new Error('HEIC preview conversion was cancelled')); return; }
+    if (activeConversions >= MAX_CONVERSIONS) {
+      reject(Object.assign(new Error('图片转换繁忙，请稍后重试'), { code: 'HEIC_PREVIEW_BUSY', status: 503 }));
+      return;
+    }
     const worker = new Worker(new URL('../workers/heicPreviewWorker.js', import.meta.url), {
       workerData: { filePath },
     });
+    activeConversions += 1;
     let settled = false;
 
     const finish = (callback: () => void) => {
       if (settled) return;
       settled = true;
       signal?.removeEventListener('abort', abort);
+      void worker.terminate();
       callback();
     };
     const abort = () => {
-      void worker.terminate();
       finish(() => reject(signal?.reason instanceof Error ? signal.reason : new Error('HEIC preview conversion was cancelled')));
     };
 
@@ -43,11 +54,12 @@ export function convertHeicPreview(filePath: string, signal?: AbortSignal): Prom
         finish(() => reject(new Error('HEIC preview worker returned no image data')));
         return;
       }
-      finish(() => resolve(Buffer.from(output)));
+      finish(() => resolve(Buffer.from(output.buffer, output.byteOffset, output.byteLength)));
     });
     worker.once('error', (error) => finish(() => reject(error)));
     worker.once('exit', (code) => {
-      if (code !== 0) finish(() => reject(new Error(`HEIC preview worker exited with code ${code}`)));
+      activeConversions -= 1;
+      finish(() => reject(new Error(`HEIC preview worker exited without image data (code ${code})`)));
     });
   });
 }

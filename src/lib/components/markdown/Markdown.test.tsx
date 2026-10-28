@@ -82,11 +82,12 @@ describe.each([
     expect(await screen.findByRole('button', { name: 'Close image preview' })).toBeTruthy();
   });
 
-  it('shows the source on parse failure and recovers when content changes', async () => {
+  it('pages oversized source without parsing and recovers when content changes', async () => {
     const content = 'x'.repeat(16_385);
     const view = render(<Surface content={content} />);
-    await screen.findByRole('alert');
-    expect(view.container.querySelector('[data-markdown-preview-fallback] pre')?.textContent).toBe(content);
+    expect(view.container.querySelector('[data-bounded-text-preview]')).toBeTruthy();
+    expect(view.container.querySelectorAll('[data-file-preview-line]').length).toBeLessThanOrEqual(200);
+    expect(screen.queryByRole('alert')).toBeNull();
     view.rerender(<Surface content="## Recovered" />);
     expect(await screen.findByRole('heading', { name: 'Recovered' })).toBeTruthy();
     expect(screen.queryByRole('alert')).toBeNull();

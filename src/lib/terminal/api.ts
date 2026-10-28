@@ -1,3 +1,4 @@
+import { readBoundedBlob } from '../utils/readBoundedBlob';
 import { pollConnectionQuality, receiveQualityPong } from './connectionQuality';
 import { collaborationServiceLabel } from '../collaboration/display';
 import { listServiceConnections, observeServiceConnections } from '../services/serviceDirectory';
@@ -2918,7 +2919,7 @@ export interface Model3dPreviewBlob {
 // Fetches a 3D model file through the generic download endpoint (the blob
 // endpoint is image-oriented; download serves arbitrary binary files).
 export async function readModel3dBlob(filePath: string, signal?: AbortSignal, action = 'view_file', requestSlotId?: string): Promise<Model3dPreviewBlob> {
-  const params = new URLSearchParams({ path: filePath, action });
+  const params = new URLSearchParams({ path: filePath, action, preview: 'model' });
   if (requestSlotId) params.set('requestSlotId', requestSlotId);
   const message = '3D model transfer timed out. Please retry.';
   const request = withRequestTimeout(signal, MODEL_PREVIEW_REQUEST_TIMEOUT_MS, message);
@@ -2929,7 +2930,7 @@ export async function readModel3dBlob(filePath: string, signal?: AbortSignal, ac
     throw new Error(error.error || 'Failed to load 3D model preview');
   }
 
-  const blob = await response.blob();
+  const blob = await readBoundedBlob(response, 16 * 1024 * 1024, 'Model is too large for interactive preview. Download the file to view it.');
   const sizeHeader = response.headers.get('Content-Length');
   const ext = getModel3dExtForPath(filePath) ?? '';
   return {

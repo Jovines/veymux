@@ -77,6 +77,12 @@ export class CollaborationDeliveryWorker {
     this.lastTickAt = Date.now();
     try {
       const ids = this.options.store.pendingRecipients().filter(this.options.isLocal);
+      const pending = new Set(ids);
+      for (const [id, state] of this.states) {
+        if (!pending.has(id) && !this.running.has(id) && this.lastTickAt - state.checkedAt >= 15_000) this.states.delete(id);
+      }
+      for (const id of this.failures.keys()) if (!pending.has(id) && !this.running.has(id)) this.failures.delete(id);
+      for (const id of this.submitted) if (this.options.store.getMessage(id)?.status !== 'pending') this.submitted.delete(id);
       // Bound process probes/attachments while keeping a broken peer from
       // serially blocking the entire queue.
       let cursor = 0;

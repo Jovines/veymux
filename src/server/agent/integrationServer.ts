@@ -52,6 +52,8 @@ export class IntegrationRuntime {
   private streams = new Set<ServerResponse>();
   private sent = new Map<string, number>();
   private syncing = false;
+  private scheduledSync?: ReturnType<typeof setImmediate>;
+  private closed = false;
   private dirtySources = new Set<SyncSource>(['messages', 'tasks', 'sessions']);
   private syncedGroups = '';
   private retry?: ReturnType<typeof setTimeout>;
@@ -78,7 +80,14 @@ export class IntegrationRuntime {
     this.stops.push(options.messages.registerRuntimeGuard(id => this.sessions.assertRuntimeMessage(id)));
     const changed = (source: SyncSource) => () => {
       this.dirtySources.add(source);
-      try { this.sync(); } catch (error) { if (!this.capacityBlocked(error)) this.failStreams(error); this.scheduleRetry(); }
+      // Delivery progress can persist several stages in one turn. Reconcile
+      // once after yielding to I/O rather than rescanning history inside each
+      // source journal commit. Explicit API reads still call sync() below.
+      if (this.closed || this.scheduledSync) return;
+      this.scheduledSync = setImmediate(() => {
+        this.scheduledSync = undefined;
+        try { this.sync(); } catch (error) { if (!this.capacityBlocked(error)) this.failStreams(error); this.scheduleRetry(); }
+      });
     };
     this.stops.push(options.messages.subscribe(changed('messages')), options.taskStore.subscribe(changed('tasks')), this.sessions.subscribe(changed('sessions')));
     const app = express(); app.use(express.json({ limit: '2mb' }));
@@ -435,6 +444,8 @@ export class IntegrationRuntime {
       ...(value.metadata ? { metadata: value.metadata as Record<string, unknown> } : {}) };
   }
   sync(): void {
+    if (this.closed) return;
+    if (this.scheduledSync) { clearImmediate(this.scheduledSync); this.scheduledSync = undefined; }
     if (this.syncing) return; this.syncing = true;
     let sources = new Set<SyncSource>();
     try {
@@ -509,20 +520,29 @@ export class IntegrationRuntime {
   }
   private capacityBlocked(error: unknown): boolean { return error instanceof CollaborationError && error.code === 'EVENT_STORAGE_FULL'; }
   private scheduleRetry(): void {
-    if (this.retry) return;
+    if (this.closed || this.retry) return;
     this.retry = setTimeout(() => { this.retry = undefined; try { this.sync(); } catch { this.scheduleRetry(); } }, 1000); this.retry.unref();
   }
   private stream(p: IntegrationPrincipal, consumer: string, req: express.Request, res: express.Response): void {
-    let cursor: string | undefined, pumping = false, closed = false;
+    let cursor: string | undefined, pumping = false, closed = false, waitingDrain = false;
+    let continuation: ReturnType<typeof setImmediate> | undefined;
     const key = `${p.id}:${p.groupId}:${consumer}`;
     // Resolve the initial cursor before sending headers so retention gaps
     // and bad consumer names are ordinary machine-readable HTTP errors.
     const initial = this.store.streamPage(p, consumer); cursor = initial.cursor;
     res.setHeader('Content-Type', 'application/x-ndjson'); res.setHeader('Cache-Control', 'no-store'); res.flushHeaders(); this.streams.add(res);
     const stop = this.store.subscribe(() => pump());
-    const cleanup = () => { closed = true; stop(); clearInterval(heartbeat); this.streams.delete(res); };
+    const cleanup = () => {
+      closed = true; stop(); clearInterval(heartbeat);
+      if (continuation) clearImmediate(continuation);
+      res.removeListener('drain', drained); this.streams.delete(res);
+    };
+    const drained = () => { waitingDrain = false; pump(); };
     const pump = () => {
-      if (pumping || closed) return; pumping = true;
+      if (pumping || closed || waitingDrain) return;
+      if (continuation) { clearImmediate(continuation); continuation = undefined; }
+      pumping = true;
+      let emitted = 0;
       try {
         this.authorize(p, 'events.read');
         for (;;) {
@@ -530,8 +550,10 @@ export class IntegrationRuntime {
           if (!page.events.length) break;
           for (const event of page.events) {
             if (res.writableLength > 1024 * 1024) integrationError('EVENT_CONSUMER_SLOW', 'Reconnect from the last acknowledged cursor', 503);
-            res.write(event.line); cursor = event.cursor;
+            const writable = res.write(event.line); cursor = event.cursor;
             this.sent.set(key, Math.max(this.sent.get(key) ?? 0, event.sequence));
+            if (!writable) { waitingDrain = true; res.once('drain', drained); return; }
+            if (++emitted >= 100) { continuation = setImmediate(() => { continuation = undefined; pump(); }); return; }
           }
         }
       } catch (error) { res.end(`${JSON.stringify(this.error(error))}\n`); cleanup(); }
@@ -573,6 +595,8 @@ export class IntegrationRuntime {
     await this.sessions.refreshAll(); void this.pumpReleaseBatches();
   }
   async close(): Promise<void> {
+    this.closed = true;
+    if (this.scheduledSync) { clearImmediate(this.scheduledSync); this.scheduledSync = undefined; }
     for (const stop of this.stops) stop(); if (this.retry) clearTimeout(this.retry); this.sessions.close();
     for (const stream of this.streams) stream.destroy();
     await new Promise<void>(resolve => this.server.close(() => resolve()));

@@ -57,13 +57,15 @@ export function collectFilePreviewSearchRanges(root: HTMLElement, query: string)
 
   const haystack = searchableText.toLocaleLowerCase();
   const ranges: Range[] = [];
-  let from = 0;
-  while (from <= haystack.length - needle.length) {
+  let from = 0, firstIndex = 0, lastIndex = 0;
+  while (from <= haystack.length - needle.length && ranges.length < 1000) {
     const matchStart = haystack.indexOf(needle, from);
     if (matchStart < 0) break;
     const matchEnd = matchStart + needle.length;
-    const first = segments.find((segment) => segment.start <= matchStart && segment.end > matchStart);
-    const last = segments.find((segment) => segment.start < matchEnd && segment.end >= matchEnd);
+    while (firstIndex < segments.length && segments[firstIndex].end <= matchStart) firstIndex++;
+    lastIndex = Math.max(lastIndex, firstIndex);
+    while (lastIndex < segments.length && segments[lastIndex].end < matchEnd) lastIndex++;
+    const first = segments[firstIndex], last = segments[lastIndex];
     if (first && last && first.group === last.group) {
       const range = document.createRange();
       range.setStart(first.node, matchStart - first.start);

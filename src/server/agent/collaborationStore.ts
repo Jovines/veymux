@@ -210,6 +210,45 @@ export class CollaborationStore {
   private committedMessageIds = new Set<string>();
   private committedPendingIds = new Set<string>();
   private historyBytes: number;
+  private messageIndex?: {
+    source: CollaborationMessage[];
+    count: number;
+    byId: Map<string, CollaborationMessage>;
+    byRecipient: Map<string, CollaborationMessage[]>;
+    pendingByRecipient: Map<string, CollaborationMessage[]>;
+    byGroup: Map<string, CollaborationMessage[]>;
+    pending: CollaborationMessage[];
+  };
+
+  private indexedMessages() {
+    const source = this.document.messages;
+    if (this.messageIndex?.source === source && this.messageIndex.count === source.length) return this.messageIndex;
+    const byId = new Map<string, CollaborationMessage>();
+    const byRecipient = new Map<string, CollaborationMessage[]>();
+    const pendingByRecipient = new Map<string, CollaborationMessage[]>();
+    const byGroup = new Map<string, CollaborationMessage[]>();
+    const pending: CollaborationMessage[] = [];
+    for (const message of source) {
+      byId.set(message.id, message);
+      for (const [map, key] of [[byRecipient, message.toSessionId], [byGroup, message.groupId]] as const) {
+        const entries = map.get(key);
+        if (entries) entries.push(message); else map.set(key, [message]);
+      }
+      if (message.status === 'pending') {
+        pending.push(message);
+        const entries = pendingByRecipient.get(message.toSessionId);
+        if (entries) entries.push(message); else pendingByRecipient.set(message.toSessionId, [message]);
+      }
+    }
+    return this.messageIndex = { source, count: source.length, byId, byRecipient, pendingByRecipient, byGroup, pending };
+  }
+
+  /** Read only one group's history; polling must not materialize every group's diagnostics. */
+  groupMessages(groupId: string): CollaborationMessage[] {
+    this.expire();
+    return [...(this.indexedMessages().byGroup.get(groupId) ?? [])];
+  }
+
 
   /** `drawId` is the random source behind newCollaborationId. It is a
    *  constructor seam so tests can force a collision and prove the guard
@@ -707,7 +746,7 @@ export class CollaborationStore {
 
   pendingRemoteDirect(): CollaborationMessage[] {
     this.expire();
-    return this.document.messages.filter(message => message.direct && message.status === 'pending'
+    return this.indexedMessages().pending.filter(message => message.direct && message.status === 'pending'
       && directLocalId(message.fromSessionId) && directRemoteAddress(message.toSessionId));
   }
 
@@ -951,7 +990,7 @@ export class CollaborationStore {
 
   getMessage(id: string): CollaborationMessage | null {
     this.expire();
-    return this.document.messages.find((message) => message.id === id) ?? null;
+    return this.indexedMessages().byId.get(id) ?? null;
   }
 
   resolveMessageId(id: string): IdResolution {
@@ -968,19 +1007,22 @@ export class CollaborationStore {
 
   inbox(sessionId: string, options: { pendingOnly?: boolean; limit?: number } = {}): CollaborationMessage[] {
     this.expire();
-    const matches = this.document.messages.filter((message) => message.toSessionId === sessionId && (!options.pendingOnly || message.status === 'pending'));
+    const index = this.indexedMessages();
+    const matches = options.pendingOnly
+      ? (index.pendingByRecipient.get(sessionId) ?? []).filter(message => message.status === 'pending')
+      : index.byRecipient.get(sessionId) ?? [];
     const limit = Math.max(1, Math.min(options.limit ?? 50, 200));
     return options.pendingOnly ? matches.slice(0, limit) : matches.slice(-limit);
   }
 
   pendingCount(sessionId: string): number {
     this.expire();
-    return this.document.messages.filter((message) => message.toSessionId === sessionId && message.status === 'pending').length;
+    return (this.indexedMessages().pendingByRecipient.get(sessionId) ?? []).filter(message => message.status === 'pending').length;
   }
 
   pendingRecipients(): string[] {
     this.expire();
-    return [...new Set(this.document.messages.filter((message) => message.status === 'pending').map((message) => message.toSessionId))];
+    return [...new Set(this.indexedMessages().pending.filter(message => message.status === 'pending').map(message => message.toSessionId))];
   }
   hasUnconfirmedDelivery(sessionId: string): boolean {
     return this.document.messages.some(message => message.toSessionId === sessionId && message.status === 'pending'
@@ -1044,9 +1086,11 @@ export class CollaborationStore {
     return changed;
   }
 
+  federationGroups(): CollaborationGroup[] { return this.document.groups.filter(group => group.federated); }
+
   federationSnapshot(): { groups: CollaborationGroup[]; messages: CollaborationMessage[]; transportDiagnostics: Record<string, TransportDiagnostic> } {
     this.expire();
-    const groups = this.document.groups.filter((group) => group.federated);
+    const groups = this.federationGroups();
     const ids = new Set(groups.filter((group) => !group.deleted).map((group) => group.id));
     const messages = this.document.messages.filter((message) => ids.has(message.groupId));
     return { groups, messages, transportDiagnostics: Object.fromEntries(messages.flatMap((message) => this.document.transport?.[message.id] ? [[message.id, this.document.transport[message.id]]] : [])) };
@@ -1156,7 +1200,7 @@ export class CollaborationStore {
 
   private expire(): void {
     let changed = false;
-    for (const message of this.document.messages) if (message.status === 'pending' && message.expiresAt && message.expiresAt <= Date.now()
+    for (const message of this.indexedMessages().pending) if (message.status === 'pending' && message.expiresAt && message.expiresAt <= Date.now()
       && !((this.document.transport?.[message.id]?.attempt_count ?? 0) > 0
         && this.document.transport?.[message.id]?.write_stage !== 'not_started'
         && (this.document.transport?.[message.id]?.last_error === 'DELIVERY_IN_PROGRESS'
@@ -1376,6 +1420,7 @@ export class CollaborationStore {
   }
 
   private persist(durable = false, contentGrowth = false): void {
+    this.messageIndex = undefined;
     const now = Date.now();
     try {
     for (const [key, record] of Object.entries(this.document.idempotency ?? {})) if (record.expiresAt <= now) delete this.document.idempotency![key];

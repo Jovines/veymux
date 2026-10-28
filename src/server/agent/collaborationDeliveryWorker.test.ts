@@ -31,6 +31,18 @@ describe('background collaboration delivery', () => {
   function send(target = 'b', expiresAt?: number) {
     return store.send({ groupId, fromSessionId: 'a', toSessionIds: [target], kind: 'message', content: 'Please verify', expiresAt })[0]!;
   }
+  it('reclaims inactive recipient diagnostics and retry counters after the route TTL', async () => {
+    const message = send();
+    resolve.mockResolvedValue({ state: 'unavailable', reason: 'offline' });
+    await worker.tick();
+    expect(worker.state('b').state).toBe('unavailable');
+    store.fail(message.id, 'cancelled');
+    await vi.advanceTimersByTimeAsync(16_000);
+    await worker.tick();
+    expect(worker.state('b').checkedAt).toBeNull();
+    expect((worker as unknown as { failures: Map<string, number> }).failures.size).toBe(0);
+  });
+
   it('never resolves idle historical members on startup, ticks, or explicit wake', async () => {
     worker.start();
     await worker.tick();

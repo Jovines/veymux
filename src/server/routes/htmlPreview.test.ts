@@ -36,6 +36,11 @@ afterEach(() => {
 });
 
 describe('HTML preview base injection', () => {
+  it('handles large malformed documents with repeated unterminated head tags', () => {
+    const html = '<head '.repeat(200_000);
+    expect(injectHtmlPreviewBase(html, '/preview/')).toBe('<base href="/preview/">' + html);
+  });
+
   it('injects <base> right after <head>', () => {
     const html = '<!doctype html>\n<html><head><meta charset="utf-8"></head><body><img src="img/a.png"></body></html>';
     const result = injectHtmlPreviewBase(html, '/api/terminal/fs/preview/site/');

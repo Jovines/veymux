@@ -35,7 +35,7 @@ if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === imp
     const [version, destination] = process.argv.slice(2);
     if (!version || !destination) throw Error('Usage: node scripts/stable-release.mjs VERSION NEW_OUTPUT_DIRECTORY');
     // Retain the existing updater trust key; migration does not rotate keys.
-    const bridge=await legacyBridge();
+    const bridge=process.env.VEYMUX_RUST_ONLY_RELEASE === '1' ? undefined : await legacyBridge();
     buildRelease(version, destination, { ...process.env, VEYMUX_LEGACY_BRIDGE_ZIP:bridge }, releasePlan(version, process.env.VEYMUX_PREVIEW_UPDATE_PUBLIC_KEY));
   } catch (error) { console.error(error.message); process.exitCode = 1; }
 }

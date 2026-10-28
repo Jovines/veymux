@@ -13,6 +13,43 @@ describe('CollaborationStore', () => {
   });
   afterEach(() => fs.rmSync(directory, { recursive: true, force: true }));
 
+  it('keeps indexed lookups correct after delivery, expiry, rollback and restart', () => {
+    const store = new CollaborationStore(filePath);
+    const groupId = store.save({ name: 'indexed', sessionIds: ['a', 'b'] }).id;
+    const send = (expiresAt?: number) => store.send({ groupId, fromSessionId: 'a', toSessionIds: ['b'], kind: 'message', content: 'test', expiresAt })[0]!;
+    const first = send();
+    expect(store.pendingCount('b')).toBe(1);
+    expect(store.groupMessages(groupId).map(m => m.id)).toEqual([first.id]);
+    store.markDelivered([first.id]);
+    expect(store.pendingRecipients()).toEqual([]);
+    const second = send(Date.now() + 1000);
+    const now = vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 2000);
+    try {
+      expect(store.pendingCount('b')).toBe(0);
+      expect(store.getMessage(second.id)?.status).toBe('expired');
+    } finally { now.mockRestore(); }
+    const third = send();
+    expect(store.getMessage(third.id)?.status).toBe('pending');
+    const failure = vi.spyOn(fs, 'writeFileSync').mockImplementationOnce(() => { throw new Error('disk full'); });
+    try { expect(() => store.fail(third.id, 'test')).toThrow('disk full'); }
+    finally { failure.mockRestore(); }
+    expect(store.getMessage(third.id)?.status).toBe('pending');
+    expect(store.inbox('b', { pendingOnly: true }).map(m => m.id)).toEqual([third.id]);
+    expect(new CollaborationStore(filePath).pendingCount('b')).toBe(1);
+  });
+
+  it('does not revisit retained history during repeated idle queue polls', () => {
+    const store = new CollaborationStore(filePath);
+    const groupId = store.save({ name: 'idle', sessionIds: ['a', 'b'] }).id;
+    const [message] = store.send({ groupId, fromSessionId: 'a', toSessionIds: ['b'], kind: 'message', content: 'old' });
+    store.markDelivered([message.id]);
+    store.pendingRecipients(); // Build once after the commit.
+    const status = vi.fn(() => 'delivered');
+    Object.defineProperty(message, 'status', { get: status, configurable: true });
+    for (let i = 0; i < 100; i++) { store.pendingRecipients(); store.getMessage(message.id); store.pendingRemoteDirect(); store.pendingCount('b'); store.inbox('b', { pendingOnly: true }); }
+    expect(status).not.toHaveBeenCalled();
+  });
+
   it('rejects reply success on a failed durable write and permits an idempotent retry after recovery', () => {
     const store = new CollaborationStore(filePath), group = store.save({ name: 'Bridge', sessionIds: ['worker'] });
     const incoming = store.send({ groupId: group.id, fromSessionId: null, toSessionIds: ['worker'], kind: 'message', content: 'Run', integrationOrigin: { integrationId: 'bridge', source: 'integration' } })[0];

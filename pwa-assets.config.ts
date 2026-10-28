@@ -31,7 +31,7 @@ export default defineConfig({
       },
     },
   }, {
-    padding: 0.3,
+    padding: 0.68,
     resizeOptions: {
       background: '#1C1B1A',
       fit: 'contain',

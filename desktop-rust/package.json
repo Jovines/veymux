@@ -1,7 +1,7 @@
 {
   "name": "veymux-desktop",
   "private": true,
-  "version": "1.4.362",
+  "version": "1.4.363",
   "type": "module",
   "scripts": {
     "dev": "npm run prepare:workspace && npm run prepare:renderer && tauri dev",

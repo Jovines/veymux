@@ -391,7 +391,7 @@ export class CollaborationService {
     const origin = this.node().origin;
     const scope = this.effectiveScope(peer.serviceId);
     const sessions = this.options.sessions();
-    const groups = this.options.store.federationSnapshot().groups
+    const groups = this.options.store.federationGroups()
       .filter(group => group.federated && (group.sessionIds.some(id => address(id)?.origin === peer.origin) || this.document.replicas?.[group.id]?.includes(peer.origin)))
       .filter(group => scope === undefined || group.sessionIds.every(id => address(id) ? true : scope.includes(id)))
       .map(group => mapGroup(group, id => address(id) ? id : remoteSession(origin, id)));
@@ -443,6 +443,7 @@ export class CollaborationService {
     if (saved && !saved.deleted && saved.updatedAt === incoming.updatedAt) this.options.transport.configure(saved.id, self.origin, nodes);
   }
   start() {
+    if (this.timer || this.stopped) return;
     const wake = () => { void this.flushDirect().catch(() => {}); };
     this.unsubscribe = this.options.store.subscribe(wake);
     this.timer = setInterval(() => { void this.refresh(); }, 2000); this.timer.unref();
@@ -462,7 +463,7 @@ export class CollaborationService {
         this.observations.set(peer.serviceId, { sessions, checkedAt: Date.now(), directContacts: data.directContacts === true });
         for (const group of data.groups as CollaborationGroup[]) this.merge(group, data.nodes as CollaborationNode[], peer);
         if (Array.isArray(data.taskHeads)) await this.options.tasks?.sync(peer, data.taskHeads);
-        for (const group of this.options.store.federationSnapshot().groups.filter(g => g.federated && (g.sessionIds.some(id => address(id)?.origin === peer.origin) || this.document.replicas?.[g.id]?.includes(peer.origin)))) {
+        for (const group of this.options.store.federationGroups().filter(g => g.federated && (g.sessionIds.some(id => address(id)?.origin === peer.origin) || this.document.replicas?.[g.id]?.includes(peer.origin)))) {
           const scope = this.effectiveScope(peer.serviceId);
           // Never push a group to a scoped peer if it involves other local sessions.
           if (scope !== undefined && !group.sessionIds.every(id => address(id) ? true : scope.includes(id))) continue;

@@ -1,3 +1,4 @@
+import { boundedLines } from '../utils/boundedLines.js';
 import { sharedFileBoundary } from './sharedFiles.js';
 import { getHideGitIgnoredRootsSetting, getGitIgnoreExceptionsSetting } from '../utils/settings.js';
 import { readRecentCommitHistory } from '../utils/recentCommitHistory.js';
@@ -2301,7 +2302,6 @@ function streamContentSearchWithRipgrep(
 
     const proc = spawn('rg', args, { cwd: rootPath, stdio: ['ignore', 'pipe', 'pipe'] });
     const batch = createContentBatchEmitter(res);
-    let stdout = '';
     let stderr = '';
     let settled = false;
     let fileCount = 0;
@@ -2367,19 +2367,21 @@ function streamContentSearchWithRipgrep(
       }
     };
 
+    // rg --json includes the complete source line and every submatch. A
+    // minified file can otherwise allocate/parse hundreds of MB before the
+    // display truncation above ever runs. Stop with an explicit partial result.
+    const consume = boundedLines(1024 * 1024, handleEvent, () => {
+      limited = true;
+      proc.kill('SIGTERM');
+      flushCurrentFile();
+      finish(() => resolve({ total: fileCount, limited }));
+    });
     proc.stdout.setEncoding('utf8');
     proc.stdout.on('data', (chunk: string) => {
-      if (settled || signal.aborted) return;
-      stdout += chunk;
-      let newlineIndex = stdout.indexOf('\n');
-      while (newlineIndex >= 0) {
-        handleEvent(stdout.slice(0, newlineIndex));
-        stdout = stdout.slice(newlineIndex + 1);
-        newlineIndex = stdout.indexOf('\n');
-      }
+      if (!settled && !signal.aborted) consume(chunk);
     });
     proc.stderr.setEncoding('utf8');
-    proc.stderr.on('data', (chunk: string) => { stderr += chunk; });
+    proc.stderr.on('data', (chunk: string) => { stderr = (stderr + chunk).slice(-8192); });
     proc.on('error', (error) => finish(() => reject(error)));
     proc.on('close', (code) => {
       if (settled) return;
@@ -3770,7 +3772,7 @@ router.get('/eda-preview', async (req: Request, res: Response) => {
       mimeType = 'image/svg+xml';
     }
 
-    const output = await fs.promises.readFile(outputPath);
+    const output = await readBytesPrefix(outputPath, MAX_IMAGE_PREVIEW_SIZE + 1);
     if (output.length > MAX_IMAGE_PREVIEW_SIZE) {
       res.status(413).json({ error: 'Rendered KiCad preview is too large' });
       return;
@@ -4167,9 +4169,12 @@ export function injectHtmlPreviewBase(html: string, baseUrl: string): string {
   if (/<base\b/i.test(html)) return html;
   const escapedBaseUrl = baseUrl.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const baseTag = `<base href="${escapedBaseUrl}">`;
-  const headMatch = html.match(/<head\b[^>]*>/i);
-  if (headMatch && typeof headMatch.index === 'number') {
-    const insertAt = headMatch.index + headMatch[0].length;
+  // Find the delimiter once: a repeated unterminated <head must not make
+  // the regex rescan the remaining large document for every occurrence.
+  const headMatch = /<head\b/i.exec(html);
+  const headEnd = headMatch ? html.indexOf('>', headMatch.index + headMatch[0].length) : -1;
+  if (headEnd >= 0) {
+    const insertAt = headEnd + 1;
     return html.slice(0, insertAt) + baseTag + html.slice(insertAt);
   }
   const doctypeMatch = html.match(/^\s*<!doctype[^>]*>/i);
@@ -4309,7 +4314,12 @@ router.get('/preview/*path', async (req: Request, res: Response) => {
     if (isHtml) {
       // HTML is size-capped above; buffer it so we can inject <base> and send
       // an accurate Content-Length for the modified payload.
-      const html = await fs.promises.readFile(targetPath, 'utf8');
+      const bytes = await readBytesPrefix(targetPath, MAX_HTML_PREVIEW_SIZE + 1);
+      if (bytes.length > MAX_HTML_PREVIEW_SIZE) {
+        res.status(413).json({ error: 'File is too large to preview', code: 'FILE_TOO_LARGE', maxSize: MAX_HTML_PREVIEW_SIZE });
+        return;
+      }
+      const html = bytes.toString('utf8');
       const served = injectHtmlPreviewBase(html, previewBaseUrl);
       const payload = Buffer.from(served, 'utf8');
       res.setHeader('Content-Type', mimeType);
@@ -4370,12 +4380,13 @@ router.get('/download', async (req: Request, res: Response) => {
       return;
     }
 
-    if (stat.size > MAX_DOWNLOAD_SIZE) {
+    const limit = req.query.preview === 'model' ? 16 * 1024 * 1024 : MAX_DOWNLOAD_SIZE;
+    if (stat.size > limit) {
       res.status(413).json({
-        error: 'File is too large to download',
+        error: req.query.preview === 'model' ? 'Model is too large for interactive preview. Download the file to view it.' : 'File is too large to download',
         code: 'FILE_TOO_LARGE',
         size: stat.size,
-        maxSize: MAX_DOWNLOAD_SIZE,
+        maxSize: limit,
       });
       return;
     }

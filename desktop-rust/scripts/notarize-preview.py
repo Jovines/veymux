@@ -86,6 +86,7 @@ def main():
             zipped = Path(temporary)/'rust-zip'; zipped.mkdir()
             run('ditto', '-x', '-k', str(rust_zip), str(zipped))
             result['rustZipApp'] = verify_app(zipped/product, metadata, public)
+        if not metadata['prerelease'] and metadata.get('legacyBridgeIncluded', True):
             bridge_zip = out/f'Veymux-darwin-arm64-{metadata["version"]}.zip'
             bridge_root = Path(temporary)/'bridge'; bridge_root.mkdir()
             run('ditto', '-x', '-k', str(bridge_zip), str(bridge_root))

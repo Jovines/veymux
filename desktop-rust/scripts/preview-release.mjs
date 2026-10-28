@@ -115,13 +115,17 @@ export function buildRelease(version, destination, env, plan) {
   if (!plan.prerelease) {
     const rustZip = `Veymux-Rust-darwin-${arch}-${version}.zip`;
     run('/usr/bin/ditto', ['-c', '-k', '--keepParent', app, path.join(out, rustZip)]);
-    const legacyZip = `Veymux-darwin-${arch}-${version}.zip`;
-    if (!env.VEYMUX_LEGACY_BRIDGE_ZIP || !fs.existsSync(env.VEYMUX_LEGACY_BRIDGE_ZIP)) throw Error('Supply the verified macOS 12 Electron bridge ZIP via VEYMUX_LEGACY_BRIDGE_ZIP');
-    fs.copyFileSync(env.VEYMUX_LEGACY_BRIDGE_ZIP, path.join(out, legacyZip));
-    artifacts.push(rustZip, legacyZip);
+    artifacts.push(rustZip);
+    if (env.VEYMUX_RUST_ONLY_RELEASE !== '1') {
+      const legacyZip = `Veymux-darwin-${arch}-${version}.zip`;
+      if (!env.VEYMUX_LEGACY_BRIDGE_ZIP || !fs.existsSync(env.VEYMUX_LEGACY_BRIDGE_ZIP)) throw Error('Supply the verified macOS 12 Electron bridge ZIP via VEYMUX_LEGACY_BRIDGE_ZIP');
+      fs.copyFileSync(env.VEYMUX_LEGACY_BRIDGE_ZIP, path.join(out, legacyZip));
+      artifacts.push(legacyZip);
+    }
   }
   fs.writeFileSync(path.join(out, 'release.json'), JSON.stringify({ ...plan, environment: undefined,
     revision, notarizationVerified: false,
+    ...(!plan.prerelease ? { legacyBridgeIncluded: env.VEYMUX_RUST_ONLY_RELEASE !== '1' } : {}),
     artifacts: artifacts.map(name => ({ name, sha256: createHash('sha256').update(fs.readFileSync(path.join(out, name))).digest('hex') })) }, null, 2));
   console.log(`Prepared ${plan.tag}; verify notarization before publishing the ${plan.prerelease ? 'Preview' : 'stable'} channel.`);
 }

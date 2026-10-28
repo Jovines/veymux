@@ -12,7 +12,7 @@ afterEach(() => {
 
 function renderPreview() {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-    text: () => Promise.resolve('<svg viewBox="0 0 100 100"><text x="10" y="10">U1</text></svg>'),
+    blob: () => Promise.resolve({ size: 76, text: async () => '<svg viewBox="0 0 100 100"><text x="10" y="10">U1</text></svg>' }),
   }));
   return render(createElement(SvgInspectionPreview, {
     blobUrl: 'blob:test',
@@ -99,4 +99,12 @@ describe('SVG annotation', () => {
     expect(insertButton.style.left).toBe('calc(50% + 8px)');
     expect(insertButton.style.top).toBe('calc(50% + 8px)');
   });
+});
+
+it('rejects oversized SVG before decoding or creating an inline document', async () => {
+  const text = vi.fn();
+  vi.stubGlobal('fetch', vi.fn(async () => ({ blob: async () => ({ size: 1024 * 1024, text }) })));
+  const view = render(createElement(SvgInspectionPreview, { blobUrl: 'blob:large', filePath: '/large.svg', viewLabel: 'SVG' }));
+  await screen.findByText(/too large/);
+  expect(text).not.toHaveBeenCalled(); expect(view.container.querySelector('[data-svg-document]')).toBeNull();
 });

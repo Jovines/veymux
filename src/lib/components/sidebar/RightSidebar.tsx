@@ -1,3 +1,5 @@
+import { BoundedTextPreview, type BoundedTextPreviewHandle } from './BoundedTextPreview';
+import { needsBoundedTextPreview } from '../../utils/textPreviewBudget';
 import { SidebarVisibilityButton } from './SidebarVisibilityButton';
 import { DownloadFeedback } from '../ui/DownloadFeedback';
 import { writeClipboardText } from '../../utils/clipboard';
@@ -49,7 +51,8 @@ import { partitionFileWatchEvents } from '../../terminal/fileWatchEvents';
 import { useI18n } from '../../i18n';
 import { flushCacheThrottled, readCache, writeCache, writeCacheThrottled } from '../../utils/localStorageCache';
 import { subscribeClientState } from '../../utils/clientStateSync';
-import { loadRefractor, resolveLanguage, shouldHighlight, highlightToLines, type RefractorLike } from '../../utils/syntaxHighlight';
+import { resolveLanguage } from '../../utils/syntaxHighlight';
+import { highlightLinesAsync } from '../../utils/asyncSyntaxHighlight';
 import { useReferenceLongPressCopy } from './referenceLongPress';
 import { getNextReferenceLineRange, getReferenceFloatingButtonClass, hasNativeTextSelection, type LineRange } from './referenceSelection';
 import { buildFileReference, buildLineReference, buildPromptReference, buildReferenceInputText, resolveAbsoluteReferencePath } from './referencePaths';
@@ -1587,6 +1590,9 @@ export function FilePreview({
   const rootPath = previewRootPath === undefined ? sidebarRootPath : previewRootPath;
   const selectFile = onFileSelect ?? sidebarSelectFile;
   const [previewState, setPreviewState] = useState<FilePreviewState>({ kind: 'idle' });
+  const boundedText = useMemo(() => previewState.kind === 'text' && needsBoundedTextPreview(previewState.content), [previewState]);
+  const boundedPreviewRef = useRef<BoundedTextPreviewHandle>(null);
+  const textLines = useMemo(() => previewState.kind === 'text' && !boundedText && previewState.content ? previewState.content.split('\n') : [], [previewState, boundedText]);
   const [edaView, setEdaView] = useState<EdaPreviewView>('schematic');
   const [cachedEda3dPreview, setCachedEda3dPreview] = useState<Extract<FilePreviewState, { kind: 'eda' }> | null>(null);
   const cachedEda3dPreviewRef = useRef<Extract<FilePreviewState, { kind: 'eda' }> | null>(null);
@@ -1601,7 +1607,6 @@ export function FilePreview({
   const htmlPreviewRef = useRef<HtmlPreviewFrameHandle | null>(null);
   const [htmlPreviewFullscreen, setHtmlPreviewFullscreen] = useState(false);
   const [htmlPreviewWarnings, setHtmlPreviewWarnings] = useState<string[]>([]);
-  const [refractor, setRefractor] = useState<RefractorLike | null>(null);
   const [markdownPreviewScrollTop, setMarkdownPreviewScrollTop] = useState(0);
   const [previewHistory, setPreviewHistory] = useState<string[]>([]);
   const [pendingMarkdownFragment, setPendingMarkdownFragment] = useState<string | null>(initialMarkdownFragment);
@@ -1906,51 +1911,21 @@ export function FilePreview({
     };
   }, [previewState, filePath]);
 
-  // Syntax highlighting for the text preview. Runs after the content is loaded,
-  // skips Markdown preview mode (handled separately), unknown languages, and
-  // oversized files. refractor is lazy-loaded the first time it's needed.
+  // Grammar work runs in a bounded, cancellable worker, never in WebKit's UI loop.
   useEffect(() => {
-    if (previewState.kind !== 'text') {
-      setHighlightedLines(null);
-      return;
-    }
+    setHighlightedLines(null);
+    if (!active || boundedText || previewState.kind !== 'text') return;
     const readable = rootPath && filePath && !filePath.startsWith('/') ? `${rootPath}/${filePath}` : filePath;
     const language = resolveLanguage(readable);
-    const content = previewState.content;
-    // Markdown rendered in "preview" mode uses MarkdownPreview, not the line
-    // renderer, so highlighting would be wasted there. In "source" mode we do
-    // highlight the raw markdown like any other language.
-    const isMarkdownPreview = isMarkdownPath(readable ?? '') && markdownViewMode === 'preview';
-    const isHtmlPreview = isPreviewableHtmlPath(readable ?? '') && htmlViewMode === 'preview';
-    if (!language || isMarkdownPreview || isHtmlPreview || !shouldHighlight(content)) {
-      setHighlightedLines(null);
-      return;
-    }
+    if (!language || (isMarkdownPath(readable ?? '') && markdownViewMode === 'preview')
+      || (isPreviewableHtmlPath(readable ?? '') && htmlViewMode === 'preview')) return;
+    const controller = new AbortController();
+    void highlightLinesAsync(previewState.content, language, controller.signal).then(lines => {
+      if (!controller.signal.aborted) setHighlightedLines(lines);
+    });
+    return () => controller.abort();
+  }, [active, boundedText, previewState, filePath, rootPath, markdownViewMode, htmlViewMode]);
 
-    let cancelled = false;
-    const run = (mod: RefractorLike) => {
-      if (cancelled || !mod.registered(language)) {
-        if (!cancelled) setHighlightedLines(null);
-        return;
-      }
-      try {
-        setHighlightedLines(highlightToLines(mod, content, language));
-      } catch {
-        setHighlightedLines(null);
-      }
-    };
-
-    if (refractor) {
-      run(refractor);
-    } else {
-      setHighlightedLines(null);
-      loadRefractor()
-        .then((mod) => { if (!cancelled) { setRefractor(mod); run(mod); } })
-        .catch(() => { /* best-effort: fall back to plain text */ });
-    }
-
-    return () => { cancelled = true; };
-  }, [previewState, refractor, filePath, rootPath, markdownViewMode, htmlViewMode]);
 
   useLayoutEffect(() => {
     if (!readingStateKey || previewState.kind !== 'text') return;
@@ -1987,6 +1962,7 @@ export function FilePreview({
     if (previewState.kind !== 'text') return;
     setFloatingInsertPos(null);
     onLineRangeChange({ start: scrollToLine, end: scrollToLine });
+    if (boundedText) return;
     const target = scrollToLine;
     const frame = requestAnimationFrame(() => {
       const node = lineRefs.current.get(target);
@@ -1994,7 +1970,7 @@ export function FilePreview({
       onScrollToLineHandled?.();
     });
     return () => cancelAnimationFrame(frame);
-  }, [scrollToLine, previewState, onLineRangeChange, onScrollToLineHandled]);
+  }, [scrollToLine, previewState, boundedText, onLineRangeChange, onScrollToLineHandled]);
 
   const jumpToMarkdownFragment = useCallback((fragment: string) => {
     const scroller = scrollerRef.current;
@@ -2054,7 +2030,7 @@ export function FilePreview({
     return () => ro.disconnect();
   }, [lineRange, floatingInsertPos, previewState, markdownViewMode, htmlViewMode, filePath, rootPath, highlightedLines]);
 
-  const searchableFilePreview = previewState.kind === 'text'
+  const searchableFilePreview = !boundedText && previewState.kind === 'text'
     && !(isPreviewableHtmlPath(versionedPath ?? '') && htmlViewMode === 'preview')
     && !versionedPath?.toLowerCase().endsWith('.csv')
     && !versionedPath?.toLowerCase().endsWith('.kicad_pro')
@@ -2090,6 +2066,7 @@ export function FilePreview({
   const handleFileSearchShortcut = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
     if (event.nativeEvent.isComposing || !ownsFilePreviewSearchShortcut(previewContainerRef.current, active, event)) return;
     const action = resolveFilePreviewSearchShortcut(event);
+    if (boundedText && action === 'open') { event.preventDefault(); boundedPreviewRef.current?.openSearch(); return; }
     if (action === 'open' && searchableFilePreview) {
       event.preventDefault();
       openFileSearch();
@@ -2103,7 +2080,7 @@ export function FilePreview({
       event.preventDefault();
       moveFileSearch(action === 'previous' ? -1 : 1);
     }
-  }, [active, closeFileSearch, fileSearchOpen, moveFileSearch, openFileSearch, searchableFilePreview]);
+  }, [active, boundedText, closeFileSearch, fileSearchOpen, moveFileSearch, openFileSearch, searchableFilePreview]);
 
   useLayoutEffect(() => {
     clearFilePreviewSearchHighlights(fileSearchHighlightOwner.current);
@@ -2138,7 +2115,7 @@ export function FilePreview({
   const readablePath = rootPath && !filePath.startsWith('/') ? `${rootPath}/${filePath}` : filePath;
   const display = getRelativeDisplayPath(readablePath, rootPath);
   const reference = buildFileReference(readablePath, rootPath);
-  const lines = previewState.kind === 'text' && previewState.content ? previewState.content.split('\n') : [];
+  const lines = textLines;
   // Gutter only needs room for the widest line number (+1ch breathing room),
   // so short files render numbers close to the left edge instead of leaving a
   // fixed gap sized for thousand-line files.
@@ -2148,9 +2125,9 @@ export function FilePreview({
   const isCsv = readablePath.toLowerCase().endsWith('.csv');
   const isKicadProject = readablePath.toLowerCase().endsWith('.kicad_pro');
   const isKicadLocalState = readablePath.toLowerCase().endsWith('.kicad_prl');
-  const showMarkdownPreview = previewState.kind === 'text' && isMarkdown && markdownViewMode === 'preview';
+  const showMarkdownPreview = !boundedText && previewState.kind === 'text' && isMarkdown && markdownViewMode === 'preview';
   const isHtml = isPreviewableHtmlPath(readablePath);
-  const showHtmlPreview = previewState.kind === 'text' && isHtml && htmlViewMode === 'preview';
+  const showHtmlPreview = !boundedText && previewState.kind === 'text' && isHtml && htmlViewMode === 'preview';
   const isImagePreview = previewState.kind === 'image' || (previewState.kind === 'loading' && previewState.mode === 'image');
   const isModel3dPreview = previewState.kind === 'model3d' || (previewState.kind === 'loading' && previewState.mode === 'model3d');
   const isVideoPreview = previewState.kind === 'video' || (previewState.kind === 'loading' && previewState.mode === 'video');
@@ -2278,7 +2255,7 @@ export function FilePreview({
   };
 
   const handleDownload = () => {
-    if (previewState.kind === 'loading' || previewState.kind === 'error') return;
+    if (previewState.kind === 'loading') return;
     return downloadState.start();
   };
 
@@ -2327,7 +2304,7 @@ export function FilePreview({
           aria-label={t('rightSidebar.findInFile')}
         />
         <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground" aria-live="polite">
-          {fileSearchMatches.length > 0 ? `${fileSearchIndex + 1}/${fileSearchMatches.length}` : '0/0'}
+          {fileSearchMatches.length > 0 ? `${fileSearchIndex + 1}/${fileSearchMatches.length}${fileSearchMatches.length >= 1000 ? '+' : ''}` : '0/0'}
         </span>
       </div>
       <button type="button" onClick={() => moveFileSearch(-1)} disabled={fileSearchMatches.length === 0} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-muted-foreground transition hover:bg-surface-elevated hover:text-foreground disabled:opacity-35" aria-label={t('rightSidebar.previousSearchMatch')} title={`${t('rightSidebar.previousSearchMatch')} (Shift+Enter)`}><RiArrowUp size={13} /></button>
@@ -2363,7 +2340,7 @@ export function FilePreview({
         name={display.name} path={readablePath} isMobile={isMobile}
         back={previewHistory.length > 0 ? { label: t('rightSidebar.backToPreviousPreview'), go: navigateBackInPreview } : undefined}
         sizeLabel={meta?.size != null ? t('rightSidebar.byteCount', { count: meta.size.toLocaleString() }) : undefined}
-        view={(isHtml || isMarkdown) && previewState.kind === 'text' ? {
+        view={!boundedText && (isHtml || isMarkdown) && previewState.kind === 'text' ? {
           label: isHtml ? t(htmlViewMode === 'preview' ? 'rightSidebar.htmlSource' : 'rightSidebar.htmlPreview') : t(markdownViewMode === 'preview' ? 'rightSidebar.markdownSource' : 'rightSidebar.markdownPreview'),
           toggle: togglePreviewMode,
         } : undefined}
@@ -2374,7 +2351,7 @@ export function FilePreview({
         warnings={[...(showHtmlPreview ? htmlPreviewWarnings : []), ...(meta && 'truncated' in meta && meta.truncated && !showHtmlPreview ? [t('rightSidebar.previewTruncated')] : [])]}
         copied={fileReferenceCopied} copyError={referenceCopyError} onCopy={copyFileReference}
         onClose={onClose} onRefresh={refreshPreview}
-        download={{ status: downloadState.status, error: downloadState.error, disabled: previewState.kind === 'loading' || previewState.kind === 'error', start: () => void handleDownload(), cancel: downloadState.cancel }}
+        download={{ status: downloadState.status, error: downloadState.error, disabled: previewState.kind === 'loading', start: () => void handleDownload(), cancel: downloadState.cancel }}
       /> : (
       <div data-file-preview-toolbar className={`shrink-0 border-b border-border/15 px-3 ${isMobile && (showMarkdownPreview || showHtmlPreview) ? 'py-1.5' : 'py-2'}`}>
         <div className="flex items-center justify-between gap-2">
@@ -2419,7 +2396,7 @@ export function FilePreview({
                 <RiSearch size={14} />
               </button>
             )}
-            {isMarkdown && previewState.kind === 'text' && (
+            {!boundedText && isMarkdown && previewState.kind === 'text' && (
               <button
                 type="button"
                 onClick={togglePreviewMode}
@@ -2432,7 +2409,7 @@ export function FilePreview({
                   : markdownViewMode === 'preview' ? t('rightSidebar.markdownSource') : t('rightSidebar.markdownPreview')}
               </button>
             )}
-            {isHtml && previewState.kind === 'text' && (
+            {!boundedText && isHtml && previewState.kind === 'text' && (
               <button
                 type="button"
                 onClick={togglePreviewMode}
@@ -2484,7 +2461,7 @@ export function FilePreview({
             <button
               type="button"
               onClick={() => void handleDownload()}
-              disabled={downloadState.status === 'pending' || previewState.kind === 'loading' || previewState.kind === 'error'}
+              disabled={downloadState.status === 'pending' || previewState.kind === 'loading'}
               className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-surface-2 text-muted-foreground transition hover:bg-surface-elevated hover:text-foreground active:scale-95 disabled:opacity-50 disabled:active:scale-100"
               title={downloadState.status === 'error' ? downloadState.error ?? t('rightSidebar.downloadFailed') : t('rightSidebar.downloadFile')}
               aria-label={t('rightSidebar.downloadFile')}
@@ -2628,6 +2605,11 @@ export function FilePreview({
             />
           </Suspense>
         </div>
+       ) : previewState.kind === 'text' && boundedText ? (
+        <BoundedTextPreview key={previewState.sourcePath} ref={boundedPreviewRef} content={previewState.content} active={active}
+          lineRange={lineRange} onLineClick={canInsertReference ? handleLineClick : undefined}
+          onReference={canInsertReference ? insertRangeReference : undefined}
+          scrollToLine={scrollToLine} onScrollToLineHandled={onScrollToLineHandled} />
       ) : previewState.kind === 'text' && isCsv ? (
         <CsvPreview
           key={readablePath}
