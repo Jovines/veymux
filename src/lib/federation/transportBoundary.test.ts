@@ -13,13 +13,10 @@ function sources(dir: string): string[] {
 }
 
 describe('encrypted transport architecture', () => {
-  it('keeps native business transports and legacy preload uploads out of UI code', () => {
+  it('keeps native business transports and native uploads out of UI code', () => {
     const violations: string[] = [];
-    for (const path of [...sources(join(root, 'src')), ...sources(join(root, 'desktop'))]) {
+    for (const path of [...sources(join(root, 'src')), ...sources(join(root, 'desktop-rust', 'renderer'))]) {
       const name = relative(root, path);
-      // Shipped old preload code remains for old frontend compatibility. New
-      // renderer callers are forbidden and remote drops are captured first.
-      const legacyPreload = ['desktop/preload.cts', 'desktop/fileDropUpload.ts'].includes(name);
       const source = ts.createSourceFile(path, readFileSync(path, 'utf8'), ts.ScriptTarget.Latest, true);
       const visit = (node: ts.Node) => {
         if (ts.isNewExpression(node)) {
@@ -31,10 +28,14 @@ describe('encrypted transport architecture', () => {
           const allowedQuic = constructor === 'WebTransport' && name === 'src/lib/federation/webTransportClient.ts';
           if (transport && !allowedSocket && !allowedQuic) violations.push(`${name}: native ${constructor}`);
         }
-        if (ts.isCallExpression(node) && !legacyPreload && /(?:pasteClipboardImage|uploadClipboardImage|uploadDroppedFiles|sendBeacon)$/.test(node.expression.getText(source))) {
+        if (ts.isCallExpression(node) && /(?:pasteClipboardImage|uploadClipboardImage|uploadDroppedFiles|sendBeacon)$/.test(node.expression.getText(source))) {
           violations.push(`${name}: ${node.expression.getText(source)}`);
         }
-        if (name.startsWith('desktop/') && !legacyPreload && ts.isCallExpression(node)
+        // Rust's injected page bridge explicitly uses the current page's
+        // encrypted window.fetch wrapper; it never owns a native uploader.
+        const encryptedPageFetch = name === 'desktop-rust/renderer/bridge.js'
+          && ts.isCallExpression(node) && node.expression.getText(source) === 'window.fetch';
+        if (name.startsWith('desktop-rust/renderer/') && ts.isCallExpression(node) && !encryptedPageFetch
           && /(?:^|\.)(?:fetch|fetchRequest)$/.test(node.expression.getText(source))
           && node.arguments[0]?.getText(source).includes('/api/')) violations.push(`${name}: native business fetch`);
         ts.forEachChild(node, visit);

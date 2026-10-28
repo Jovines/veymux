@@ -10,7 +10,6 @@ html[data-veymux-desktop='true'] {
       html[data-veymux-desktop='true'] #root main > div > div:first-child {
         padding-left: 80px !important;
         position: relative;
-        -webkit-app-region: no-drag;
       }
       html[data-veymux-desktop='true'] #root main > div > div:first-child::before {
         content: '';
@@ -21,11 +20,9 @@ html[data-veymux-desktop='true'] {
         width: min(240px, 25vw);
         transform: translateX(-50%);
         pointer-events: none;
-        -webkit-app-region: drag;
       }
       html[data-veymux-desktop='true'] #root .h-full.flex.flex-col.app-chrome-bg.border-r > .shrink-0.border-b {
         padding-left: 80px !important;
-        -webkit-app-region: drag;
       }
       html[data-veymux-desktop='true'] #root button,
       html[data-veymux-desktop='true'] #root a,
@@ -33,7 +30,6 @@ html[data-veymux-desktop='true'] {
       html[data-veymux-desktop='true'] #root textarea,
       html[data-veymux-desktop='true'] #root select,
       html[data-veymux-desktop='true'] #root [data-rbd-draggable-id] {
-        -webkit-app-region: no-drag;
       }
       html[data-veymux-desktop='true'] [data-sidebar='right'] {
         padding-top: 0 !important;
@@ -42,10 +38,8 @@ html[data-veymux-desktop='true'] {
         transform: none !important;
       }
       html[data-veymux-desktop='true'] [data-sidebar='right'] > div:first-child {
-        -webkit-app-region: no-drag;
       }
       html[data-veymux-desktop='true'] [data-sidebar='right'] > div:first-child > div:first-child > .min-w-0.flex-1 {
-        -webkit-app-region: drag;
       }
       html[data-veymux-desktop='true'] [data-sidebar='right'] div:has(> [data-right-search]) + div:has(> button[aria-pressed]) {
         width: fit-content !important;

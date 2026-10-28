@@ -40,12 +40,7 @@ const dependencyChanged = JSON.stringify(stable({
   engines: basePackage.engines ?? {},
 }));
 
-const desktopPatterns = [
-  /^desktop\//,
-  /^forge\.config\.cjs$/,
-  /^tsconfig\.desktop\.json$/,
-  /^scripts\/prepare-desktop-tokens\.mjs$/,
-];
+const desktopPatterns = [/^desktop-rust\//];
 const runtimePatterns = [
   /^src\//,
   /^public\//,
@@ -55,6 +50,7 @@ const runtimePatterns = [
   /^postcss\.config\.js$/,
   /^package(?:-lock)?\.json$/,
   /^scripts\/generate-runtime-manifest\.mjs$/,
+  /^packaging\/runtime-compatibility\.json$/,
 ];
 const testFile = /(?:^|\/)\w[^/]*\.test\.[cm]?[jt]sx?$/;
 const noReleaseFile = /^(?:docs\/|README|LICENSE|AGENTS|\.gitignore$|scripts\/classify-release\.mjs$)/;

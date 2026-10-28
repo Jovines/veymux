@@ -222,7 +222,7 @@ npm run build           # Build web client and server
 
 Build output lives in `dist/client/` and `dist/server/`. Start built output with `npm start`. To build and install the CLI globally from source, use `./install-local.sh`; it also rebuilds `node-pty`. See [CONTRIBUTING.md](CONTRIBUTING.md) for review and verification expectations.
 
-The stack includes React, TypeScript, Vite, xterm.js, Zustand, Tailwind CSS, Express, ws, node-pty, tmux, and Electron for the macOS shell.
+The stack includes React, TypeScript, Vite, xterm.js, Zustand, Tailwind CSS, Express, ws, node-pty, tmux, and Rust/Tauri for the macOS client.
 
 ## FAQ
 
@@ -234,7 +234,7 @@ The stack includes React, TypeScript, Vite, xterm.js, Zustand, Tailwind CSS, Exp
 
 **Why do I still see the old UI after updating?** Restart the service after the CLI update, accept the page update, and reload. If the phone PWA retains older resources, fully close and reopen it.
 
-**Which browsers are supported?** Use current Chrome, Edge, Firefox, or Safari. Clipboard, WebGL, background behavior, and PWA installation vary by platform. Browser emulation does not replace physical macOS / iOS verification; see the [known macOS beta issue](docs/macos-27-local-network.md).
+**Which browsers are supported?** Use current Chrome, Edge, Firefox, or Safari. Clipboard, WebGL, background behavior, and PWA installation vary by platform. Browser emulation does not replace physical macOS / iOS verification.
 
 ## Documentation
 

@@ -58,7 +58,7 @@ export interface VeymuxDesktopBridge extends ServiceDirectoryBridge {
   openExternal?(url:string):Promise<void>;
   writeClipboardText?(text:string):Promise<void>;
   platform: string;
-  /** Explicit Preview page-dialog capability; legacy Electron/browser omit it. */
+  /** Explicit Preview page-dialog capability; ordinary browsers omit it. */
   confirmationUI?: 'page-v1';
   confirm?(options: { title: string; message: string; confirmLabel: string; cancelLabel: string }): Promise<boolean>;
   /** Bounded, visible page feedback; no business operation or approval. */
@@ -97,8 +97,6 @@ export interface VeymuxDesktopBridge extends ServiceDirectoryBridge {
   /** Preview saves page-fetched encrypted download bytes through a bounded native transfer. */
   saveDownloadBlob?(blob: Blob, filename: string, signal?: AbortSignal): Promise<'saved' | 'started' | 'canceled'>;
   saveDownloadStream?(stream: ReadableStream<Uint8Array>, filename: string, options?: { signal?: AbortSignal; expectedBytes?: number }): Promise<'saved' | 'canceled'>;
-  /** Legacy isolated preload uploader. New UI must upload in the encrypted renderer. */
-  pasteClipboardImage?(): Promise<string | null>;
   onNativeFileDrop(
     callback: (payload: NativeFileDropPayload) => void,
   ): void;

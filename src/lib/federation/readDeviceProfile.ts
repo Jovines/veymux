@@ -15,8 +15,7 @@ export function readDeviceProfile(): Promise<DeviceProfile> {
     const bridge = getVeymuxDesktopBridge();
     if (bridge) {
       profile.mode = '桌面客户端';
-      const electronVersion = /Electron\/([\d.]+)/.exec(ua)?.[1];
-      profile.client = electronVersion ? `Veymux（Electron ${electronVersion}）` : 'Veymux';
+      profile.client = 'Veymux';
       try { Object.assign(profile, await bridge.deviceInfo?.()); } catch { /* Older native clients still report browser information. */ }
       return profile;
     }

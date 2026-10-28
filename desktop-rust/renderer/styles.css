@@ -286,7 +286,6 @@ p {
   justify-content: space-between;
   padding: 48px 0 28px;
   animation: enter-up 420ms ease-out both;
-  -webkit-app-region: drag;
 }
 
 .kicker,
@@ -342,7 +341,6 @@ p {
   background: transparent;
   color: var(--muted-foreground);
   font-size: 12px;
-  -webkit-app-region: no-drag;
 }
 
 .icon-button:hover,

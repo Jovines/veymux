@@ -25,7 +25,7 @@ pub fn initialize()->Result<(),String>{
 pub fn active()->bool{DIAGNOSTIC.get().is_some()}
 pub fn chrome_enabled()->bool{active()}
 pub fn chrome_path()->Option<PathBuf>{Some(DIAGNOSTIC.get()?.root.join("window-chrome-diagnostic.json"))}
-pub fn configuration()->Option<(PathBuf,Config)>{let d=DIAGNOSTIC.get()?;let mut c=Config::default();c.imported_bookmarks=true;c.desktop_preferences.floating_widget_enabled=false;c.connections.push(d.connection.clone());c.open_connections.push(d.connection.id.clone());Some((d.root.join("connections.json"),c))}
+pub fn configuration()->Option<(PathBuf,Config)>{let d=DIAGNOSTIC.get()?;let mut c=Config::default();c.desktop_preferences.floating_widget_enabled=false;c.connections.push(d.connection.clone());c.open_connections.push(d.connection.id.clone());Some((d.root.join("connections.json"),c))}
 pub fn profile(key:&str)->Option<String>{Some(format!("window-check:{}:{key}",DIAGNOSTIC.get()?.nonce))}
 pub fn invitation()->Option<String>{DIAGNOSTIC.get()?.invitation.clone()}
 pub fn chrome_role(window:&WebviewWindow,require_pin:bool)->Option<Role>{

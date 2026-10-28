@@ -23,24 +23,23 @@ fn version_number(value: &str) -> Result<[u64; 3], String> {
 /// stable preferences, removals and certificate trust are still preserved.
 pub fn prepare_handoff(file: &Path) -> Result<(), String> {
     if !file.exists() { return Ok(()); }
-    let mut config=Config::load(file,&file.with_extension("no-legacy-import"))?;
+    let mut config=Config::load(file)?;
     backup(file)?;
     config.imported_preview=false;
     config.persist(file)
 }
 
-pub fn load_configuration(file: &Path, electron: &Path, preview: &Path) -> Result<Config, String> {
+pub fn load_configuration(file: &Path, preview: &Path) -> Result<Config, String> {
     let existing = file.exists();
-    let mut config = Config::load(file, electron)?;
+    let mut config = Config::load(file)?;
     if config.imported_preview { return Ok(config); }
     // Back up both sources before the destination is persisted by the caller.
     backup(file)?;
-    backup(electron)?;
     if preview.exists() {
         if fs::metadata(preview).map_err(|e| e.to_string())?.len() > 4 * 1024 * 1024 {
             return Err("Preview 配置过大；已保留原文件，请从备份恢复".into());
         }
-        let previous = Config::load(preview, &preview.with_extension("no-legacy-import"))?;
+        let previous = Config::load(preview)?;
         backup(preview)?;
         if !existing {
             config.desktop_preferences = previous.desktop_preferences.clone();
@@ -168,20 +167,17 @@ pub async fn install_stable<R: tauri::Runtime>(app: &tauri::AppHandle<R>, bytes:
 mod tests {
     use super::*;
     #[test]
-    fn merges_once_preserving_stable_choices_and_both_sources_without_transferring_trust() {
+    fn imports_preview_once_without_transferring_trust() {
         let dir = tempfile::tempdir().unwrap();
         let target=dir.path().join("stable/connections.json");
-        let electron=dir.path().join("desktop.json");
         let preview=dir.path().join("preview.json");
-        let old = r#"{"connections":[{"id":"old","url":"https://one.test","label":"Electron","routes":[]}]}"#;
         let prior = r#"{"connections":[{"id":"p","url":"https://two.test","label":"Preview","routes":[]}],"certificatePins":{"https://two.test":"secret"},"ports":{"p":1234},"desktopPreferences":{"menuBarStatusEnabled":false}}"#;
-        fs::write(&electron,old).unwrap();fs::write(&preview,prior).unwrap();
-        let config=load_configuration(&target,&electron,&preview).unwrap();
-        assert_eq!(config.connections.len(),2);assert!(config.certificate_pins.is_empty());assert!(config.ports.is_empty());assert!(!config.desktop_preferences.menu_bar_status_enabled);
+        fs::write(&preview,prior).unwrap();
+        let config=load_configuration(&target,&preview).unwrap();
+        assert_eq!(config.connections.len(),1);assert!(config.certificate_pins.is_empty());assert!(config.ports.is_empty());assert!(!config.desktop_preferences.menu_bar_status_enabled);
         config.persist(&target).unwrap();
         fs::write(&preview,"invalid").unwrap();
-        assert_eq!(load_configuration(&target,&electron,&preview).unwrap().connections.len(),2);
-        assert_eq!(fs::read_to_string(&electron).unwrap(),old);
+        assert_eq!(load_configuration(&target,&preview).unwrap().connections.len(),1);
         assert!(fs::read_dir(dir.path()).unwrap().filter_map(Result::ok).any(|e|e.file_name().to_string_lossy().contains("before-rust")));
     }
     #[test]
@@ -196,10 +192,10 @@ mod tests {
     }
     #[test]
     fn explicit_handoff_reimports_new_preview_connections_without_overriding_stable_choices() {
-        let dir=tempfile::tempdir().unwrap();let file=dir.path().join("stable/connections.json");let preview=dir.path().join("preview.json");let electron=dir.path().join("legacy.json");
+        let dir=tempfile::tempdir().unwrap();let file=dir.path().join("stable/connections.json");let preview=dir.path().join("preview.json");
         let mut config=Config::default();config.imported_preview=true;config.desktop_preferences.menu_bar_status_enabled=true;config.persist(&file).unwrap();
         fs::write(&preview,r#"{"connections":[{"id":"new","url":"https://new.test","label":"New","routes":[]}],"desktopPreferences":{"menuBarStatusEnabled":false}}"#).unwrap();
-        prepare_handoff(&file).unwrap();let merged=load_configuration(&file,&electron,&preview).unwrap();
+        prepare_handoff(&file).unwrap();let merged=load_configuration(&file,&preview).unwrap();
         assert_eq!(merged.connections.len(),1);assert!(merged.desktop_preferences.menu_bar_status_enabled);
         assert!(version_number("1.4.359").unwrap()>version_number("1.4.358").unwrap());assert!(version_number("invalid").is_err());
     }

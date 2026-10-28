@@ -12,8 +12,7 @@ export function canUseLocalDroppedPaths(pageOrigin: string, target: ReturnType<t
   } catch { return false; }
 }
 
-/** Capture remote drops before legacy desktop preload's document listener.
- * Local same-service paths can still be resolved by Electron's webUtils. */
+/** Capture file bytes in the page; the active encrypted transport owns uploads. */
 export function installEncryptedFileDrops(deliver: (payload: NativeFileDropPayload) => void, allowLocalPaths = true): () => void {
   const active = new Set<() => void>(), timers = new Set<number>();
   const controllers = new WeakMap<HTMLElement, AbortController>();

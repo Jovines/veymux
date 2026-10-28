@@ -7,7 +7,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
 const packageLock = JSON.parse(fs.readFileSync(path.join(root, 'package-lock.json'), 'utf8'));
 const compatibility = JSON.parse(
-  fs.readFileSync(path.join(root, 'desktop', 'runtime-compatibility.json'), 'utf8'),
+  fs.readFileSync(path.join(root, 'packaging', 'runtime-compatibility.json'), 'utf8'),
 );
 
 function stableObject(value) {

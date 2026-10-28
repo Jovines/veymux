@@ -1,4 +1,4 @@
-import { CollaborationFederation, type FederationService } from '../../../desktop/collaborationFederation';
+import { CollaborationFederation, type FederationService } from './serviceFederation';
 import { getActiveClient, openAuthorizedServiceClient, savedConnection } from '../federation/browserIntegration';
 import type { SecureClient } from '../federation/secureClient';
 import { readBrowserServices, type ServiceConnection } from '../services/serviceDirectory';

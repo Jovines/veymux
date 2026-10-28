@@ -10,9 +10,9 @@ function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'veymux-desktop-routes-')); roots.push(root);
   const file = join(root, 'desktop.json');
   const fingerprint256 = Array(32).fill('AB').join(':');
-  const data = { version: 1, connections: [{ id: 'local', targetPeerId: 'B', url: 'https://localhost:9834', label: 'Local npm' }, { id: 'remote', targetPeerId: 'C', url: 'https://c.internal:9834', label: '内网电脑' }], trustedCertificateAuthorities: [{ origin: 'https://c.internal:9834', fingerprint256, subject: 'Trusted', trustedAt: 1 }] };
+  const data = { version: 1, connections: [{ id: 'local', targetPeerId: 'B', url: 'https://localhost:9834', label: 'Local npm' }, { id: 'remote', targetPeerId: 'C', url: 'https://c.internal:9834', label: '内网电脑' }], certificatePins: { 'https://c.internal:9834': 'ab'.repeat(32) }, trustedCertificateAuthorities: [{ origin: 'https://c.internal:9834', fingerprint256, subject: 'Trusted', trustedAt: 1 }] };
   const save = (value: unknown = data) => writeFileSync(file, JSON.stringify(value)); save();
-  return { root, file, data, save, fingerprint256 };
+  return { root, file, data, save };
 }
 describe('local Desktop relay directory', () => {
   function nativeFixture() {
@@ -24,7 +24,7 @@ describe('local Desktop relay directory', () => {
     const save = (value: unknown = config) => writeFileSync(file, JSON.stringify(value)); save();
     return { root, data, file, config, save };
   }
-  it('discovers the current stable Rust installation without an Electron or Preview directory', () => {
+  it('discovers the current stable Rust installation without a Preview directory', () => {
     const { root } = nativeFixture();
     expect(desktopServiceTargets(root, 'B', 'darwin')).toEqual([
       { serviceId: 'C', url: 'https://c.internal:9834', label: '内网电脑', certificateFingerprint256: 'CD'.repeat(32) },
@@ -67,7 +67,7 @@ describe('local Desktop relay directory', () => {
     const save = (value: unknown = preview) => writeFileSync(file, JSON.stringify(value)); save();
     return { root, file, stable, preview, save, saveStable, data };
   }
-  it('discovers Preview-only installations without an Electron directory and keeps leaf pins separate from CA approvals', () => {
+  it('discovers Preview-only installations with leaf certificate pins', () => {
     const { root, preview, save } = previewFixture();
     expect(desktopServiceTargets(root, 'B', 'darwin')).toEqual([{ serviceId: 'C', url: 'https://c.internal:9834', label: '内网电脑', certificateFingerprint256: 'AB'.repeat(32) }]);
     expect(desktopServiceTargets(root, 'unrelated-service', 'darwin')).toEqual([]);
@@ -95,29 +95,29 @@ describe('local Desktop relay directory', () => {
     save({ ...preview, password: 'secret', connections: [preview.connections[0], { id: 'remote', targetPeerId: 'C', entryServiceId: 'E', url: 'https://entry.internal', token: 'secret' }] });
     expect(desktopServiceTargets(root, 'B', 'darwin')).toEqual([]);
   });
-  it('reads both installations independently and refreshes Preview address, trust, and removal without writing either file', () => {
+  it('ignores retired client settings and refreshes Preview addresses, trust and removal', () => {
     const { root, file, stable, preview, save, saveStable, data } = previewFixture();
     saveStable({ ...data, connections: [data.connections[0], { ...data.connections[1], targetPeerId: 'D' }] });
-    expect(desktopServiceTargets(root, 'B', 'darwin').map(target => target.serviceId)).toEqual(['D', 'C']);
+    expect(desktopServiceTargets(root, 'B', 'darwin').map(target => target.serviceId)).toEqual(['C']);
     preview.connections[1].url = 'https://new.internal'; save();
     expect(desktopServiceTargets(root, 'B', 'darwin').find(target => target.serviceId === 'C')).toEqual({ serviceId: 'C', url: 'https://new.internal', label: '内网电脑' });
     save({ ...preview, connections: [preview.connections[0]] });
-    expect(desktopServiceTargets(root, 'B', 'darwin').map(target => target.serviceId)).toEqual(['D']);
+    expect(desktopServiceTargets(root, 'B', 'darwin').map(target => target.serviceId)).toEqual([]);
     writeFileSync(file, 'broken');
-    expect(desktopServiceTargets(root, 'B', 'darwin').map(target => target.serviceId)).toEqual(['D']);
+    expect(desktopServiceTargets(root, 'B', 'darwin').map(target => target.serviceId)).toEqual([]);
     rmSync(stable);
     expect(desktopServiceTargets(root, 'B', 'darwin')).toEqual([]);
   });
   it('discovers only other pinned services when the local service itself belongs to this Desktop directory', () => {
-    const { file, data, save, fingerprint256 } = fixture();
-    expect(desktopDirectTargets(file, 'B')).toEqual([{ serviceId: 'C', url: 'https://c.internal:9834', label: '内网电脑', caFingerprint256: fingerprint256 }]);
+    const { file, data, save } = fixture();
+    expect(desktopDirectTargets(file, 'B')).toEqual([{ serviceId: 'C', url: 'https://c.internal:9834', label: '内网电脑', certificateFingerprint256: 'AB'.repeat(32) }]);
     expect(desktopDirectTargets(file, 'unknown-local-service')).toEqual([]);
     save({ ...data, connections: data.connections.map(({ targetPeerId: _pin, ...connection }) => connection) });
     expect(desktopDirectTargets(file, 'B')).toEqual([]);
   });
-  it('keeps local credentials and arbitrary paths out of targets, and binds CA approval to the exact origin', () => {
+  it('keeps local credentials and arbitrary paths out of targets, and ignores unrelated CA approvals', () => {
     const { file, data, save } = fixture();
-    save({ ...data, connections: [...data.connections, { id: 'evil', targetPeerId: 'D', url: 'https://user:secret@private.internal', label: 'invalid' }].map(item => ({ ...item, caPath: '/private/credential', password: 'secret' })), trustedCertificateAuthorities: [{ ...data.trustedCertificateAuthorities[0], origin: 'https://c.internal:9999' }] });
+    save({ ...data, certificatePins: {}, connections: [...data.connections, { id: 'evil', targetPeerId: 'D', url: 'https://user:secret@private.internal', label: 'invalid' }].map(item => ({ ...item, caPath: '/private/credential', password: 'secret' })), trustedCertificateAuthorities: [{ ...data.trustedCertificateAuthorities[0], origin: 'https://c.internal:9999' }] });
     expect(desktopDirectTargets(file, 'B')).toEqual([{ serviceId: 'C', url: 'https://c.internal:9834', label: '内网电脑' }]);
   });
   it('withdraws discovery and pending tickets when a target is removed without overwriting explicit routes', () => {
@@ -131,7 +131,7 @@ describe('local Desktop relay directory', () => {
     expect(access.authenticate(undefined, ticket.routeToken)).toBeNull();
     expect(access.allowRoute({ kind: 'client', subjectId: 'phone', serviceId: 'C' }, 'C')).toBe(false);
     save(); expect(access.hasConfiguredTarget('C')).toBe(true);
-    save({ ...data, removedServiceKeys: ['C'] }); expect(access.hasConfiguredTarget('C')).toBe(false);
+    save({ ...data, removedKeys: ['C'] }); expect(access.hasConfiguredTarget('C')).toBe(false);
   });
   it('does not mistake a relay-only bookmark for the direct target address', () => {
     const { file, data, save } = fixture();

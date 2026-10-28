@@ -643,7 +643,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       }
 
       debugKeyboard('desktop resume focus', { reason });
-      // Electron/macOS can keep document.activeElement on the terminal input
+      // macOS WebView can keep document.activeElement on the terminal input
       // while the native window is occluded. Calling focus() again then emits
       // no DOM focus event, so the old code never asked xterm's DOM renderer to
       // repaint its stale backing surface. Refresh explicitly before restoring
@@ -783,7 +783,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   });
 
   // 推送抑制的“正在看这个 session”：移动浏览器不要求 textarea/window focus，
-  // 因为 iOS installed PWA 在用户交互前 hasFocus 经常是 false。Electron 则会
+  // 因为 iOS installed PWA 在用户交互前 hasFocus 经常是 false。桌面客户端则会
   // 为持续排空终端输出而关闭 workspace 的 backgroundThrottling；这会削弱 Page
   // Visibility 的后台信号，所以桌面版额外以原生窗口 focus 作为 viewing gate。
   const logicalViewing = computeTerminalLogicalViewing({

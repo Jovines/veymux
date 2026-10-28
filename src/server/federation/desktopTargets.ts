@@ -4,7 +4,6 @@ import type { DirectTargetConfig } from './directRoutes.js';
 import { directConnectionAddresses, type ConnectionRecord } from './connectionModel.js';
 
 const peer = (value: unknown): value is string => typeof value === 'string' && /^[a-zA-Z0-9_.:-]{1,160}$/.test(value);
-const fingerprint = (value: unknown): value is string => typeof value === 'string' && /^(?:[\da-f]{2}:){31}[\da-f]{2}$/i.test(value);
 function origin(value: unknown): string | undefined {
   if (typeof value !== 'string' || value.length > 2048) return;
   try {
@@ -17,35 +16,27 @@ function origin(value: unknown): string | undefined {
  * have been pinned there before its administrator can discover other entries.
  * This supplies addresses, never the Desktop client's device authorization.
  */
-export function desktopDirectTargets(file: string, localServiceId: string, format: 'electron' | 'rust' = 'electron'): DirectTargetConfig[] {
+export function desktopDirectTargets(file: string, localServiceId: string): DirectTargetConfig[] {
   if (!localServiceId) return [];
   try {
     if (statSync(file).size > 1024 * 1024) return [];
     const data = JSON.parse(readFileSync(file, 'utf8'));
     if (data?.version !== 1 || !Array.isArray(data.connections) || data.connections.length > 256) return [];
-    const removedKeys = format === 'rust' ? data.removedKeys : data.removedServiceKeys;
+    const removedKeys = data.removedKeys;
     const removed = new Set(Array.isArray(removedKeys) ? removedKeys : []);
     const connections = data.connections.filter((item: Record<string, unknown> | null) => item && ![item.id, item.targetPeerId, item.serviceOrigin || item.url].some(key => removed.has(key)));
     if (!connections.some((item: Record<string, unknown>) => item.targetPeerId === localServiceId)) return [];
-    const trusts = new Map<string, string>();
-    if (Array.isArray(data.trustedCertificateAuthorities)) for (const trust of data.trustedCertificateAuthorities.slice(0, 256)) {
-      const url = origin(trust?.origin);
-      if (url && fingerprint(trust.fingerprint256)) trusts.set(url, trust.fingerprint256.toUpperCase());
-    }
     const targets = new Map<string, DirectTargetConfig>();
     for (const item of connections) {
       if (!peer(item.targetPeerId) || item.targetPeerId === localServiceId) continue;
       for (const address of directConnectionAddresses(item as unknown as ConnectionRecord)) {
         const url = origin(address);
         if (!url) continue;
-        const caFingerprint256 = trusts.get(url);
-        const pin = format === 'rust' ? data.certificatePins?.[url] : undefined;
-        // Rust pins the leaf certificate, whereas Electron approves a CA.
-        // Never reinterpret one as the other or discard an invalid saved pin.
+        const pin = data.certificatePins?.[url];
+        // Saved pins identify leaf certificates. Invalid pins fail closed.
         if (pin !== undefined && (typeof pin !== 'string' || !/^[\da-f]{64}$/i.test(pin))) continue;
         targets.set(JSON.stringify([item.targetPeerId, url]), { serviceId: item.targetPeerId, url,
           ...(typeof item.label === 'string' && item.label.trim() ? { label: item.label.trim().slice(0, 120) } : {}),
-          ...(format === 'electron' && caFingerprint256 ? { caFingerprint256 } : {}),
           ...(pin ? { certificateFingerprint256: pin.toUpperCase() } : {}) });
         if (targets.size >= 64) break;
       }
@@ -55,9 +46,7 @@ export function desktopDirectTargets(file: string, localServiceId: string, forma
   } catch { return []; }
 }
 
-/** The stable Rust directory is authoritative after migration. Old Electron
- * and Preview bookmarks must not revive removed routes or old certificate pins.
- * Before migration, retain discovery from both legacy installations. */
+/** Stable Rust settings are authoritative; Preview is used only before a stable install. */
 export function desktopServiceTargets(home: string, localServiceId: string, platform: NodeJS.Platform = process.platform): DirectTargetConfig[] {
   const nativeRoot = platform === 'darwin' ? join(home, 'Library', 'Application Support')
     : platform === 'win32' ? process.env.APPDATA || join(home, 'AppData', 'Roaming')
@@ -65,13 +54,10 @@ export function desktopServiceTargets(home: string, localServiceId: string, plat
   const stableFile = join(nativeRoot, 'com.jovines.veymux', 'connections.json');
   try {
     statSync(stableFile);
-    return desktopDirectTargets(stableFile, localServiceId, 'rust');
+    return desktopDirectTargets(stableFile, localServiceId);
   } catch (error) {
     // An unreadable stable directory is unknown; only absence permits legacy fallback.
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return [];
   }
-  const key = (target: DirectTargetConfig) => JSON.stringify([target.serviceId, target.url]);
-  const targets = new Map(desktopDirectTargets(join(home, '.veymux', 'desktop.json'), localServiceId).map(target => [key(target), target]));
-  for (const target of desktopDirectTargets(join(nativeRoot, 'com.jovines.veymux.preview', 'connections.json'), localServiceId, 'rust')) targets.set(key(target), target);
-  return [...targets.values()].slice(0, 64);
+  return desktopDirectTargets(join(nativeRoot, 'com.jovines.veymux.preview', 'connections.json'), localServiceId);
 }

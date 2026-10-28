@@ -27,9 +27,6 @@ npm-debug.log*
 
 # vite-plugin-pwa dev mode service worker artifacts
 dev-dist/
-.desktop-dist/
-.desktop-runtime/
-desktop/renderer/tokens.css
 out/
 runtime-manifest.json
 
@@ -38,5 +35,8 @@ runtime-manifest.json
 .claude/scheduled_tasks.json
 .claude/worktrees/
 
-desktop/renderer/services.js
-desktop/renderer/services.css
+
+# Retired local build output; no source files live here.
+/desktop/
+/.desktop-dist/
+/.desktop-runtime/

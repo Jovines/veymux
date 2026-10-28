@@ -23,7 +23,6 @@ jobs:
     permissions:
       contents: write
     env:
-      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
       MACOSX_DEPLOYMENT_TARGET: '14.0'
       CARGO_BUILD_JOBS: '3'
     steps:

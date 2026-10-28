@@ -255,7 +255,7 @@ veymux collab transport register <group-id> --file nodes.json
 
 成员创建、修改和删除失败后不会自动换传输重试，因为第一次写入可能已经成功。原生写入必须由拥有该 IPC 的服务窗口发起，允许 localhost 等窗口地址与目标显示地址不同；业务请求始终由该窗口的加密客户端发往固定服务身份。网页转发为每个已授权目标使用独立加密客户端，不更改当前页面目标。桌面发行包仍需在真实 macOS 客户端验证；浏览器夹具、协议测试和本机服务部署不能替代该验收。
 
-回归覆盖位于 `src/lib/collaboration/directory.test.ts`、`src/lib/terminal/api.collaboration.test.ts`、`src/server/agent/collaborationGroupRoutes.test.ts`、`desktop/collaborationFederation.test.ts` 和 `src/server/agent/collaborationFederation.integration.test.ts`；加密入口同时由 `browserIntegration.routing.test.ts` 与 `transportBoundary.test.ts` 守卫。
+回归覆盖位于 `src/lib/collaboration/directory.test.ts`、`src/lib/terminal/api.collaboration.test.ts`、`src/server/agent/collaborationGroupRoutes.test.ts`、`src/lib/collaboration/serviceFederation.test.ts` 和 `src/server/agent/collaborationFederation.integration.test.ts`；加密入口同时由 `browserIntegration.routing.test.ts` 与 `transportBoundary.test.ts` 守卫。
 
 本轮兼容修复和浏览器转发按用户要求未运行自动测试。Web、服务端和桌面构建分别检查，Mac 1.4.182 与真实 iOS PWA 的连接、跨服务建组、消息送达及后台恢复仍需实机验收。
 

@@ -517,7 +517,6 @@ veymux/
 │       ├── routes/             # 终端、文件与其他业务路由
 │       ├── agent/              # Agent 适配、协作与定时任务
 │       └── federation/         # 服务身份、加密传输与中继
-├── desktop/                    # 旧 Electron 兼容客户端与共享桌面 UI
 ├── desktop-rust/               # Rust/Tauri macOS 正式客户端
 ├── public/                     # 图标、字体与 Service Worker
 ├── docs/                       # 功能与开发文档
@@ -624,7 +623,7 @@ CLI 服务更新与 macOS 应用更新相互独立。安装新 CLI 后需确认�
 
 ### 浏览器和设备支持到什么程度？
 
-建议使用当前版本的 Chrome、Edge、Firefox 或 Safari。WebGL、剪贴板、PWA 安装和软键盘行为取决于浏览器与系统；macOS / iOS 的特定路径需要实机验收，不能用浏览器模拟结果代替。已知 macOS beta 问题见[本地网络权限记录](docs/macos-27-local-network.md)。
+建议使用当前版本的 Chrome、Edge、Firefox 或 Safari。WebGL、剪贴板、PWA 安装和软键盘行为取决于浏览器与系统；macOS / iOS 的特定路径需要实机验收，不能用浏览器模拟结果代替。
 
 ## 文档导航
 

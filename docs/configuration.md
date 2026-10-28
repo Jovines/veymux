@@ -214,7 +214,7 @@ export const PORT = {
 |--------|--------------|--------|------|
 | 关掉监督 | `VEYMUX_SUPERVISOR=0` / `--no-supervisor` | 开启 | 后台启动但不带 supervisor |
 | 前台受管 | `--supervise` | — | 前台运行，supervisor 跑在本进程（给 setsid/systemd/docker 用） |
-| 不受管前台 | `--foreground` | — | 自己管生命周期，supervisor 不介入（dev / Electron） |
+| 不受管前台 | `--foreground` | — | 自己管生命周期，supervisor 不介入（dev / 外部进程管理器） |
 | 重启受管服务 | `--restart` | — | 让 supervisor 重启子进程，但继续监督 |
 | 监督节奏 | `VEYMUX_SUPERVISOR_TIMING` (JSON) | 见下 | 探测间隔、退避、放弃阈值等；只接受正整数 |
 

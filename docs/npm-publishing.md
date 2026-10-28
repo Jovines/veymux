@@ -4,6 +4,10 @@ Veymux 的 npm 发布使用 GitHub 托管的 Actions runner 和 OIDC 临时身�
 
 ## 首次绑定
 
+从未发布过的新包需先通过 npm 账户授权完成首次发布，再为该包绑定 Trusted
+Publisher；修改 GitHub 仓库或工作流并不会自动建立 npm 端授权。首次发布使用
+同一精确源码构建并校验的包，凭证只保存在账户登录环境中。
+
 账号所有者登录 npm 后，打开 <https://www.npmjs.com/package/veymux/access>，在 **Trusted publishing** 中添加 GitHub Actions：
 
 | 字段 | 值 |

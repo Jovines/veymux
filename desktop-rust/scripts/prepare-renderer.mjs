@@ -21,10 +21,10 @@ fs.writeFileSync(new URL('window-background.json',destination),JSON.stringify([0
 fs.writeFileSync(new URL('tokens.css', destination), ['/* Generated from src/index.css */', block(':root'), block("html[data-theme='light']")].join('\n'));
 // Use the existing connection center and floating UI verbatim. No parallel UX.
 for (const name of ['index.html', 'app.js', 'styles.css', 'floating.html', 'floating.js', 'floating.css']) {
-  let text = fs.readFileSync(new URL(`../../desktop/renderer/${name}`, import.meta.url), 'utf8');
+  let text = fs.readFileSync(new URL(`../renderer/${name}`, import.meta.url), 'utf8');
   if (name === 'index.html') text = text.replace('class="brand"','class="brand" data-tauri-drag-region').replace('class="topbar"','class="topbar" data-tauri-drag-region').replace('class="rail"','class="rail" data-veymux-window-rail="true"');
   if (name.endsWith('.html')) text = text.replace(/<meta\s+http-equiv="Content-Security-Policy"[\s\S]*?\/>/, '').replace('Veymux 连接中心', `${preview ? 'Veymux Preview' : 'Veymux'} 连接中心`);
   if (name === 'app.js') text = text.replace('Veymux Desktop ${snapshot.appVersion}', `${preview ? 'Veymux Preview' : 'Veymux'} \${snapshot.appVersion}`);
   fs.writeFileSync(new URL(name, destination), text);
 }
-await build({ entryPoints: [new URL('../../desktop/renderer/services.tsx', import.meta.url).pathname], bundle: true, platform: 'browser', format: 'iife', minify: true, outfile: new URL('services.js', destination).pathname });
+await build({ entryPoints: [new URL('../renderer/services.tsx', import.meta.url).pathname], bundle: true, platform: 'browser', format: 'iife', minify: true, outfile: new URL('services.js', destination).pathname });

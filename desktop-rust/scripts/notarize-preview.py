@@ -86,23 +86,6 @@ def main():
             zipped = Path(temporary)/'rust-zip'; zipped.mkdir()
             run('ditto', '-x', '-k', str(rust_zip), str(zipped))
             result['rustZipApp'] = verify_app(zipped/product, metadata, public)
-        if not metadata['prerelease'] and metadata.get('legacyBridgeIncluded', True):
-            bridge_zip = out/f'Veymux-darwin-arm64-{metadata["version"]}.zip'
-            bridge_root = Path(temporary)/'bridge'; bridge_root.mkdir()
-            run('ditto', '-x', '-k', str(bridge_zip), str(bridge_root))
-            bridge = bridge_root/'Veymux.app'
-            run('codesign', '--verify', '--deep', '--strict', str(bridge))
-            bridge_signature = run('codesign', '-dv', '--verbose=4', str(bridge))
-            require('Authority='+os.environ['APPLE_SIGNING_IDENTITY'] in bridge_signature and 'Timestamp=' in bridge_signature and 'runtime' in bridge_signature, 'Bridge signing identity mismatch')
-            bridge_info = plistlib.loads((bridge/'Contents/Info.plist').read_bytes())
-            require(bridge_info['CFBundleIdentifier']=='com.jovines.veymux' and bridge_info['CFBundleShortVersionString']=='1.4.357' and bridge_info['LSMinimumSystemVersion']=='12.0', 'Wrong compatibility bridge')
-            for binary in [bridge/'Contents/MacOS'/bridge_info['CFBundleExecutable'], bridge/'Contents/Frameworks/Electron Framework.framework/Versions/A/Electron Framework']:
-                require(re.findall(r'\bminos\s+(\S+)', run('xcrun','vtool','-show-build',str(binary)))==['12.0'], 'Bridge does not support macOS 12')
-            asar = (bridge/'Contents/Resources/app.asar').read_bytes()
-            require(b'Veymux-Rust-' in asar and b'minimumSystemVersion' in asar and b'14' in asar, 'Bridge migration logic missing')
-            run('xcrun','stapler','validate',str(bridge))
-            require('accepted' in run('spctl','-a','-vv','-t','exec',str(bridge)), 'Bridge Gatekeeper rejection')
-            result['legacyBridge'] = dict(version='1.4.357', minimumMacOS='12.0', gatekeeperAccepted=True, notaryTicketValidated=True)
 
     metadata.update(notarizationVerified=True, appNotarySubmission=receipts[0],
                     dmgNotarySubmission=receipt['id'], verification=result)

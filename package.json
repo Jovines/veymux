@@ -3,7 +3,7 @@
   "version": "1.4.387",
   "description": "A complete web-based terminal application with modern UI",
   "type": "module",
-  "main": ".desktop-dist/main.js",
+  "main": "dist/server/entry.js",
   "bin": {
     "veymux": "dist/server/cli.js"
   },
@@ -28,10 +28,6 @@
     "dev:client": "vite",
     "dev:server": "cross-env PORT=9835 tsx watch src/server/entry.ts",
     "build": "npm run clean && npm run build:client && npm run build:server && npm run build:runtime-manifest",
-    "build:desktop": "rimraf .desktop-dist && node scripts/prepare-desktop-tokens.mjs && tsc -p tsconfig.desktop.json && esbuild desktop/preload.cts --bundle --platform=node --format=cjs --external:electron --outfile=.desktop-dist/preload.cjs && esbuild desktop/renderer/services.tsx --bundle --platform=browser --format=iife --minify --outfile=desktop/renderer/services.js",
-    "desktop:dev": "npm run build && npm run build:desktop && electron-forge start",
-    "desktop:prepare": "npm run build && npm run build:desktop",
-    "desktop:make": "node scripts/ensure-macos-appdmg.mjs && npm run desktop:prepare && electron-forge make",
     "build:client": "vite build && node scripts/precompress-client.mjs",
     "build:server": "tsc -p tsconfig.server.json && node scripts/prepare-onboarding-theme.mjs && node -e \"require('fs').chmodSync('dist/server/cli.js', 0o755)\"",
     "build:runtime-manifest": "node scripts/generate-runtime-manifest.mjs",
@@ -54,11 +50,11 @@
     "test:keyboard-layout": "vitest run src/lib/components/views/TerminalView.nativePicker.test.tsx src/lib/components/views/TerminalView.focusOwnership.test.tsx src/lib/hooks/useKeyboardLayer.test.tsx src/lib/hooks/useViewportHeight.focus.test.tsx src/lib/utils/focusOwnership.test.ts src/lib/components/layout/keyboardLayoutBoundary.test.ts src/lib/hooks/nativeKeyboardLayout.test.ts src/lib/hooks/useKeyboardFocusGuard.test.tsx src/lib/hooks/useTouchScrollBoundary.test.tsx src/lib/hooks/usePreserveInputFocus.test.tsx src/lib/hooks/useInputViewportDiagnostics.test.tsx src/lib/hooks/useViewportHeight.events.test.ts src/lib/hooks/useViewportKeyboardState.test.tsx && vitest run --config vitest.chat-viewport.config.ts",
     "prepublishOnly": "npm run build",
     "postinstall": "node scripts/postinstall.mjs",
-    "preview:desktop:dev": "npm --prefix desktop-rust run dev",
-    "preview:desktop:build": "npm --prefix desktop-rust run build",
-    "preview:desktop:test": "npm --prefix desktop-rust run verify",
     "test:brand": "node --test tests/brandMigration.test.mjs tests/browserBrandMigration.test.mjs tests/brandBoundary.test.mjs",
-    "generate:brand-assets": "node scripts/generate-brand-assets.mjs"
+    "generate:brand-assets": "node scripts/generate-brand-assets.mjs",
+    "desktop:dev": "npm --prefix desktop-rust run dev",
+    "desktop:build": "npm --prefix desktop-rust run build",
+    "desktop:test": "npm --prefix desktop-rust run verify"
   },
   "dependencies": {
     "@chainsafe/libp2p-noise": "17.0.0",
@@ -127,9 +123,6 @@
     "zustand": "^4.5.0"
   },
   "devDependencies": {
-    "@electron-forge/cli": "^7.11.2",
-    "@electron-forge/maker-dmg": "^7.11.2",
-    "@electron-forge/maker-zip": "^7.11.2",
     "@testing-library/react": "^14.1.0",
     "@testing-library/user-event": "^14.5.0",
     "@types/busboy": "^1.5.4",
@@ -149,7 +142,6 @@
     "autoprefixer": "^10.4.0",
     "concurrently": "^8.2.0",
     "cross-env": "^10.1.0",
-    "electron": "^43.2.0",
     "es-module-shims": "^2.8.4",
     "esbuild": "^0.27.7",
     "eslint": "^9.39.2",

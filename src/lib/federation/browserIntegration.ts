@@ -111,7 +111,7 @@ async function authenticateServicePasswordDirect(url: string, password: string):
   const { startPasswordBootstrap, finishPasswordBootstrap } = await import('../../server/federation/passwordBootstrap');
   // Preview's transport uses a private loopback document. Its native boundary
   // binds this proof to the exact approved upstream Origin for old servers;
-  // ordinary browsers and Electron keep their existing document binding.
+  // ordinary browsers keep their existing document binding.
   const preview = typeof window !== 'undefined' ? window.veymuxDesktop as (typeof window.veymuxDesktop & { previewCapabilities?: unknown; passwordBootstrapOrigin?: (url: string) => string }) : undefined;
   let proofOrigin = location.origin;
   if (preview?.previewCapabilities && preview.passwordBootstrapOrigin) {

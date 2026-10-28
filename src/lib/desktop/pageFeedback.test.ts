@@ -3,7 +3,7 @@ import {afterEach,expect,it,vi} from 'vitest';
 import {confirmPageAction,showPageFeedback,runConfirmedPageAction} from './pageFeedback';
 afterEach(()=>{delete window.veymuxDesktop;vi.restoreAllMocks();});
 const options={title:'Controlled',message:'Confirm owned action',confirmLabel:'Confirm',cancelLabel:'Cancel'};
-it('only explicit page-v1 uses async confirmation; legacy browser/Electron retain synchronous confirm and alert',async()=>{
+it('only explicit page-v1 uses async confirmation; ordinary browsers retain synchronous confirm and alert',async()=>{
  const confirm=vi.spyOn(window,'confirm').mockReturnValue(false),alert=vi.spyOn(window,'alert').mockImplementation(()=>{}),native=vi.fn(async()=>true);
  window.veymuxDesktop={platform:'darwin',confirm:native} as any;expect(await confirmPageAction(options)).toBe(false);expect(native).not.toHaveBeenCalled();showPageFeedback('legacy');expect(alert).toHaveBeenCalledWith('legacy');
  const pageAlert=vi.fn();window.veymuxDesktop={platform:'darwin',confirmationUI:'page-v1',confirm:native,alert:pageAlert} as any;expect(await confirmPageAction(options)).toBe(true);showPageFeedback('visible');expect(pageAlert).toHaveBeenCalledWith('visible');expect(confirm).toHaveBeenCalledTimes(1);

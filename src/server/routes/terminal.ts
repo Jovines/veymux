@@ -814,7 +814,7 @@ function requestServerRestartAfterUpdate(): void {
     return;
   }
 
-  // —— 以下为未受管路径（`--foreground` / Electron / 外部进程管理器）——
+  // —— 以下为未受管路径（`--foreground` / 外部进程管理器）——
   // 发射后不管：不验证新进程是否起来、不重试、失败也不回滚，
   // 「更新后服务没起来」正是这个形状造成的。没有监督者时别无选择，
   // 但它不再是默认路径——受管启动会走上面的分支。

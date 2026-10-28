@@ -1340,7 +1340,7 @@ export const MultiTerminalView: React.FC<MultiTerminalViewProps> = ({
     };
   }, [updateSwiperLayout]);
 
-  // PWA / Electron 从后台恢复或网络恢复时，不能只让当前 active slide 自检：
+  // PWA / 桌面客户端 从后台恢复或网络恢复时，不能只让当前 active slide 自检：
   // Swiper 中其它 TerminalView 虽然不可见但仍持有各自 WebSocket，服务重启后
   // 它们也会变成半开/已关闭连接。这里广播一个 token 给所有子 TerminalView；
   // 当前可见 slide（包括分屏里的所有可见 pane）立即 probe，后台 session 从

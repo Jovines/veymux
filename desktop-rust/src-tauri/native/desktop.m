@@ -339,7 +339,7 @@ char *veymux_preview_service_menus(void) {
     return strdup(encoded.UTF8String);
 }
 bool veymux_menu_configure(void) {
-    // Tauri exposes physical accelerators. Match Electron's logical Cmd+'+'
+    // Tauri exposes physical accelerators. Use the logical Cmd+'+' shortcut
     // without requiring a numeric keypad or adding Shift to the menu binding.
     for (NSMenuItem *section in NSApp.mainMenu.itemArray) {
         if (![section.title isEqualToString:@"显示"]) continue;

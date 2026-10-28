@@ -115,9 +115,8 @@ export class CollaborationFederation {
     const snapshots = await Promise.all(services.map(async (service) => {
       let timer: ReturnType<typeof setTimeout> | undefined;
       try {
-        // A loading/suspended Electron renderer can leave executeJavaScript
-        // pending before its own fetch timeout even starts. Bound each service
-        // independently, below the directory's 20-second IPC deadline.
+        // A suspended page can delay its own timeout. Bound each service
+        // independently, below the directory request deadline.
         const data = await Promise.race([
           Promise.resolve().then(() => service.request('/collaboration-federation')),
           new Promise<never>((_resolve, reject) => {

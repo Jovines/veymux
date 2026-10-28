@@ -626,7 +626,7 @@
     document.addEventListener('mousedown', event => {
       if (event.button !== 0 || !(event.target instanceof Element) || event.defaultPrevented) return;
       const target = event.target;
-      // WK does not provide Electron's app-region handling. Only explicit
+      // Only explicit native window drag regions
       // shell chrome may start a drag; interactive descendants retain input.
       if (target.closest('button,a,input,textarea,select,form,summary,label,[contenteditable]:not([contenteditable="false"]),[draggable="true"],[data-rbd-draggable-id],[data-rbd-drag-handle-draggable-id],[data-split-pane-title],[data-panel-drag-title],.split-pane-drag-handle,[data-no-drag],[data-tauri-no-drag],[data-tauri-drag-region="false"],[data-veymux-terminal-dropzone],.xterm,[role="button"],[role="link"],[role="tab"],[role="menu"],[role="menuitem"],[role="menuitemcheckbox"],[role="menuitemradio"],[role="textbox"],[role="combobox"],[role="listbox"],[role="option"],[role="slider"],[role="spinbutton"],[role="checkbox"],[role="radio"],[role="switch"],[role="treeitem"],[role="scrollbar"]')) return;
       if (!documentEpoch) return;

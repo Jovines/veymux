@@ -1,4 +1,4 @@
-//! Same monochrome glyphs/rows as Electron's menuBarStatusImage. macOS colors
+//! Monochrome menu bar status glyphs and rows. macOS colors
 //! template images for the current appearance; no component palette is added.
 pub fn bitmap(running: u64, review: u64, services: u64) -> Vec<u8> {
     const GLYPHS: [&str; 11] = [

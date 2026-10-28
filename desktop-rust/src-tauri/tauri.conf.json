@@ -27,7 +27,7 @@
       "infoPlist": "Info.plist"
     },
     "icon": [
-      "../../desktop/assets/Veymux.icns",
+      "../assets/Veymux.icns",
       ".runtime-icons/icon.png"
     ],
     "resources": {

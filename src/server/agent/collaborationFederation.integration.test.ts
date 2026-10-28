@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { CollaborationFederation, qualifySession, type FederationService } from '../../../desktop/collaborationFederation.js';
+import { CollaborationFederation, qualifySession, type FederationService } from '../../lib/collaboration/serviceFederation.js';
 import { CollaborationStore } from './collaborationStore.js';
 import type { MessageFragment, TransportDiagnostic } from './collaborationProtocol.js';
 

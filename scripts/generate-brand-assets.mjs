@@ -53,7 +53,7 @@ await sharp(Buffer.from(svg(tile(0.9)))).flatten({ background }).png()
 
 for (const [file, size, source] of [
   ['public/boot-logo.png', 512, app],
-  ['desktop/assets/veymux-macos-icon.png', 1024, desktop],
+  ['desktop-rust/assets/veymux-macos-icon.png', 1024, desktop],
   ['desktop-rust/src-tauri/.runtime-icons/icon.png', 1024, desktop],
 ]) {
   await fs.mkdir(path.dirname(path.join(root, file)), { recursive: true });
@@ -88,5 +88,5 @@ for (const [type, size] of [['icp4', 16], ['icp5', 32], ['icp6', 64], ['ic07', 1
 }
 const header = Buffer.alloc(8);
 header.write('icns'); header.writeUInt32BE(icns.reduce((size, block) => size + block.length, 8), 4);
-await write('desktop/assets/Veymux.icns', Buffer.concat([header, ...icns]));
+await write('desktop-rust/assets/Veymux.icns', Buffer.concat([header, ...icns]));
 console.log('Generated Veymux Furl icons, optical favicons, native icons and all PWA launch screens.');

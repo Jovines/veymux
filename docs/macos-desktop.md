@@ -1,138 +1,62 @@
 # Veymux for macOS
 
-Veymux Desktop is a macOS client for independently running Veymux services.
-It connects to local, LAN, and public service URLs. On launch it detects the local
-environment and starts an installed standalone CLI when no service is running.
-The connection center can also assist with a missing CLI or Node.js installation.
+Veymux is a Rust/Tauri client for independently running Veymux services.
+It requires macOS 14 or newer on Apple Silicon. The app connects to services
+on this Mac, on the local network, or at a public service URL.
 
-## Service behavior
+## Getting started
 
-- The connection center separates **这台 Mac**, **其他电脑**, **桌面偏好**, and
-  **使用指南**. The local page shows the current preparation step and its next
-  action; connection addresses and diagnostic output stay behind a disclosure.
-  Opening the Node.js download page explains how to resume after installation.
-- The optional guide covers opening a terminal, starting an already configured
-  AI assistant, and connecting another computer. It can be revisited from the
-  sidebar. Switching pages preserves remote connection drafts; incoming
-  workspace connection reviews reveal the remote page automatically.
-- An existing local service is reused. Otherwise Desktop locates Node.js 22+
-  and the standalone `veymux` CLI, including common Homebrew and version-manager
-  installations, and starts the CLI in its normal supervised daemon mode.
-- When the CLI is missing, **安装并启动** installs it from npm into
-  `~/.veymux/cli` without sudo or changing other global npm packages, then
-  starts it. Installation and startup failures expose details and a retry action.
-- When Node.js or npm is missing or too old, **下载 Node.js** opens the official
-  download page. Returning to the connection center resumes environment detection;
-  CLI installation still requires the installation button.
-- The connection center updates local status automatically and can open the
-  workspace, or save and connect to another Veymux URL. Startup assistance is
-  restricted to the app's connection center, not remote service pages.
-- Desktop-only bookmarks and UI preferences live in `~/.veymux/desktop.json`.
-- Direct connections load the service's frontend. Saved connections reachable
-  only through an entry service use the app's bundled static frontend.
-- Closing or quitting Desktop leaves standalone services running, including
-  services started through the connection center. Desktop never stops or
-  replaces an existing service process.
-- The app bundles static frontend resources for entry-service connections;
-  Node.js, server dependencies, CLI launchers, and terminal tools are not bundled.
+The connection center provides **这台 Mac**, **其他电脑**, **桌面偏好**, and
+**使用指南**. Each setup step shows its next action, with addresses and logs
+available on demand. Remote drafts are preserved when switching panels.
 
-### Connection center UX verification
+An existing local service is reused. Otherwise the app locates Node.js 22+
+and the standalone `veymux` CLI and starts its supervised service. If Node.js
+is missing, it offers the official download page. **安装并启动** installs a
+missing CLI into `~/.veymux/cli` without sudo and starts it. Installation is
+restricted to the trusted connection center and requires an explicit action.
+Quitting or updating the app leaves services and terminal sessions running.
 
-The 2026-10-25 UX pass exercised eight setup states at 1280×820, 760×520, and
-390×844 in Chromium, plus guide navigation, preserved connection drafts,
-cancellation, preference saving, connection failure, and queued certificate
-reviews. Native setup and connection results were simulated; this does not
-verify actual Node.js installation, native window behavior, or a fresh macOS
-account. Those paths still require acceptance in the signed Mac application.
-Regression coverage lives in `tests/desktopConnectionCenter.test.ts` and
-`src/components/services/ConnectionCenterServices.test.tsx`.
+Connections and desktop preferences are stored under the application support
+directory for `com.jovines.veymux`; on macOS this is
+`~/Library/Application Support/com.jovines.veymux/connections.json`.
+Each service has an isolated WebView profile and device authorization.
+Direct connections load that service's frontend; connections reachable only
+through an entry service use the app's bundled frontend.
 
-## Upgrading from a desktop-managed service
+## Native integration
 
-Older apps could install `veymux` / `veymux` symlinks into the app bundle. Before
-replacing one of those apps, install the standalone CLI with `npm install -g veymux`
-and verify that the commands resolve to that installation. If an old bundled
-service is still running, stop it with the CLI and start the standalone service.
-Your sessions, authentication, certificates, and preferences remain under
-`~/.veymux`; upgrading the app does not delete them or stop the old process.
+- Native title bar, traffic lights, menu bar status and optional floating widget.
+- `⌘,` opens settings; `⌘T` creates a session and `⌘W` closes the active session.
+- `⌘⇧[` / `⌘⇧]` switch sessions; `⌘B` toggles sessions and `⌘⇧B` toggles files.
+- Clipboard images, files and native movie data are read on this Mac. The active
+  service page uploads bytes through encrypted transport and inserts the
+  returned shell-quoted paths. Original paths are reused only when the target
+  service identity is confirmed to belong to this Mac.
+- Native downloads save bytes fetched by the encrypted page. Cancellation,
+  connection changes and failures terminate the transfer.
+- Application updates use the pinned public key and signed Tauri manifest at
+  `stable-channel/latest.json`, after the user accepts installation.
 
-## macOS integration
+## Building and distribution
 
-- Native inset title bar and traffic lights share Veymux's chrome surface.
-- Service windows open at the cursor's display work-area size, filling the
-  available desktop while leaving room for the macOS menu bar and Dock.
-  This also applies to connections restored on launch.
-- `⌘,` opens Veymux Settings, including service switching, application updates, and data actions.
-- `⌘T` creates a session, `⌘W` closes the active session, and `⌘⇧[` / `⌘⇧]`
-  switch sessions.
-- `⌘B` toggles sessions and `⌘⇧B` toggles the file sidebar.
-- Files dropped from Finder onto a terminal are resolved through Electron's
-  native file API and inserted as shell-quoted absolute paths.
-- Pasting a macOS clipboard image uploads a PNG to the active service's `/tmp`
-  directory and inserts the returned shell-quoted path. Local windows therefore
-  receive a local path, while LAN service windows receive a path on that host.
-- Pasting files copied in Finder reuses their original paths when the target
-  service identity matches this Mac's local service. Remote targets receive an
-  upload, including targets reached through a local entry service. This avoids
-  reading and copying large local videos just to insert a file reference.
-- Videos copied as native movie data from other apps are read before their
-  thumbnails, uploaded to the active service, and inserted as file references.
-  They have no reusable original file path. The native reader removes its
-  private staging directory after passing the bytes to the page.
-- Native movie recognition binds the LaunchServices UTI functions directly,
-  avoiding framework imports that require newer JXA BridgeSupport metadata.
-  If the native file reader fails, the page still uses text and file/image data
-  captured from the paste event, or the separate native image reader.
-- The last successful Veymux connection is reopened on the next launch.
+Use Node.js 22+, Rust 1.93+ and the macOS build tools:
 
-## Building
-
-Desktop packaging is supported on macOS arm64 with Node.js 22:
-
-```bash
-npm install
-PATH="/opt/homebrew/opt/node@22/bin:$PATH" npm run desktop:make
+```sh
+npm ci --ignore-scripts
+npm ci --ignore-scripts --prefix desktop-rust
+npm --prefix desktop-rust run verify
+npm --prefix desktop-rust run build
 ```
 
-The build compiles the desktop shell and web frontend. Only the static frontend
-is copied as an extra resource; no server runtime or toolchain is staged.
-Artifacts are written to `out/make`.
+Public distribution requires Developer ID signing, App and DMG notarization,
+staple and Gatekeeper verification. Credentials stay outside the repository.
+See [the release contract](../desktop-rust/RELEASE.md) for exact-source
+packaging, asset checks and publication. Download the versioned
+`Veymux_VERSION_aarch64.dmg` from GitHub Releases.
 
-By default Forge uses an ad-hoc signature for local development. For distribution,
-provide a Developer ID Application identity:
-
-```bash
-APPLE_SIGNING_IDENTITY="Developer ID Application: Example (TEAMID)" \
-  PATH="/opt/homebrew/opt/node@22/bin:$PATH" npm run desktop:make
-```
-
-Public distribution also requires Apple notarization. Build, sign, notarize,
-and staple the app and installation artifacts on the local Mac before uploading
-them. Keep signing and notarization credentials outside the repository.
-
-## GitHub releases and application updates
-
-The Rust application requires macOS 14+ on Apple Silicon. Download the versioned
-`Veymux_VERSION_aarch64.dmg` from GitHub Releases. Its bundle identity remains
-`com.jovines.veymux`. Application updates use the pinned, signed Tauri feed at
-`stable-channel/latest.json` and are installed after the user accepts.
-
-Old Electron clients select `Veymux-darwin-arm64-VERSION.zip`, which contains
-one fixed compatibility bridge (1.4.357, macOS 12+). On macOS 14+ the bridge verifies the SHA-256, Developer ID team, notarization
-tickets, application identity and version of the Rust DMG, then uses a detached
-installer to back up, replace and relaunch the application. It does not pass the
-Rust bundle to Squirrel, whose relaunch protocol requires an Electron helper. On macOS 12/13 it keeps the
-working client and explains that the new application requires a system upgrade.
-The final Preview (0.1.14) installs the same Rust stable bundle, backs up existing
-applications, and retires its own Preview bundle to Trash after handoff.
-
-Connections and preferences are imported with backups; WebView authentication
-and certificate trust are reauthorized in the new application identity. Existing
-services and tmux sessions keep running. See [the release contract](../desktop-rust/RELEASE.md)
-for signing, notarization, the one-time bridges and ordinary subsequent releases.
-
-## Deferred macOS 27 issue
-
-The macOS 27 beta local-network permission failure is recorded in
-[macOS 27 local-network permission issue](macos-27-local-network.md). It is an
-upstream system issue still awaiting retest on a newer macOS build.
+Connection-center regression coverage is in
+`tests/desktopConnectionCenter.test.ts` and
+`src/components/services/ConnectionCenterServices.test.tsx`. Browser fixtures
+exercise interaction states; actual installation, native permissions and first
+launch must also be checked in the signed macOS app.

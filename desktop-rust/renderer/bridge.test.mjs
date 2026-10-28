@@ -407,10 +407,10 @@ test('no-drag interactive ancestors win over every supported chrome drag ancesto
 });
 test('prepared normal center brand/topbar and floating widget retain their existing drag behavior',()=>{
  // These are the same source and marker transformation used by prepare-renderer.
- const original=fs.readFileSync(new URL('../../desktop/renderer/index.html',import.meta.url),'utf8');
+ const original=fs.readFileSync(new URL('./index.html',import.meta.url),'utf8');
  const markup=original.replace('class="brand"','class="brand" data-tauri-drag-region').replace('class="topbar"','class="topbar" data-tauri-drag-region');
  const f=dragFixture(markup);try{for(const selector of ['.brand-name','.topbar h1']){assert(f.doc.querySelector(selector));f.down(selector);}assert.equal(f.drags().length,0);const brand=f.doc.querySelector('.brand');brand.dispatchEvent(new f.dom.window.MouseEvent('mousedown',{button:0,bubbles:true}));assert.equal(f.drags().length,1);const button=f.doc.querySelector('.topbar button');assert(button);button.dispatchEvent(new f.dom.window.MouseEvent('mousedown',{button:0,bubbles:true}));assert.equal(f.drags().length,1);}finally{f.dom.window.close();}
- const floating=fs.readFileSync(new URL('../../desktop/renderer/floating.html',import.meta.url),'utf8');
+ const floating=fs.readFileSync(new URL('./floating.html',import.meta.url),'utf8');
  const w=dragFixture(floating);try{assert(w.doc.querySelector('.widget'));w.down('.widget');assert.equal(w.drags().length,1);for(const button of w.doc.querySelectorAll('button'))button.dispatchEvent(new w.dom.window.MouseEvent('mousedown',{button:0,bubbles:true}));assert.equal(w.drags().length,1);}finally{w.dom.window.close();}
 });
 
@@ -442,7 +442,7 @@ test('split window header is explicit chrome while pane titles, controls and ter
 });
 
 test('packaged center rail drag stays on exact blank root targets and never swallows descendants',()=>{
- const original=fs.readFileSync(new URL('../../desktop/renderer/index.html',import.meta.url),'utf8');
+ const original=fs.readFileSync(new URL('./index.html',import.meta.url),'utf8');
  const generator=fs.readFileSync(new URL('../scripts/prepare-renderer.mjs',import.meta.url),'utf8');
  assert(generator.includes('data-veymux-window-rail="true"'));
  const markup=original.replace('class="brand"','class="brand" data-tauri-drag-region').replace('class="topbar"','class="topbar" data-tauri-drag-region').replace('class="rail"','class="rail" data-veymux-window-rail="true"');
@@ -465,7 +465,7 @@ test('packaged center rail drag stays on exact blank root targets and never swal
 });
 
 test('packaged connection center app-shell/workspace/section blank areas drag without stealing controls or scrollbar input',()=>{
- const original=fs.readFileSync(new URL('../../desktop/renderer/index.html',import.meta.url),'utf8');
+ const original=fs.readFileSync(new URL('./index.html',import.meta.url),'utf8');
  const packaged=original.replace('class="brand"','class="brand" data-tauri-drag-region').replace('class="topbar"','class="topbar" data-tauri-drag-region').replace('class="rail"','class="rail" data-veymux-window-rail="true"');
  const f=dragFixture(packaged,true);f.context.location.pathname='/';const main=f.doc.querySelector('main.app-shell');
  f.doc.querySelector('.rail').getBoundingClientRect=()=>({left:0,right:224,top:0,bottom:500,width:224,height:500});

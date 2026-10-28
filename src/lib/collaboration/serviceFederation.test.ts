@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { CollaborationFederation, qualifySession, sessionAddress, type FederationGroup, type FederationService, type FederationSession } from './collaborationFederation.js';
+import { CollaborationFederation, qualifySession, sessionAddress, type FederationGroup, type FederationService, type FederationSession } from './serviceFederation.js';
 
 function fixture(origins = ['https://one.test', 'https://two.test']) {
   const records = origins.map((origin) => ({ origin, connected: true, groups: [] as FederationGroup[], messages: [] as any[],

@@ -1539,8 +1539,7 @@ pub fn run() {
         .setup(|app| {
             let (file,config)=if let Some(isolated)=crate::window_diagnostics::configuration(){isolated}else{
                 let file=app.path().app_config_dir()?.join("connections.json");
-                let stable=PathBuf::from(std::env::var_os("HOME").ok_or("Missing home directory")?).join(".veymux/desktop.json");
-                let config=if crate::product::is_preview(){Config::load(&file,&stable)?}else{crate::migration::load_configuration(&file,&stable,&file.parent().ok_or("Missing configuration directory")?.parent().ok_or("Missing application support directory")?.join("com.jovines.veymux.preview/connections.json"))?};(file,config)
+                let config=if crate::product::is_preview(){Config::load(&file)?}else{crate::migration::load_configuration(&file,&file.parent().ok_or("Missing configuration directory")?.parent().ok_or("Missing application support directory")?.join("com.jovines.veymux.preview/connections.json"))?};(file,config)
             };
             config.persist(&file)?;
             let restore_connections=config.open_connections.iter()
@@ -2123,7 +2122,7 @@ mod pairing_tests {
   let server=tokio::spawn(async move{axum::serve(upstream,axum::Router::new().route("/",axum::routing::get(||async{axum::response::Html("<html>Owned registry test</html>")}))).await.unwrap();});
   let old=Connection{id:"owned".into(),url:format!("http://{address}"),label:"Owned".into(),target_peer_id:None,service_origin:None,entry_service_id:None,routes:vec![]};
   let listener=proxy::bind(None).await.unwrap();let (proxy,_)=proxy::start(listener,&old,&BTreeMap::new()).await.unwrap();
-  let windows=Mutex::new(BTreeMap::from([("owner".into(),ServiceWindow{connection:old.clone(),proxy,activity:Value::Null,pending_focus:None})]));
+  let windows=Mutex::new(BTreeMap::from([("owner".into(),ServiceWindow{connection:old.clone(),proxy,activity:Value::Null,pending_invitation:None,pending_focus:None})]));
   let mut initial=Config::default();initial.ports.insert(old.key(),12345);initial.profile_keys.insert(old.key(),"controlled-profile".into());
   let config=Mutex::new(initial);let mut next=old.clone();next.target_peer_id=Some("controlled-peer".into());
   let (previous,current)=update_unpaired_window(&windows,&config,"owner",&next).unwrap();

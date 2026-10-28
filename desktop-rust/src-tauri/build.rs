@@ -6,10 +6,10 @@ fn main() {
         println!("cargo:rerun-if-env-changed={key}");
     }
     if std::env::var_os("CARGO_FEATURE_DESKTOP").is_some() {
-        println!("cargo:rerun-if-changed=../../desktop/assets/veymux-macos-icon.png");
+        println!("cargo:rerun-if-changed=../assets/veymux-macos-icon.png");
         println!("cargo:rerun-if-changed=build/runtime_icon.rs");
         runtime_icon::generate(
-            std::path::Path::new("../../desktop/assets/veymux-macos-icon.png"),
+            std::path::Path::new("../assets/veymux-macos-icon.png"),
             std::path::Path::new(".runtime-icons/icon.png"),
         )
         .expect("Preview runtime icon must be decoded RGBA8 before Tauri codegen");

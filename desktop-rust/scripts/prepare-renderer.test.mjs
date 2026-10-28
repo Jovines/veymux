@@ -18,8 +18,8 @@ test('actual Preview renderer generation marks only the real rail/header hosts a
     assert.equal(doc.querySelector('aside.rail > .brand').hasAttribute('data-tauri-drag-region'),true);
   }finally{dom.window.close();}
   const styles=fs.readFileSync(new URL('../.renderer-dist/styles.css',import.meta.url),'utf8');
-  const shared=fs.readFileSync(new URL('../../desktop/renderer/styles.css',import.meta.url),'utf8');
+  const shared=fs.readFileSync(new URL('../renderer/styles.css',import.meta.url),'utf8');
   assert.ok(styles.startsWith(shared),'shared center geometry must remain unchanged');
   assert.equal(styles,shared,'center styling is shared without engine recovery overrides');
-  assert.equal(fs.readFileSync(new URL('../.renderer-dist/floating.css',import.meta.url),'utf8'),fs.readFileSync(new URL('../../desktop/renderer/floating.css',import.meta.url),'utf8'));
+  assert.equal(fs.readFileSync(new URL('../.renderer-dist/floating.css',import.meta.url),'utf8'),fs.readFileSync(new URL('../renderer/floating.css',import.meta.url),'utf8'));
 });

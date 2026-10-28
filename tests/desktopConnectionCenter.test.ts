@@ -2,10 +2,10 @@
 import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { DesktopSnapshot, LocalServiceSetup } from '../desktop/types.js';
+import type { DesktopSnapshot, LocalServiceSetup } from '../desktop-rust/renderer/types.js';
 
-const html = readFileSync(new URL('../desktop/renderer/index.html', import.meta.url), 'utf8');
-const script = readFileSync(new URL('../desktop/renderer/app.js', import.meta.url), 'utf8');
+const html = readFileSync(new URL('../desktop-rust/renderer/index.html', import.meta.url), 'utf8');
+const script = readFileSync(new URL('../desktop-rust/renderer/app.js', import.meta.url), 'utf8');
 const windows: JSDOM[] = [];
 afterEach(() => { for (const dom of windows.splice(0)) dom.window.close(); });
 

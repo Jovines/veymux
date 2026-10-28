@@ -11,7 +11,7 @@
 
 ## 已核对代码
 
-- `desktop/collaborationFederation.ts`：`CollaborationFederation.synchronize` 通过每个服务的 `request('/collaboration-federation')` 同步工作组快照及消息；`qualifySession` 当前按 origin 和 Session ID 编码远端身份。该模块处理协作同步，不是通用终端中继。
+- `src/lib/collaboration/serviceFederation.ts`：`CollaborationFederation.synchronize` 通过每个服务的 `request('/collaboration-federation')` 同步工作组快照及消息；`qualifySession` 当前按 origin 和 Session ID 编码远端身份。该模块处理协作同步，不是通用终端中继。
 - `src/server/agent/collaborationStore.ts`：存在 `federationSnapshot`、远端成员与副本合并逻辑。已有副本不等于已有终端数据代理，也不证明现有消息具有端到端加密。
 - 核对范围限上述文件；本文不宣称已完成全库安全审计。
 

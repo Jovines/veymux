@@ -40,7 +40,7 @@ async function loadEncryptedBlob(url: string, signal: AbortSignal): Promise<stri
 
 /** Native media requests bypass window.fetch. When a worker that forwards them
  * to the paired channel controls the page, hand the URL to the element directly.
- * Some shells (relay-only Electron windows, origins Chromium refuses to register
+ * Some shells (relay-only native windows, origins Chromium refuses to register
  * a worker for) never get that worker, so fall back to a blob fetched through
  * the page's encrypted fetch. Never assign the raw business URL to native media. */
 export function useEncryptedMediaSource(url: string, onError?: () => void): string | undefined {

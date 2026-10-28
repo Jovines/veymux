@@ -287,7 +287,7 @@ describe('right sidebar Markdown preview rendering', () => {
       />,
     );
 
-    // Cancelling the native click prevents Electron's new-window handler.
+    // Cancelling the native click prevents the native new-window handler.
     expect(fireEvent.click(screen.getByRole('link', { name: 'Jump' }))).toBe(false);
     expect(onLocalLinkOpen).toHaveBeenCalledWith({
       path: '/repo/docs/guide.md',

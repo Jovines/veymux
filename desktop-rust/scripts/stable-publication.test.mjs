@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-test('stable publication validates complete signed Rust artifacts with an explicit optional bridge', () => {
+test('stable publication validates complete signed Rust artifacts without retired client assets', () => {
   execFileSync('python3', ['-B', '-c', String.raw`
 import copy, hashlib, importlib.util, json, pathlib, tempfile
 spec=importlib.util.spec_from_file_location('promote', 'promote-stable.py')
@@ -12,7 +12,7 @@ identity=dict(version=version,bundle='com.jovines.veymux',minimumMacOS='14.0',ar
 root='https://github.com/Jovines/veymux/releases/download'
 with tempfile.TemporaryDirectory() as temporary:
     base=pathlib.Path(temporary)
-    metadata=dict(version=version,tag='v'+version,revision=revision,notarizationVerified=True,prerelease=False,legacyBridgeIncluded=False,
+    metadata=dict(version=version,tag='v'+version,revision=revision,notarizationVerified=True,prerelease=False,
         config=dict(identifier='com.jovines.veymux',productName='Veymux'),endpoint=root+'/stable-channel/latest.json',
         appNotarySubmission='a'*36,dmgNotarySubmission='b'*36,verification={**identity,'dmgApp':identity.copy(),'rustZipApp':identity.copy()})
     manifest=dict(version=version,platforms={'darwin-aarch64':dict(url=root+'/v'+version+'/'+prefix+'.app.tar.gz',signature='signature')})
@@ -29,18 +29,11 @@ with tempfile.TemporaryDirectory() as temporary:
         except (ValueError,KeyError): pass
         else: raise AssertionError(message)
     module.validate(base,prepare(metadata,files),version,revision)
-    legacy=copy.deepcopy(metadata);legacy.pop('legacyBridgeIncluded')
-    rejected(legacy,files,'Missing mode must retain the legacy bridge requirement')
-    legacy['verification']['legacyBridge']=dict(version='1.4.357',minimumMacOS='12.0',gatekeeperAccepted=True,notaryTicketValidated=True)
-    bridge_files={**files,f'Veymux-darwin-arm64-{version}.zip':b'bridge'}
-    module.validate(base,prepare(legacy,bridge_files),version,revision)
-    rejected(metadata,bridge_files,'Rust-only releases must reject an unexpected bridge')
+    rejected(metadata,{**files,f'Veymux-darwin-arm64-{version}.zip':b'old-client'},'Retired client archives must not enter a Rust release')
     missing=dict(files);missing.pop(prefix+'.app.tar.gz.sig')
-    rejected(metadata,missing,'Rust-only releases still require signed updater assets')
+    rejected(metadata,missing,'Rust releases still require signed updater assets')
     bad=copy.deepcopy(metadata);bad['verification']['dmgApp']['gatekeeperAccepted']=False
-    rejected(bad,files,'Rust-only releases still require DMG Gatekeeper verification')
-    bad=copy.deepcopy(metadata);bad['legacyBridgeIncluded']='false'
-    rejected(bad,files,'Bridge mode must be a boolean')
+    rejected(bad,files,'Rust releases still require DMG Gatekeeper verification')
     release=prepare(metadata,files);release['assets'][0]['digest']='sha256:'+'0'*64
     try: module.validate(base,release,version,revision)
     except ValueError: pass

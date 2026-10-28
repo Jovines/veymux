@@ -287,7 +287,6 @@ pub struct CollaborationDescriptor {
 #[serde(rename_all = "camelCase", default)]
 pub struct Config {
     pub version: u8,
-    pub imported_bookmarks: bool,
     pub imported_preview: bool,
     pub connections: Vec<Connection>,
     pub removed_keys: Vec<String>,
@@ -305,7 +304,6 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             version: 1,
-            imported_bookmarks: false,
             imported_preview: false,
             connections: vec![],
             removed_keys: vec![],
@@ -349,7 +347,7 @@ impl Config {
         self.collaboration_descriptors.insert(node.service_id.clone(), node);
         Ok(true)
     }
-    pub fn load(file: &Path, stable: &Path) -> Result<Self, String> {
+    pub fn load(file: &Path) -> Result<Self, String> {
         let mut config: Self = match fs::read(file) {
             Ok(bytes) => serde_json::from_slice(&bytes)
                 .map_err(|_| "Preview configuration is invalid; file preserved")?,
@@ -373,71 +371,6 @@ impl Config {
             .is_some_and(|p| !p.x.is_finite() || !p.y.is_finite())
         {
             config.desktop_preferences.floating_widget_position = None;
-        }
-        if !config.imported_bookmarks {
-            // Read only bookmarks, never auth, private keys, cookies or certificate trust.
-            if let Ok(bytes) = fs::read(stable) {
-                if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&bytes) {
-                    if let Some(items) = value.get("connections").and_then(|v| v.as_array()) {
-                        for item in items.iter().take(256) {
-                            if let Ok(connection) =
-                                serde_json::from_value::<Connection>(item.clone())
-                                    .and_then(|c| c.validated().map_err(serde::de::Error::custom))
-                            {
-                                if let Some(at) =
-                                    item.get("lastConnectedAt").and_then(|v| v.as_u64())
-                                {
-                                    config.last_connected.insert(connection.id.clone(), at);
-                                }
-                                config.save_connection(connection, false);
-                            }
-                        }
-                    }
-                }
-            }
-            if let Ok(bytes) = fs::read(stable) {
-                if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&bytes) {
-                    config.last_connection_url = value
-                        .get("lastConnectionUrl")
-                        .and_then(|v| v.as_str())
-                        .and_then(|v| origin(v).ok());
-                    if let Some(urls) = value.get("openConnectionUrls").and_then(|v| v.as_array()) {
-                        config.open_connections = urls
-                            .iter()
-                            .filter_map(|v| v.as_str())
-                            .filter_map(|v| origin(v).ok())
-                            .filter_map(|url| {
-                                config
-                                    .connections
-                                    .iter()
-                                    .find(|c| {
-                                        c.url == url || c.service_origin.as_ref() == Some(&url)
-                                    })
-                                    .map(|c| c.id.clone())
-                            })
-                            .collect();
-                    }
-                    if let Some(patch) = value.get("desktopPreferences") {
-                        if let Some(v) = patch.get("menuBarStatusEnabled").and_then(|v| v.as_bool())
-                        {
-                            config.desktop_preferences.menu_bar_status_enabled = v;
-                        }
-                        if let Some(v) =
-                            patch.get("floatingWidgetEnabled").and_then(|v| v.as_bool())
-                        {
-                            config.desktop_preferences.floating_widget_enabled = v;
-                        }
-                        if let Some(point) = patch
-                            .get("floatingWidgetPosition")
-                            .and_then(|v| serde_json::from_value::<Point>(v.clone()).ok())
-                            .filter(|p| p.x.is_finite() && p.y.is_finite())
-                        {
-                            config.desktop_preferences.floating_widget_position = Some(point);
-                        }
-                    }
-                }
-            }
-            config.imported_bookmarks = true;
         }
         Ok(config)
     }
@@ -511,7 +444,7 @@ mod tests {
         let file = dir.path().join("connections.json");
         let id = format!("12D3KooW{}", "A".repeat(44));
         let mut original = Config::default();
-        original.imported_bookmarks = true; original.imported_preview = true;
+        original.imported_preview = true;
         original.connections.push(serde_json::from_value(serde_json::json!({
             "id":"existing", "url":"https://local.test", "label":"My service", "targetPeerId":id,
             "routes":[{"targetPeerId":id,"url":"https://alternate.test"}]
@@ -524,7 +457,7 @@ mod tests {
         let mut before = serde_json::to_value(&original).unwrap();
         before.as_object_mut().unwrap().remove("collaborationDescriptors");
         fs::write(&file, serde_json::to_vec(&before).unwrap()).unwrap();
-        let mut loaded = Config::load(&file, &dir.path().join("absent-legacy.json")).unwrap();
+        let mut loaded = Config::load(&file).unwrap();
         let node = CollaborationDescriptor { service_id:id.clone(), origin:"https://local.test".into(), ca_fingerprint256:None };
         loaded.remember_collaboration_descriptor(Some(&id), node).unwrap();
         loaded.persist(&file).unwrap();
@@ -648,28 +581,6 @@ mod tests {
         ] {
             assert!(origin(value).is_err());
         }
-    }
-    #[test]
-    fn import_is_copy_only_and_drops_secrets() {
-        let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("preview/config.json");
-        let stable = dir.path().join("desktop.json");
-        let bytes = br#"{"connections":[{"id":"a","url":"https://a","label":"A","token":"secret"}],"trustedCertificateAuthorities":["secret"],"auth":"secret"}"#;
-        fs::write(&stable, bytes).unwrap();
-        let c = Config::load(&file, &stable).unwrap();
-        c.persist(&file).unwrap();
-        assert_eq!(fs::read(&stable).unwrap(), bytes);
-        let raw = fs::read_to_string(&file).unwrap();
-        assert!(!raw.contains("secret"));
-        assert!(c.certificate_pins.is_empty());
-        fs::write(stable, "{}").unwrap();
-        assert_eq!(
-            Config::load(&file, &dir.path().join("desktop.json"))
-                .unwrap()
-                .connections
-                .len(),
-            1
-        );
     }
     #[test]
     fn metadata_rejects_invalid_route_identity() {
